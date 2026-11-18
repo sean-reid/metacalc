@@ -155,6 +155,14 @@ impl Lib {
         &self.titles
     }
 
+    /// The title that holds assertion `i`: the last one that starts at or before it, or the first
+    /// when `i` comes before every title.
+    pub fn section_of(&self, i: usize) -> usize {
+        self.titles
+            .partition_point(|t| t.assertion <= i)
+            .saturating_sub(1)
+    }
+
     pub fn label(&self, i: usize) -> &str {
         &self.assertions[i].label
     }
