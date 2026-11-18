@@ -213,16 +213,26 @@ fn press_in_proof(bytes: &[u8], nth: usize) -> (bool, Rig) {
     }
     rig.m.press_key(Machine::KEY_ON);
     let mut driver_looked = false;
-    loop {
-        rig.m.run(pc, 40);
+    for n in 0..MAX_STEPS {
+        let run = rig.m.run(pc, 40);
         pc = rig.m.pc();
         driver_looked |= pc == on_down;
         if rig.in_wait() {
             assert!(rig.finish(label("ON_RELEASE_AND_CLEAR"), 1) >= 1);
             return (driver_looked, rig);
         }
+        assert_ne!(
+            run.stop,
+            Stop::Halted,
+            "the routine ended without entering the wait, at pc {pc:04x} after {n} steps"
+        );
     }
+    panic!("no wait after {MAX_STEPS} steps of 40 T-states, at pc {pc:04x}");
 }
+
+/// The most 40 T-state steps `press_in_proof` takes after the press: one call of the kernel is at
+/// most 0.83 million T-states, so this is about 100 times that.
+const MAX_STEPS: usize = 2_000_000;
 
 #[test]
 fn on_pressed_inside_a_proof_makes_the_kernel_return_14_and_the_driver_stop() {
@@ -359,12 +369,18 @@ fn the_wait_returns_with_interrupts_on_whether_or_not_on_was_down() {
         }
         let mut waits = 0;
         let mut tstates = 0u64;
-        loop {
-            let run = rig.m.run(pc, if holds == 0 { LIMIT } else { SLICE });
+        // the quiet case is one halt and the end; a held key is one slice per wait
+        let most = if holds == 0 { 100 } else { holds + 1000 };
+        for slice in 0.. {
+            assert!(
+                slice < most,
+                "no end after {slice} slices, {waits} waits, at pc {:04x}",
+                rig.m.pc()
+            );
+            let run = rig.m.run(pc, SLICE);
             tstates += u64::from(run.tstates);
             match run.stop {
                 Stop::Halted => break,
-                Stop::Limit if holds == 0 => panic!("the wait never woke"),
                 Stop::Limit => {
                     waits += 1;
                     if waits == holds {
@@ -375,7 +391,7 @@ fn the_wait_returns_with_interrupts_on_whether_or_not_on_was_down() {
                 other => panic!("{other:?}"),
             }
         }
-        assert_eq!(waits, holds, "polls that found ON down");
+        assert_eq!(waits, holds, "slices that ended in the wait");
         // the routine without its halt takes about 60 T-states; the halt waits for the timer
         assert!(tstates > 1000, "the halt did not wait: {tstates} T-states");
         assert_eq!(
@@ -455,4 +471,36 @@ fn nothing_is_printed_after_an_on_stop_until_the_flag_is_clear() {
     );
     assert_eq!(rig.m.ram_page(1)[FLAGS] & 0x10, 0);
     assert_stopped_at_done(&mut rig);
+}
+
+/// The kernel on this branch never returns 14 from kernel_init, so the test image's entry is
+/// replaced by `ld a,14; ret`, which is what a kernel that stops its init for ON returns.
+#[test]
+fn an_init_the_kernel_reports_interrupted_is_a_stop_and_not_a_failure() {
+    let bytes = axioms(300);
+    let mut code = CODE.to_vec();
+    let at = usize::from(label("KERNEL_INIT") - ENTRY);
+    code[at..at + 3].copy_from_slice(&[0x3E, 14, 0xC9]);
+    for held in [true, false] {
+        let mut rig = Rig::with_code(&bytes, Speed::Mhz15, &code);
+        rig.m.ram_page(1)[FLAGS] = 0xFF;
+        if held {
+            rig.m.press_key(Machine::KEY_ON);
+        }
+        rig.finish(ENTRY, if held { 2 } else { 0 });
+        let (_, result) = screens(&rig.trace());
+        assert_eq!(
+            result,
+            [
+                "kernchk v1",
+                "crc stopped",
+                "checked 00000",
+                "accepted 00000",
+                "stopped 00000"
+            ],
+            "ON held: {held}"
+        );
+        assert_eq!(rig.byte(label("K_INIT")), 0, "ON held: {held}");
+        assert_eq!(rig.m.ram_page(1)[FLAGS], 0xEF, "ON held: {held}");
+    }
 }

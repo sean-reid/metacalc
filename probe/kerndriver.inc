@@ -47,6 +47,7 @@ CRC_STOPPED = 3
 STOP_NONE   = 0
 STOP_CRC    = 1
 STOP_VERIFY = 2
+STOP_INIT   = 3
 
 kernchk_run:
 	call app_find_library
@@ -73,7 +74,18 @@ kd_limits:
 	call kernel_init
 	ld (K_INIT), a
 	or a
+	jr z, kd_inited
+	cp KD_INTERRUPT
 	jr nz, kd_done
+	xor a
+	ld (K_INIT), a
+	call on_release_and_clear
+	ld a, CRC_STOPPED
+	ld (K_CRC_STATE), a
+	ld a, STOP_INIT
+	ld (K_STOPPED), a
+	jr kd_done
+kd_inited:
 	call kd_header
 	call kd_crc
 	ld a, (K_CRC_STATE)

@@ -9,7 +9,7 @@ on_wait_halted:
 	in a, (04h)
 	bit 3, a
 	jr z, on_release_and_clear
+on_wait_end:
 	res onInterrupt, (iy + onFlags)
 	ei
 	ret
-on_release_end:
