@@ -17,7 +17,8 @@
 ;   kernel_verify   in:  HL = assertion number, kernel_init returned 0
 ;                   out: A = status, 0 meaning accepted
 ;
-; kernel_verify may be called any number of times after one kernel_init. Limits above a
+; kernel_verify returns Malformed unless a kernel_init on the same RAM block succeeded and no
+; later kernel_init failed. It may be called any number of times after that init. Limits above a
 ; buffer's capacity (CAP_* in ram.inc) are clamped to it when kernel_init runs. The library
 ; is stored the way TI-OS stores an app: chunk c of 16 KB at flash page KERNEL_LIB_PAGE - c.
 ; kernel_init refuses KERNEL_LIB_PAGE >= $80 and a library that needs more than

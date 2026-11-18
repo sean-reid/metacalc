@@ -75,8 +75,8 @@ fill_bytes:
 	jp copy_bc
 
 init_body:
-	xor a
-	ld (kv_ready),a
+	ld hl,0
+	ld (kv_ready),hl
 	ld a,(KERNEL_LIB_PAGE)
 	cp $80
 	jp nc,fail_malformed
@@ -278,8 +278,8 @@ init_cache_clear:
 	call subst_clear
 	ld hl,0
 	ld (kv_serial),hl
-	ld a,1
-	ld (kv_ready),a
+	ld hl,READY_MAGIC
+	ld (kv_ready),hl
 	ret
 
 ; in: HL = value, DE = cap. out: HL = the smaller. Destroys AF DE.

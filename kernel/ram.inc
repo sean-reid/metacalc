@@ -4,6 +4,9 @@ KERNEL_RAM                  .equ $C000
 #if KERNEL_RAM & $FF
  .error "KERNEL_RAM must be a multiple of $100"
 #endif
+#if KERNEL_RAM < $C000
+ .error "KERNEL_RAM must be in bank C"
+#endif
 KERNEL_LIB_PAGE             .equ KERNEL_RAM+$00
 KERNEL_LIMIT_STACK_SYMS     .equ KERNEL_RAM+$01
 KERNEL_LIMIT_STACK_ENTRIES  .equ KERNEL_RAM+$03
@@ -13,7 +16,8 @@ KERNEL_LIMIT_SAVED_ENTRIES  .equ KERNEL_RAM+$07
 kv_saved_sp         .equ KERNEL_RAM+$10
 kv_saved_bank       .equ KERNEL_RAM+$12
 kv_saved_iff        .equ KERNEL_RAM+$13
-kv_ready            .equ KERNEL_RAM+$14
+kv_ready            .equ KERNEL_RAM+$A0
+READY_MAGIC         .equ $5AA5
 kv_arg_id           .equ KERNEL_RAM+$15
 kv_constants        .equ KERNEL_RAM+$17
 kv_symbols          .equ KERNEL_RAM+$18
