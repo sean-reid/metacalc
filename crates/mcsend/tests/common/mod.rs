@@ -352,7 +352,7 @@ impl Transport for Peer {
                     let total = self.vbuf.len() + payload.len();
                     assert!(
                         !payload.is_empty()
-                            || (total % self.cfg.alloc as usize == 0
+                            || (total.is_multiple_of(self.cfg.alloc as usize)
                                 && total > self.cfg.alloc as usize),
                         "an empty last raw packet after an uneven split"
                     );
