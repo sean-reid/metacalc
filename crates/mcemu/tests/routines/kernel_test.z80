@@ -1,5 +1,9 @@
 #define KERNEL_EMBEDDED
 
+#ifndef KERNEL_RAM
+#define KERNEL_RAM $C000
+#endif
+
 TEST_INIT_STATUS	.equ $FF00
 TEST_VERIFY_STATUS	.equ $FF01
 TEST_ASSERTION		.equ $FF02
@@ -8,13 +12,14 @@ TEST_IFF		.equ $FF06
 TEST_BLOCK		.equ $FF00
 TEST_VERIFY2_STATUS	.equ $FF0A
 TEST_ASSERTION2		.equ $FF08
-TEST_STATUSES		.equ $F200
+TEST_STATUSES		.equ KERNEL_RAM+$3200
 TEST_REGS		.equ $FF10
 TEST_IFF_IN		.equ $FF1A
 TEST_CRC_BEGIN		.equ $FF0B
 TEST_CRC_CALLS		.equ $FF0C
 TEST_BUF_LEN		.equ $FF1C
-TEST_BUF		.equ $F300
+TEST_BUF		.equ TEST_STATUSES
+TEST_CRC_EXTRA		.equ $FF0D
 
 .org $4000
 	jp entry_one
@@ -162,7 +167,57 @@ entry_crc_again:
 	call kernel_init
 	call crc_run
 	call kernel_crc_chunk
-	ld (TEST_VERIFY_STATUS),a
+	ld (TEST_CRC_EXTRA),a
+	halt
+
+entry_crc_failed_init:
+	di
+	call kernel_init
+	call kernel_crc_begin
+	call kernel_crc_chunk
+	ld (TEST_STATUSES),a
+	ld a,$80
+	ld (KERNEL_LIB_PAGE),a
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	call kernel_crc_chunk
+	ld (TEST_STATUSES+1),a
+	halt
+
+entry_crc_between_verifies:
+	di
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	call kernel_crc_begin
+	ld (TEST_CRC_BEGIN),a
+	xor a
+	ld (TEST_CRC_CALLS),a
+cbv_next:
+	call kernel_crc_chunk
+	ld c,a
+	ld a,(TEST_CRC_CALLS)
+	ld e,a
+	ld d,0
+	ld hl,TEST_STATUSES
+	add hl,de
+	ld (hl),c
+	ld l,e
+	ld h,d
+	call kernel_verify
+	ld c,a
+	ld a,(TEST_CRC_CALLS)
+	ld e,a
+	ld d,0
+	ld hl,TEST_STATUSES+$80
+	add hl,de
+	ld (hl),c
+	ld hl,TEST_STATUSES
+	add hl,de
+	inc a
+	ld (TEST_CRC_CALLS),a
+	ld a,(hl)
+	cp ST_CRC_MORE
+	jr z,cbv_next
 	halt
 
 entry_crc_restart:
@@ -257,3 +312,10 @@ iff_store:
 	ret
 
 #include "kernel.z80"
+
+#if TEST_STATUSES != KERNEL_RAM_END
+ .error "the test variables must start at the end of the kernel block"
+#endif
+#if TEST_STATUSES+$800 > TEST_BLOCK
+ .error "the test variables do not fit above the kernel block"
+#endif

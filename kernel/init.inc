@@ -283,12 +283,17 @@ init_cache_clear:
 	ld (kv_ready),hl
 	ret
 
-; Refuses unless the last kernel_init succeeded. Destroys AF DE HL.
-require_ready:
+; out: Z if the last kernel_init succeeded. Destroys AF DE HL.
+is_ready:
 	ld hl,(kv_ready)
 	ld de,READY_MAGIC
 	or a
 	sbc hl,de
+	ret
+
+; Refuses unless the last kernel_init succeeded. Destroys AF DE HL.
+require_ready:
+	call is_ready
 	ret z
 	jp fail_malformed
 

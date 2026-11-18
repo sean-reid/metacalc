@@ -7,7 +7,8 @@
 ; alone places it at $4000; an including file defines KERNEL_EMBEDDED first and
 ; places the code itself.
 ;
-; RAM sits at KERNEL_RAM, default $C000; define another multiple of $100 to move it.
+; RAM sits at KERNEL_RAM, default $C000; define another multiple of $100 to move it, up to
+; $CE00 (the block is $3200 long and must end by $10000).
 ;
 ; Calling: DI, map library pages at $8000 through port 7, restore port 7 and the
 ; interrupt state on return. Preserves IY and the shadow registers, destroys the
@@ -33,13 +34,15 @@
 ; at init, so changing KERNEL_LIB_PAGE afterwards has no effect until the next kernel_init.
 ;
 ; The checksum runs in 16 KB steps so the app can poll keys between calls. kernel_crc_begin
-; builds a 1 KB table (306,000 T-states, 51 ms at 6 MHz) and starts a run. Each kernel_crc_chunk
-; reads the next chunk: at most 2,030,000 T-states from flash, 0.34 s at 6 MHz, 0.14 s at
-; 15 MHz, 124 T-states per byte. A library of 369,178 bytes takes 23 calls, 46 million T-states,
-; 7.7 s at 6 MHz. Call chunk until it does not return ST_CRC_MORE. A chunk call refuses (returns
-; 1) without a begin since the last kernel_init, and after the run has ended; kernel_crc_begin
-; restarts. KERNEL_CRC is the CRC-32, least significant byte first, final once chunk has returned
-; 0 or 1 and a running value before that; the app can key its status cache on it.
+; builds a 1 KB table (307,000 T-states at most, 51 ms at 6 MHz) and starts a run. Each
+; kernel_crc_chunk reads the next chunk: at most 2,027,000 T-states from flash, 0.34 s at 6 MHz,
+; 0.14 s at 15 MHz, about 124 T-states per byte. A library of 369,178 bytes takes 23 calls and
+; 46.1 million T-states at most, 7.7 s at 6 MHz. Call chunk until it does not return
+; ST_CRC_MORE. A chunk call without a begin since the last kernel_init, or after the run has
+; ended, is refused (1); kernel_crc_begin restarts. KERNEL_CRC is the CRC-32, least significant
+; byte first, and is meaningful only when the call that ended the run returned 0, a match; the
+; app can key its status cache on it then. A mismatch or a refused call returns 1 and sets it to
+; 0. The value is a running state while chunk returns ST_CRC_MORE.
 ;
 ; Status (ST_* in ram.inc)
 ;           0 ok               1 Malformed        2 BadRecord

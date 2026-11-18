@@ -136,7 +136,7 @@ fn the_checksum_agrees_with_the_model_on_every_corpus_library() {
             (0, MALFORMED),
             "library {n}, wrong sum"
         );
-        assert_eq!(run.value, sum(bytes), "library {n}: value, wrong sum");
+        assert_eq!(run.value, 0, "library {n}: value, wrong sum");
     }
 }
 
@@ -151,7 +151,7 @@ fn each_bit_of_the_stored_checksum_matters() {
         device.load(&flipped);
         let run = run_crc(&mut device);
         assert_eq!((run.init, run.overall()), (0, MALFORMED), "bit {bit}");
-        assert_eq!(run.value, sum(&bytes), "bit {bit}: value");
+        assert_eq!(run.value, 0, "bit {bit}: value");
     }
     device.load(&bytes);
     assert_eq!(run_crc(&mut device).overall(), 0);
@@ -182,7 +182,7 @@ fn a_changed_byte_in_any_chunk_is_refused() {
         device.load(&changed);
         let run = run_crc(&mut device);
         assert_eq!((run.init, run.overall()), (0, MALFORMED), "offset {offset}");
-        assert_eq!(run.value, sum(&changed), "offset {offset}: value");
+        assert_eq!(run.value, 0, "offset {offset}: value");
     }
 }
 
@@ -193,6 +193,7 @@ fn the_value_is_right_at_every_edge_of_a_chunk() {
     for k in 1..=3 {
         lengths.extend([k * CHUNK - 1, k * CHUNK, k * CHUNK + 1]);
     }
+    lengths.extend([65_536, 65_537, 131_071, 131_072, 131_073]);
     for len in lengths {
         let bytes = padded(&small, len);
         assert!(model_accepts(&bytes), "length {len}: the model");
@@ -236,16 +237,20 @@ fn the_checksum_needs_a_successful_init() {
     let mut device = Device::with_library(&bytes);
     device.m.load_flash(0x50, 0, &marker);
     device.m.out_port(PORT_BANK_B, 0x50);
+    let stale = device.label("KERNEL_CRC");
+    device.m.load_ram(stale, &[0xA5; 4]);
     let run = run_entry(&mut device, "ENTRY_CRC_RAW", 4);
     assert_eq!((run.begin, run.statuses), (MALFORMED, vec![MALFORMED]));
+    assert_eq!(run.value, 0);
     assert_eq!(device.m.read_ram(0x8000, marker.len()), marker);
 
     let mut bad = bytes.clone();
     bad[0] = b'X';
     device.load(&bad);
+    device.m.load_ram(stale, &[0xA5; 4]);
     let run = run_crc(&mut device);
     assert_eq!((run.init, run.begin), (MALFORMED, MALFORMED));
-    assert_eq!(run.statuses, [MALFORMED]);
+    assert_eq!((run.statuses, run.value), (vec![MALFORMED], 0));
     assert_eq!(device.m.read_ram(0x8000, marker.len()), marker);
 
     let mut short = bytes.clone();
@@ -275,7 +280,56 @@ fn a_run_is_ordered_begin_then_chunks_and_a_new_init_ends_it() {
     assert_eq!(run.statuses.len(), 3);
 
     run_entry(&mut device, "ENTRY_CRC_AGAIN", 255);
-    assert_eq!(device.byte("TEST_VERIFY_STATUS"), MALFORMED);
+    assert_eq!(device.byte("TEST_CRC_EXTRA"), MALFORMED);
+}
+
+#[test]
+fn a_failed_init_ends_a_run() {
+    let (_, small) = small_library();
+    let bytes = padded(&small, 2 * CHUNK + 100);
+    let mut device = Device::with_library(&bytes);
+    let run = run_entry(&mut device, "ENTRY_CRC_FAILED_INIT", 0);
+    assert_eq!(run.init, MALFORMED);
+    let both = device.m.read_ram(device.label("TEST_STATUSES"), 2);
+    assert_eq!(both, [MORE, MALFORMED]);
+    assert_eq!(run.value, 0);
+}
+
+#[test]
+fn verify_between_chunks_changes_neither_answer() {
+    let (db, small) = small_library();
+    let count = assertions(&db).len();
+    let bytes = padded(&small, 6 * CHUNK + 77);
+    assert!(model_accepts(&bytes));
+    let mut device = Device::with_library(&bytes);
+    let run = run_entry(&mut device, "ENTRY_CRC_BETWEEN_VERIFIES", 255);
+    assert_eq!((run.init, run.begin, run.overall()), (0, 0, 0));
+    assert_eq!(run.statuses.len(), 7);
+    assert_eq!(run.value, sum(&bytes));
+    let verified = device.m.read_ram(device.label("TEST_STATUSES") + 0x80, 7);
+    let (_, want) = model_statuses(&bytes, ASKED_UNBOUNDED);
+    assert_eq!(want.len(), count);
+    assert_eq!(verified, want[..7]);
+}
+
+#[test]
+fn the_checksum_runs_at_another_address() {
+    let (_, small) = small_library();
+    let bytes = padded(&small, 3 * CHUNK + 1);
+    let mut device = Device::with_image(MOVED);
+    device.load(&bytes);
+    let run = run_crc(&mut device);
+    assert_eq!((run.init, run.begin, run.overall()), (0, 0, 0));
+    assert_eq!(run.statuses.len(), 4);
+    assert_eq!(run.value, sum(&bytes));
+    let table = device.label("CRC_TABLE");
+    assert_eq!(table, device.label("KERNEL_RAM") + 0x2E00);
+    assert_eq!(device.m.read_ram(table + 1, 1), [0x96]);
+    let mut wrong = bytes.clone();
+    wrong[CHUNK + 5] ^= 4;
+    device.load(&wrong);
+    let run = run_crc(&mut device);
+    assert_eq!((run.overall(), run.value), (MALFORMED, 0));
 }
 
 const REGISTERS: [u8; 10] = [0x57, 0x13, 0x68, 0x24, 0x9C, 0x36, 0xAE, 0x48, 0xC0, 0x5A];
@@ -362,34 +416,46 @@ fn the_core_reproduces_the_published_test_vector_and_table() {
     }
 }
 
+/// The figures in the header of kernel.z80.
+const BEGIN_TSTATES: u32 = 307_000;
+const CALL_TSTATES: u32 = 2_027_000;
+const LIBRARY_TSTATES: u32 = 46_100_000;
+
 #[test]
-fn a_chunk_stays_under_half_a_second_at_6_mhz() {
+fn the_documented_costs_hold() {
     let (_, small) = small_library();
     let full = 369_178;
     let bytes = padded(&small, full);
+    let three = padded(&small, 3 * CHUNK);
     assert!(model_accepts(&bytes));
-    let mut results = Vec::new();
     for speed in [Speed::Mhz15, Speed::Mhz6] {
-        let mut device = Device::with_library(&bytes);
+        let mut device = Device::with_library(&three);
         device.m.set_speed(speed);
-        let [none, one, two] =
-            [0, 1, 2].map(|calls| run_entry(&mut device, "ENTRY_CRC", calls).tstates);
-        let chunk = two - one;
+        let [none, one, two, all] =
+            [0, 1, 2, 3].map(|calls| run_entry(&mut device, "ENTRY_CRC", calls).tstates);
         let init = device.verify_all(0, ASKED_UNBOUNDED).2;
         let setup = none - init;
+        let longest = (two - one).max(all - two);
+
+        let mut device = Device::with_library(&bytes);
+        device.m.set_speed(speed);
         let whole = run_crc(&mut device);
         assert_eq!(whole.overall(), 0);
         assert_eq!(whole.statuses.len(), chunks(full));
         assert_eq!(whole.value, sum(&bytes));
         println!(
-            "{speed:?}: begin {setup} T-states, a full chunk {chunk} ({:.1} T-states per byte), \
+            "{speed:?}: begin {setup} T-states, longest chunk {longest} ({:.2} T-states per byte), \
              the {full}-byte library {} T-states",
-            f64::from(chunk) / CHUNK as f64,
+            f64::from(longest) / CHUNK as f64,
             whole.tstates
         );
-        results.push(chunk);
+        assert!(setup <= BEGIN_TSTATES, "begin {setup}");
+        assert!(longest <= CALL_TSTATES, "a chunk call {longest}");
+        assert!(
+            whole.tstates <= LIBRARY_TSTATES,
+            "the library {}",
+            whole.tstates
+        );
     }
-    let six = f64::from(results[1]) / 6_000_000.0;
-    println!("a chunk takes {six:.3} s at 6 MHz");
-    assert!(six < 0.5, "{six} s");
+    assert!(f64::from(CALL_TSTATES) / 6_000_000.0 < 0.34);
 }

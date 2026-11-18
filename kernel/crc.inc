@@ -8,6 +8,12 @@ kernel_crc_chunk:
 	ld hl,crc_chunk_body
 	jp kernel_enter
 
+crc_refuse:
+	ld hl,0
+	ld (KERNEL_CRC),hl
+	ld (KERNEL_CRC+2),hl
+	jp fail_malformed
+
 #macro CRC_BYTE(k)
 	ld a,(ix+k)
 	xor e
@@ -29,7 +35,8 @@ kernel_crc_chunk:
 #endmacro
 
 crc_begin_body:
-	call require_ready
+	call is_ready
+	jp nz,crc_refuse
 	xor a
 	ld (kv_crc_state),a
 	ld hl,(kv_length)
@@ -68,10 +75,11 @@ cb_low:
 	ret
 
 crc_chunk_body:
-	call require_ready
+	call is_ready
+	jp nz,crc_refuse
 	ld a,(kv_crc_state)
 	dec a
-	jp nz,fail_malformed
+	jp nz,crc_refuse
 	ld a,(kv_crc_chunk)
 	ld c,a
 	srl a
@@ -125,7 +133,7 @@ cc_flip:
 cc_compare:
 	ld a,(de)
 	cp (hl)
-	jp nz,fail_malformed
+	jp nz,crc_refuse
 	inc de
 	inc hl
 	djnz cc_compare
