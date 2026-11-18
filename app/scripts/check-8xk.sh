@@ -1,25 +1,27 @@
 #!/bin/sh
-# Usage: check-8xk.sh app.8xk
+# Usage: check-8xk.sh app.8xk [name]
 set -eu
 export LC_ALL=C
 
-f=${1:?usage: check-8xk.sh app.8xk}
+f=${1:?usage: check-8xk.sh app.8xk [name]}
+want=${2:-metacalc}
+hexname=$(printf %s "$want" | od -An -tx1 | tr -d ' \n' | tr a-f A-F)
 fail() { echo "check-8xk: $f: $*" >&2; exit 1; }
 
 [ -s "$f" ] || fail "missing or empty"
 [ "$(head -c 8 "$f")" = "**TIFL**" ] || fail "not a TIFL flash file"
 
 name=$(dd if="$f" bs=1 skip=17 count=8 2>/dev/null)
-[ "$name" = "metacalc" ] || fail "file header name is '$name', want 'metacalc'"
+[ "$name" = "$want" ] || fail "file header name is '$name', want '$want'"
 
 # Data bytes of every type-00 Intel hex record, as one hex string.
 body=$(grep -a -E '^:[0-9A-F]{6}00' "$f" | tr -d '\r' |
 	sed -E 's/^:[0-9A-F]{6}00(.*)..$/\1/' | tr -d '\n')
 
-# Name field 80 48 "metacalc" in the app header.
+# Name field 80 48 <name> in the app header.
 case $body in
-	800F*80486D65746163616C63*) ;;
-	*) fail "app header has no 'metacalc' name field" ;;
+	800F*8048${hexname}*) ;;
+	*) fail "app header has no '$want' name field" ;;
 esac
 
 # TI-OS enters an app at 4080h, so the header's last field ends 16 bytes before it.

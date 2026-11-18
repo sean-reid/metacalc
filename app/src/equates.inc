@@ -7,3 +7,5 @@ _ClrLCDFull      = 4540h
 _GetKey          = 4972h
 curRow           = 844Bh
 curCol           = 844Ch
+_NewLine         = 452Eh
+appBackUpScreen  = 9872h
