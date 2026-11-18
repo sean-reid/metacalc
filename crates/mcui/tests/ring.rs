@@ -6,7 +6,7 @@ use mcpack::build;
 use mcpack::library::{self, pack};
 use mcpack::manifest::Manifest;
 use mcpack::mm;
-use mcui::canvas::{TEXT_WIDTH, WIDTH, text_width};
+use mcui::canvas::{STATEMENT_WIDTH, WIDTH, text_width};
 use mcui::data::{Installed, Lib};
 use mcui::fold::{Folds, layout};
 use mcui::{Key, State, Status, Statuses, Ui};
@@ -79,9 +79,9 @@ fn measurements_of_the_ring_library() {
             .enumerate()
             .map(|(s, e)| {
                 let width = if s + 1 == exprs.len() {
-                    TEXT_WIDTH
+                    STATEMENT_WIDTH
                 } else {
-                    TEXT_WIDTH - 8
+                    STATEMENT_WIDTH - 8
                 };
                 layout(e, &Folds::none(e), width).rows()
             })

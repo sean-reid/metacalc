@@ -71,9 +71,10 @@ fn a_long_title_is_cut_short_of_its_status() {
 #[test]
 fn every_soft_key_label_sits_inside_its_fifth() {
     let labels = [
-        ["Opn", "Vfy", "Abt", "", ""],
-        ["Vw", "Find", "Kind", "Prv", ""],
-        ["Fld", "Dist", "Pf", "Prv", ""],
+        ["See", "Run", "Info", "", ""],
+        ["See", "Find", "Kind", "Try", ""],
+        ["Fold", "Dist", "Why", "Try", ""],
+        ["Fold", "Up", "Thm", "", ""],
     ];
     for set in labels {
         let mut canvas = Canvas::default();
@@ -95,7 +96,7 @@ fn every_soft_key_label_sits_inside_its_fifth() {
             let (first, last) = (inside[0], *inside.last().unwrap());
             assert_eq!(last - first + 1, width, "{label}");
             let slack = edges[i + 1] - edges[i] - width;
-            assert_eq!(first, edges[i] + slack / 2, "{label} is centred");
+            assert_eq!(first, edges[i] + slack.div_ceil(2), "{label} is centred");
         }
         for b in &edges[1..5] {
             assert!(!(columns.contains(&(b - 1)) && columns.contains(b)));

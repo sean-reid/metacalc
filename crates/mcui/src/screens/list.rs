@@ -188,7 +188,7 @@ impl List {
                 PREVIEW_ROW as isize..PREVIEW_ROW as isize + 1,
             );
         }
-        canvas.soft_keys(["Vw", "Find", "Kind", "Prv", ""]);
+        canvas.soft_keys(["See", "Find", "Kind", "Try", ""]);
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {

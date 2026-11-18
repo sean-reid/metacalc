@@ -106,3 +106,19 @@ fn about() {
     press(&mut ui, &[F3]);
     check(&ui, "about");
 }
+
+#[test]
+fn theorem_with_the_cursor_on_a_hypothesis_root() {
+    let mut ui = ui();
+    open(&mut ui, "syl");
+    press(&mut ui, &[Left]);
+    check(&ui, "theorem-hypothesis");
+}
+
+#[test]
+fn proof_with_the_cursor_on_the_goal() {
+    let mut ui = ui();
+    open(&mut ui, "syl");
+    press(&mut ui, &[F3, Up]);
+    check(&ui, "proof-goal");
+}

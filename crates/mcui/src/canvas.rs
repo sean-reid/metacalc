@@ -11,8 +11,12 @@ pub const ROW: usize = 8;
 pub const CONTENT_ROWS: usize = 6;
 /// Blank columns at each side of the text.
 pub const MARGIN: usize = 1;
-/// Pixels a statement may use.
+/// Pixels a list row or a one-line preview may use.
 pub const TEXT_WIDTH: usize = WIDTH - 2 * MARGIN;
+/// Columns left of a statement for the marker of a cursor on its root.
+pub const GUTTER: usize = 3;
+/// Pixels a statement may use.
+pub const STATEMENT_WIDTH: usize = WIDTH - GUTTER - MARGIN;
 
 fn font() -> &'static Font {
     Font::builtin()
@@ -117,7 +121,7 @@ impl Canvas {
         for (i, label) in labels.iter().enumerate() {
             let (from, to) = ((WIDTH * i + 2) / 5, (WIDTH * (i + 1) + 2) / 5);
             let label = truncate(label, to - from);
-            let x = from + (to - from - text_width(&label)) / 2;
+            let x = from + (to - from - text_width(&label)).div_ceil(2);
             self.text(x, CONTENT_ROWS + 1, &label);
         }
     }
@@ -153,6 +157,14 @@ impl Canvas {
                 self.bitmap
                     .blit(&ink, x + placed.x, Self::top(at as usize) + 1);
             }
+        }
+    }
+
+    /// A two column bar in the left margin of `row`, the cursor of a whole statement.
+    pub fn marker(&mut self, row: usize) {
+        for y in Self::top(row) + 1..Self::top(row) + ROW {
+            self.bitmap.set(0, y, true);
+            self.bitmap.set(1, y, true);
         }
     }
 

@@ -1,5 +1,7 @@
 use super::{Ctx, Nav, Screen, State, reveal, step, theorem::Theorem};
-use crate::canvas::{CONTENT_ROWS, Canvas, MARGIN, TEXT_WIDTH, text_width};
+use crate::canvas::{
+    CONTENT_ROWS, Canvas, GUTTER, MARGIN, STATEMENT_WIDTH, TEXT_WIDTH, text_width,
+};
 use crate::data::{By, Goals, Lib};
 use crate::fold::{Folds, Layout, fit_one, layout};
 use crate::key::Key;
@@ -15,6 +17,8 @@ pub struct Proof {
     path: Vec<usize>,
     /// The subgoal the highlight is on.
     selected: usize,
+    /// Whether the cursor is on the goal itself rather than a subgoal.
+    on_goal: bool,
     full: bool,
     by: By,
     goal: Layout,
@@ -33,6 +37,7 @@ impl Proof {
             goals,
             path: Vec::new(),
             selected: 0,
+            on_goal: false,
             full: false,
             by: By::Hypothesis(0),
             goal: layout_none(),
@@ -54,9 +59,9 @@ impl Proof {
         let folds = if self.full {
             Folds::none(&view.goal)
         } else {
-            fit_one(&view.goal, TEXT_WIDTH, GOAL_ROWS)
+            fit_one(&view.goal, STATEMENT_WIDTH, GOAL_ROWS)
         };
-        self.goal = layout(&view.goal, &folds, TEXT_WIDTH);
+        self.goal = layout(&view.goal, &folds, STATEMENT_WIDTH);
         let indent = text_width(&number(view.subgoals.len())) + 2;
         self.subgoals = view
             .subgoals
@@ -68,15 +73,22 @@ impl Proof {
             })
             .collect();
         self.selected = self.selected.min(self.subgoals.len().saturating_sub(1));
+        self.on_goal = self.subgoals.is_empty();
     }
 
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
         match key {
             Key::Up | Key::Down => {
-                self.selected = step(self.selected, self.subgoals.len(), key, 1);
+                if self.on_goal {
+                    self.on_goal = key == Key::Up;
+                } else if key == Key::Up && self.selected == 0 {
+                    self.on_goal = true;
+                } else {
+                    self.selected = step(self.selected, self.subgoals.len(), key, 1);
+                }
             }
             Key::Enter | Key::Right => {
-                if self.selected < self.subgoals.len() {
+                if !self.on_goal {
                     self.path.push(self.selected);
                     self.selected = 0;
                     self.refresh(ctx);
@@ -106,7 +118,7 @@ impl Proof {
     /// The first display row shown: the view starts at the goal unless the highlight is below it.
     fn top(&self) -> usize {
         let highlighted = self.goal.rows() + 1 + self.selected;
-        if self.subgoals.is_empty() {
+        if self.on_goal {
             0
         } else {
             reveal(0, highlighted, CONTENT_ROWS)
@@ -121,7 +133,10 @@ impl Proof {
         let top = self.top() as isize;
         let window = 1..1 + CONTENT_ROWS as isize;
         let at = |display: usize| 1 + display as isize - top;
-        canvas.layout(&self.goal, MARGIN, at(0), window.clone());
+        canvas.layout(&self.goal, GUTTER, at(0), window.clone());
+        if self.on_goal && window.contains(&at(0)) {
+            canvas.marker(at(0) as usize);
+        }
         let by_row = self.goal.rows();
         if window.contains(&at(by_row)) {
             let (left, mark) = match self.by {
@@ -138,11 +153,11 @@ impl Proof {
             }
             canvas.text(MARGIN, row as usize, &number(k + 1));
             canvas.layout(sub, MARGIN + indent, row, window.clone());
-            if k == self.selected {
+            if k == self.selected && !self.on_goal {
                 canvas.invert_row(row as usize);
             }
         }
-        canvas.soft_keys(["Fld", "Up", "Thm", "", ""]);
+        canvas.soft_keys(["Fold", "Up", "Thm", "", ""]);
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {
@@ -150,11 +165,12 @@ impl Proof {
             label: self.lib(ctx).label(self.goals.theorem).to_string(),
             path: self.path.clone(),
             selected: self.selected,
+            on_goal: self.on_goal,
         }
     }
 }
 
 fn layout_none() -> Layout {
     let expr = crate::expr::Expr::flat(Vec::new(), &[]);
-    layout(&expr, &Folds::none(&expr), TEXT_WIDTH)
+    layout(&expr, &Folds::none(&expr), STATEMENT_WIDTH)
 }

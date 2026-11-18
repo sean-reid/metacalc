@@ -59,7 +59,7 @@ impl Libraries {
             };
             canvas.list_row(1 + row, &left, &right, at == self.cursor);
         }
-        canvas.soft_keys(["Opn", "Vfy", "Abt", "", ""]);
+        canvas.soft_keys(["See", "Run", "Info", "", ""]);
     }
 
     pub fn state(&self) -> State {

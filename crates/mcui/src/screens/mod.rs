@@ -76,6 +76,7 @@ pub enum State {
         label: String,
         path: Vec<usize>,
         selected: usize,
+        on_goal: bool,
     },
     Notice {
         title: String,

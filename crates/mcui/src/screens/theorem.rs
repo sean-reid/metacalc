@@ -1,5 +1,5 @@
 use super::{Ctx, Nav, Screen, State, dist::Dist, notice::Notice, proof::Proof};
-use crate::canvas::{CONTENT_ROWS, Canvas, MARGIN, TEXT_WIDTH, text_width};
+use crate::canvas::{CONTENT_ROWS, Canvas, GUTTER, STATEMENT_WIDTH, text_width};
 use crate::data::Statement;
 use crate::fold::{Fit, Folds, Layout, fit, layout};
 use crate::key::Key;
@@ -65,7 +65,7 @@ impl Theorem {
     }
 
     fn width(&self, statement: usize) -> usize {
-        TEXT_WIDTH - self.indent(statement)
+        STATEMENT_WIDTH - self.indent(statement)
     }
 
     /// Lays the statements out under each other and moves the view to the cursor.
@@ -158,17 +158,23 @@ impl Theorem {
         let window = 1..1 + CONTENT_ROWS as isize;
         for (s, layout) in self.layouts.iter().enumerate() {
             let row = 1 + self.starts[s] as isize - self.scroll as isize;
-            let x = MARGIN + self.indent(s);
+            let x = GUTTER + self.indent(s);
             if !self.is_conclusion(s) && window.contains(&row) {
-                canvas.text(MARGIN, row as usize, &format!("{}.", s + 1));
+                canvas.text(GUTTER, row as usize, &format!("{}.", s + 1));
             }
             canvas.layout(layout, x, row, window.clone());
         }
         let (s, node) = self.cursor;
         let row = 1 + self.starts[s] as isize - self.scroll as isize;
         let rects = self.layouts[s].cursor(self.statement.at(s), node);
-        canvas.cursor(&rects, MARGIN + self.indent(s), row, window);
-        canvas.soft_keys(["Fld", "Dist", "Pf", "Prv", ""]);
+        if node == 0 {
+            if window.contains(&row) {
+                canvas.marker(row as usize);
+            }
+        } else {
+            canvas.cursor(&rects, GUTTER + self.indent(s), row, window);
+        }
+        canvas.soft_keys(["Fold", "Dist", "Why", "Try", ""]);
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {

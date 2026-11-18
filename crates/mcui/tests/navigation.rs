@@ -385,3 +385,37 @@ fn keys_without_a_function_on_a_screen_change_nothing() {
     assert_eq!(ui.depth(), 1);
     assert!(ui.frame() == before);
 }
+
+#[test]
+fn up_from_the_first_subgoal_puts_the_cursor_on_the_goal_and_down_takes_it_back() {
+    let mut ui = ui();
+    open(&mut ui, "syl");
+    ui.press(F3);
+    let on_goal = |ui: &mcui::Ui| match ui.state() {
+        State::Proof {
+            on_goal, selected, ..
+        } => (on_goal, selected),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(on_goal(&ui), (false, 0));
+    let subgoal = ui.frame();
+    ui.press(Up);
+    assert_eq!(on_goal(&ui), (true, 0));
+    assert!(ui.frame() != subgoal);
+    ui.press(Enter);
+    assert_eq!(on_goal(&ui), (true, 0), "the goal cannot be entered");
+    ui.press(Down);
+    assert_eq!(on_goal(&ui), (false, 0));
+    assert!(ui.frame() == subgoal);
+}
+
+#[test]
+fn a_node_without_subgoals_keeps_the_cursor_on_its_goal() {
+    let mut ui = ui();
+    open(&mut ui, "syl");
+    press(&mut ui, &[F3, Enter]);
+    match ui.state() {
+        State::Proof { on_goal, .. } => assert!(on_goal),
+        other => panic!("{other:?}"),
+    }
+}
