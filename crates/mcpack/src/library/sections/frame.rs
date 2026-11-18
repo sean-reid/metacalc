@@ -52,7 +52,7 @@ pub(crate) fn table(bytes: &[u8]) -> Result<Option<Vec<Entry>>, SectionError> {
         .filter(|&first| first >= HEADER_LEN)
         .ok_or(SectionError::Table)?;
     let mut entries: Vec<Entry> = Vec::with_capacity(count);
-    for row in bytes[first..start].chunks_exact(ENTRY_LEN) {
+    for row in bytes[first..start].as_chunks::<ENTRY_LEN>().0 {
         let word = |at: usize| u32::from_le_bytes([row[at], row[at + 1], row[at + 2], row[at + 3]]);
         let (offset, length) = (word(1) as usize, word(5) as usize);
         let end = offset.checked_add(length).ok_or(SectionError::Table)?;

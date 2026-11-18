@@ -1,3 +1,4 @@
+use mcglyph::z80::Table;
 use mcpack::library::{
     self, ENTRY_LEN, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION, Title, crc32, decode, pack,
     pack_kernel,
@@ -273,4 +274,110 @@ fn no_title_crosses_a_16_kb_boundary() {
     assert!(entry.length > 2 * library::CHUNK);
     let got: Vec<String> = titles_of(&bytes).into_iter().map(|t| t.2).collect();
     assert_eq!(got, titles);
+}
+
+fn section(bytes: &[u8], id: u8) -> mcpack::library::Entry {
+    let sections = decode(bytes).unwrap().sections.expect("a trailer");
+    *sections
+        .table
+        .iter()
+        .find(|e| e.id == id)
+        .expect("the section exists")
+}
+
+fn glyphs_of(bytes: &[u8]) -> library::GlyphMap {
+    decode(bytes)
+        .unwrap()
+        .sections
+        .unwrap()
+        .glyphs
+        .expect("a glyph map")
+}
+
+fn symbol_names(bytes: &[u8]) -> Vec<String> {
+    let library = decode(bytes).unwrap();
+    let variables = library.variables.iter().map(|v| v.name.clone());
+    library.constants.iter().cloned().chain(variables).collect()
+}
+
+#[test]
+fn the_glyph_map_has_one_entry_per_symbol_and_equals_what_mcglyph_gives() {
+    let db = db();
+    let bytes = pack(&db, &closure(&db)).unwrap();
+    let map = glyphs_of(&bytes);
+    let table = Table::builtin();
+    assert_eq!(map.fingerprint, table.fingerprint());
+    let names = symbol_names(&bytes);
+    assert_eq!(map.symbols.len(), names.len());
+    for (symbol, name) in map.symbols.iter().zip(&names) {
+        let (codes, pad) = table.token(name).unwrap();
+        assert_eq!((&symbol.codes, symbol.pad()), (&codes, pad), "{name}");
+    }
+    let arrow = names.iter().position(|n| n == "->").unwrap();
+    assert_eq!(map.symbols[arrow].codes, [table.glyph("rarr").unwrap()]);
+    assert_eq!(map.symbols[arrow].flags, 3);
+}
+
+#[test]
+fn a_symbol_the_font_does_not_map_is_stored_as_the_host_draws_it() {
+    let db = parse("$c |- wff foo a|b $.\n$v ph $.\nwph $f wff ph $.\nax $a |- foo a|b ph $.\n");
+    let everything: Vec<StmtId> = (0..db.stmts.len() as StmtId).collect();
+    let bytes = pack(&db, &everything).unwrap();
+    let map = glyphs_of(&bytes);
+    let names = symbol_names(&bytes);
+    let table = Table::builtin();
+    let at = |name: &str| names.iter().position(|n| n == name).unwrap();
+    let foo = &map.symbols[at("foo")];
+    assert_eq!(
+        foo.codes,
+        [table.code('f'), table.code('o'), table.code('o')]
+    );
+    assert_eq!(foo.flags, 0);
+    let odd = &map.symbols[at("a|b")];
+    assert_eq!(odd.codes[1], table.glyph("question").unwrap());
+    let font = mcglyph::Font::builtin();
+    let slot_width =
+        |c: u8| usize::from(table.slots()[usize::from(c) - 1][0] & !mcglyph::z80::TALL);
+    let width = odd.codes.iter().map(|&c| slot_width(c)).sum::<usize>() + odd.codes.len() - 1;
+    assert_eq!(width, font.text_width("a|b"));
+}
+
+#[test]
+fn a_glyph_map_for_another_font_or_with_another_code_fails_the_check() {
+    let db = db();
+    let bytes = pack(&db, &closure(&db)).unwrap();
+    let entry = section(&bytes, library::GLYPHS);
+    let mut other_font = bytes.clone();
+    other_font[entry.offset] ^= 1;
+    reseal(&mut other_font);
+    assert!(matches!(
+        library::check(&other_font),
+        Err(library::CheckError::Sections(_))
+    ));
+
+    let mut other_code = bytes.clone();
+    let first = entry.offset
+        + u16::from_le_bytes([bytes[entry.offset + 3], bytes[entry.offset + 4]]) as usize;
+    other_code[first + 2] ^= 1;
+    reseal(&mut other_code);
+    let Err(library::CheckError::Sections(e)) = library::check(&other_code) else {
+        panic!("the check accepts a wrong code");
+    };
+    assert!(e.to_string().contains("glyph map"), "{e}");
+}
+
+#[test]
+fn the_glyph_map_survives_a_hostile_byte_anywhere_in_the_section() {
+    let db = db();
+    let bytes = pack(&db, &closure(&db)).unwrap();
+    let entry = section(&bytes, library::GLYPHS);
+    for at in entry.offset..entry.offset + entry.length {
+        for flip in [0x01u8, 0x10, 0x80, 0xFF] {
+            let mut hostile = bytes.clone();
+            hostile[at] ^= flip;
+            reseal(&mut hostile);
+            let _ = decode(&hostile);
+            let _ = library::check(&hostile);
+        }
+    }
 }

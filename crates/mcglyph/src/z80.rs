@@ -7,7 +7,7 @@
 //! codes ended by 0: code 1 is the space, and a code is the number of the glyph's first slot
 //! plus one, in name order.
 
-use crate::font::{Font, MAX_GLYPH_WIDTH};
+use crate::font::{Font, MAX_GLYPH_WIDTH, Pad};
 use crate::text::{CHECK, CROSS, ELLIPSIS, SPACE_WIDTH, glyph_name};
 use std::collections::BTreeMap;
 
@@ -22,6 +22,7 @@ pub struct Table {
     slots: Vec<[u8; SLOT]>,
     codes: BTreeMap<String, u8>,
     question: Option<u8>,
+    tokens: BTreeMap<String, (Vec<u8>, Pad)>,
 }
 
 impl Table {
@@ -73,10 +74,20 @@ impl Table {
             return Err(format!("{} slots do not fit one-byte codes", slots.len()));
         }
         let question = codes.get("question").copied();
+        let tokens = font
+            .tokens()
+            .map(|token| {
+                let glyphs = font.token_glyphs(token).expect("the token is in the font");
+                let codes = glyphs.iter().map(|g| codes[g]).collect();
+                let pad = font.token_pad(token).expect("the token is in the font");
+                (token.to_string(), (codes, pad))
+            })
+            .collect();
         Ok(Table {
             slots,
             codes,
             question,
+            tokens,
         })
     }
 
@@ -123,6 +134,37 @@ impl Table {
     pub fn code(&self, c: char) -> u8 {
         self.try_code(c)
             .unwrap_or_else(|| panic!("the font has no glyph for {c:?}"))
+    }
+
+    /// The glyph codes and spacing of a Metamath token. A token the font maps is its glyphs; any
+    /// other is drawn as interface text, one code per character, with no spacing. `None` when
+    /// the font cannot draw a character of it.
+    pub fn token(&self, token: &str) -> Option<(Vec<u8>, Pad)> {
+        if let Some((codes, pad)) = self.tokens.get(token) {
+            return Some((codes.clone(), *pad));
+        }
+        let codes = token
+            .chars()
+            .map(|c| self.try_code(c))
+            .collect::<Option<Vec<u8>>>()?;
+        Some((codes, Pad::default()))
+    }
+
+    /// A 16-bit fingerprint of the slots, CRC-16/CCITT-FALSE over the bytes of the table in code
+    /// order. Two tables with one fingerprint assign the same code to the same bitmap.
+    pub fn fingerprint(&self) -> u16 {
+        let mut crc = 0xFFFFu16;
+        for &byte in self.slots.iter().flatten() {
+            crc ^= u16::from(byte) << 8;
+            for _ in 0..8 {
+                crc = if crc & 0x8000 != 0 {
+                    crc << 1 ^ 0x1021
+                } else {
+                    crc << 1
+                };
+            }
+        }
+        crc
     }
 
     /// `text` as codes with the terminating 0.

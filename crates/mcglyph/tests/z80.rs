@@ -200,3 +200,80 @@ fn a_wide_last_glyph_that_needs_a_256th_slot_is_refused() {
     let font = Font::parse(&src, "").unwrap();
     assert!(Table::new(&font).is_err());
 }
+
+fn crc16(bytes: impl Iterator<Item = u8>) -> u16 {
+    let mut crc = 0xFFFFu32;
+    for byte in bytes {
+        for bit in (0..8).rev() {
+            let top = (crc >> 15) & 1 ^ u32::from(byte >> bit & 1);
+            crc = (crc << 1 & 0xFFFF) ^ if top == 1 { 0x1021 } else { 0 };
+        }
+    }
+    crc as u16
+}
+
+#[test]
+fn the_fingerprint_is_the_crc_of_the_slot_bytes_and_follows_the_font() {
+    let builtin = Table::builtin();
+    let slots = builtin.slots().iter().flatten().copied();
+    assert_eq!(builtin.fingerprint(), crc16(slots));
+    let wide = Table::new(&Font::parse(WIDE, "").unwrap()).unwrap();
+    let flags = Table::new(&Font::parse(FLAGS, "").unwrap()).unwrap();
+    let prints = [
+        builtin.fingerprint(),
+        wide.fingerprint(),
+        flags.fingerprint(),
+    ];
+    assert!(prints[0] != prints[1] && prints[1] != prints[2] && prints[0] != prints[2]);
+    assert_ne!(builtin.fingerprint(), Table::keys().fingerprint());
+}
+
+#[test]
+fn a_mapped_token_is_its_glyph_codes_and_its_spacing() {
+    let table = Table::builtin();
+    let font = Font::builtin();
+    for token in font.tokens() {
+        let (codes, pad) = table.token(token).unwrap();
+        let glyphs = font.token_glyphs(token).unwrap();
+        let want: Vec<u8> = glyphs.iter().map(|g| table.glyph(g).unwrap()).collect();
+        assert_eq!(codes, want, "{token}");
+        assert_eq!(Some(pad), font.token_pad(token), "{token}");
+    }
+    assert_eq!(table.token("->").unwrap().1.bits(), 3);
+}
+
+#[test]
+fn an_unmapped_token_is_drawn_as_interface_text_with_no_spacing() {
+    let table = Table::builtin();
+    let font = Font::builtin();
+    let token = "zz.a|";
+    assert!(font.token_glyphs(token).is_none());
+    let (codes, pad) = table.token(token).unwrap();
+    assert_eq!(pad.bits(), 0);
+    let question = table.glyph("question").unwrap();
+    assert_eq!(
+        codes,
+        [
+            table.code('z'),
+            table.code('z'),
+            table.code('.'),
+            table.code('a'),
+            question
+        ]
+    );
+    let width: usize = codes
+        .iter()
+        .map(|&c| usize::from(table.slots()[usize::from(c) - 1][0] & !TALL))
+        .sum::<usize>()
+        + codes.len()
+        - 1;
+    assert_eq!(width, font.text_width(token));
+}
+
+#[test]
+fn pad_bits_round_trip_and_refuse_a_fifth_flag() {
+    for bits in 0..16u8 {
+        assert_eq!(mcglyph::Pad::from_bits(bits).unwrap().bits(), bits);
+    }
+    assert_eq!(mcglyph::Pad::from_bits(16), None);
+}

@@ -1,4 +1,4 @@
-use super::sections;
+use super::sections::{self, GlyphMap};
 use super::{CHUNK, DUMMY, HEADER_LEN, MAGIC, SAVE, WIDE, crc32};
 use crate::mm::{Database, Kind, ProofBody, Stmt, StmtId, Sym};
 use std::collections::HashMap;
@@ -17,6 +17,8 @@ pub enum PackError {
     SectionTooLarge,
     /// The title is longer than 255 bytes.
     TitleTooLong(String),
+    /// The display font cannot draw a character of the symbol.
+    NoGlyphs(String),
 }
 
 /// A proof step before the reference list is ordered.
@@ -119,7 +121,12 @@ fn build(db: &Database, closure: &[StmtId], sections: bool) -> Result<Vec<u8>, P
 
     if sections {
         let ids: Vec<StmtId> = assertions.iter().map(|&(id, _)| id).collect();
-        out = sections::append(out, &sections::select_titles(db, &ids))?;
+        let titles = sections::select_titles(db, &ids);
+        let names: Vec<&str> = order
+            .iter()
+            .map(|&s| db.syms[s as usize].name.as_str())
+            .collect();
+        out = sections::append(out, &titles, &GlyphMap::of(&names)?)?;
     }
 
     out[..4].copy_from_slice(MAGIC);

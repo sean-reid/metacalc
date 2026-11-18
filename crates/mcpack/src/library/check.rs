@@ -48,7 +48,7 @@ pub fn check(bytes: &[u8]) -> Result<usize, CheckError> {
     if !failed.is_empty() {
         return Err(CheckError::Assertions(failed));
     }
-    let sections = read_sections(bytes, kernel.assertions()).map_err(CheckError::Damaged)?;
+    let sections = read_sections(bytes).map_err(CheckError::Damaged)?;
     if sections.is_some() {
         let library = decode(bytes).map_err(CheckError::Read)?;
         verify_sections(&library).map_err(CheckError::Sections)?;

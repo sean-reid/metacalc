@@ -36,6 +36,15 @@
 //! table      one row per section: id (u8), offset (u32), length (u32), the rows right
 //!            before the trailer, in section order; a reader skips an id it does not know
 //! trailer    section count (u8), format version (u8), "MCSX"
+//!
+//! titles     id 1: count (u16), one u32 file offset per title, then the titles: the number of
+//!            the first assertion of the library under the heading (u16), depth (u8, 1 to 4,
+//!            1 outermost), length (u8), ASCII text; in source order, assertion numbers never
+//!            falling, only headings with an assertion under them or under a heading inside them
+//! glyphs     id 2: fingerprint of the font table (u16), symbol count (u8), one u16 offset from
+//!            the section's start per symbol, then per symbol: spacing flags (u8: bit 0 gap
+//!            before, 1 gap after, 2 gap beside another var, 3 no gap after), glyph count (u8),
+//!            the glyph codes of the main display font
 //! ```
 //!
 //! A record is only usable if its float hypotheses name distinct variables, each of its
@@ -58,8 +67,8 @@ pub use read::{
     Assertion, Hypothesis, Library, ReadError, Reference, Step, Variable, decode, read,
 };
 pub use sections::{
-    ENTRY_LEN, Entry, SectionCheckError, SectionError, Sections, TITLES, TRAILER_LEN,
-    TRAILER_MAGIC, TRAILER_VERSION, Title, read as read_sections, verify_sections,
+    ENTRY_LEN, Entry, GLYPHS, GlyphMap, Glyphs, SectionCheckError, SectionError, Sections, TITLES,
+    TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION, Title, read as read_sections, verify_sections,
 };
 
 pub const MAGIC: &[u8; 4] = b"MCL1";
