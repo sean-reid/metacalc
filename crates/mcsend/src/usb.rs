@@ -75,6 +75,14 @@ impl Transport for UsbTransport {
     fn elapsed(&self) -> Duration {
         self.started.elapsed()
     }
+
+    fn reconnect(&mut self) -> Result<(), Error> {
+        let started = self.started;
+        let _ = self.handle.release_interface(INTERFACE);
+        *self = UsbTransport::open()?;
+        self.started = started;
+        Ok(())
+    }
 }
 
 /// What libusb is given for a wait. rusb passes `timeout.as_millis()` on (device_handle.rs, in

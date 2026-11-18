@@ -5,6 +5,7 @@ use crate::session::Session;
 use crate::tifile::App;
 use crate::transport::Transport;
 use std::io::Write;
+use std::time::Duration;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Sent {
@@ -14,8 +15,14 @@ pub enum Sent {
     NotConfirmed(String),
 }
 
-/// Checks the calculator and the app against each other, sends the app on one connection, and
-/// then asks the calculator for its app list, because it sends no confirmation of its own.
+/// How long the listing that confirms a send waits for each packet, and how often it is tried.
+const CONFIRM_TIMEOUT: Duration = Duration::from_secs(15);
+const CONFIRM_TRIES: usize = 4;
+
+/// Checks the calculator and the app against each other, sends the app, and then asks the
+/// calculator for its app list, because it sends no confirmation of its own. A listing and a send
+/// each end with an end of transmission, after which a TI-84 Plus Silver Edition on OS 2.43
+/// answers nothing more on that link, so the link is opened again after each.
 pub fn transfer<T: Transport, W: Write>(
     session: &mut Session<T>,
     app: &App,
@@ -38,20 +45,29 @@ pub fn transfer<T: Transport, W: Write>(
         format!(", {} KB flash free", bytes / 1024)
     });
     let _ = writeln!(out, "found {}{flash}", info.name);
+    session.begin()?;
     if calculator::installed_apps(session)?.contains(&app.name) {
         return Err(Error::Duplicate(app.name.clone()));
     }
+    session.reconnect()?;
+    session.begin()?;
     calculator::send_app(session, app, &mut |sent| progress.update(sent))?;
     progress.finish();
     let _ = writeln!(out, "app sent, asking the calculator to confirm it");
-    match confirm(session, &app.name) {
-        Ok(true) => Ok(Sent::Confirmed),
-        Ok(false) => Err(Error::Send(Box::new(Error::NotInstalled(app.name.clone())))),
-        Err(e) => Ok(Sent::NotConfirmed(e.to_string())),
+    session.set_timeout(CONFIRM_TIMEOUT.min(session.timeout()));
+    let mut reason = String::new();
+    for _ in 0..CONFIRM_TRIES {
+        match confirm(session, &app.name) {
+            Ok(true) => return Ok(Sent::Confirmed),
+            Ok(false) => return Err(Error::Send(Box::new(Error::NotInstalled(app.name.clone())))),
+            Err(e) => reason = e.to_string(),
+        }
     }
+    Ok(Sent::NotConfirmed(reason))
 }
 
 fn confirm<T: Transport>(session: &mut Session<T>, name: &str) -> Result<bool, Error> {
+    session.reconnect()?;
     session.begin()?;
     Ok(calculator::installed_apps(session)?
         .iter()

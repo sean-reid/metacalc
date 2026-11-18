@@ -52,14 +52,20 @@ fn root(o: Outcome) -> Error {
     }
 }
 
-const SEQUENCE: [&str; 10] = [
+const SEQUENCE: [&str; 16] = [
     "negotiate",
     "ping",
     "params",
+    "negotiate",
+    "ping",
     "dir",
+    "reconnect",
+    "negotiate",
+    "ping",
     "rts",
     "content",
     "eot",
+    "reconnect",
     "negotiate",
     "ping",
     "dir",
@@ -86,7 +92,7 @@ fn a_three_page_app_is_sent_on_one_connection_and_confirmed_by_the_listing() {
 #[test]
 fn a_calculator_that_cannot_be_asked_afterwards_leaves_the_send_unconfirmed() {
     for (after, reason) in [
-        (After::Silent, "stopped answering for 120 s"),
+        (After::Silent, "stopped answering for 15 s"),
         (After::Gone, "disconnected"),
     ] {
         let o = run(
@@ -106,6 +112,9 @@ fn a_calculator_that_cannot_be_asked_afterwards_leaves_the_send_unconfirmed() {
             o.stdout
                 .ends_with("app sent, asking the calculator to confirm it\n")
         );
+        let sent = o.peer.events.iter().position(|e| *e == "eot").unwrap();
+        let tries = o.peer.events[sent..].iter().filter(|e| **e == "reconnect");
+        assert_eq!(tries.count(), 4, "the listing is tried four times");
     }
 }
 
@@ -281,6 +290,18 @@ fn an_app_name_already_installed_is_refused_before_anything_is_sent() {
     );
     assert!(err.to_string().contains("MEM, Mem Mgmt/Del, Apps"));
     assert!(!err.to_string().contains("replug"));
+}
+
+#[test]
+fn the_link_is_opened_again_after_every_end_of_transmission() {
+    let o = run(Calc::default(), 120, &sample_pages(1, 100));
+    assert_eq!(o.result.unwrap(), Sent::Confirmed);
+    let events = &o.peer.events;
+    for (i, event) in events.iter().enumerate() {
+        if matches!(*event, "dir" | "eot") && i + 1 < events.len() {
+            assert_eq!(events[i + 1], "reconnect", "after {event} at {i}");
+        }
+    }
 }
 
 #[test]

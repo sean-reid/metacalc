@@ -61,6 +61,23 @@ impl<T: Transport> Session<T> {
         self.tracer = Some(Tracer::new(out));
     }
 
+    /// Opens the link afresh, for the next operation after one that ended in an end of
+    /// transmission.
+    pub fn reconnect(&mut self) -> Result<(), Error> {
+        self.pending.clear();
+        self.transport.reconnect()
+    }
+
+    pub fn timeout(&self) -> Duration {
+        self.timeout
+    }
+
+    /// Sets how long each packet is waited for from here on.
+    pub fn set_timeout(&mut self, timeout: Duration) {
+        self.timeout = timeout;
+        self.write_wait = timeout;
+    }
+
     /// Negotiates the raw packet size and sets the normal mode.
     pub fn begin(&mut self) -> Result<(), Error> {
         self.pending.clear();

@@ -18,7 +18,11 @@ use std::time::{Duration, Instant};
 #[command(version)]
 struct Cli {
     /// The app to send
-    app: PathBuf,
+    #[arg(required_unless_present = "apps")]
+    app: Option<PathBuf>,
+    /// List the apps installed on the calculator and send nothing
+    #[arg(long, conflicts_with = "app")]
+    apps: bool,
     /// Seconds to wait for the calculator on each packet
     #[arg(long, value_name = "SECONDS", default_value_t = 120, value_parser = clap::value_parser!(u64).range(1..=3600))]
     timeout: u64,
@@ -27,15 +31,31 @@ struct Cli {
     trace: bool,
 }
 
-fn run(cli: &Cli) -> Result<String, Error> {
-    let file =
-        std::fs::read(&cli.app).map_err(|e| Error::File(format!("{}: {e}", cli.app.display())))?;
-    let app = App::parse(&file)?;
-    let transport = UsbTransport::open()?;
-    let mut session = Session::new(transport, Duration::from_secs(cli.timeout));
+fn connect(cli: &Cli) -> Result<Session<UsbTransport>, Error> {
+    let mut session = Session::new(UsbTransport::open()?, Duration::from_secs(cli.timeout));
     if cli.trace {
         session.trace_to(Box::new(std::io::stderr()));
     }
+    Ok(session)
+}
+
+fn list(cli: &Cli) -> Result<String, Error> {
+    let mut session = connect(cli)?;
+    session.begin()?;
+    let apps = mcsend::calculator::installed_apps(&mut session)?;
+    Ok(match apps.len() {
+        0 => "no apps installed".to_string(),
+        _ => apps.join("\n"),
+    })
+}
+
+fn run(cli: &Cli) -> Result<String, Error> {
+    let Some(path) = &cli.app else {
+        return list(cli);
+    };
+    let file = std::fs::read(path).map_err(|e| Error::File(format!("{}: {e}", path.display())))?;
+    let app = App::parse(&file)?;
+    let mut session = connect(cli)?;
     let started = Instant::now();
     let stdout = std::io::stdout();
     let mut progress = Progress::new(stdout.lock(), stdout.is_terminal(), app.page_count());
