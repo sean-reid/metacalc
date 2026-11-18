@@ -158,12 +158,15 @@ fn every_assertion_of_the_packable_databases_folds_as_a_tree_and_matches_its_pac
 
 #[test]
 fn every_screen_opens_for_every_assertion_of_the_packable_databases() {
+    let (mut exercised, mut sound) = (0, 0);
     for (name, bytes) in corpus() {
         let Ok(db) = mm::parse(bytes) else { continue };
         let Some(packed) = support::pack_all(&db) else {
             continue;
         };
-        let count = library::read(&packed).unwrap().len();
+        let assertions = library::read(&packed).unwrap();
+        let count = assertions.len();
+        let accepted = library::check(&packed).is_ok();
         let mut ui = Ui::new(
             vec![Installed {
                 name: name.clone(),
@@ -177,10 +180,16 @@ fn every_screen_opens_for_every_assertion_of_the_packable_databases() {
         .unwrap();
         support::press(&mut ui, &[Key::Enter]);
         let mut proofs = 0;
-        for _ in 0..count {
-            for keys in [
-                &[Key::Enter][..],
-                &[Key::F2, Key::Clear],
+        for assertion in &assertions {
+            let show = |ui: &mut Ui, keys: &[Key]| {
+                support::press(ui, keys);
+                let frame = ui.frame();
+                assert_eq!((frame.width(), frame.height()), (96, 64), "{name}");
+            };
+            show(&mut ui, &[Key::Enter]);
+            show(&mut ui, &[Key::F2, Key::Clear]);
+            show(
+                &mut ui,
                 &[
                     Key::Down,
                     Key::Right,
@@ -189,7 +198,16 @@ fn every_screen_opens_for_every_assertion_of_the_packable_databases() {
                     Key::Left,
                     Key::F1,
                 ],
-                &[Key::F3],
+            );
+            show(&mut ui, &[Key::F3]);
+            let opened = matches!(ui.state(), State::Proof { .. });
+            let provable = assertion.theorem && assertion.conclusion[0] == "|-";
+            if accepted && provable {
+                assert!(opened, "{name} {}: no proof opened", assertion.label);
+            }
+            proofs += usize::from(opened);
+            show(
+                &mut ui,
                 &[
                     Key::Down,
                     Key::Enter,
@@ -198,18 +216,22 @@ fn every_screen_opens_for_every_assertion_of_the_packable_databases() {
                     Key::Up,
                     Key::Up,
                 ],
+            );
+            show(
+                &mut ui,
                 &[Key::F1, Key::Left, Key::Left, Key::F2, Key::Right, Key::F1],
-                &[Key::Clear, Key::Clear],
-            ] {
-                support::press(&mut ui, keys);
-                let frame = ui.frame();
-                assert_eq!((frame.width(), frame.height()), (96, 64), "{name}");
-                proofs += usize::from(matches!(ui.state(), State::Proof { .. }));
-            }
+            );
+            show(&mut ui, &[Key::Clear, Key::Clear]);
             support::press(&mut ui, &[Key::Down]);
             assert!(matches!(ui.state(), State::List { .. }), "{name}");
         }
-        assert!(proofs > 0 || name.contains("bad"), "{name} opened no proof");
+        exercised += 1;
+        if accepted {
+            sound += 1;
+            assert!(proofs > 0, "{name} opened no proof");
+        }
         assert!(db.stmts.iter().any(|s| s.kind == Kind::Theorem));
     }
+    assert!(exercised >= 3, "{exercised} databases walked");
+    assert!(sound >= 2, "{sound} databases the kernel accepts");
 }

@@ -64,10 +64,9 @@ impl Statement {
 }
 
 /// The library as a Metamath database, which is where parse trees and goal trees come from, and
-/// the grammar built from it once. The database is leaked so the grammar can borrow it for as
-/// long as the process runs; a library is loaded once.
+/// the grammar built from it once.
 struct Source {
-    db: &'static Database,
+    db: Rc<Database>,
     ids: Vec<StmtId>,
     index: HashMap<StmtId, usize>,
     grammar: Option<Grammar<'static>>,
@@ -162,8 +161,8 @@ impl Lib {
             return None;
         }
         let index = ids.iter().enumerate().map(|(i, &id)| (id, i)).collect();
-        let db: &'static Database = Box::leak(Box::new(db));
-        let grammar = Grammar::new(db, &[("|-", "wff")]).ok();
+        let db = Rc::new(db);
+        let grammar = Grammar::shared(db.clone(), &[("|-", "wff")]).ok();
         Some(Source {
             db,
             ids,
@@ -215,7 +214,7 @@ impl Lib {
         let source = self.source()?;
         let parsed = source.grammar.as_ref()?.parse(source.ids[i]).ok()?;
         let build =
-            |lead: &str, tree: &Tree| Expr::build(vec![lead.to_string()], &shape(source.db, tree));
+            |lead: &str, tree: &Tree| Expr::build(vec![lead.to_string()], &shape(&source.db, tree));
         let hyps = self
             .essentials(i)
             .zip(&parsed.hyps)
@@ -232,7 +231,7 @@ impl Lib {
         }
         let source = self.source().ok_or("the library does not export")?;
         let id = source.ids[i];
-        let root = mm::outline(source.db, id, "|-").map_err(|e| match e {
+        let root = mm::outline(&source.db, id, "|-").map_err(|e| match e {
             mm::OutlineError::NotProvable => "it proves a syntax statement",
             _ => "the proof does not verify",
         })?;
@@ -274,7 +273,7 @@ impl Lib {
     /// What the screen shows of one goal: its statement, how it was proved, and its subgoals.
     pub fn view(&self, goals: &Goals, node: &Node) -> GoalView {
         let source = self.source().expect("goals exist only with a source");
-        let db = source.db;
+        let db = &*source.db;
         let grammar = source.grammar.as_ref();
         let expr = |syms: &[Sym]| {
             let name = |s: Sym| db.syms[s as usize].name.clone();

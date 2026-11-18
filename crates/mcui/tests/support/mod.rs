@@ -123,6 +123,15 @@ pub fn ui_over(bytes: Vec<u8>, unchecked: &[&str], failed: &[&str]) -> Ui {
     .expect("the library loads")
 }
 
+/// A library of 1200 axioms, enough for four-digit counts.
+pub fn big_bytes() -> Vec<u8> {
+    let mut src = String::from("$c wff |- $.\n$v ph $.\nwph $f wff ph $.\n");
+    for n in 1..=1200 {
+        src.push_str(&format!("ax{n} $a |- ph $.\n"));
+    }
+    pack_all(&db(&src)).expect("the big library packs")
+}
+
 pub fn extra_ui() -> Ui {
     ui_over(extra_bytes(), &[], &[])
 }

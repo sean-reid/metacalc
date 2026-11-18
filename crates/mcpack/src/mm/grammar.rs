@@ -55,9 +55,15 @@ enum Part {
 
 type Ends = Rc<[(usize, Rc<Tree>)]>;
 
+/// The database a grammar reads: borrowed for the grammar's life, or shared with its owner.
+enum Db<'a> {
+    Borrowed(&'a Database),
+    Shared(Rc<Database>),
+}
+
 /// The context-free grammar formed by a database's syntax axioms.
 pub struct Grammar<'a> {
-    db: &'a Database,
+    db: Db<'a>,
     /// Typecodes of provable statements and the typecode their bodies parse as.
     provable: Vec<(Sym, Sym)>,
     by_const: HashMap<(Sym, Sym), Vec<Rule>>,
@@ -71,35 +77,65 @@ struct Run<'g, 'a> {
     memo: HashMap<(Sym, usize), Ends>,
 }
 
+impl Grammar<'static> {
+    /// Like [`Grammar::new`], but the grammar keeps its own handle on the database, so nothing has
+    /// to outlive it.
+    pub fn shared(
+        db: Rc<Database>,
+        provable: &[(&str, &str)],
+    ) -> Result<Grammar<'static>, GrammarError> {
+        Grammar::build(Db::Shared(db), provable)
+    }
+}
+
 impl<'a> Grammar<'a> {
     /// Builds the grammar; each pair in `provable` names a typecode such as `|-` and the typecode its statements parse as.
     pub fn new(db: &'a Database, provable: &[(&str, &str)]) -> Result<Self, GrammarError> {
-        let constant = |name: &str| {
-            db.syms
+        Grammar::build(Db::Borrowed(db), provable)
+    }
+
+    pub(crate) fn db(&self) -> &Database {
+        match &self.db {
+            Db::Borrowed(db) => db,
+            Db::Shared(db) => db,
+        }
+    }
+
+    fn build(source: Db<'a>, provable: &[(&str, &str)]) -> Result<Self, GrammarError> {
+        let provable = {
+            let db = match &source {
+                Db::Borrowed(db) => *db,
+                Db::Shared(db) => &**db,
+            };
+            let constant = |name: &str| {
+                db.syms
+                    .iter()
+                    .position(|s| !s.is_var && s.name == name)
+                    .map(|i| i as Sym)
+                    .ok_or_else(|| GrammarError::UnknownSymbol(name.to_string()))
+            };
+            provable
                 .iter()
-                .position(|s| !s.is_var && s.name == name)
-                .map(|i| i as Sym)
-                .ok_or_else(|| GrammarError::UnknownSymbol(name.to_string()))
+                .map(|&(from, to)| Ok((constant(from)?, constant(to)?)))
+                .collect::<Result<Vec<_>, _>>()?
         };
-        let provable = provable
-            .iter()
-            .map(|&(from, to)| Ok((constant(from)?, constant(to)?)))
-            .collect::<Result<Vec<_>, _>>()?;
         let mut grammar = Grammar {
-            db,
+            db: source,
             provable,
             by_const: HashMap::new(),
             by_var: HashMap::new(),
         };
-        for stmt in 0..db.stmts.len() as StmtId {
-            let s = db.stmt(stmt);
-            let typecode = s.expr[0];
-            if s.kind != Kind::Axiom || grammar.provable.iter().any(|&(from, _)| from == typecode) {
+        for stmt in 0..grammar.db().stmts.len() as StmtId {
+            let (kind, typecode) = {
+                let s = grammar.db().stmt(stmt);
+                (s.kind, s.expr[0])
+            };
+            if kind != Kind::Axiom || grammar.provable.iter().any(|&(from, _)| from == typecode) {
                 continue;
             }
-            let body = grammar
-                .rule_body(stmt)
-                .ok_or_else(|| GrammarError::UnsupportedRule(s.label.clone()))?;
+            let body = grammar.rule_body(stmt).ok_or_else(|| {
+                GrammarError::UnsupportedRule(grammar.db().stmt(stmt).label.clone())
+            })?;
             let rule = Rule { stmt, body };
             match rule.body[0] {
                 Part::Const(first) => grammar.by_const.entry((typecode, first)).or_default(),
@@ -112,22 +148,22 @@ impl<'a> Grammar<'a> {
     }
 
     fn rule_body(&self, stmt: StmtId) -> Option<Vec<Part>> {
-        let s = self.db.stmt(stmt);
+        let s = self.db().stmt(stmt);
         let mut used = vec![false; s.frame.hyps.len()];
         let body = s.expr[1..]
             .iter()
             .map(|&sym| {
-                if !self.db.syms[sym as usize].is_var {
+                if !self.db().syms[sym as usize].is_var {
                     return Some(Part::Const(sym));
                 }
                 let slot = s.frame.hyps.iter().position(|&hyp| {
-                    let hyp = self.db.stmt(hyp);
+                    let hyp = self.db().stmt(hyp);
                     hyp.kind == Kind::Float && hyp.expr[1] == sym
                 })?;
                 if std::mem::replace(&mut used[slot], true) {
                     return None;
                 }
-                let typecode = self.db.stmt(s.frame.hyps[slot]).expr[0];
+                let typecode = self.db().stmt(s.frame.hyps[slot]).expr[0];
                 Some(Part::Var { typecode, slot })
             })
             .collect::<Option<Vec<_>>>()?;
@@ -152,7 +188,7 @@ impl<'a> Grammar<'a> {
             let mut pending: Vec<(Sym, StmtId)> = leads(start).collect();
             while let Some((typecode, via)) = pending.pop() {
                 if typecode == start {
-                    let label = self.db.stmt(via).label.clone();
+                    let label = self.db().stmt(via).label.clone();
                     return Err(GrammarError::LeftRecursion(label));
                 }
                 if !seen.contains(&typecode) {
@@ -166,11 +202,11 @@ impl<'a> Grammar<'a> {
 
     /// Parses an axiom or theorem together with its essential hypotheses.
     pub fn parse(&self, id: StmtId) -> Result<Parsed, SyntaxError> {
-        let stmt = self.db.stmt(id);
+        let stmt = self.db().stmt(id);
         let mut floats = Vec::new();
         let mut essentials = Vec::new();
         for &hyp in &stmt.frame.hyps {
-            let h = self.db.stmt(hyp);
+            let h = self.db().stmt(hyp);
             if h.kind == Kind::Float {
                 floats.push((h.expr[1], hyp));
             } else {
@@ -179,7 +215,7 @@ impl<'a> Grammar<'a> {
         }
         let hyps = essentials
             .iter()
-            .map(|&hyp| self.parse_expr(&self.db.stmt(hyp).expr, &floats))
+            .map(|&hyp| self.parse_expr(&self.db().stmt(hyp).expr, &floats))
             .collect::<Result<Vec<_>, _>>()?;
         let conclusion = self.parse_expr(&stmt.expr, &floats)?;
         Ok(Parsed { hyps, conclusion })
@@ -213,21 +249,21 @@ impl<'a> Grammar<'a> {
 
     /// The statement a tree stands for, typecode first.
     pub fn expr(&self, tree: &Tree) -> Vec<Sym> {
-        let stmt = self.db.stmt(tree.stmt);
+        let stmt = self.db().stmt(tree.stmt);
         let mut out = vec![stmt.expr[0]];
         self.unparse(tree, &mut out);
         out
     }
 
     fn unparse(&self, tree: &Tree, out: &mut Vec<Sym>) {
-        let stmt = self.db.stmt(tree.stmt);
+        let stmt = self.db().stmt(tree.stmt);
         if stmt.kind == Kind::Float {
             out.push(stmt.expr[1]);
             return;
         }
         for &sym in &stmt.expr[1..] {
             let child = stmt.frame.hyps.iter().position(|&hyp| {
-                self.db.syms[sym as usize].is_var && self.db.stmt(hyp).expr[1] == sym
+                self.db().syms[sym as usize].is_var && self.db().stmt(hyp).expr[1] == sym
             });
             match child {
                 Some(slot) => self.unparse(&tree.children[slot], out),
@@ -246,23 +282,23 @@ impl Run<'_, '_> {
         let grammar = self.grammar;
         let mut ends = Vec::new();
         if let Some(&token) = self.expr.get(pos) {
-            if grammar.db.syms[token as usize].is_var {
+            if grammar.db().syms[token as usize].is_var {
                 let float = self.floats.iter().find(|&&(var, _)| var == token);
                 if let Some(&(_, stmt)) = float
-                    && grammar.db.stmt(stmt).expr[0] == typecode
+                    && grammar.db().stmt(stmt).expr[0] == typecode
                 {
                     let children = Vec::new();
                     ends.push((pos + 1, Rc::new(Tree { stmt, children })));
                 }
             } else if let Some(rules) = grammar.by_const.get(&(typecode, token)) {
                 for rule in rules {
-                    let mut children = vec![None; grammar.db.stmt(rule.stmt).frame.hyps.len()];
+                    let mut children = vec![None; grammar.db().stmt(rule.stmt).frame.hyps.len()];
                     self.finish(rule, 1, pos + 1, &mut children, &mut ends);
                 }
             }
         }
         for rule in grammar.by_var.get(&typecode).into_iter().flatten() {
-            let mut children = vec![None; grammar.db.stmt(rule.stmt).frame.hyps.len()];
+            let mut children = vec![None; grammar.db().stmt(rule.stmt).frame.hyps.len()];
             self.finish(rule, 0, pos, &mut children, &mut ends);
         }
         let ends: Ends = ends.into();

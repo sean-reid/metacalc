@@ -2,7 +2,7 @@ use super::{Ctx, Nav, Screen, State, notice::Notice, reveal, step, theorem::Theo
 use crate::canvas::{Canvas, PREFIX_WIDTH, TEXT_WIDTH, tail};
 use crate::fold::{Fit, Layout, fit, layout};
 use crate::key::Key;
-use crate::status::Status;
+use crate::status::Mark;
 
 /// Rows of labels the list shows.
 const LIST_ROWS: usize = 5;
@@ -14,7 +14,7 @@ pub enum Kind {
     All,
     Theorems,
     Axioms,
-    /// Everything not checked yet, failures included.
+    /// Everything whose mark is not the plain check: unchecked, failed and resting.
     Unchecked,
 }
 
@@ -73,7 +73,7 @@ impl List {
                 Kind::All => true,
                 Kind::Theorems => lib.is_theorem(i),
                 Kind::Axioms => !lib.is_theorem(i),
-                Kind::Unchecked => lib.status(i) != Status::Checked,
+                Kind::Unchecked => lib.mark(i) != Mark::Checked,
             })
             .collect()
     }
@@ -139,6 +139,9 @@ impl List {
                     .position(|&i| i >= was)
                     .unwrap_or(self.items.len().saturating_sub(1));
                 self.top = reveal(0, self.cursor, LIST_ROWS);
+                if !self.find.is_empty() {
+                    self.jump(ctx);
+                }
             }
             Key::F4 => return Nav::push(Notice::unavailable("Prove")),
             Key::Letter(c) if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') => {
@@ -172,7 +175,7 @@ impl List {
         } else {
             tail(&self.find, PREFIX_WIDTH)
         };
-        canvas.title(&format!("{}{}", lib.name, self.kind.suffix()), &right);
+        canvas.title_with_tail(&lib.name, self.kind.suffix(), &right);
         if self.items.is_empty() {
             canvas.text_centered(3, "none");
         }

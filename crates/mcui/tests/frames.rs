@@ -20,7 +20,7 @@ fn check_frame(frame: &mcglyph::Bitmap, name: &str) {
         .join("tests/frames")
         .join(format!("{name}.txt"));
     let got = format!("{frame}\n");
-    if std::env::var_os("MCUI_BLESS").is_some() {
+    if std::env::var("MCUI_BLESS").is_ok_and(|v| v == "1") {
         assert!(
             std::env::var_os("CI").is_none(),
             "frames cannot be blessed in CI"
@@ -267,4 +267,42 @@ fn a_hypothesis_leaf_keeps_its_cursor_on_the_goal() {
     open(&mut ui, "foo");
     press(&mut ui, &[F3, Down, Enter]);
     check(&ui, "proof-hypothesis-root");
+}
+
+#[test]
+fn distinct_variables_of_an_assertion_with_none() {
+    let mut ui = ui();
+    open(&mut ui, "ax-1");
+    press(&mut ui, &[F2]);
+    check(&ui, "dist-none");
+}
+
+#[test]
+fn a_long_name_gives_way_to_a_kind_suffix_and_wide_counts() {
+    let mut bytes = support::big_bytes();
+    bytes[4] ^= 0xFF;
+    let table = support::statuses(&bytes, &["ax7"], &[]);
+    let mut ui = Ui::new(
+        vec![mcui::Installed {
+            name: "an-extremely-long-library-name".into(),
+            bytes,
+        }],
+        mcui::Statuses {
+            libraries: vec![table],
+            my_proofs: 0,
+        },
+    )
+    .unwrap();
+    press(&mut ui, &[Enter, F3, F3]);
+    let frame = ui.frame();
+    let right = "flat 1199/1200";
+    let room = 96 - 2 - mcglyph::Font::builtin().text_width(right) - 3;
+    let name = mcui::canvas::truncate(
+        "an-extremely-long-library-name",
+        room - mcglyph::Font::builtin().text_width(":ax"),
+    );
+    assert!(name.ends_with(mcglyph::ELLIPSIS));
+    let left = format!("{name}:ax");
+    assert!(support::title_is(&frame, &left, right));
+    check_frame(&frame, "list-long-name");
 }

@@ -141,7 +141,7 @@ fn kind_cycles_through_all_theorems_axioms_and_unchecked() {
         (Kind::All, 13),
         (Kind::Theorems, 6),
         (Kind::Axioms, 7),
-        (Kind::Unchecked, 2),
+        (Kind::Unchecked, 4),
         (Kind::All, 13),
     ];
     for (i, (kind, len)) in kinds.into_iter().enumerate() {
@@ -158,6 +158,7 @@ fn changing_the_kind_keeps_the_cursor_on_the_same_or_the_next_assertion() {
     let mut ui = ui();
     press(&mut ui, &[Enter, F2]);
     typed(&mut ui, "mpd");
+    press(&mut ui, &[Clear]);
     press(&mut ui, &[F3]);
     assert_eq!(list(ui.state()).0.as_deref(), Some("mpd"));
     press(&mut ui, &[F3]);
@@ -530,8 +531,15 @@ fn the_no_match_cross_goes_when_the_cursor_moves_or_the_kind_changes() {
         ));
         ui.press(key);
         let right = "synx";
-        let left = if key == F3 { "logic:thm" } else { "logic" };
-        assert!(support::title_is(&ui.frame(), left, right), "{key:?}");
+        if key == F3 {
+            let cross = format!("{right} {}", mcglyph::CROSS);
+            assert!(
+                support::title_is(&ui.frame(), "logic:thm", &cross),
+                "the prefix is searched for again"
+            );
+        } else {
+            assert!(support::title_is(&ui.frame(), "logic", right), "{key:?}");
+        }
     }
 }
 
@@ -553,6 +561,11 @@ fn find_survives_a_kind_change_and_searches_the_filtered_list() {
         (label.as_deref(), find.as_str(), kind),
         (Some("ax-many"), "sy", Kind::Axioms)
     );
+    assert!(support::title_is(
+        &ui.frame(),
+        "logic:ax",
+        &format!("sy {}", mcglyph::CROSS)
+    ));
     typed(&mut ui, "l");
     let (label, _, _, _, _, _) = list(ui.state());
     assert_eq!(
@@ -680,4 +693,36 @@ fn a_folded_root_cannot_be_entered_and_unfolds_again() {
     assert_eq!(theorem(ui.state()).1, 0);
     ui.press(Enter);
     assert_eq!(theorem(ui.state()), (2, 0, 0, 0, false));
+}
+
+fn unchecked_labels(ui: &mut mcui::Ui) -> Vec<String> {
+    press(ui, &[Enter, F3, F3, F3]);
+    let (_, _, _, _, kind, len) = list(ui.state());
+    assert_eq!(kind, Kind::Unchecked);
+    press(
+        ui,
+        &[Up, Up, Up, Up, Up, Up, Up, Up, Up, Up, Up, Up, Up, Up],
+    );
+    let mut labels = Vec::new();
+    for _ in 0..len {
+        labels.push(list(ui.state()).0.unwrap());
+        ui.press(Down);
+    }
+    labels
+}
+
+#[test]
+fn the_unchecked_kind_follows_the_marks_so_it_lists_failed_and_resting_assertions() {
+    let mut ui = ui();
+    assert_eq!(unchecked_labels(&mut ui), ["a2i", "mpd", "syl", "id"]);
+}
+
+#[test]
+fn an_assertion_failed_by_a_forward_reference_is_listed_as_unchecked() {
+    let sound = support::logic_bytes();
+    let lib = mcpack::library::read(&sound).unwrap();
+    let at = |label: &str| lib.iter().position(|a| a.label == label).unwrap() as u16;
+    let patched = support::patch_reference(&sound, "a1i", 0, at("alid"));
+    let mut ui = support::ui_over(patched, &[], &[]);
+    assert_eq!(unchecked_labels(&mut ui), ["a1i", "syl"]);
 }

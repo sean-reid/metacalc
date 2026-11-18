@@ -94,6 +94,19 @@ fn an_expression_parses_through_the_floats_it_is_given() {
     assert_eq!(grammar.parse_expr(&inner, &[]), Err(SyntaxError::NoParse));
 }
 
+#[test]
+fn a_shared_grammar_parses_like_a_borrowing_one_and_outlives_the_borrow() {
+    let shared = std::rc::Rc::new(db(""));
+    let grammar = Grammar::shared(shared.clone(), &[("|-", "wff")]).expect("grammar builds");
+    let id = shared.find("ax-rev").unwrap();
+    let borrowed = Grammar::new(&shared, &[("|-", "wff")]).unwrap();
+    let want = rpn(&shared, &borrowed.parse(id).unwrap().conclusion);
+    drop(borrowed);
+    assert_eq!(rpn(&shared, &grammar.parse(id).unwrap().conclusion), want);
+    let refused = Grammar::shared(shared, &[("|-", "nope")]);
+    assert!(matches!(refused, Err(GrammarError::UnknownSymbol(_))));
+}
+
 fn parse_error(tail: &str, label: &str) -> SyntaxError {
     let db = db(tail);
     grammar(&db)

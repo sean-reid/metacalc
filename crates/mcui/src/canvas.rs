@@ -159,6 +159,14 @@ impl Canvas {
         self.invert_row(0);
     }
 
+    /// A title bar whose left side is `name` then `tail`: when the two do not fit beside `right`,
+    /// the name is what gets cut and the tail stays whole.
+    pub fn title_with_tail(&mut self, name: &str, tail: &str, right: &str) {
+        let room = Self::room(text_width(right), right).saturating_sub(text_width(tail));
+        let left = format!("{}{tail}", truncate(name, room));
+        self.title(&left, right);
+    }
+
     /// The labels of the five keys under the screen. A key with a label is an inverted box
     /// across its fifth of the width, one column short on the right so neighbours stay apart,
     /// with the label centred in it; a key without one stays blank.

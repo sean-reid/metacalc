@@ -46,7 +46,7 @@ fn a_failure_is_a_cross_and_what_rests_on_it_rests() {
 }
 
 #[test]
-fn counts_follow_the_status_table_not_the_marks() {
+fn checked_counts_the_resting_and_leaves_out_unchecked_and_failed() {
     let lib = lib(&["a2i", "alid"], &["id"]);
     assert_eq!(lib.len(), 13);
     assert_eq!(lib.checked(), 10);
