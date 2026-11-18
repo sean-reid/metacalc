@@ -24,17 +24,24 @@ case $dir in
 *) dir=$PWD/$dir ;;
 esac
 
-probe=$dir
-while [ ! -d "$probe" ]; do
-	probe=$(dirname "$probe")
-done
-probe=$(cd -- "$probe" && pwd -P)
-while :; do
-	[ ! -e "$probe/.git" ] ||
-		die "$dir is inside the repository at $probe; pick a directory outside any repository"
-	[ "$probe" != / ] || break
-	probe=$(dirname "$probe")
-done
+case /$dir/ in
+*/../*) die "the working directory must not contain a .. component" ;;
+esac
+
+outside_any_repository() {
+	probe=$1
+	while [ ! -d "$probe" ]; do
+		probe=$(dirname "$probe")
+	done
+	probe=$(cd -- "$probe" && pwd -P)
+	while :; do
+		[ ! -e "$probe/.git" ] ||
+			die "$1 is inside the repository at $probe; pick a directory outside any repository"
+		[ "$probe" != / ] || break
+		probe=$(dirname "$probe")
+	done
+}
+outside_any_repository "$dir"
 
 say "Checking prerequisites"
 missing=
@@ -50,13 +57,16 @@ fi
 
 mkdir -p "$dir"
 dir=$(cd -- "$dir" && pwd -P)
+outside_any_repository "$dir"
 cd -- "$dir"
 
 say "Fetching and building rom8x"
 if [ ! -e rom8x-src ]; then
-	git init -q rom8x-src
-	git -C rom8x-src fetch -q --depth 1 "$ROM8X_URL" "$ROM8X_COMMIT"
-	git -C rom8x-src checkout -q FETCH_HEAD
+	tmp=$(mktemp -d "$dir/rom8x-src.XXXXXX")
+	git init -q "$tmp"
+	git -C "$tmp" fetch -q --depth 1 "$ROM8X_URL" "$ROM8X_COMMIT"
+	git -C "$tmp" checkout -q FETCH_HEAD
+	mv "$tmp" rom8x-src
 fi
 [ "$(git -C rom8x-src rev-parse HEAD 2>/dev/null)" = "$ROM8X_COMMIT" ] ||
 	die "$dir/rom8x-src is not rom8x at $ROM8X_COMMIT; remove it and rerun"
@@ -95,20 +105,20 @@ fi
 
 say "Building the ROM"
 set -- 84PSE_v*.rom
-if [ -f "$1" ]; then
+if [ -e "$1" ] || [ -L "$1" ]; then
 	[ "$#" -eq 1 ] || die "found $# ROM images in $dir; leave only the one to keep"
+	[ -f "$1" ] && [ -s "$1" ] || die "$dir/$1 is not a ROM image; remove it and rerun"
 	echo "$1 already exists, skipping"
+	rom=$1
 else
-	rm -rf rom-build
-	mkdir rom-build
+	mkdir rom-build || die "$dir/rom-build is left from an earlier run; remove it and rerun"
 	(cd rom-build && ../rom8x 84PSE -1 ../D84PSE1.8xv -2 ../D84PSE2.8xv -u "../$os")
 	set -- rom-build/84PSE_v*.rom
 	[ "$#" -eq 1 ] && [ -s "$1" ] || die "rom8x produced no ROM"
-	mv "$1" .
+	rom=${1#rom-build/}
+	mv "$1" "$rom"
 	rmdir rom-build
-	set -- 84PSE_v*.rom
 fi
-rom=$1
 
 if command -v sha256sum >/dev/null 2>&1; then
 	sum=$(sha256sum "$rom")
