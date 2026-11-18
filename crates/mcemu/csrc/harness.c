@@ -45,7 +45,9 @@ void tilem_internal(TilemCalc *c, const char *m, ...)
 
 #define ENTRY 0x4000
 #define BOOT_LIMIT 1000000
+/* The core reports an opcode as prefix and byte (DDCB0076 for bit 6,(ix+0)) and DD 76 and FD 76 as 76; the whole word must match. */
 #define OP_HALT 0x76
+#define OP_MASK 0xffffffffu
 #define STUB_END 0x4000
 
 /* A HALT ends a run unless interrupts are on and it is not the stub's own: the app wakes from it. */
@@ -84,7 +86,7 @@ TilemCalc *mcemu_new(const uint8_t *rom, size_t len)
 		return NULL;
 	}
 	calc->z80.emuflags |= TILEM_Z80_BREAK_EXCEPTIONS;
-	tilem_z80_add_breakpoint(calc, TILEM_BREAK_EXECUTE, OP_HALT, OP_HALT, 0xffff, halt_stops, NULL);
+	tilem_z80_add_breakpoint(calc, TILEM_BREAK_EXECUTE, OP_HALT, OP_HALT, OP_MASK, halt_stops, NULL);
 	return calc;
 }
 
