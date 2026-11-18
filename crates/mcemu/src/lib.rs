@@ -130,6 +130,14 @@ impl Machine {
         self.out_port(PORT_SPEED, u8::from(speed == Speed::Mhz15));
     }
 
+    /// Where the next instruction is read from; after a run that hit its limit, the place to resume.
+    pub fn pc(&self) -> u16 {
+        self.calc.pc()
+    }
+
+    /// The scancode of the ON key, which `press_key` and `release_key` accept like any other.
+    pub const KEY_ON: u8 = 0x29;
+
     pub fn press_key(&mut self, scancode: u8) {
         self.calc.key(scancode, true);
     }

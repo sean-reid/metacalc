@@ -44,12 +44,37 @@
 ; app can key its status cache on it then. A mismatch or a refused call returns 1 and sets it to
 ; 0. The value is a running state while chunk returns ST_CRC_MORE.
 ;
+; Work limit. The disjoint-variable check of a proof step takes the pairs of the applied
+; assertion one at a time, with X and Y the expressions that replace its two variables, and
+; charges every loop iteration before it runs, to one count per kernel_verify call:
+;   1 per pair of the applied assertion;
+;   1 per symbol of X, constant or variable;
+;   for each variable of X, 1 per symbol of Y;
+;   for each variable of X against each variable of Y, 1 + n more, n being the number of pairs
+;   (both lists) of the theorem being checked, whether or not the scan finds its match early.
+; A charge that would take the count past WORK_LIMIT (ram.inc, equal to WORK_LIMIT in the model)
+; ends the call with ST_WORK_LIMIT before that work is done; the assertion counts as refused.
+; The slowest charged unit measured is 288 T-states (a variable against a run of constants), so
+; one call spends at most 37.7 million T-states in the check, 6.3 s at 6 MHz.
+;
+; Interruption. kernel_verify reads the ON key (port 4, bit 3, clear while pressed) once per proof
+; step and whenever the second byte of the work count changes. The read comes before the scan of
+; the pair list that a comparison charges for, and the scan itself is not interrupted. The longest
+; stretch without a read is one scan, 96 T-states per pair listed, plus up to 255 one-unit charges
+; of 288 T-states before the second byte next changes. A record holds at most 7,750 pairs in this
+; shape (about 8,000 fit a 16 KB page), so ON waits at most 0.83 million T-states, 0.14 s at
+; 6 MHz; with 600 pairs, 130,000 T-states, 22 ms. With ON down kernel_verify returns
+; ST_INTERRUPTED, restoring the stack, port 7 and the interrupt state as for any other exit and
+; leaving the ready mark valid. The assertion has no verdict; call it again. The model never
+; produces this status.
+;
 ; Status (ST_* in ram.inc)
 ;           0 ok               1 Malformed        2 BadRecord
 ;           3 NotATheorem (never returned)        4 ForwardReference
 ;           5 OutOfMemory      6 StackUnderflow   7 BadBackReference
 ;           8 TypecodeMismatch 9 HypothesisMismatch
 ;          10 DisjointViolation 11 StackNotSingleton 12 WrongConclusion
+;          13 WorkLimit         14 Interrupted (kernel_verify only)
 ;         255 ST_CRC_MORE (kernel_crc_chunk only)
 ;
 ; RAM, bank C, shown for the default base (KERNEL_RAM_END is the first free byte):
@@ -149,6 +174,12 @@ fail_not_singleton:
 	jr leave
 fail_wrong:
 	ld a,ST_WRONG_CONCLUSION
+	jr leave
+fail_work_limit:
+	ld a,ST_WORK_LIMIT
+	jr leave
+fail_interrupted:
+	ld a,ST_INTERRUPTED
 	jr leave
 
 ; in: HL = source, DE = destination, BC = count (may be 0)

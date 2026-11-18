@@ -5,6 +5,7 @@ const SUM_FLASH: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/sum_flash.bin
 const LCD_BUSY: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/lcd_busy.bin"));
 const LCD_WAIT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/lcd_wait.bin"));
 const KEYS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/keys.bin"));
+const ON_KEY: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/on_key.bin"));
 const COUNT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/count.bin"));
 
 const RAM_ENTRY: u16 = 0x9000;
@@ -178,6 +179,37 @@ fn pressed_key_reads_back_on_the_keypad_port() {
     m.release_key(ENTER);
     m.run(RAM_ENTRY, LIMIT);
     assert_eq!(m.read_ram(RESULT, 1), [0xFF]);
+}
+
+#[test]
+fn the_on_key_reads_back_on_port_4_bit_3() {
+    let read = |press: bool, release: bool| {
+        let mut m = boot();
+        m.load_ram(RAM_ENTRY, ON_KEY);
+        if press {
+            m.press_key(Machine::KEY_ON);
+        }
+        if release {
+            m.release_key(Machine::KEY_ON);
+        }
+        assert_eq!(m.run(RAM_ENTRY, LIMIT).stop, Stop::Halted);
+        m.read_ram(RESULT, 1)[0]
+    };
+    assert_eq!(read(false, false), 0x08);
+    assert_eq!(read(true, false), 0x00);
+    assert_eq!(read(true, true), 0x08);
+}
+
+#[test]
+fn a_run_that_hit_its_limit_resumes_at_pc() {
+    let mut m = boot();
+    m.load_ram(RAM_ENTRY, COUNT);
+    let first = m.run(RAM_ENTRY, 1000);
+    assert_eq!(first.stop, Stop::Limit);
+    assert!((RAM_ENTRY + 3..RAM_ENTRY + 10).contains(&m.pc()));
+    let rest = m.run(m.pc(), LIMIT);
+    assert_eq!(rest.stop, Stop::Halted);
+    assert_eq!(first.tstates + rest.tstates, COUNT_TSTATES);
 }
 
 #[test]
