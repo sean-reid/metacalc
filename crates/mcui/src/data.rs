@@ -2,7 +2,8 @@
 //! screens show.
 
 use crate::expr::{Expr, Shape};
-use crate::status::{Mark, Status, marks};
+use crate::status::{Mark, Status, marks, update};
+use mcedit::Catalog;
 use mcpack::library::{self, Assertion, Hypothesis, Kernel, Limits, ReadError};
 use mcpack::mm::{self, Database, Grammar, Kind, Node, StmtId, Sym, Tree};
 use std::cell::{OnceCell, RefCell};
@@ -69,15 +70,20 @@ impl Statement {
 /// The library as a Metamath database, which is where parse trees and goal trees come from, and
 /// the grammar built from it once.
 struct Source {
-    db: Rc<Database>,
+    db: &'static Database,
     ids: Vec<StmtId>,
     index: HashMap<StmtId, usize>,
-    grammar: Option<Grammar<'static>>,
+    grammar: Option<&'static Grammar<'static>>,
+    /// The editor's parsed assertions, kept for as long as the library is.
+    catalog: Option<Rc<Catalog<'static>>>,
 }
 
 pub struct Lib {
     pub name: String,
-    bytes: Vec<u8>,
+    /// Leaked: the kernel and the editor's catalog borrow the library for as long as it lives.
+    bytes: &'static [u8],
+    /// The kernel over `bytes`, built on first use; none inside when the bytes do not load.
+    kernel: RefCell<Option<Option<Kernel<'static>>>>,
     assertions: Vec<Assertion>,
     status: Vec<Status>,
     marks: Vec<Mark>,
@@ -99,7 +105,8 @@ impl Lib {
         }
         Ok(Lib {
             name: installed.name,
-            bytes: installed.bytes,
+            bytes: Box::leak(installed.bytes.into_boxed_slice()),
+            kernel: RefCell::new(None),
             marks: marks(&assertions, &status),
             assertions,
             status,
@@ -155,15 +162,25 @@ impl Lib {
 
     /// Runs the kernel on assertion `i`, trusting nothing but the library's bytes.
     pub fn verify(&self, i: usize) -> bool {
-        Kernel::new(&self.bytes, Limits::UNBOUNDED)
-            .and_then(|mut kernel| kernel.verify(i))
-            .is_ok()
+        let mut slot = self.kernel.borrow_mut();
+        let kernel = slot.get_or_insert_with(|| Kernel::new(self.bytes, Limits::UNBOUNDED).ok());
+        kernel.as_mut().is_some_and(|k| k.verify(i).is_ok())
     }
 
     /// Records the outcome of a check and settles every mark again.
     pub fn set_status(&mut self, i: usize, status: Status) {
         self.status[i] = status;
-        self.marks = marks(&self.assertions, &self.status);
+        update(&self.assertions, &self.status, &mut self.marks, i);
+    }
+
+    /// Assertions whose recorded status is a failed check.
+    pub fn failed_checks(&self) -> usize {
+        self.status.iter().filter(|&&s| s == Status::Failed).count()
+    }
+
+    /// The checksum the library carries, which tells two versions of it apart.
+    pub fn crc(&self) -> u32 {
+        u32::from_le_bytes([self.bytes[4], self.bytes[5], self.bytes[6], self.bytes[7]])
     }
 
     /// Assertions that failed, or whose proof uses itself or a later assertion.
@@ -181,7 +198,7 @@ impl Lib {
     }
 
     fn load(&self) -> Option<Source> {
-        let text = library::export(&self.bytes).ok()?;
+        let text = library::export(self.bytes).ok()?;
         let db = mm::parse(text.into_bytes()).ok()?;
         let ids: Vec<StmtId> = (0..db.stmts.len() as StmtId)
             .filter(|&id| db.stmt(id).kind.is_assertion())
@@ -190,20 +207,23 @@ impl Lib {
             return None;
         }
         let index = ids.iter().enumerate().map(|(i, &id)| (id, i)).collect();
-        let db = Rc::new(db);
-        let grammar = Grammar::shared(db.clone(), &[(PROVABLE, "wff")]).ok();
+        let db: &'static Database = Box::leak(Box::new(db));
+        let grammar = Grammar::new(db, &[(PROVABLE, "wff")])
+            .ok()
+            .map(|g| &*Box::leak(Box::new(g)));
+        let catalog = grammar.map(|g| Catalog::new(db, g));
         Some(Source {
             db,
             ids,
             index,
             grammar,
+            catalog,
         })
     }
 
-    /// The database and grammar a proof editor works over, when the library exports and parses.
-    pub(crate) fn database(&self) -> Option<(&Database, &Grammar<'static>)> {
-        let source = self.source()?;
-        Some((&source.db, source.grammar.as_ref()?))
+    /// The parsed assertions a proof editor works over, when the library exports and parses.
+    pub(crate) fn catalog(&self) -> Option<Rc<Catalog<'static>>> {
+        self.source()?.catalog.clone()
     }
 
     /// The database statement of assertion `i`.
@@ -252,9 +272,9 @@ impl Lib {
 
     fn parse_statement(&self, i: usize) -> Option<Statement> {
         let source = self.source()?;
-        let parsed = source.grammar.as_ref()?.parse(source.ids[i]).ok()?;
+        let parsed = source.grammar?.parse(source.ids[i]).ok()?;
         let build =
-            |lead: &str, tree: &Tree| Expr::build(vec![lead.to_string()], &shape(&source.db, tree));
+            |lead: &str, tree: &Tree| Expr::build(vec![lead.to_string()], &shape(source.db, tree));
         let hyps = self
             .essentials(i)
             .zip(&parsed.hyps)
@@ -271,7 +291,7 @@ impl Lib {
         }
         let source = self.source().ok_or("the library does not export")?;
         let id = source.ids[i];
-        let root = mm::outline(&source.db, id, "|-").map_err(|e| match e {
+        let root = mm::outline(source.db, id, "|-").map_err(|e| match e {
             mm::OutlineError::NotProvable => "it proves a syntax statement",
             _ => "the proof does not verify",
         })?;
@@ -313,8 +333,8 @@ impl Lib {
     /// What the screen shows of one goal: its statement, how it was proved, and its subgoals.
     pub fn view(&self, goals: &Goals, node: &Node) -> GoalView {
         let source = self.source().expect("goals exist only with a source");
-        let db = &*source.db;
-        let grammar = source.grammar.as_ref();
+        let db = source.db;
+        let grammar = source.grammar;
         let expr = |syms: &[Sym]| {
             let name = |s: Sym| db.syms[s as usize].name.clone();
             let lead = vec![name(syms[0])];

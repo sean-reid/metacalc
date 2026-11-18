@@ -71,8 +71,10 @@ fn select(ui: &mut Ui, label: &str) {
     panic!("no candidate {label}");
 }
 
-/// A proof in progress. After every operation a second interface over the same library, given
-/// only the saved form, must open on the same frame.
+/// A proof in progress. After every operation, while the candidates are showing and their
+/// highlight is on the first row, a second interface over the same library, given only the saved
+/// form, must open on the same frame. A restore reproduces the proof and the goal on screen; the
+/// cursor and scroll of a list are not saved and start from the top.
 struct Prover {
     ui: Ui,
     bytes: Vec<u8>,
@@ -405,8 +407,15 @@ fn the_tree_marks_open_and_closed_goals() {
     p.keys(&[F5]);
     assert_eq!(at(&p.ui).view, View::Tree);
     check(&p.ui, "proving-tree-marks");
+    let before = (at(&p.ui).goal, at(&p.ui).steps);
     press(&mut p.ui, &[Up, Enter]);
     assert_eq!(at(&p.ui).view, View::Tree);
+    assert_eq!((at(&p.ui).goal, at(&p.ui).steps), before);
+    check(&p.ui, "proving-tree-closed-row");
+    press(&mut p.ui, &[Down, Enter]);
+    assert_eq!(at(&p.ui).view, View::Candidates);
+    assert_eq!(at(&p.ui).goal, before.0);
+    assert_eq!(at(&p.ui).steps, before.1);
 }
 
 #[test]
@@ -530,4 +539,219 @@ fn a_saved_form_that_does_not_fit_is_refused() {
         Err(Unreadable(_))
     ));
     assert_eq!(ui.saved_proofs().count(), 0);
+}
+
+#[test]
+fn proving_id_binds_the_unknown_left_over_and_one_undo_takes_it_back() {
+    let mut p = Prover::new(proving_bytes(), "id");
+    p.aply("mpd");
+    p.aply("ax-1");
+    assert_eq!(at(&p.ui).open, 1);
+    let steps = at(&p.ui).steps;
+    p.aply("ax-1");
+    assert_eq!(
+        at(&p.ui).steps,
+        steps + 2,
+        "the application and one assignment"
+    );
+    check(&p.ui, "proving-finished-bound");
+    p.finished();
+    p.keys(&[F4]);
+    assert_eq!(at(&p.ui).steps, steps);
+    assert_eq!(at(&p.ui).open, 1);
+    p.aply("ax-1");
+    p.finished();
+}
+
+#[test]
+fn a_variable_a_distinct_variable_rule_refuses_is_passed_over() {
+    let mut p = Prover::new(proving_bytes(), "tdv2");
+    p.aply("axu");
+    p.aply("ax-5");
+    p.finished();
+    let saved = p.saved();
+    assert_eq!(
+        saved.steps, 3,
+        "two applications and the one assignment that was taken"
+    );
+    assert_eq!(saved.groups, [1, 2]);
+    let text = library::export(&p.bytes).unwrap();
+    let db = mm::parse(text.into_bytes()).unwrap();
+    let grammar = Grammar::new(&db, &[("|-", "wff")]).unwrap();
+    let session = Session::restore(Catalog::new(&db, &grammar), &saved.session).unwrap();
+    let bound = session.ops().iter().find_map(|op| match op {
+        mcedit::Op::Assign { var, .. } => Some(db.syms[*var as usize].name.clone()),
+        _ => None,
+    });
+    assert_eq!(
+        bound.as_deref(),
+        Some("z"),
+        "x and y are refused, z is declared disjoint"
+    );
+}
+
+#[test]
+fn one_undo_takes_back_an_auto_that_made_two_operations() {
+    let mut p = Prover::new(proving_bytes(), "ta1");
+    p.keys(&[F3]);
+    p.finished();
+    assert_eq!(p.saved().groups, [2]);
+    p.keys(&[F4]);
+    assert_eq!(at(&p.ui).steps, 0);
+    assert_eq!(at(&p.ui).open, 1);
+}
+
+#[test]
+fn undo_groups_survive_a_restore() {
+    let mut p = Prover::new(proving_bytes(), "ta1");
+    p.keys(&[F3]);
+    p.keys(&[F4]);
+    p.keys(&[F3]);
+    let mut fresh = ui_over(p.bytes.clone(), &[], &[]);
+    fresh.restore_proof(p.saved()).unwrap();
+    open(&mut fresh, "ta1");
+    press(&mut fresh, &[F4, F4]);
+    assert_eq!(at(&fresh).steps, 0);
+}
+
+#[test]
+fn a_goal_that_no_longer_exists_falls_back_to_the_first_open_goal() {
+    let mut p = Prover::new(proving_bytes(), "a1i");
+    p.aply("ax-mp");
+    for goal in [Some(9999), Some(0), None] {
+        let mut saved = p.saved();
+        saved.goal = goal;
+        let mut fresh = ui_over(p.bytes.clone(), &[], &[]);
+        fresh.restore_proof(saved).unwrap();
+        open(&mut fresh, "a1i");
+        fresh.press(F4);
+        assert_eq!(at(&fresh).goal, Some(2), "{goal:?}");
+    }
+}
+
+#[test]
+fn a_saved_proof_from_another_version_of_the_library_is_refused() {
+    let mut p = Prover::new(proving_bytes(), "a1i");
+    p.aply("ax-mp");
+    let saved = p.saved();
+    let mut older = ui_over(support::logic_bytes(), &[], &[]);
+    assert_eq!(
+        older.restore_proof(saved.clone()),
+        Err(mcui::RestoreError::Unreadable("the library has changed"))
+    );
+    let mut same = ui_over(proving_bytes(), &[], &[]);
+    assert_eq!(same.restore_proof(saved.clone()), Ok(()));
+    let mut damaged = saved;
+    damaged.groups = vec![5];
+    assert!(matches!(
+        same.restore_proof(damaged),
+        Err(mcui::RestoreError::Unreadable(_))
+    ));
+}
+
+#[test]
+fn a_hypothesis_list_longer_than_the_screen_scrolls_and_pages() {
+    let mut ui = prove(&proving_bytes(), "many2");
+    ui.press(F2);
+    check(&ui, "proving-many-hyps-top");
+    let selected = |ui: &Ui| match ui.state() {
+        State::Proving { selected, .. } => selected,
+        other => panic!("{other:?}"),
+    };
+    press(&mut ui, &[Down, Down, Down, Down, Down]);
+    assert_eq!(selected(&ui), 5);
+    check(&ui, "proving-many-hyps-scrolled");
+    press(&mut ui, &[Down, Down, Down, Down, Down]);
+    assert_eq!(selected(&ui), 7, "stops at the last hypothesis");
+    press(&mut ui, &[Left]);
+    assert_eq!(selected(&ui), 7 - at_rows(&ui));
+    press(&mut ui, &[Left, Left, Left]);
+    assert_eq!(selected(&ui), 0);
+    ui.press(Right);
+    assert_eq!(selected(&ui), at_rows(&ui));
+    press(&mut ui, &[Down, Down, Down, Down, Down, Down]);
+    ui.press(F1);
+    assert_eq!(notice(&ui), "Hyp");
+}
+
+/// The rows a list under the goal has on the proving screen of the hypothesis test.
+fn at_rows(_ui: &Ui) -> usize {
+    4
+}
+
+#[test]
+fn a_deep_tree_scrolls_and_its_indent_stops_at_the_maximum_depth() {
+    let bytes = support::chain_bytes(12);
+    let mut p = Prover::new(bytes, "chain");
+    for _ in 0..12 {
+        p.aply("axs");
+    }
+    assert_eq!(at(&p.ui).open, 1);
+    press(&mut p.ui, &[F5]);
+    let selected = |ui: &Ui| match ui.state() {
+        State::Proving { selected, .. } => selected,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(selected(&p.ui), 12);
+    check(&p.ui, "proving-tree-deep-bottom");
+    press(&mut p.ui, &[Up, Up, Up]);
+    assert_eq!(selected(&p.ui), 9);
+    ui_press_n(&mut p.ui, Up, 20);
+    assert_eq!(selected(&p.ui), 0);
+    check(&p.ui, "proving-tree-deep-top");
+    p.ui.press(Right);
+    assert_eq!(selected(&p.ui), 6);
+    p.ui.press(Right);
+    p.ui.press(Right);
+    assert_eq!(selected(&p.ui), 12, "stops at the last goal");
+    p.ui.press(Left);
+    assert_eq!(selected(&p.ui), 6);
+    p.ui.press(Enter);
+    assert_eq!(
+        at(&p.ui).view,
+        View::Tree,
+        "a goal that was applied is not jumped to"
+    );
+}
+
+fn ui_press_n(ui: &mut Ui, key: Key, n: usize) {
+    for _ in 0..n {
+        ui.press(key);
+    }
+}
+
+#[test]
+fn a_long_proof_costs_about_the_same_for_every_key() {
+    use std::time::Instant;
+    let depth = 45;
+    let bytes = support::chain_bytes(depth);
+    let mut ui = prove(&bytes, "chain");
+    let mut times = Vec::new();
+    for _ in 0..depth {
+        let started = Instant::now();
+        ui.press(F1);
+        times.push(started.elapsed());
+    }
+    let started = Instant::now();
+    press(&mut ui, &[F2, F1]);
+    times.push(started.elapsed());
+    assert_eq!(at(&ui).steps, depth + 1);
+    assert!(at(&ui).finished);
+    let ms = |d: &std::time::Duration| d.as_secs_f64() * 1e3;
+    let total: f64 = times.iter().map(ms).sum();
+    let max = times.iter().map(ms).fold(0.0, f64::max);
+    let (first, last): (f64, f64) = (
+        times[..10].iter().map(ms).sum(),
+        times[depth - 10..depth].iter().map(ms).sum(),
+    );
+    println!(
+        "{} keys: total {total:.1} ms, worst {max:.1} ms, first ten {first:.1} ms, last ten {last:.1} ms",
+        times.len()
+    );
+    assert!(total < 1_000.0, "{total} ms for {} keys", times.len());
+    assert!(max < 500.0, "worst key {max} ms");
+    assert!(
+        last < 20.0 * first.max(1.0),
+        "the last ten keys cost {last} ms against {first} ms"
+    );
 }

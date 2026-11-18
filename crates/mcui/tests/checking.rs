@@ -182,3 +182,35 @@ fn on_does_nothing_off_the_checking_screen() {
     press(&mut ui, &[Enter, On]);
     assert_eq!(ui.depth(), 2);
 }
+
+#[test]
+fn a_forward_reference_is_not_counted_as_a_failure_before_anything_ran() {
+    let sound = logic_bytes();
+    let a1i = support::index_of(&sound, "a1i") as u16;
+    let mut ui = unchecked_ui(refreshed(support::patch_reference(&sound, "a1i", 0, a1i)));
+    press(&mut ui, &[F2]);
+    assert_eq!(checking(ui.state()), (0, 13, 0, false));
+    assert_eq!(run_all(&mut ui), (12, 1));
+    assert_eq!(checking(ui.state()), (13, 13, 1, true));
+}
+
+/// Steps the real libraries in `MCUI_LIBS` through the kernel and prints how long each took.
+#[test]
+#[ignore = "needs MCUI_LIBS, a directory of built libraries"]
+fn stepping_through_a_real_library_is_quick() {
+    let dir = std::env::var("MCUI_LIBS").expect("MCUI_LIBS names the libraries");
+    for name in ["prop", "pred", "ring"] {
+        let bytes = std::fs::read(format!("{dir}/{name}.mclib")).unwrap();
+        let total = mcpack::library::read(&bytes).unwrap().len();
+        let mut ui = unchecked_ui(bytes);
+        press(&mut ui, &[F2]);
+        let started = std::time::Instant::now();
+        let (passed, failed) = run_all(&mut ui);
+        println!(
+            "{name}: {total} assertions, {passed} passed, {failed} failed in {:?}",
+            started.elapsed()
+        );
+        assert_eq!(passed + failed, total);
+        assert_eq!(failed, 0, "{name}");
+    }
+}

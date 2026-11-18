@@ -64,8 +64,7 @@ impl Ui {
             }
         }
         if let Some(Screen::Proving(proving)) = self.stack.last() {
-            let saved = proving.saved();
-            self.proofs.store(saved);
+            self.proofs.store(proving.saved());
         }
     }
 
@@ -85,8 +84,8 @@ impl Ui {
         if proof.theorem >= lib.len() {
             return Err(RestoreError::NoSuchTheorem);
         }
-        let editor = Editor::start(lib, proof.theorem, Some(&proof.session))
-            .map_err(RestoreError::Unreadable)?;
+        let editor =
+            Editor::start(lib, proof.theorem, Some(&proof)).map_err(RestoreError::Unreadable)?;
         let steps = editor.steps();
         self.proofs.restore(SavedProof { steps, ..proof });
         Ok(())

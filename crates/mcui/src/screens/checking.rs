@@ -44,7 +44,7 @@ impl Checking {
         if let Some(i) = next {
             canvas.text_centered(3, &truncate(lib.label(i), TEXT_WIDTH));
         }
-        canvas.text_centered(5, &format!("{} failed", lib.failed()));
+        canvas.text_centered(5, &format!("{} failed", lib.failed_checks()));
         if next.is_some() {
             canvas.text_centered(6, "ON pauses");
         }
@@ -57,7 +57,7 @@ impl Checking {
             library: self.library,
             done: lib.settled(),
             total: lib.len(),
-            failed: lib.failed(),
+            failed: lib.failed_checks(),
             finished: lib.next_unchecked().is_none(),
         }
     }

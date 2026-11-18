@@ -44,7 +44,7 @@ pub enum Screen {
     Notice(notice::Notice),
     About(about::About),
     Checking(checking::Checking),
-    Proving(proving::Proving),
+    Proving(Box<proving::Proving>),
 }
 
 /// What the proving screen lists under the goal.

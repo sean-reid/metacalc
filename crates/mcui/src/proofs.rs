@@ -1,9 +1,16 @@
 //! The proofs in progress the interface holds, each as the saved form of its editing session.
 
 /// One proof in progress: the theorem it proves, mcedit's saved session and the goal on screen.
+///
+/// Restoring it reproduces the proof, with the operations of each key press kept together so
+/// Undo still takes back a press at a time, and the goal that was on screen. It does not
+/// reproduce the cursor or scroll of any list, nor which list was open. A library with another
+/// checksum than the one it was saved against refuses it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SavedProof {
     pub library: usize,
+    /// The checksum of the library it was made against.
+    pub crc: u32,
     /// The theorem's number in its library.
     pub theorem: usize,
     /// The versioned encoding `mcedit::Session::save` writes.
@@ -12,6 +19,8 @@ pub struct SavedProof {
     pub goal: Option<u32>,
     /// Operations in force.
     pub steps: usize,
+    /// How many operations each key press recorded, oldest first; they add up to `steps`.
+    pub groups: Vec<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,16 +75,20 @@ impl Proofs {
 
     /// Keeps `proof` as the saved form of its theorem. One with no operations left is dropped
     /// unless the status table counted it.
-    pub fn store(&mut self, proof: SavedProof) {
-        match (self.position(&proof), proof.steps) {
-            (Some(at), _) if self.held[at].counted => self.held[at].proof = proof,
+    pub fn store(&mut self, proof: &SavedProof) {
+        let at = self.position(proof);
+        if at.is_some_and(|at| self.held[at].proof == *proof) {
+            return;
+        }
+        match (at, proof.steps) {
+            (Some(at), _) if self.held[at].counted => self.held[at].proof.clone_from(proof),
             (Some(at), 0) => {
                 self.held.remove(at);
             }
-            (Some(at), _) => self.held[at].proof = proof,
+            (Some(at), _) => self.held[at].proof.clone_from(proof),
             (None, 0) => {}
             (None, _) => self.held.push(Held {
-                proof,
+                proof: proof.clone(),
                 counted: false,
             }),
         }

@@ -320,6 +320,19 @@ tmany $p |- ( ph -> ph ) $= wph id $.
 tlong $p |- ( ( ph -> ( ps -> ch ) ) -> ( ( ph -> ps ) -> ( ph -> ch ) ) ) $= wph wps wch ax-2 $.
 axq $a |- ( ph -> A. y ph ) $.
 tq $p |- ( ph -> A. y ph ) $= wph vy axq $.
+${
+  ta1.1 $e |- ch $.
+  ta1 $p |- ( ph -> ch ) $= wch wph ta1.1 a1i $.
+$}
+${
+  $d x ps $.
+  axu.1 $e |- ( ph -> A. x ps ) $.
+  axu $a |- ph $.
+$}
+${
+  $d z ph $.
+  tdv2 $p |- ph $= wph wph vz wph vz ax-5 axu $.
+$}
 ";
 
 pub fn proving_bytes() -> Vec<u8> {
@@ -354,4 +367,35 @@ pub fn index_of(bytes: &[u8], label: &str) -> usize {
         .iter()
         .position(|a| a.label == label)
         .unwrap_or_else(|| panic!("no {label}"))
+}
+
+/// A logic with one rule that turns `ps` into `( ph -> ps )`, and a theorem that nests `ph`
+/// under `depth` implications, so proving it takes `depth` applications and a hypothesis.
+pub fn chain_bytes(depth: usize) -> Vec<u8> {
+    let (mut statement, mut syntax, mut proof) =
+        ("ph".to_string(), "wph".to_string(), "chain.1".to_string());
+    for _ in 0..depth {
+        proof = format!("wph {syntax} {proof} axs");
+        statement = format!("( ph -> {statement} )");
+        syntax = format!("wph {syntax} wi");
+    }
+    let src = format!(
+        "$c ( ) -> wff |- $.
+$v ph ps $.
+wph $f wff ph $.
+wps $f wff ps $.
+wi $a wff ( ph -> ps ) $.
+${{
+  axs.1 $e |- ps $.
+  axs $a |- ( ph -> ps ) $.
+$}}
+${{
+  chain.1 $e |- ph $.
+  chain $p |- {statement} $= {proof} $.
+$}}
+"
+    );
+    let bytes = pack_all(&db(&src)).expect("the chain library packs");
+    library::check(&bytes).expect("the kernel accepts the chain library");
+    bytes
 }
