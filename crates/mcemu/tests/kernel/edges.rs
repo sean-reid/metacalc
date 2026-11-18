@@ -79,35 +79,34 @@ fn the_validated_page_and_limits_are_the_ones_used() {
 
 #[test]
 fn the_regions_can_be_assembled_at_other_addresses() {
-    let (low, high) = (
-        label_in(MOVED, "KERNEL_RAM_LOW"),
-        label_in(MOVED, "KERNEL_RAM_HIGH"),
-    );
-    assert_eq!((low, high), (0xC100, 0xE000));
-    assert_ne!(low, label("KERNEL_RAM_LOW"));
-    assert_ne!(high, label("KERNEL_RAM_HIGH"));
     let (small_db, small) = small_library();
     let demo = pack_all(&corpus("demo0.mm"));
-    for bytes in [small.clone(), demo] {
-        let (want_init, want) = model_statuses(&bytes, ASKED_UNBOUNDED);
-        let mut device = Device::with_image(MOVED);
-        device.load(&bytes);
-        fill_outside(device.m.ram_page(SPARE_PAGE), MOVED, 0x5A);
-        let (init, got, _) = device.verify_all(want.len(), ASKED_UNBOUNDED);
-        assert_eq!((init, got), (want_init, want));
-        let page = device.m.ram_page(SPARE_PAGE).to_vec();
-        assert_eq!(first_outside_not(&page, MOVED, 0x5A), None);
-        assert!(
-            (0..page.len()).any(|at| in_regions(MOVED, 0xC000 + at as u16)
-                && !in_regions(DEFAULT, 0xC000 + at as u16)
-                && page[at] != 0),
-            "the moved regions were used"
-        );
+    for (layout, image) in LAYOUTS.into_iter().filter(|&(name, _)| name != "default") {
+        let [(low, _), (high, _)] = layout_regions(layout, image);
+        assert_eq!(label_in(image, "KERNEL_RAM_LOW"), low, "{layout}");
+        assert_eq!(label_in(image, "KERNEL_RAM_HIGH"), high, "{layout}");
+        assert!(low != label("KERNEL_RAM_LOW") || high != label("KERNEL_RAM_HIGH"));
+        for bytes in [small.clone(), demo.clone()] {
+            let (want_init, want) = model_statuses(&bytes, ASKED_UNBOUNDED);
+            let mut device = Device::with_image(image);
+            device.load(&bytes);
+            fill_outside(device.m.ram_page(SPARE_PAGE), image, 0x5A);
+            let (init, got, _) = device.verify_all(want.len(), ASKED_UNBOUNDED);
+            assert_eq!((init, got), (want_init, want), "{layout}");
+            let page = device.m.ram_page(SPARE_PAGE).to_vec();
+            assert_eq!(first_outside_not(&page, image, 0x5A), None, "{layout}");
+            assert!(
+                (0..page.len()).any(|at| in_regions(image, 0xC000 + at as u16)
+                    && !in_regions(DEFAULT, 0xC000 + at as u16)
+                    && page[at] != 0),
+                "{layout}: the moved regions were used"
+            );
+        }
+        let id = number(&small_db, "both");
+        let mut device = Device::with_image(image);
+        device.load(&small);
+        assert_eq!(device.verify(id, ASKED_UNBOUNDED).verify, status(Ok(())));
     }
-    let id = number(&small_db, "both");
-    let mut device = Device::with_image(MOVED);
-    device.load(&small);
-    assert_eq!(device.verify(id, ASKED_UNBOUNDED).verify, status(Ok(())));
 }
 
 fn many_axioms(count: usize) -> (Database, Vec<u8>) {

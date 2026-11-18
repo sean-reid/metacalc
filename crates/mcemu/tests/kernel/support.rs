@@ -23,6 +23,15 @@ pub const MOVED: Image = Image {
     labels: include_str!(concat!(env!("OUT_DIR"), "/kernel_test_moved.lab")),
 };
 
+/// The same kernel with its low region ending at $10000 and its high region at the bottom of bank C.
+pub const TOP: Image = Image {
+    code: include_bytes!(concat!(env!("OUT_DIR"), "/kernel_test_top.bin")),
+    labels: include_str!(concat!(env!("OUT_DIR"), "/kernel_test_top.lab")),
+};
+
+/// Every layout build.rs assembles as a kernel image.
+pub const LAYOUTS: [(&str, Image); 3] = [("default", DEFAULT), ("moved", MOVED), ("top", TOP)];
+
 /// The flash page of chunk 0; chunk c is at this page minus c.
 pub const LIB_PAGE: u8 = 0x6F;
 pub const PAGE: usize = 1 << 14;
@@ -107,6 +116,17 @@ pub fn regions(image: Image) -> [(u16, usize); 2] {
     ]
 }
 
+/// The two regions of a built image as its build.rs entry places them, written out here and not
+/// read from the kernel; an image this table does not know falls back to the labels.
+pub fn layout_regions(layout: &str, image: Image) -> [(u16, usize); 2] {
+    match layout {
+        "default" => [(0xC500, 0x1200), (0xDF00, 0x2000)],
+        "moved" => [(0xC100, 0x1200), (0xE000, 0x2000)],
+        "top" => [(0xEE00, 0x1200), (0xC100, 0x2000)],
+        _ => regions(image),
+    }
+}
+
 pub fn in_regions(image: Image, addr: u16) -> bool {
     regions(image).iter().any(|&(start, len)| {
         (usize::from(start)..usize::from(start) + len).contains(&usize::from(addr))
@@ -173,7 +193,11 @@ impl Device {
     }
 
     pub fn with_library(library: &[u8]) -> Device {
-        let mut device = Device::new();
+        Device::with_image_library(DEFAULT, library)
+    }
+
+    pub fn with_image_library(image: Image, library: &[u8]) -> Device {
+        let mut device = Device::with_image(image);
         device.load(library);
         device
     }
@@ -421,9 +445,20 @@ pub fn agree_with(
     expected: Result<(), KernelError>,
     what: &str,
 ) {
+    agree_in(DEFAULT, bytes, id, limits, expected, what);
+}
+
+pub fn agree_in(
+    image: Image,
+    bytes: &[u8],
+    id: usize,
+    limits: Limits,
+    expected: Result<(), KernelError>,
+    what: &str,
+) {
     let model = Kernel::new(bytes, clamped(limits)).and_then(|mut kernel| kernel.verify(id));
     assert_eq!(model, expected, "{what}: the model");
-    let got = Device::with_library(bytes).verify(id, limits);
+    let got = Device::with_image_library(image, bytes).verify(id, limits);
     assert_eq!(got.verify, status(expected), "{what}: the device");
     if expected == Err(KernelError::Malformed) {
         let loads = Kernel::new(bytes, clamped(limits)).is_ok();

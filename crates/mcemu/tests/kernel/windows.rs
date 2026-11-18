@@ -9,7 +9,7 @@ fn at(image: Image, name: &str) -> usize {
 
 #[test]
 fn the_entry_and_exit_windows_hold_no_stack_instruction() {
-    for image in [DEFAULT, MOVED] {
+    for (_, image) in LAYOUTS {
         let code = image.code;
         let out_5 = [0xD3, PORT_RAM_PAGE];
 

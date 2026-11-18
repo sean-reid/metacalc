@@ -538,7 +538,13 @@ fn the_no_match_cross_goes_when_the_cursor_moves_or_the_kind_changes() {
                 "the prefix is searched for again"
             );
         } else {
-            assert!(support::title_is(&ui.frame(), "logic", right), "{key:?}");
+            let mut fresh = self::ui();
+            press(&mut fresh, &[Enter]);
+            let (a, b) = (ui.frame(), fresh.frame());
+            assert!(
+                (0..8).all(|y| (0..96).all(|x| a.get(x, y) == b.get(x, y))),
+                "{key:?} restores the title"
+            );
         }
     }
 }
@@ -725,4 +731,31 @@ fn an_assertion_failed_by_a_forward_reference_is_listed_as_unchecked() {
     let patched = support::patch_reference(&sound, "a1i", 0, at("alid"));
     let mut ui = support::ui_over(patched, &[], &[]);
     assert_eq!(unchecked_labels(&mut ui), ["a1i", "syl"]);
+}
+
+#[test]
+fn a_movement_key_after_a_miss_ends_the_find() {
+    let mut ui = ui();
+    press(&mut ui, &[Enter, F2]);
+    typed(&mut ui, "sy");
+    typed(&mut ui, "z");
+    press(&mut ui, &[Down]);
+    let (_, _, _, find, _, _) = list(ui.state());
+    assert_eq!(find, "");
+    typed(&mut ui, "a");
+    let (label, _, _, find, _, _) = list(ui.state());
+    assert_eq!((label.as_deref(), find.as_str()), (Some("ax-1"), "a"));
+}
+
+#[test]
+fn a_movement_key_after_a_match_ends_the_find() {
+    let mut ui = ui();
+    press(&mut ui, &[Enter, F2]);
+    typed(&mut ui, "ax-m");
+    press(&mut ui, &[Up]);
+    let (_, _, _, find, _, _) = list(ui.state());
+    assert_eq!(find, "");
+    typed(&mut ui, "i");
+    let (label, _, _, find, _, _) = list(ui.state());
+    assert_eq!((label.as_deref(), find.as_str()), (Some("id"), "i"));
 }

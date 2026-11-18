@@ -3,8 +3,8 @@
 # Builds every library in libraries/ from the pinned database into libdir, then writes each
 # library's reference page into pagedir, writes the number of proofs each export holds beside it as
 # name.proofs and the names it built to libraries.list, and checks that each library exports to a
-# database mcpack verify accepts and that every symbol in it has a Unicode spelling. Also writes
-# libraries-table.md into pagedir, the index table in the order the manifests give.
+# database mcpack verify accepts and that every symbol in it has a Unicode spelling and a meaning.
+# Also writes libraries-table.md into pagedir, the index table in the order the manifests give.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -25,7 +25,7 @@ for manifest in "$root"/libraries/*.toml; do
 "
 	rm -f "$libdir/$name.mm" "$libdir/$name.proofs"
 	mcpack build "$manifest" --database "$database" -o "$libdir/$name.mclib"
-	mcpack doc "$manifest" --library "$libdir/$name.mclib" -o "$pagedir/$name.md" --require-unicode
+	mcpack doc "$manifest" --library "$libdir/$name.mclib" -o "$pagedir/$name.md" --require-unicode --require-meaning
 	mcpack export "$libdir/$name.mclib" -o "$libdir/$name.mm"
 	checked=$(mcpack verify "$libdir/$name.mm")
 	echo "$checked"

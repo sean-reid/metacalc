@@ -105,38 +105,43 @@ fn the_checksum_agrees_with_the_model_on_every_corpus_library() {
     ] {
         libraries.push(pack_all(&corpus(name)));
     }
-    for (n, bytes) in libraries.iter().enumerate() {
-        let mut device = Device::with_library(bytes);
-        let run = run_crc(&mut device);
-        assert!(model_accepts(bytes), "library {n}: the model");
-        assert_eq!(
-            (run.init, run.begin, run.overall()),
-            (0, 0, 0),
-            "library {n}"
-        );
-        assert_eq!(
-            run.statuses.len(),
-            chunks(bytes.len()),
-            "library {n}: calls"
-        );
-        assert!(
-            run.statuses[..run.statuses.len() - 1]
-                .iter()
-                .all(|&s| s == MORE)
-        );
-        assert_eq!(run.value, sum(bytes), "library {n}: value");
+    for (layout, image) in LAYOUTS {
+        for (n, bytes) in libraries.iter().enumerate() {
+            let mut device = Device::with_image_library(image, bytes);
+            let run = run_crc(&mut device);
+            assert!(model_accepts(bytes), "{layout}, library {n}: the model");
+            assert_eq!(
+                (run.init, run.begin, run.overall()),
+                (0, 0, 0),
+                "{layout}, library {n}"
+            );
+            assert_eq!(
+                run.statuses.len(),
+                chunks(bytes.len()),
+                "{layout}, library {n}: calls"
+            );
+            assert!(
+                run.statuses[..run.statuses.len() - 1]
+                    .iter()
+                    .all(|&s| s == MORE)
+            );
+            assert_eq!(run.value, sum(bytes), "{layout}, library {n}: value");
 
-        let mut wrong = bytes.clone();
-        wrong[4] ^= 0x10;
-        assert!(!model_accepts(&wrong), "library {n}: the model, wrong sum");
-        device.load(&wrong);
-        let run = run_crc(&mut device);
-        assert_eq!(
-            (run.init, run.overall()),
-            (0, MALFORMED),
-            "library {n}, wrong sum"
-        );
-        assert_eq!(run.value, 0, "library {n}: value, wrong sum");
+            let mut wrong = bytes.clone();
+            wrong[4] ^= 0x10;
+            assert!(
+                !model_accepts(&wrong),
+                "{layout}, library {n}: the model, wrong sum"
+            );
+            device.load(&wrong);
+            let run = run_crc(&mut device);
+            assert_eq!(
+                (run.init, run.overall()),
+                (0, MALFORMED),
+                "{layout}, library {n}, wrong sum"
+            );
+            assert_eq!(run.value, 0, "{layout}, library {n}: value, wrong sum");
+        }
     }
 }
 
@@ -333,23 +338,25 @@ fn verify_between_chunks_changes_neither_answer() {
 }
 
 #[test]
-fn the_checksum_runs_at_another_address() {
+fn the_checksum_runs_at_every_layout() {
     let (_, small) = small_library();
     let bytes = padded(&small, 3 * CHUNK + 1);
-    let mut device = Device::with_image(MOVED);
-    device.load(&bytes);
-    let run = run_crc(&mut device);
-    assert_eq!((run.init, run.begin, run.overall()), (0, 0, 0));
-    assert_eq!(run.statuses.len(), 4);
-    assert_eq!(run.value, sum(&bytes));
-    let table = device.label("CRC_TABLE");
-    assert_eq!(table, device.label("KERNEL_RAM_LOW") + 0xE00);
-    assert_eq!(device.kram(table + 1, 1), [0x96]);
-    let mut wrong = bytes.clone();
-    wrong[CHUNK + 5] ^= 4;
-    device.load(&wrong);
-    let run = run_crc(&mut device);
-    assert_eq!((run.overall(), run.value), (MALFORMED, 0));
+    for (layout, image) in LAYOUTS {
+        let mut device = Device::with_image(image);
+        device.load(&bytes);
+        let run = run_crc(&mut device);
+        assert_eq!((run.init, run.begin, run.overall()), (0, 0, 0), "{layout}");
+        assert_eq!(run.statuses.len(), 4, "{layout}");
+        assert_eq!(run.value, sum(&bytes), "{layout}");
+        let table = device.label("CRC_TABLE");
+        assert_eq!(table, layout_regions(layout, image)[0].0 + 0xE00);
+        assert_eq!(device.kram(table + 1, 1), [0x96]);
+        let mut wrong = bytes.clone();
+        wrong[CHUNK + 5] ^= 4;
+        device.load(&wrong);
+        let run = run_crc(&mut device);
+        assert_eq!((run.overall(), run.value), (MALFORMED, 0), "{layout}");
+    }
 }
 
 fn refused(device: &mut Device, interrupts: u8) {
@@ -367,42 +374,48 @@ fn refused(device: &mut Device, interrupts: u8) {
 
 #[test]
 fn a_refused_call_restores_everything_whatever_the_page_held() {
-    let marker = *b"flash page marker";
-    let low = label("KERNEL_RAM_LOW");
-    let saved = usize::from(low - 0xC000) + 0x10..usize::from(low - 0xC000) + 0x15;
-    let crc_at = usize::from(label("KERNEL_CRC") - 0xC000);
-    let stack = usize::from(label("KSTACK") - 0xC000)..usize::from(label("KSTACK_TOP") - 0xC000);
-    let mut state = 0x9E37_79B9u32;
-    let random: Vec<u8> = (0..PAGE)
-        .map(|_| {
-            state ^= state << 13;
-            state ^= state >> 17;
-            state ^= state << 5;
-            (state >> 9) as u8
-        })
-        .collect();
-    let ready = usize::from(label("KERNEL_RAM_LOW") + 0xA0 - 0xC000);
-    for pattern in [vec![0xFF; PAGE], vec![0x01; PAGE], random] {
-        assert_ne!(pattern[ready..ready + 2], [0xA5, 0x5A]);
-        for page in [RAM_PAGE, 0x50] {
-            for interrupts in [0u8, 1] {
-                let mut device = Device::new();
-                device.m.load_flash(0x50, 0, &marker);
-                device.m.load_ram(0x8000, &[0xA5; 64]);
-                device.m.out_port(PORT_BANK_B, page);
-                device.m.ram_page(SPARE_PAGE).copy_from_slice(&pattern);
-                refused(&mut device, interrupts);
-                let bank = device.m.read_ram(0x8000, marker.len());
-                let expect = if page == RAM_PAGE {
-                    vec![0xA5; marker.len()]
-                } else {
-                    marker.to_vec()
-                };
-                assert_eq!(bank, expect, "bank B from page {page:#x}");
-                let now = device.m.ram_page(SPARE_PAGE).to_vec();
-                for at in (0..PAGE).filter(|at| !stack.contains(at) && !saved.contains(at)) {
-                    let crc = (crc_at..crc_at + 4).contains(&at);
-                    assert!(crc || now[at] == pattern[at], "page byte {at:#x} changed");
+    for (layout, image) in LAYOUTS {
+        let marker = *b"flash page marker";
+        let low = label_in(image, "KERNEL_RAM_LOW");
+        let saved = usize::from(low - 0xC000) + 0x10..usize::from(low - 0xC000) + 0x15;
+        let crc_at = usize::from(label_in(image, "KERNEL_CRC") - 0xC000);
+        let stack = usize::from(label_in(image, "KSTACK") - 0xC000)
+            ..usize::from(label_in(image, "KSTACK_TOP") - 0xC000);
+        let mut state = 0x9E37_79B9u32;
+        let random: Vec<u8> = (0..PAGE)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                (state >> 9) as u8
+            })
+            .collect();
+        let ready = usize::from(label_in(image, "KERNEL_RAM_LOW") + 0xA0 - 0xC000);
+        for pattern in [vec![0xFF; PAGE], vec![0x01; PAGE], random] {
+            assert_ne!(pattern[ready..ready + 2], [0xA5, 0x5A]);
+            for page in [RAM_PAGE, 0x50] {
+                for interrupts in [0u8, 1] {
+                    let mut device = Device::with_image(image);
+                    device.m.load_flash(0x50, 0, &marker);
+                    device.m.load_ram(0x8000, &[0xA5; 64]);
+                    device.m.out_port(PORT_BANK_B, page);
+                    device.m.ram_page(SPARE_PAGE).copy_from_slice(&pattern);
+                    refused(&mut device, interrupts);
+                    let bank = device.m.read_ram(0x8000, marker.len());
+                    let expect = if page == RAM_PAGE {
+                        vec![0xA5; marker.len()]
+                    } else {
+                        marker.to_vec()
+                    };
+                    assert_eq!(bank, expect, "bank B from page {page:#x}");
+                    let now = device.m.ram_page(SPARE_PAGE).to_vec();
+                    for at in (0..PAGE).filter(|at| !stack.contains(at) && !saved.contains(at)) {
+                        let crc = (crc_at..crc_at + 4).contains(&at);
+                        assert!(
+                            crc || now[at] == pattern[at],
+                            "{layout}: page byte {at:#x} changed"
+                        );
+                    }
                 }
             }
         }
@@ -413,44 +426,46 @@ const REGISTERS: [u8; 10] = [0x57, 0x13, 0x68, 0x24, 0x9C, 0x36, 0xAE, 0x48, 0xC
 
 #[test]
 fn the_checksum_restores_registers_the_bank_the_interrupts_and_all_other_memory() {
-    let (_, small) = small_library();
-    let bytes = padded(&small, 2 * CHUNK + 100);
-    let marker = *b"flash page marker";
-    let stack = usize::from(label("KSTACK_TOP") - label("KSTACK"));
-    for page in [RAM_PAGE, 0x50] {
-        for interrupts in [0u8, 1] {
-            let mut device = Device::with_library(&bytes);
-            device.m.load_flash(0x50, 0, &marker);
-            device.m.load_ram(0x8000, &vec![0xA5; PAGE]);
-            fill_outside(device.m.ram_page(SPARE_PAGE), DEFAULT, 0x5A);
-            device.kram_write(label("KSTACK"), &vec![0xCC; stack]);
-            device.m.out_port(PORT_BANK_B, page);
-            device
-                .m
-                .load_ram(device.label("TEST_IFF_IN"), &[interrupts]);
-            let run = run_entry(&mut device, "ENTRY_CRC_ENV", 255);
-            assert_eq!((run.init, run.overall(), run.value), (0, 0, sum(&bytes)));
-            assert_eq!(device.byte("TEST_IFF"), interrupts, "interrupts");
-            let regs = device.m.read_ram(device.label("TEST_REGS"), 10);
-            assert_eq!(regs, REGISTERS, "registers");
-            let bank = device.m.read_ram(0x8000, marker.len());
-            let expect = if page == RAM_PAGE {
-                vec![0xA5; marker.len()]
-            } else {
-                marker.to_vec()
-            };
-            assert_eq!(bank, expect, "bank B from page {page:#x}");
-            if page == RAM_PAGE {
-                assert_eq!(device.m.read_ram(0x8000, PAGE), vec![0xA5; PAGE]);
+    for (layout, image) in LAYOUTS {
+        let (_, small) = small_library();
+        let bytes = padded(&small, 2 * CHUNK + 100);
+        let marker = *b"flash page marker";
+        let stack = usize::from(label_in(image, "KSTACK_TOP") - label_in(image, "KSTACK"));
+        for page in [RAM_PAGE, 0x50] {
+            for interrupts in [0u8, 1] {
+                let mut device = Device::with_image_library(image, &bytes);
+                device.m.load_flash(0x50, 0, &marker);
+                device.m.load_ram(0x8000, &vec![0xA5; PAGE]);
+                fill_outside(device.m.ram_page(SPARE_PAGE), image, 0x5A);
+                device.kram_write(label_in(image, "KSTACK"), &vec![0xCC; stack]);
+                device.m.out_port(PORT_BANK_B, page);
+                device
+                    .m
+                    .load_ram(device.label("TEST_IFF_IN"), &[interrupts]);
+                let run = run_entry(&mut device, "ENTRY_CRC_ENV", 255);
+                assert_eq!((run.init, run.overall(), run.value), (0, 0, sum(&bytes)));
+                assert_eq!(device.byte("TEST_IFF"), interrupts, "{layout}: interrupts");
+                let regs = device.m.read_ram(device.label("TEST_REGS"), 10);
+                assert_eq!(regs, REGISTERS, "{layout}: registers");
+                let bank = device.m.read_ram(0x8000, marker.len());
+                let expect = if page == RAM_PAGE {
+                    vec![0xA5; marker.len()]
+                } else {
+                    marker.to_vec()
+                };
+                assert_eq!(bank, expect, "bank B from page {page:#x}");
+                if page == RAM_PAGE {
+                    assert_eq!(device.m.read_ram(0x8000, PAGE), vec![0xA5; PAGE]);
+                }
+                let outside = device.m.ram_page(SPARE_PAGE);
+                assert_eq!(first_outside_not(outside, image, 0x5A), None);
+                let used = device.kram(label_in(image, "KSTACK"), stack);
+                let deepest = used.iter().position(|&b| b != 0xCC).unwrap_or(stack);
+                assert!(
+                    deepest >= 128,
+                    "the kernel stack comes within 128 bytes of its end"
+                );
             }
-            let outside = device.m.ram_page(SPARE_PAGE);
-            assert_eq!(first_outside_not(outside, DEFAULT, 0x5A), None);
-            let used = device.kram(label("KSTACK"), stack);
-            let deepest = used.iter().position(|&b| b != 0xCC).unwrap_or(stack);
-            assert!(
-                deepest >= 128,
-                "the kernel stack comes within 128 bytes of its end"
-            );
         }
     }
 }
@@ -468,23 +483,26 @@ fn vector(device: &mut Device, data: &[u8]) -> u32 {
 #[test]
 fn the_core_reproduces_the_published_test_vector_and_table() {
     assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
-    let mut device = Device::new();
-    assert_eq!(vector(&mut device, b"123456789"), 0xCBF4_3926);
-    let table = device.kram_label("CRC_TABLE", 1024);
-    let entry =
-        |i: usize| u32::from_le_bytes([table[i], table[256 + i], table[512 + i], table[768 + i]]);
-    assert_eq!(entry(0), 0);
-    assert_eq!(entry(1), 0x7707_3096);
-    assert_eq!(entry(2), 0xEE0E_612C);
-    assert_eq!(entry(255), 0x2D02_EF8D);
-    assert_eq!(vector(&mut device, b""), 0);
-    let data: Vec<u8> = (0..2000u32).map(|i| (i * 167 + 13) as u8).collect();
-    for len in (0..=70).chain([255, 256, 257, 1000, 2000]) {
-        assert_eq!(
-            vector(&mut device, &data[..len]),
-            crc32(&data[..len]),
-            "length {len}"
-        );
+    for (_, image) in LAYOUTS {
+        let mut device = Device::with_image(image);
+        assert_eq!(vector(&mut device, b"123456789"), 0xCBF4_3926);
+        let table = device.kram_label("CRC_TABLE", 1024);
+        let entry = |i: usize| {
+            u32::from_le_bytes([table[i], table[256 + i], table[512 + i], table[768 + i]])
+        };
+        assert_eq!(entry(0), 0);
+        assert_eq!(entry(1), 0x7707_3096);
+        assert_eq!(entry(2), 0xEE0E_612C);
+        assert_eq!(entry(255), 0x2D02_EF8D);
+        assert_eq!(vector(&mut device, b""), 0);
+        let data: Vec<u8> = (0..2000u32).map(|i| (i * 167 + 13) as u8).collect();
+        for len in (0..=70).chain([255, 256, 257, 1000, 2000]) {
+            assert_eq!(
+                vector(&mut device, &data[..len]),
+                crc32(&data[..len]),
+                "length {len}"
+            );
+        }
     }
 }
 

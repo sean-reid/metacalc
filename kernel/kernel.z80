@@ -1,7 +1,11 @@
 ; metacalc proof kernel for the TI-84 Plus SE. Checks a library in format MCL1
-; (crates/mcpack/src/library/mod.rs) and accepts or refuses exactly what the host
-; model mcpack::library::Kernel does, except that the CRC-32 in the header is checked by
-; kernel_crc_begin and kernel_crc_chunk, not by kernel_init.
+; (crates/mcpack/src/library/mod.rs) and accepts or refuses what the host model
+; mcpack::library::Kernel does, with four differences. The CRC-32 in the header is checked by
+; kernel_crc_begin and kernel_crc_chunk, not by kernel_init. The header's length field is
+; trusted: the model requires it to equal the library's real size, the kernel requires it to be
+; at least the header, below 2^24 and within the flash pages left, and reads no further than it.
+; Limits above a buffer's capacity are clamped to it, where the model takes them as given.
+; kernel_verify can return ST_INTERRUPTED, which the model never does.
 ;
 ; Code runs from flash in bank A and is position dependent. Assembling this file
 ; alone places it at $4000; an including file defines KERNEL_EMBEDDED first and
@@ -10,8 +14,10 @@
 ; Memory. Every entry point maps RAM page KERNEL_RAM_PAGE (default 3, the calculator's spare
 ; page) into bank C through port 5 and keeps all its storage there, in two regions that TI-OS
 ; leaves alone: KERNEL_RAM_LOW, default $C500, $1200 bytes, and KERNEL_RAM_HIGH, default $DF00,
-; $2000 bytes. Define either as another multiple of $100 inside bank C to move it; the regions
-; must not overlap. No other byte of the page is written, and no other page is.
+; $2000 bytes. Either may be defined as another multiple of $100 from $C000 up, provided its
+; region ends at or below $10000, and the regions must not overlap. KERNEL_RAM_PAGE may be 2 to
+; 7; pages 0 and 1 are TI-OS's own. ram.inc refuses any other value when the kernel is assembled.
+; No other byte of the page is written, and no other page is.
 ;
 ; The caller cannot see that storage: its own bank C, including its stack, is swapped out for
 ; the length of a call. Nothing the caller needs lives there. Parameters go in through a block in
@@ -40,11 +46,12 @@
 ;                          Malformed. With 0, DE:HL = the CRC-32, DE the high 16 bits and HL the
 ;                          low 16; with Malformed, DE:HL = 0; otherwise DE and HL are destroyed.
 ;
-; kernel_verify returns Malformed unless a kernel_init succeeded and no later kernel_init
-; failed. The state survives between calls, and across TI-OS calls that leave the two regions
-; alone. It may be called any number of times after that init. Limits above a
-; buffer's capacity (CAP_* in ram.inc) are clamped to it when kernel_init runs. The library
-; is stored the way TI-OS stores an app: chunk c of 16 KB at flash page KERNEL_LIB_PAGE - c.
+; kernel_verify returns Malformed unless the ready mark, which kernel_init sets when it succeeds
+; and clears when it fails, is in place. The mark guards the init sequence, not the contents
+; of the regions: the regions belong to the kernel between calls, and a caller that writes them
+; gets undefined results. The mark can survive an app's exit, so every app session must call
+; kernel_init before kernel_verify. Once it has, kernel_verify may be called any number of times.
+; The library is stored the way TI-OS stores an app: chunk c of 16 KB at flash page KERNEL_LIB_PAGE - c.
 ; kernel_init refuses a library page >= $80 and a library that needs more than
 ; KERNEL_LIB_PAGE + 1 chunks; one that ends exactly at page 0 is accepted. The page is
 ; copied at init, so a later change to the caller's parameter block has no effect until the next

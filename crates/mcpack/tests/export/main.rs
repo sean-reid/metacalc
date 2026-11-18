@@ -363,6 +363,7 @@ fn a_symbol_named_like_a_generated_label_is_not_reused() {
 
 fn temp(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }

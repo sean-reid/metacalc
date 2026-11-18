@@ -76,6 +76,7 @@ fn every_used_soft_key_is_its_own_inverted_box_with_the_label_centred_inside() {
         ["Fold", "Dist", "Why", "Try", ""],
         ["Fold", "Up", "Thm", "", ""],
         ["Aply", "Hyp", "Auto", "Undo", "Tree"],
+        ["Use", "Hyp", "Auto", "Undo", "Tree"],
         ["Go", "", "", "Undo", "Tree"],
         ["Stop", "", "", "", ""],
     ];
