@@ -27,11 +27,23 @@ impl fmt::Display for FontError {
 
 impl std::error::Error for FontError {}
 
-/// Whether a token takes a blank gap on either side of it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// How a token asks for blank space around it.
+///
+/// `before` and `after` ask for a gap on that side. `var` asks for one next to another `var` token.
+/// `open` removes any gap after it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Pad {
     pub before: bool,
     pub after: bool,
+    pub var: bool,
+    pub open: bool,
+}
+
+impl Pad {
+    /// Whether a gap separates `self` from the token that follows it.
+    pub fn gap_before(self, next: Pad) -> bool {
+        !self.open && (self.after || next.before || (self.var && next.var))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -129,21 +141,27 @@ impl Font {
             let mut parts = line.split_whitespace();
             let token = parts.next().expect("line is not empty");
             let pad = match parts.next() {
-                Some("tight") => Pad {
-                    before: false,
-                    after: false,
-                },
-                Some("before") => Pad {
+                Some("tight") => Pad::default(),
+                Some("before") | Some("binder") => Pad {
                     before: true,
-                    after: false,
+                    ..Pad::default()
                 },
                 Some("after") => Pad {
-                    before: false,
                     after: true,
+                    ..Pad::default()
                 },
                 Some("both") => Pad {
                     before: true,
                     after: true,
+                    ..Pad::default()
+                },
+                Some("var") => Pad {
+                    var: true,
+                    ..Pad::default()
+                },
+                Some("open") => Pad {
+                    open: true,
+                    ..Pad::default()
                 },
                 other => return Err(err(FILE, n, format!("bad spacing {other:?}"))),
             };

@@ -108,6 +108,37 @@ fn renders_a_token_run_with_tight_and_spaced_neighbours() {
     );
 }
 
+fn xs(tokens: &[&str]) -> Vec<usize> {
+    let lines = font().layout(tokens, 96).unwrap();
+    assert_eq!(lines.len(), 1);
+    lines[0].tokens.iter().map(|p| p.x).collect()
+}
+
+#[test]
+fn adjacent_variables_get_a_gap_and_parentheses_stay_tight() {
+    assert_eq!(
+        xs(&["x", "t", "y"]),
+        [0, 4 + 1 + SPACE, 4 + 1 + SPACE + 3 + 1 + SPACE]
+    );
+    assert_eq!(xs(&["(", "x", ")"]), [0, 3, 8]);
+}
+
+#[test]
+fn binders_take_a_gap_before_and_stay_tight_to_their_variable() {
+    assert_eq!(
+        xs(&["r", "A.", "y"]),
+        [0, 3 + 1 + SPACE, 3 + 1 + SPACE + 5 + 1]
+    );
+    assert_eq!(xs(&["A.", "x"]), [0, 5 + 1]);
+    assert_eq!(xs(&["(", "A.", "x"]), [0, 3, 3 + 5 + 1]);
+}
+
+#[test]
+fn gaps_never_double_up() {
+    assert_eq!(xs(&["ph", "/\\", "A."])[2], 5 + 1 + SPACE + 5 + 1 + SPACE);
+    assert_eq!(xs(&["].", "[."])[1], 4 + 1 + SPACE);
+}
+
 fn long_statement() -> Vec<&'static str> {
     "|- ( ( R e. Ring /\\ X e. B /\\ Y e. B ) -> ( ( X .x. ( Y .+ Z ) ) = ( ( X .x. Y ) .+ ( X .x. Z ) ) ) )"
         .split(' ')
@@ -152,8 +183,10 @@ fn a_line_breaks_only_when_the_next_token_does_not_fit() {
     let lines = font().layout(&tokens, 64).unwrap();
     for pair in lines.windows(2) {
         let (last, next) = (pair[0].tokens.last().unwrap(), &pair[1].tokens[0]);
-        let spaced = font().token_pad(tokens[last.index]).unwrap().after
-            || font().token_pad(tokens[next.index]).unwrap().before;
+        let spaced = font()
+            .token_pad(tokens[last.index])
+            .unwrap()
+            .gap_before(font().token_pad(tokens[next.index]).unwrap());
         let gap = 1 + if spaced { SPACE } else { 0 };
         assert!(
             pair[0].width + gap + next.width > 64,

@@ -25,7 +25,7 @@ fn main() {
     let font = Font::builtin();
 
     let names: Vec<&str> = font.glyph_names().collect();
-    for (page, names) in names.chunks(36).enumerate() {
+    for (page, names) in names.chunks(40).enumerate() {
         write(
             &out,
             &format!("chart-{}", page + 1),
@@ -60,19 +60,21 @@ fn main() {
 }
 
 fn chart(font: &Font, names: &[&str]) -> Bitmap {
-    const CELL: (usize, usize) = (44, 20);
-    const COLS: usize = 6;
+    const CELL: (usize, usize) = (68, 10);
+    const COLS: usize = 5;
     let mut out = Bitmap::new(COLS * CELL.0, names.len().div_ceil(COLS) * CELL.1);
     for (i, name) in names.iter().enumerate() {
-        let (x, y) = ((i % COLS) * CELL.0 + 3, (i / COLS) * CELL.1 + 2);
+        let (x, y) = ((i % COLS) * CELL.0 + 2, (i / COLS) * CELL.1 + 1);
         out.blit(font.glyph(name).expect("glyph exists"), x, y);
-        let mut pen = x;
-        for c in name.chars() {
-            let letter = font
-                .glyph(&c.to_string())
-                .expect("names are spelled in glyphs");
-            out.blit(letter, pen, y + 10);
-            pen += letter.width() + 1;
+        if name.len() > 1 {
+            let mut pen = x + 11;
+            for c in name.chars() {
+                let letter = font
+                    .glyph(&c.to_string())
+                    .expect("names are spelled in glyphs");
+                out.blit(letter, pen, y);
+                pen += letter.width() + 1;
+            }
         }
     }
     out

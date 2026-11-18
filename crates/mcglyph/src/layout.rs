@@ -2,7 +2,7 @@ use crate::bitmap::Bitmap;
 use crate::font::Font;
 use std::fmt;
 
-/// Blank columns between two tokens when either one asks for spacing, on top of the one-column glyph gap.
+/// Blank columns between two tokens when [`crate::Pad::gap_before`] holds, on top of the one-column glyph gap.
 pub const SPACE: usize = 2;
 
 /// Blank rows between text lines.
@@ -53,7 +53,7 @@ impl Font {
     /// Breaks `tokens` into lines no wider than `limit`, only ever between tokens.
     pub fn layout(&self, tokens: &[&str], limit: usize) -> Result<Vec<Line>, RenderError> {
         let mut lines: Vec<Line> = Vec::new();
-        let mut prev_after = false;
+        let mut prev: Option<crate::Pad> = None;
         for (index, &token) in tokens.iter().enumerate() {
             let width = self
                 .token_width(token)
@@ -66,8 +66,9 @@ impl Font {
                 });
             }
             let pad = self.token_pad(token).expect("token is known");
-            let gap = 1 + if prev_after || pad.before { SPACE } else { 0 };
-            prev_after = pad.after;
+            let spaced = prev.is_some_and(|p| p.gap_before(pad));
+            let gap = 1 + if spaced { SPACE } else { 0 };
+            prev = Some(pad);
             let fits = lines
                 .last()
                 .is_some_and(|line| line.width + gap + width <= limit);

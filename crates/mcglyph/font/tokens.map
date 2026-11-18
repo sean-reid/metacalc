@@ -1,98 +1,99 @@
-; token, spacing, glyphs. Spacing is tight, before, after or both.
+; token, spacing, glyphs. Spacing is tight, before, after, both, var, binder or open.
+; var: gap next to another var. binder: gap before. open: no gap after.
 ; Single characters come from the latexdef and althtmldef lines of set.mm.
 ; Subscript g and r are small glyphs set on the baseline row, not full letters.
 ; Symbol variables (.+ .0. .1. .x. .o.) carry a dotted underline.
 
-( tight lparen
+( open lparen
 ) tight rparen
 -> both rarr
 -. tight not
 wff after w f f
 |- after turnstile
-ph tight phi
-ps tight psi
-ch tight chi
-th tight theta
-ta tight tau
-et tight eta
-ze tight zeta
+ph var phi
+ps var psi
+ch var chi
+th var theta
+ta var tau
+et var eta
+ze var zeta
 <-> both harr
 /\ both and
 \/ both or
 , after comma
-A. tight forall
+A. binder forall
 setvar after s e t v a r
-x tight x
+x var x
 class after c l a s s
 = both equals
-A tight A
-B tight B
+A var A
+B var B
 T. tight top
-y tight y
+y var y
 F. tight bot
-z tight z
-w tight w
-v tight v
-u tight u
-t tight t
-E. tight exists
+z var z
+w var w
+v var v
+u var u
+t var t
+E. binder exists
 F/ tight finv
-f tight f
-g tight g
-s tight s
-[ tight lbracket
+f var f
+g var g
+s var s
+[ open lbracket
 / both slash
 ] tight rbracket
 e. both in
-E* tight exists star
-E! tight exists exclam
-{ tight lbrace
+E* binder exists star
+E! binder exists exclam
+{ open lbrace
 | both bar
 } tight rbrace
 .+ both svplus
-.0. tight svzero
-.1. tight svone
+.0. var svzero
+.1. var svone
 .x. both svdot
 .o. both svcirc
-C tight C
-D tight D
-R tight R
-S tight S
-T tight T
-U tight U
-e tight e
-h tight h
-m tight m
-n tight n
-o tight o
-E tight E
-F tight F
-G tight G
-H tight H
-I tight I
-K tight K
-L tight L
-M tight M
-N tight N
-V tight V
-W tight W
-X tight X
-Y tight Y
-Z tight Z
-O tight O
-r tight r
-p tight p
-a tight a
-b tight b
-c tight c
-d tight d
+C var C
+D var D
+R var R
+S var S
+T var T
+U var U
+e var e
+h var h
+m var m
+n var n
+o var o
+E var E
+F var F
+G var G
+H var H
+I var I
+K var K
+L var L
+M var M
+N var N
+V var V
+W var W
+X var X
+Y var Y
+Z var Z
+O var O
+r var r
+p var p
+a var a
+b var b
+c var c
+d var d
 F/_ tight finvu
 =/= both ne
 e/ both notin
 _V tight cV
-[. tight lbrackb
-]. tight rbrackb
-[_ tight lbrackl
+[. open lbrackb
+]. after rbrackb
+[_ open lbrackl
 ]_ tight rbrackl
 C_ both subseteq
 C. both subsetneq
@@ -102,7 +103,7 @@ u. both cup
 (/) tight emptyset
 if after i f
 ~P after pset
-<. tight langle
+<. open langle
 >. tight rangle
 U. after bigcup
 U_ after bigcupu
@@ -127,7 +128,7 @@ Ord after O r d
 On tight O n
 Lim after L i m
 suc after s u c
-iota tight iota
+iota binder iota
 : tight colon
 Fun after F u n
 Fn both F n
@@ -136,7 +137,7 @@ Fn both F n
 -onto-> both surj
 -1-1-onto-> both bij
 ` tight lsquo
-iota_ tight iotau
+iota_ binder iotau
 _om tight omega
 2nd after 2 n d
 frecs tight f r e c s
