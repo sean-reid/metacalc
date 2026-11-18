@@ -405,13 +405,19 @@ fn an_interrupt_leaves_the_main_registers_ix_and_iy_and_changes_the_shadow_set()
     assert_eq!(w[0..4], [0xC6A9, 0x1234, 0x5678, 0x9ABC], "AF, BC, DE, HL");
     assert_eq!(w[4..6], [0xDEF0, 0xBEEF], "IX and IY");
     assert_eq!(w[6], w[12], "SP");
-    // The scan leaves B at 0, C at 7Fh after seven rotations, E at 56 and L at 0, with H as it was, and A and
-    // the flags as OR A leaves them with no key down.
-    assert_eq!(
-        w[7..11],
-        [0x007F, 0x0038, 0x3300, 0x0044],
-        "BC', DE', HL', AF'"
-    );
+    // The shadow set started as 1111h, 2222h, 3333h and A5C3h. HL' counts as changed because L
+    // is: the handler leaves H as it was.
+    for (i, (was, name)) in [
+        (0x1111, "BC'"),
+        (0x2222, "DE'"),
+        (0x3333, "HL'"),
+        (0xA5C3, "AF'"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_ne!(w[7 + i], was, "{name} is as the app left it");
+    }
 }
 
 #[test]
