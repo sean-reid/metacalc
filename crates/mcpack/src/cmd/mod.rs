@@ -1,7 +1,7 @@
 mod inspect;
 mod library;
 
-pub use inspect::{closure, parse, verify};
+pub use inspect::{closure, outline, parse, verify};
 pub use library::{build, doc, pack};
 
 use mcpack::mm::{self, Database, Grammar};

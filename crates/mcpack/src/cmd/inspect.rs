@@ -87,3 +87,12 @@ pub fn verify(db: &Database) -> ExitCode {
         ExitCode::FAILURE
     }
 }
+
+pub fn outline(db: &Database, label: &str) -> Result<ExitCode, ExitCode> {
+    let id = db
+        .find(label)
+        .ok_or_else(|| super::unusable(format_args!("no statement is labelled {label}")))?;
+    let tree = mm::outline(db, id, "|-").map_err(|e| fail(format_args!("{label}: {e}")))?;
+    print!("{}", tree.render(db));
+    Ok(ExitCode::SUCCESS)
+}
