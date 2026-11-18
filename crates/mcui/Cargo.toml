@@ -1,0 +1,12 @@
+[package]
+name = "mcui"
+description = "Host model of the metacalc screens: key events in, exact 96x64 frames out"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+mcglyph = { path = "../mcglyph" }
+mcpack = { path = "../mcpack" }

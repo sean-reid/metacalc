@@ -1,0 +1,262 @@
+#![allow(dead_code)]
+
+use mcpack::library::{self, pack};
+use mcpack::mm::{self, Database, Grammar, StmtId};
+use mcui::{Installed, Key, Status, Statuses, Ui};
+
+/// A small logic with one binder, a distinct variable condition and a theorem whose
+/// hypotheses alone fill more rows than the screen has.
+pub const LOGIC: &str = "
+$c ( ) -> wff |- setvar A. $.
+$v ph ps ch x $.
+wph $f wff ph $.
+wps $f wff ps $.
+wch $f wff ch $.
+vx $f setvar x $.
+wi $a wff ( ph -> ps ) $.
+wal $a wff A. x ph $.
+ax-1 $a |- ( ph -> ( ps -> ph ) ) $.
+ax-2 $a |- ( ( ph -> ( ps -> ch ) ) -> ( ( ph -> ps ) -> ( ph -> ch ) ) ) $.
+${
+  min $e |- ph $.
+  maj $e |- ( ph -> ps ) $.
+  ax-mp $a |- ps $.
+$}
+${
+  $d x ph $.
+  ax-5 $a |- ( ph -> A. x ph ) $.
+$}
+${
+  a1i.1 $e |- ph $.
+  a1i $p |- ( ps -> ph ) $= wph wps wph wi a1i.1 wph wps ax-1 ax-mp $.
+$}
+${
+  a2i.1 $e |- ( ph -> ( ps -> ch ) ) $.
+  a2i $p |- ( ( ph -> ps ) -> ( ph -> ch ) ) $=
+    wph wps wch wi wi wph wps wi wph wch wi wi a2i.1 wph wps wch ax-2 ax-mp $.
+$}
+${
+  mpd.1 $e |- ( ph -> ps ) $.
+  mpd.2 $e |- ( ph -> ( ps -> ch ) ) $.
+  mpd $p |- ( ph -> ch ) $=
+    wph wps wi wph wch wi mpd.1 wph wps wch mpd.2 a2i ax-mp $.
+$}
+${
+  syl.1 $e |- ( ph -> ps ) $.
+  syl.2 $e |- ( ps -> ch ) $.
+  syl $p |- ( ph -> ch ) $= wph wps wch syl.1 wps wch wi wph syl.2 a1i mpd $.
+$}
+id $p |- ( ph -> ph ) $= wph wph wph wi wph wph wph ax-1 wph wph wph wi ax-1 mpd $.
+${
+  $d x ph $.
+  alid $p |- ( ph -> A. x ph ) $= wph vx ax-5 $.
+$}
+${
+  many.1 $e |- ph $.
+  many.2 $e |- ps $.
+  many.3 $e |- ch $.
+  many.4 $e |- ( ph -> ps ) $.
+  many.5 $e |- ( ps -> ch ) $.
+  many.6 $e |- ( ph -> ch ) $.
+  many.7 $e |- ( ch -> ph ) $.
+  many.8 $e |- ( ps -> ph ) $.
+  ax-many $a |- ( ph -> ( ps -> ch ) ) $.
+$}
+";
+
+/// The logic plus a theorem proved by a hypothesis alone, a syntax theorem, a theorem whose proof
+/// applies an assertion with eight hypotheses, and an axiom with forty-five distinct variable pairs.
+pub const EXTRA: &str = "
+$v y z w v u t s f g $.
+vy $f setvar y $.
+vz $f setvar z $.
+vw $f setvar w $.
+vv $f setvar v $.
+vu $f setvar u $.
+vt $f setvar t $.
+vs $f setvar s $.
+vf $f setvar f $.
+vg $f setvar g $.
+${
+  foo.1 $e |- ph $.
+  foo $p |- ph $= foo.1 $.
+$}
+wtwice $p wff ( ph -> ph ) $= wph wph wi $.
+${
+  many2.1 $e |- ph $.
+  many2.2 $e |- ps $.
+  many2.3 $e |- ch $.
+  many2.4 $e |- ( ph -> ps ) $.
+  many2.5 $e |- ( ps -> ch ) $.
+  many2.6 $e |- ( ph -> ch ) $.
+  many2.7 $e |- ( ch -> ph ) $.
+  many2.8 $e |- ( ps -> ph ) $.
+  many2 $p |- ( ph -> ( ps -> ch ) ) $=
+    wph wps wch many2.1 many2.2 many2.3 many2.4 many2.5 many2.6 many2.7 many2.8 ax-many $.
+$}
+${
+  $d x y z w v u t s f g $.
+  ax-dvs $a |- A. x A. y A. z A. w A. v A. u A. t A. s A. f A. g ph $.
+$}
+";
+
+pub fn extra_bytes() -> Vec<u8> {
+    let src = format!("{LOGIC}{EXTRA}");
+    let bytes = pack_all(&db(&src)).expect("the extended logic packs");
+    library::check(&bytes).expect("the kernel accepts the extended logic");
+    bytes
+}
+
+/// A user interface over one library named `logic`, every assertion checked except the ones named.
+pub fn ui_over(bytes: Vec<u8>, unchecked: &[&str], failed: &[&str]) -> Ui {
+    let table = statuses(&bytes, unchecked, failed);
+    Ui::new(
+        vec![Installed {
+            name: "logic".into(),
+            bytes,
+        }],
+        Statuses {
+            libraries: vec![table],
+            my_proofs: 2,
+        },
+    )
+    .expect("the library loads")
+}
+
+/// A library of 1200 axioms, enough for four-digit counts.
+pub fn big_bytes() -> Vec<u8> {
+    let mut src = String::from("$c wff |- $.\n$v ph $.\nwph $f wff ph $.\n");
+    for n in 1..=1200 {
+        src.push_str(&format!("ax{n} $a |- ph $.\n"));
+    }
+    pack_all(&db(&src)).expect("the big library packs")
+}
+
+pub fn extra_ui() -> Ui {
+    ui_over(extra_bytes(), &[], &[])
+}
+
+/// The bytes of `bytes` with the `which`th reference of assertion `label` set to `to`.
+pub fn patch_reference(bytes: &[u8], label: &str, which: usize, to: u16) -> Vec<u8> {
+    let u16_at = |at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]) as usize;
+    let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+    let count = u16_at(14);
+    let directory = u32_at(16);
+    for i in 0..count {
+        let mut at = u32_at(directory + 4 * i);
+        let theorem = bytes[at] == 1;
+        let len = bytes[at + 1] as usize;
+        if &bytes[at + 2..at + 2 + len] != label.as_bytes() {
+            continue;
+        }
+        assert!(theorem);
+        at += 2 + len;
+        let hyps = bytes[at] as usize;
+        at += 1;
+        for _ in 0..hyps {
+            at += if bytes[at] == 0 {
+                2
+            } else {
+                2 + bytes[at + 1] as usize
+            };
+        }
+        at += 2 + 2 * u16_at(at);
+        at += 1 + bytes[at] as usize;
+        at += 2 + 2 * u16_at(at);
+        let refs = u16_at(at);
+        assert!(which < refs);
+        let mut out = bytes.to_vec();
+        out[at + 2 + 2 * which..at + 4 + 2 * which].copy_from_slice(&to.to_le_bytes());
+        return out;
+    }
+    panic!("no theorem {label}");
+}
+
+/// Whether the title row of `frame` is `left` at the left margin and `right` at the right margin
+/// in white on black, and nothing else is drawn in it.
+pub fn title_is(frame: &mcglyph::Bitmap, left: &str, right: &str) -> bool {
+    let font = mcglyph::Font::builtin();
+    let (l, r) = (font.text(left), font.text(right));
+    let right_x = 95usize.saturating_sub(r.width());
+    (0..8).all(|y| {
+        (0..96).all(|x| {
+            let ink = |t: &mcglyph::Bitmap, at: usize| x >= at && y >= 1 && t.get(x - at, y - 1);
+            frame.get(x, y) == !(ink(&l, 1) || ink(&r, right_x))
+        })
+    })
+}
+
+pub fn db(src: &str) -> Database {
+    mm::parse(src.as_bytes().to_vec()).expect("database parses")
+}
+
+/// Every assertion of `db` packed into a library, or `None` when it cannot be packed.
+pub fn pack_all(db: &Database) -> Option<Vec<u8>> {
+    let grammar = Grammar::new(db, &[("|-", "wff")]).ok()?;
+    let roots: Vec<StmtId> = (0..db.stmts.len() as StmtId)
+        .filter(|&id| db.stmt(id).kind.is_assertion())
+        .collect();
+    let kept = mm::closure(db, &grammar, &roots).ok()?;
+    pack(db, &kept).ok()
+}
+
+pub fn logic_bytes() -> Vec<u8> {
+    let bytes = pack_all(&db(LOGIC)).expect("the logic packs");
+    library::check(&bytes).expect("the kernel accepts the logic");
+    bytes
+}
+
+/// Axioms checked, theorems checked except the ones named, one marked failed.
+pub fn statuses(bytes: &[u8], unchecked: &[&str], failed: &[&str]) -> Vec<Status> {
+    library::read(bytes)
+        .expect("library reads")
+        .iter()
+        .map(|a| {
+            if failed.contains(&a.label.as_str()) {
+                Status::Failed
+            } else if unchecked.contains(&a.label.as_str()) {
+                Status::Unchecked
+            } else {
+                Status::Checked
+            }
+        })
+        .collect()
+}
+
+pub fn ui_with(unchecked: &[&str], failed: &[&str]) -> Ui {
+    let bytes = logic_bytes();
+    let table = statuses(&bytes, unchecked, failed);
+    Ui::new(
+        vec![Installed {
+            name: "logic".into(),
+            bytes,
+        }],
+        Statuses {
+            libraries: vec![table],
+            my_proofs: 2,
+        },
+    )
+    .expect("the library loads")
+}
+
+pub fn ui() -> Ui {
+    ui_with(&["a2i"], &["id"])
+}
+
+pub fn press(ui: &mut Ui, keys: &[Key]) {
+    keys.iter().for_each(|&k| ui.press(k));
+}
+
+pub fn typed(ui: &mut Ui, text: &str) {
+    text.chars().for_each(|c| ui.press(Key::Letter(c)));
+}
+
+/// Opens the logic library and the theorem `label` in it.
+pub fn open(ui: &mut Ui, label: &str) {
+    press(ui, &[Key::Enter, Key::F2]);
+    typed(ui, label);
+    while !matches!(ui.state(), mcui::State::List { label: Some(ref l), .. } if l == label) {
+        ui.press(Key::Down);
+    }
+    ui.press(Key::Enter);
+}

@@ -7,7 +7,9 @@ mod bitmap;
 mod font;
 mod layout;
 pub mod png;
+mod text;
 
 pub use bitmap::Bitmap;
 pub use font::{Font, FontError, FontErrorKind, MAX_GLYPH_WIDTH, Pad};
-pub use layout::{LEADING, Line, Placed, RenderError, SPACE};
+pub use layout::{Item, LEADING, Line, Placed, RenderError, SPACE, place};
+pub use text::{CHECK, CROSS, ELLIPSIS, SPACE_WIDTH};

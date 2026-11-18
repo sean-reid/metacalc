@@ -74,6 +74,39 @@ fn a_syntax_theorem_parses_as_its_own_typecode() {
     assert_eq!(rpn(&db, &parsed.conclusion), "wtru wp wi");
 }
 
+#[test]
+fn an_expression_parses_through_the_floats_it_is_given() {
+    let db = db("");
+    let grammar = grammar(&db);
+    let ax = db.find("ax-rev").unwrap();
+    let floats: Vec<(mm::Sym, StmtId)> = db
+        .stmt(ax)
+        .frame
+        .hyps
+        .iter()
+        .map(|&h| (db.stmt(h).expr[1], h))
+        .collect();
+    let whole = grammar.parse(ax).unwrap().conclusion;
+    let alone = grammar.parse_expr(&db.stmt(ax).expr, &floats).unwrap();
+    assert_eq!(alone, whole);
+    let inner: Vec<mm::Sym> = db.stmt(db.find("wth").unwrap()).expr.clone();
+    assert!(grammar.parse_expr(&inner, &floats).is_ok());
+    assert_eq!(grammar.parse_expr(&inner, &[]), Err(SyntaxError::NoParse));
+}
+
+#[test]
+fn a_shared_grammar_parses_like_a_borrowing_one_and_outlives_the_borrow() {
+    let shared = std::rc::Rc::new(db(""));
+    let grammar = Grammar::shared(shared.clone(), &[("|-", "wff")]).expect("grammar builds");
+    let id = shared.find("ax-rev").unwrap();
+    let borrowed = Grammar::new(&shared, &[("|-", "wff")]).unwrap();
+    let want = rpn(&shared, &borrowed.parse(id).unwrap().conclusion);
+    drop(borrowed);
+    assert_eq!(rpn(&shared, &grammar.parse(id).unwrap().conclusion), want);
+    let refused = Grammar::shared(shared, &[("|-", "nope")]);
+    assert!(matches!(refused, Err(GrammarError::UnknownSymbol(_))));
+}
+
 fn parse_error(tail: &str, label: &str) -> SyntaxError {
     let db = db(tail);
     grammar(&db)
