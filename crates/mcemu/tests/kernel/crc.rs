@@ -264,23 +264,43 @@ fn the_checksum_needs_a_successful_init() {
     );
 }
 
+fn crc_before(device: &mut Device) -> u32 {
+    let raw = device.m.read_ram(device.label("TEST_CRC_BEFORE"), 4);
+    u32::from_le_bytes(raw.try_into().unwrap())
+}
+
 #[test]
-fn a_run_is_ordered_begin_then_chunks_and_a_new_init_ends_it() {
+fn a_successful_init_ends_a_run() {
     let (_, small) = small_library();
     let bytes = padded(&small, 2 * CHUNK + 100);
     let mut device = Device::with_library(&bytes);
-
-    let run = run_entry(&mut device, "ENTRY_CRC_REINIT", 0);
+    let run = run_entry(&mut device, "ENTRY_CRC_SECOND_INIT", 0);
     assert_eq!(run.init, 0);
     let both = device.m.read_ram(device.label("TEST_STATUSES"), 2);
     assert_eq!(both, [MORE, MALFORMED]);
+    assert_ne!(crc_before(&mut device), 0);
+    assert_eq!(run.value, 0);
+}
 
+#[test]
+fn begin_again_restarts_a_run() {
+    let (_, small) = small_library();
+    let bytes = padded(&small, 2 * CHUNK + 100);
+    let mut device = Device::with_library(&bytes);
     let run = run_entry(&mut device, "ENTRY_CRC_RESTART", 255);
     assert_eq!((run.begin, run.overall(), run.value), (0, 0, sum(&bytes)));
     assert_eq!(run.statuses.len(), 3);
+}
 
-    run_entry(&mut device, "ENTRY_CRC_AGAIN", 255);
+#[test]
+fn a_chunk_after_a_finished_run_is_refused_and_clears_the_value() {
+    let (_, small) = small_library();
+    let bytes = padded(&small, 2 * CHUNK + 100);
+    let mut device = Device::with_library(&bytes);
+    let run = run_entry(&mut device, "ENTRY_CRC_AGAIN", 255);
     assert_eq!(device.byte("TEST_CRC_EXTRA"), MALFORMED);
+    assert_eq!(crc_before(&mut device), sum(&bytes));
+    assert_eq!(run.value, 0);
 }
 
 #[test]
@@ -330,6 +350,65 @@ fn the_checksum_runs_at_another_address() {
     device.load(&wrong);
     let run = run_crc(&mut device);
     assert_eq!((run.overall(), run.value), (MALFORMED, 0));
+}
+
+fn refused(device: &mut Device, interrupts: u8) {
+    device
+        .m
+        .load_ram(device.label("TEST_IFF_IN"), &[interrupts]);
+    let run = run_entry(device, "ENTRY_CRC_REFUSED_IFF", 0);
+    assert_eq!(run.begin, MALFORMED, "begin");
+    assert_eq!(device.byte("TEST_CRC_EXTRA"), MALFORMED, "chunk");
+    assert_eq!(run.value, 0, "value");
+    let after_begin = device.m.read_ram(device.label("TEST_IFF"), 2);
+    assert_eq!(after_begin[1], interrupts, "interrupts after begin");
+    assert_eq!(after_begin[0], interrupts, "interrupts after chunk");
+}
+
+#[test]
+fn a_refused_call_restores_everything_whatever_the_block_held() {
+    let marker = *b"flash page marker";
+    let base = label("KERNEL_RAM");
+    let block = usize::from(label("KERNEL_RAM_END") - base);
+    let crc_at = usize::from(label("KERNEL_CRC") - base);
+    let mut state = 0x9E37_79B9u32;
+    let random: Vec<u8> = (0..block)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            (state >> 9) as u8
+        })
+        .collect();
+    let ready = usize::from(label("KERNEL_RAM") + 0xA0 - base);
+    for pattern in [vec![0xFF; block], vec![0x01; block], random] {
+        assert_ne!(pattern[ready..ready + 2], [0xA5, 0x5A]);
+        for page in [RAM_PAGE, 0x50] {
+            for interrupts in [0u8, 1] {
+                let mut device = Device::new();
+                device.m.load_flash(0x50, 0, &marker);
+                device.m.load_ram(0x8000, &[0xA5; 64]);
+                device.m.out_port(PORT_BANK_B, page);
+                device.m.load_ram(base, &pattern);
+                refused(&mut device, interrupts);
+                let bank = device.m.read_ram(0x8000, marker.len());
+                let expect = if page == RAM_PAGE {
+                    vec![0xA5; marker.len()]
+                } else {
+                    marker.to_vec()
+                };
+                assert_eq!(bank, expect, "bank B from page {page:#x}");
+                let now = device.m.read_ram(base, block);
+                let stack =
+                    usize::from(label("KSTACK") - base)..usize::from(label("KSTACK_TOP") - base);
+                let entry = 0x10..0x14;
+                for at in (9..block).filter(|at| !stack.contains(at) && !entry.contains(at)) {
+                    let crc = (crc_at..crc_at + 4).contains(&at);
+                    assert!(crc || now[at] == pattern[at], "block byte {at:#x} changed");
+                }
+            }
+        }
+    }
 }
 
 const REGISTERS: [u8; 10] = [0x57, 0x13, 0x68, 0x24, 0x9C, 0x36, 0xAE, 0x48, 0xC0, 0x5A];

@@ -20,6 +20,7 @@ TEST_CRC_CALLS		.equ $FF0C
 TEST_BUF_LEN		.equ $FF1C
 TEST_BUF		.equ TEST_STATUSES
 TEST_CRC_EXTRA		.equ $FF0D
+TEST_CRC_BEFORE		.equ $FF1E
 
 .org $4000
 	jp entry_one
@@ -150,7 +151,7 @@ entry_crc_raw:
 	call crc_run
 	halt
 
-entry_crc_reinit:
+entry_crc_second_init:
 	di
 	call kernel_init
 	call kernel_crc_begin
@@ -158,6 +159,10 @@ entry_crc_reinit:
 	ld (TEST_STATUSES),a
 	call kernel_init
 	ld (TEST_INIT_STATUS),a
+	ld hl,(KERNEL_CRC)
+	ld (TEST_CRC_BEFORE),hl
+	ld hl,(KERNEL_CRC+2)
+	ld (TEST_CRC_BEFORE+2),hl
 	call kernel_crc_chunk
 	ld (TEST_STATUSES+1),a
 	halt
@@ -166,6 +171,10 @@ entry_crc_again:
 	di
 	call kernel_init
 	call crc_run
+	ld hl,(KERNEL_CRC)
+	ld (TEST_CRC_BEFORE),hl
+	ld hl,(KERNEL_CRC+2)
+	ld (TEST_CRC_BEFORE+2),hl
 	call kernel_crc_chunk
 	ld (TEST_CRC_EXTRA),a
 	halt
@@ -227,6 +236,26 @@ entry_crc_restart:
 	call kernel_crc_begin
 	call kernel_crc_chunk
 	call crc_run
+	halt
+
+entry_crc_refused_iff:
+	xor a
+	out (3),a
+	ld a,(TEST_IFF_IN)
+	or a
+	jr z,refused_go
+	ei
+refused_go:
+	nop
+	call kernel_crc_begin
+	ld (TEST_CRC_BEGIN),a
+	call iff_flag
+	ld a,(TEST_IFF)
+	ld (TEST_IFF+1),a
+	call kernel_crc_chunk
+	ld (TEST_CRC_EXTRA),a
+	call iff_flag
+	di
 	halt
 
 entry_crc_env:
