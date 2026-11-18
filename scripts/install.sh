@@ -34,8 +34,16 @@ platform() {
 	esac
 }
 
+curl_safe() {
+	if [ -n "${METACALC_BASE_URL:-}" ]; then
+		curl "$@"
+	else
+		curl --proto =https --tlsv1.2 "$@"
+	fi
+}
+
 latest_tag() {
-	url=$(curl -fsSIL -o /dev/null -w '%{url_effective}' "https://github.com/$repo/releases/latest") ||
+	url=$(curl_safe -fsSIL -o /dev/null -w '%{url_effective}' --url "https://github.com/$repo/releases/latest") ||
 		die "could not reach github.com to find the latest release"
 	case $url in
 	*/releases/tag/*) say "${url##*/}" ;;
@@ -45,8 +53,13 @@ latest_tag() {
 
 fetch() {
 	say "downloading $1"
-	curl -fsSL --retry 2 -o "$tmp/$1" "$base/$tag/$1" ||
-		die "could not download $base/$tag/$1; check that release $tag has it"
+	rc=0
+	curl_safe -fsSL --retry 2 -o "$tmp/$1" --url "$base/$tag/$1" || rc=$?
+	[ "$rc" -eq 0 ] && return 0
+	if [ "$rc" -eq 22 ] && [ "$1" = SHA256SUMS ] && [ "$pinned" = no ]; then
+		die "release $tag has no files attached yet; try again in a few minutes"
+	fi
+	die "could not download $base/$tag/$1; check that release $tag has it"
 }
 
 digest() {
@@ -73,7 +86,9 @@ main() {
 	base=${METACALC_BASE_URL:-https://github.com/$repo/releases/download}
 	base=${base%/}
 	tag=${METACALC_VERSION:-}
+	pinned=yes
 	if [ -z "$tag" ]; then
+		pinned=no
 		[ -z "${METACALC_BASE_URL:-}" ] || die "set METACALC_VERSION along with METACALC_BASE_URL"
 		tag=$(latest_tag)
 	fi
@@ -95,7 +110,7 @@ main() {
 
 	say "sending metacalc.8xk to the calculator"
 	status=0
-	"$tmp/mcsend-$tag-$os-$arch/mcsend" "$tmp/metacalc.8xk" || status=$?
+	"$tmp/mcsend-$tag-$os-$arch/mcsend" "$tmp/metacalc.8xk" </dev/null || status=$?
 	return "$status"
 }
 
