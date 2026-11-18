@@ -22,6 +22,10 @@ case $body in
 	*) fail "app header has no 'metacalc' name field" ;;
 esac
 
+# TI-OS enters an app at 4080h, so the header's last field ends 16 bytes before it.
+[ "$(printf '%s' "$body" | cut -c213-256)" = "807F0000000000000000000000000000000000000000" ] ||
+	fail "app header is not 128 bytes"
+
 # The signer appends 02 2D 40, 64 signature bytes, a 00 or 01 xx trailer, then FF padding.
 sig=$(printf '%s' "$body" | grep -oE '022D40[0-9A-F]{128}(00|01[0-9A-F]{2})F*$' | cut -c7-134 || true)
 [ -n "$sig" ] || fail "no signature field"
