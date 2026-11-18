@@ -87,6 +87,13 @@ jobs:
           path=$(sh scripts/fetch-setmm.sh)
           echo "path=$path" >> "$GITHUB_OUTPUT"
       - run: sh scripts/build-libraries.sh "${{ steps.setmm.outputs.path }}" "$RUNNER_TEMP/libraries" "$RUNNER_TEMP/pages"
+      - uses: ./.github/actions/spasm
+      - run: |
+          for lib in "$RUNNER_TEMP"/libraries/*.mclib; do
+            name=$(basename "$lib" .mclib)
+            make -s -C app BUILD="$RUNNER_TEMP/apps/$name" LIBRARY="$lib"
+            sh app/scripts/check-8xk.sh -l "$lib" "$RUNNER_TEMP/apps/$name/metacalc.8xk"
+          done
       - uses: actions/cache@v6
         with:
           path: .metamath
