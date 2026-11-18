@@ -270,3 +270,45 @@ fn auto_does_not_return_a_step_that_repeats_a_standing_violation() {
     ok.play(&ops).unwrap();
     assert_eq!(verified(&db, &ok.export().unwrap()), Ok(()));
 }
+
+#[test]
+fn a_refined_syntax_axiom_records_its_disjoint_pair() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "tq");
+    let meta = s.apply(0, id(&db, "ax-mp")).unwrap().metas.start;
+    let out = s.refine(meta, id(&db, "wq")).unwrap();
+    assert_eq!(out.violations, []);
+    let out = s.close(1, id(&db, "tq.2")).unwrap();
+    assert_eq!(
+        out.violations,
+        [violation(&db, "wq", "y", "ch", ViolationKind::Undeclared)]
+    );
+    s.close(2, id(&db, "tq.1")).unwrap();
+    assert_eq!(s.status().violations, out.violations);
+    assert!(s.export().is_err());
+    assert_eq!(
+        mcpack::mm::Verifier::new(&db).verify(id(&db, "tq")),
+        Err(mcpack::mm::ProofError::DisjointViolation)
+    );
+}
+
+#[test]
+fn a_refined_syntax_axiom_is_clean_when_the_theorem_declares_the_pair() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "tq-ok");
+    let meta = s.apply(0, id(&db, "ax-mp")).unwrap().metas.start;
+    s.refine(meta, id(&db, "wq")).unwrap();
+    assert_eq!(s.close(1, id(&db, "tq-ok.2")).unwrap().violations, []);
+    s.close(2, id(&db, "tq-ok.1")).unwrap();
+    let done = s.export().unwrap();
+    assert_eq!(labels(&db, &done), "wch vy wq wps tq-ok.2 tq-ok.1 ax-mp");
+    assert_eq!(verified(&db, &done), Ok(()));
+    assert_eq!(
+        mcpack::mm::Verifier::new(&db).verify(id(&db, "tq-ok")),
+        Ok(())
+    );
+}

@@ -6,7 +6,7 @@ use mcpack::mm::{self, Database, Grammar, StmtId, Sym};
 use std::rc::Rc;
 
 pub const SRC: &str = "
-$c ( ) -> -. wff |- A. setvar ~ $.
+$c ( ) -> -. wff |- A. setvar ~ Q $.
 $v ph ps ch th x y z w q $.
 wph $f wff ph $.
 wps $f wff ps $.
@@ -136,6 +136,21 @@ $}
 ${
   $d y ps $.
   tdup-ok $p |- ( ( A. y ps -> ps ) -> ( A. y ps -> ps ) ) $= wps vy wal wps wi wps vy wal wps wi wps vy axq wps vy axq axpair $.
+$}
+${
+  $d x ph $.
+  wq $a wff Q x ph $.
+$}
+${
+  tq.1 $e |- ( Q y ch -> ps ) $.
+  tq.2 $e |- Q y ch $.
+  tq $p |- ps $= wch vy wq wps tq.2 tq.1 ax-mp $.
+$}
+${
+  $d y ch $.
+  tq-ok.1 $e |- ( Q y ch -> ps ) $.
+  tq-ok.2 $e |- Q y ch $.
+  tq-ok $p |- ps $= wch vy wq wps tq-ok.2 tq-ok.1 ax-mp $.
 $}
 vq $f setvar q $.
 ";

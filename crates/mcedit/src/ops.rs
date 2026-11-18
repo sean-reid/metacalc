@@ -78,8 +78,6 @@ impl Session<'_> {
         assertion: StmtId,
         parsed: &Parsed,
     ) -> Result<(), Error> {
-        let db = self.db();
-        let stmt = db.stmt(assertion);
         let base = self.store.meta_count() as MetaId;
         let subst = self.rename(assertion);
         let conclusion = self.build(&parsed.conclusion, &subst);
@@ -93,18 +91,23 @@ impl Session<'_> {
                 state: GoalState::Open,
             });
         }
-        for &(x, y) in &stmt.frame.dv {
-            let term_of = |v: Sym| subst.iter().find(|p| p.0 == v).map(|p| p.1);
-            if let (Some(a), Some(b)) = (term_of(x), term_of(y)) {
-                self.dvs.push(DvCond { assertion, a, b });
-            }
-        }
+        self.push_conditions(assertion, &subst);
         self.goals[goal as usize].state = GoalState::Applied {
             assertion,
             metas: base,
             first,
         };
         Ok(())
+    }
+
+    /// Records the disjoint pairs of `assertion` against the terms substituted for its variables.
+    fn push_conditions(&mut self, assertion: StmtId, subst: &[(Sym, TermId)]) {
+        let term_of = |v: Sym| subst.iter().find(|p| p.0 == v).map(|p| p.1);
+        for &(x, y) in &self.db().stmt(assertion).frame.dv {
+            if let (Some(a), Some(b)) = (term_of(x), term_of(y)) {
+                self.dvs.push(DvCond { assertion, a, b });
+            }
+        }
     }
 
     /// Closes a goal with one of the theorem's essential hypotheses.
@@ -167,18 +170,20 @@ impl Session<'_> {
         }
         let before = self.broken();
         let undo = self.checkpoint(None);
-        let kids: Vec<u32> = stmt
+        let subst: Vec<(Sym, TermId)> = stmt
             .frame
             .hyps
             .iter()
-            .map(|&h| self.store.new_meta(db.stmt(h).expr[0]))
+            .map(|&h| (db.stmt(h).expr[1], self.store.new_meta(db.stmt(h).expr[0])))
             .collect();
+        let kids: Vec<TermId> = subst.iter().map(|p| p.1).collect();
         let term = self.store.app(syntax, &kids);
         let target = self.store.meta_term(meta).ok_or(Error::NoSuchMeta)?;
         if let Err(e) = self.store.unify(target, term) {
             self.rollback_to(undo);
             return Err(Error::Unify(e));
         }
+        self.push_conditions(syntax, &subst);
         Ok(self.commit(Op::Refine { meta, syntax }, undo, &before))
     }
 
