@@ -12,103 +12,129 @@ struct Case {
     reads: bool,
     /// Whether metamath-exe reads it, which differs from `reads` only where we differ on purpose.
     exe: bool,
+    /// A fragment of the message of metamath-exe, where it refuses.
+    exe_says: &'static str,
+    /// A fragment of our message, where we refuse.
+    we_say: &'static str,
     /// The files to write, the first being the one read.
     files: &'static [(&'static str, &'static str)],
 }
 
-const fn case(
-    name: &'static str,
-    reads: bool,
-    files: &'static [(&'static str, &'static str)],
-) -> Case {
+const fn case(name: &'static str, files: &'static [(&'static str, &'static str)]) -> Case {
     Case {
         name,
-        reads,
-        exe: reads,
+        reads: true,
+        exe: true,
+        exe_says: "",
+        we_say: "",
         files,
     }
 }
 
-const fn differs(
+const fn refused(
     name: &'static str,
-    reads: bool,
-    exe: bool,
+    exe_says: &'static str,
+    we_say: &'static str,
     files: &'static [(&'static str, &'static str)],
 ) -> Case {
     Case {
         name,
-        reads,
-        exe,
+        reads: false,
+        exe: false,
+        exe_says,
+        we_say,
+        files,
+    }
+}
+
+const fn only_we_read(
+    name: &'static str,
+    exe_says: &'static str,
+    files: &'static [(&'static str, &'static str)],
+) -> Case {
+    Case {
+        name,
+        reads: true,
+        exe: false,
+        exe_says,
+        we_say: "",
         files,
     }
 }
 
 const CASES: &[Case] = &[
-    case("comment", true, &[("top.mm", "$( a $)\n$c a $.")]),
+    case("comment", &[("top.mm", "$( a $)\n$c a $.")]),
     case(
         "comment with lone dollars",
-        true,
         &[("top.mm", "$( a$ $a a$a $[ $. $)\n$c a $.")],
     ),
-    case(
+    refused(
         "open marker inside a token",
-        false,
+        "Nested comments are not allowed",
+        "$( inside a comment",
         &[("top.mm", "$( a$(b $)\n$c a $.")],
     ),
-    case(
+    refused(
         "open marker ends a token",
-        false,
+        "Nested comments are not allowed",
+        "$( inside a comment",
         &[("top.mm", "$( a$( $)\n$c a $.")],
     ),
-    case(
+    refused(
         "open marker starts a token",
-        false,
+        "Nested comments are not allowed",
+        "$( inside a comment",
         &[("top.mm", "$( $(b $)\n$c a $.")],
     ),
-    case(
+    refused(
         "close marker inside a token",
-        false,
+        "A keyword must be preceded by white space",
+        "$) must stand alone",
         &[("top.mm", "$( a$)b $)\n$c a $.")],
     ),
-    case(
+    refused(
         "close marker ends a token",
-        false,
+        "A keyword must be preceded by white space",
+        "$) must stand alone",
         &[("top.mm", "$( x$) $)\n$c a $.")],
     ),
-    case(
+    refused(
         "close marker starts a token",
-        false,
+        "A keyword must be followed by white space",
+        "$) must stand alone",
         &[("top.mm", "$( $)x $)\n$c a $.")],
     ),
-    case(
+    refused(
         "dollar before a close marker",
-        false,
+        "A keyword must be preceded by white space",
+        "$) must stand alone",
         &[("top.mm", "$( $$) $)\n$c a $.")],
     ),
-    case(
+    refused(
         "dollar before an open marker",
-        false,
+        "Nested comments are not allowed",
+        "$( inside a comment",
         &[("top.mm", "$( $$( $)\n$c a $.")],
     ),
-    case(
+    refused(
         "nested comment",
-        false,
+        "Nested comments are not allowed",
+        "$( inside a comment",
         &[("top.mm", "$( a $( b $) $)\n$c a $.")],
     ),
-    case("close marker alone", false, &[("top.mm", "$c a $. $)")]),
-    case(
-        "inclusion",
-        true,
-        &[("top.mm", "$[ inc.mm $]"), ("inc.mm", BASE)],
+    refused(
+        "close marker alone",
+        "A comment terminator was found outside of a comment",
+        "unexpected $)",
+        &[("top.mm", "$c a $. $)")],
     ),
+    case("inclusion", &[("top.mm", "$[ inc.mm $]"), ("inc.mm", BASE)]),
     case(
         "file included twice",
-        true,
         &[("top.mm", "$[ inc.mm $] $[ inc.mm $]"), ("inc.mm", BASE)],
     ),
     case(
         "file included twice and more after",
-        true,
         &[
             ("top.mm", "$[ inc.mm $] $[ inc.mm $] $c x $."),
             ("inc.mm", BASE),
@@ -116,15 +142,13 @@ const CASES: &[Case] = &[
     ),
     // metamath-exe reads `./inc.mm` as a second file and fails on the repeated statements; we
     // key files by canonical path, so both spellings are one file and the second is skipped.
-    differs(
+    only_we_read(
         "file included twice under another spelling",
-        true,
-        false,
+        "This symbol has already been declared in this scope",
         &[("top.mm", "$[ inc.mm $] $[ ./inc.mm $]"), ("inc.mm", BASE)],
     ),
     case(
         "inclusion inside a block",
-        true,
         &[
             ("top.mm", "$c wff |- $. $v p $. ${ $[ inc.mm $] $}"),
             ("inc.mm", "wp $f wff p $."),
@@ -132,74 +156,92 @@ const CASES: &[Case] = &[
     ),
     case(
         "inclusion inside a statement",
-        true,
         &[("top.mm", "$c a $[ inc.mm $] $."), ("inc.mm", "b c")],
     ),
     case(
         "block opened in the included file",
-        true,
         &[("top.mm", "$[ inc.mm $] $}"), ("inc.mm", "${")],
     ),
     case(
         "inclusion inside a comment",
-        true,
         &[("top.mm", "$( $[ missing.mm $] $)\n$c a $.")],
     ),
-    case("missing file", false, &[("top.mm", "$[ missing.mm $]")]),
-    case("no file name", false, &[("top.mm", "$[ $]")]),
-    case(
+    refused(
+        "missing file",
+        "was not found",
+        "cannot read missing.mm",
+        &[("top.mm", "$[ missing.mm $]")],
+    ),
+    refused(
+        "no file name",
+        "is unterminated or has ill-formed",
+        "$[ is not closed by $]",
+        &[("top.mm", "$[ $]")],
+    ),
+    refused(
         "two file names",
-        false,
+        "is unterminated or has ill-formed",
+        "$[ takes one file name and $]",
         &[("top.mm", "$[ a.mm b.mm $]"), ("a.mm", BASE)],
     ),
     case(
         "dollar in the file name",
-        true,
         &[("top.mm", "$[ a$b.mm $]"), ("a$b.mm", BASE)],
     ),
-    case(
+    refused(
         "unclosed inclusion",
-        false,
+        "is unterminated or has ill-formed",
+        "$[ is not closed by $]",
         &[("top.mm", "$[ inc.mm"), ("inc.mm", BASE)],
     ),
-    case(
+    refused(
         "inclusion closed by another keyword",
-        false,
+        "is unterminated or has ill-formed",
+        "$[ takes one file name and $]",
         &[("top.mm", "$[ inc.mm $.\n"), ("inc.mm", BASE)],
     ),
-    case("close without open", false, &[("top.mm", "$] $c a $.")]),
-    case(
+    refused(
+        "close without open",
+        "is required before",
+        "unexpected $]",
+        &[("top.mm", "$] $c a $.")],
+    ),
+    refused(
         "second close",
-        false,
+        "is required before",
+        "unexpected $]",
         &[("top.mm", "$[ inc.mm $] $]"), ("inc.mm", BASE)],
     ),
-    case(
+    refused(
         "comment opened in the included file",
-        false,
+        "End of comment not found",
+        "unterminated comment",
         &[("top.mm", "$[ inc.mm $] x $)"), ("inc.mm", "$( open")],
     ),
-    case(
+    refused(
         "file includes itself",
-        false,
+        "DETECTED BUG",
+        "top.mm includes itself",
         &[("top.mm", "$[ top.mm $]\n$c a $.")],
     ),
-    case(
+    refused(
         "files include each other",
-        false,
+        "DETECTED BUG",
+        "top.mm includes itself",
         &[("top.mm", "$[ a.mm $]"), ("a.mm", "$[ top.mm $]")],
     ),
     case(
         "name read from where the database is read, not from the including file",
-        true,
         &[
             ("top.mm", "$[ sub/a.mm $]"),
             ("sub/a.mm", "$[ b.mm $]"),
             ("b.mm", BASE),
         ],
     ),
-    case(
+    refused(
         "name found only beside the including file",
-        false,
+        "was not found",
+        "cannot read b.mm",
         &[
             ("top.mm", "$[ sub/a.mm $]"),
             ("sub/a.mm", "$[ b.mm $]"),
@@ -208,7 +250,6 @@ const CASES: &[Case] = &[
     ),
     case(
         "path with a parent directory",
-        true,
         &[
             ("top.mm", "$[ sub/../inc.mm $]"),
             ("sub/a.mm", ""),
@@ -246,6 +287,15 @@ fn the_parser_reads_what_the_table_says_metamath_exe_reads() {
             case.name,
             parsed.as_ref().err()
         );
+        if let Err(error) = parsed {
+            let message = error.to_string();
+            assert!(
+                message.contains(case.we_say),
+                "{}: {message} does not say {}",
+                case.name,
+                case.we_say
+            );
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
@@ -279,6 +329,12 @@ fn the_table_is_what_metamath_exe_reads() {
             if reads { "reads it" } else { "refuses it" }
         );
         assert_eq!(reads, case.exe, "{}:\n{text}", case.name);
+        assert!(
+            text.contains(case.exe_says),
+            "{}: metamath-exe does not say {}:\n{text}",
+            case.name,
+            case.exe_says
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
