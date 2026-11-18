@@ -106,3 +106,16 @@ fn run_app_with_a_limit_of_zero_returns_at_once() {
     assert_eq!(m.regs(), before);
     assert_eq!(m.run_app(1000).stop, Stop::Limit);
 }
+
+#[test]
+fn after_a_fault_the_core_has_reset_and_loaded_memory_is_gone() {
+    let marker = [0xA5, 0x5A, 0xA5, 0x5A];
+    let mut m = boot();
+    m.launch(0x30).expect("the launch setup runs");
+    m.load_ram(CODE, &marker);
+    assert_eq!(m.read_ram(CODE, 4), marker);
+    m.load_flash(0x20, 0, &[0x00, 0x76]);
+    m.out_port(0x06, 0x20);
+    assert_eq!(m.run(0x4000, 1000).stop, Stop::Fault);
+    assert_ne!(m.read_ram(CODE, 4), marker);
+}

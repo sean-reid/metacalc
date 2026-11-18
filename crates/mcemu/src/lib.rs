@@ -39,7 +39,10 @@ pub enum Stop {
     /// interrupts on is the app waiting for the next one, and the run goes on.
     Halted,
     Limit,
-    /// The core raised a hardware exception or stopped for another reason of its own.
+    /// The core raised a hardware exception or stopped for another reason of its own. The
+    /// core resets the machine on every exception, so after this the memory map is the
+    /// reset one: `read_ram` reads flash, nothing loaded is where it was, and the machine
+    /// is not to be used again.
     Fault,
     /// The app left through `_JForceCmdNoChar`.
     Exited,
@@ -181,6 +184,8 @@ impl Machine {
     /// instead of ending the run. The count includes the HALT. A stub service that ends the
     /// run reports its own stop. A `limit` of 0 returns `Stop::Limit` with 0 T-states and
     /// leaves the machine untouched, `pc` and interrupts included.
+    ///
+    /// After `Stop::Fault` the core has reset the machine: see `Stop::Fault`.
     pub fn run(&mut self, pc: u16, limit: u32) -> Run {
         if limit == 0 {
             return Run::NO_TIME;
