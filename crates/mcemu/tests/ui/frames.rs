@@ -1,8 +1,8 @@
 //! Whole screens replayed on the Z80. Statements, goals, hypotheses, tree lines and bars are laid
 //! out by the host, so they arrive as ink layers that the test ORs into the frame where the model
 //! drew them. What these tests prove is the layering of the Z80 calls (title, rows, soft keys,
-//! inverts, markers and the order they and the ink go in); every replay prints how many lit
-//! pixels the Z80 calls produced and requires some. Glyph drawing itself is proved in draw.rs
+//! inverts, markers and the order they and the ink go in); every replay prints how many of the
+//! lit pixels the Z80 calls also light on their own and requires some. Glyph drawing itself is proved in draw.rs
 //! and font.rs, and the mutation test below shows that a wrong glyph fails a replay.
 
 #[path = "../../../mcui/tests/support/mod.rs"]
@@ -18,6 +18,11 @@ fn lit(frame: &[u8]) -> u32 {
     frame.iter().map(|b| b.count_ones()).sum()
 }
 
+/// Pixels lit in both frames.
+fn lit_in_both(a: &[u8], b: &[u8]) -> u32 {
+    a.iter().zip(b).map(|(x, y)| (x & y).count_ones()).sum()
+}
+
 /// Replays the calls that drew `ui`'s screen on the Z80 and requires all 768 bytes to equal the
 /// model's frame. Returns the number of calls replayed.
 fn replay(name: &str, ui: &Ui) -> usize {
@@ -31,11 +36,13 @@ fn replay(name: &str, ui: &Ui) -> usize {
         .filter(|op| !matches!(op, Op::Ink(_)))
         .cloned()
         .collect();
-    let (z80, all) = (lit(&run(REAL, &drawn).frame), lit(&got.frame));
+    let z80_only = run(REAL, &drawn).frame;
+    let (z80, all) = (lit_in_both(&z80_only, &got.frame), lit(&got.frame));
     assert!(z80 > 0, "{name}: no pixel comes from a Z80 call");
+    assert!(z80 <= all);
     let _ = writeln!(
         std::io::stderr(),
-        "{name}: {z80} of {all} lit pixels ({}%) come from Z80 calls",
+        "{name}: {z80} of {all} lit pixels are also lit by the Z80 calls alone ({}%)",
         z80 * 100 / all
     );
     calls.len()
