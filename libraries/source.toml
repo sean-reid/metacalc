@@ -1,0 +1,4 @@
+repository = "https://github.com/metamath/set.mm"
+commit = "0d6c5866bf48cead82b4c64ab1d1fb42cfa55f71"
+path = "set.mm"
+sha256 = "099864b6785c45be66026cf19ec3f3a77c9cac15d586eb954d8de205ea2fa52b"
