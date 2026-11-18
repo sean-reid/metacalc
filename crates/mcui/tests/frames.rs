@@ -283,3 +283,21 @@ fn a_long_name_gives_way_to_a_kind_suffix_and_wide_counts() {
     assert!(support::title_is(&frame, &left, right));
     check_frame(&frame, "list-long-name");
 }
+
+#[test]
+fn list_after_a_miss_and_a_movement_key() {
+    let mut ui = ui();
+    press(&mut ui, &[Enter, F2]);
+    typed(&mut ui, "synx");
+    press(&mut ui, &[Down]);
+    check(&ui, "list-find-miss-then-down");
+}
+
+#[test]
+fn list_after_a_match_and_a_movement_key() {
+    let mut ui = ui();
+    press(&mut ui, &[Enter, F2]);
+    typed(&mut ui, "ax-m");
+    press(&mut ui, &[Down]);
+    check(&ui, "list-find-match-then-down");
+}

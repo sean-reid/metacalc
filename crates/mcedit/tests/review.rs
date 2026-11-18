@@ -1,7 +1,7 @@
 mod common;
 
 use common::*;
-use mcedit::{Catalog, Clash, Error, Session};
+use mcedit::{Catalog, Clash, Error, Session, Vars};
 use mcpack::mm::Kind;
 
 fn put(out: &mut Vec<u8>, mut n: u32) {
@@ -97,6 +97,11 @@ fn stale_and_out_of_range_ids_are_answered_not_panicked_on() {
         assert_eq!(s.refine(meta, id(&db, "wn")), Err(Error::NoSuchMeta));
     }
     assert_eq!(s.show(u32::MAX), None);
+    let vars = Vars::new(&db, id(&db, "t1"));
+    assert_eq!(vars.typecode(sym(&db, "ph")), Some(sym(&db, "wff")));
+    for unknown in [sym(&db, "wff"), sym(&db, "q"), u32::MAX] {
+        assert_eq!(vars.typecode(unknown), None);
+    }
 }
 
 #[test]

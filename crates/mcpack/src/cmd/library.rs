@@ -52,6 +52,7 @@ pub fn doc(
     library: &Path,
     output: &Path,
     require_unicode: bool,
+    require_meaning: bool,
 ) -> Result<ExitCode, ExitCode> {
     let (manifest, pin) = manifest_and_pin(manifest)?;
     let bytes = read(library)?;
@@ -64,6 +65,14 @@ pub fn doc(
             "{}: no Unicode spelling for {}",
             library.display(),
             unmapped.join(" ")
+        )));
+    }
+    let unexplained = page::unexplained(&bytes).map_err(broken)?;
+    if require_meaning && !unexplained.is_empty() {
+        return Err(fail(format_args!(
+            "{}: no meaning for {}",
+            library.display(),
+            unexplained.join(" ")
         )));
     }
     std::fs::write(output, &text)
