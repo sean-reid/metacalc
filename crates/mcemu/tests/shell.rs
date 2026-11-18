@@ -66,27 +66,100 @@ fn visit(os: &mut RealOs, hold_on: u32) {
     os.tap(KEY_CLEAR, 150, 1500);
 }
 
+/// The address the CPU waits at on the home screen, the halt of the OS's key wait: the one seen
+/// most often over 200 ms.
+fn idle_pc(os: &mut RealOs) -> u16 {
+    let mut seen = std::collections::HashMap::new();
+    for _ in 0..2000 {
+        os.run_us(100);
+        *seen.entry(os.m.pc()).or_insert(0) += 1;
+    }
+    let (pc, n) = seen.into_iter().max_by_key(|&(_, n)| n).unwrap();
+    assert!(n > 1000, "the home screen does not idle at one address");
+    pc
+}
+
+/// Runs until the CPU is at `pc` with interrupts on, so nothing is half done in a handler.
+fn to_idle(os: &mut RealOs, pc: u16) {
+    for _ in 0..50_000 {
+        if os.m.pc() == pc && os.m.regs().iff1 == 1 {
+            return;
+        }
+        os.run_us(20);
+    }
+    panic!("the OS never came back to its key wait at {pc:04x}");
+}
+
+struct Home {
+    state: State,
+    flags: Vec<u8>,
+}
+
+fn at_home(os: &mut RealOs, pc: u16) -> Home {
+    to_idle(os, pc);
+    Home {
+        state: state(&mut os.m, &OS_PORTS),
+        flags: flags(os),
+    }
+}
+
+/// The two flags the shell sets or clears, as the bytes hold them.
+fn graph_draw(h: &Home) -> bool {
+    h.flags[GRAPH_FLAGS - OS_FLAGS] & GRAPH_DRAW != 0
+}
+
+fn on_interrupt(h: &Home) -> bool {
+    h.flags[ON_FLAGS - OS_FLAGS] & ON_INTERRUPT != 0
+}
+
+fn mask_the_two(h: &Home) -> Vec<u8> {
+    let mut flags = h.flags.clone();
+    flags[GRAPH_FLAGS - OS_FLAGS] &= !GRAPH_DRAW;
+    flags[ON_FLAGS - OS_FLAGS] &= !ON_INTERRUPT;
+    flags
+}
+
+/// Draws a graph, so that graphDraw is clear, then runs the app with ON held inside it, and
+/// returns the home screen before and after.
+fn visit_from_a_graph(app: &[u8], hold_on: u32) -> Option<(Home, Home)> {
+    let mut os = RealOs::boot(app)?;
+    os.tap(KEY_GRAPH, 150, 2500);
+    os.tap(KEY_CLEAR, 150, 800);
+    let pc = idle_pc(&mut os);
+    let before = at_home(&mut os, pc);
+    visit(&mut os, hold_on);
+    let after = at_home(&mut os, pc);
+    Some((before, after))
+}
+
 #[test]
 fn the_os_is_in_the_state_it_was_in_before_the_shell_ran() {
     let app = shell();
     let control = assemble_routine("wait_app.z80");
     for hold_on in [0, 200] {
-        let Some(mut os) = RealOs::boot(&app) else {
+        let msg = format!("ON held {hold_on} ms");
+        let Some((before, after)) = visit_from_a_graph(&app, hold_on) else {
             return;
         };
-        os.run_ms(1000);
-        let before = state(&mut os.m, &OS_PORTS);
-        visit(&mut os, hold_on);
-        let after = state(&mut os.m, &OS_PORTS);
-        assert_eq!(after, before, "ON held {hold_on} ms");
+        assert!(!graph_draw(&before), "{msg}: a valid graph to start from");
+        assert_eq!(after.state, before.state, "{msg}");
+        assert!(graph_draw(&after), "{msg}: the OS will redraw the graph");
+        assert!(!on_interrupt(&after), "{msg}: no break left for the OS");
 
-        let mut plain = RealOs::boot(&control).unwrap();
-        plain.run_ms(1000);
-        visit(&mut plain, hold_on);
+        // an app that only waits shows what the OS does to the two flags itself
+        let (_, plain) = visit_from_a_graph(&control, hold_on).unwrap();
+        assert!(
+            !graph_draw(&plain),
+            "{msg}: the OS leaves graphDraw as it was"
+        );
+        assert!(
+            !on_interrupt(&plain),
+            "{msg}: the OS clears a break itself before it idles"
+        );
         assert_eq!(
-            flags(&mut os),
-            flags(&mut plain),
-            "the OS flags differ from an app that only waits, ON held {hold_on} ms"
+            mask_the_two(&after),
+            mask_the_two(&plain),
+            "{msg}: another OS flag differs from an app that only waits"
         );
     }
 }
@@ -110,7 +183,7 @@ fn an_on_press_inside_the_app_is_cleared_before_the_app_hands_over() {
     os.m.press_key(KEY_CLEAR);
     // graphDraw is the app's last mark before it hands the machine to the OS.
     for _ in 0..2000 {
-        os.m.run_time(50);
+        os.run_us(50);
         if os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW != 0 {
             break;
         }
