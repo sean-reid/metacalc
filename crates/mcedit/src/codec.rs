@@ -26,6 +26,9 @@ fn take(bytes: &mut &[u8]) -> Result<u32, Error> {
         }
         n |= u32::from(b & 0x7f) << shift;
         if b < 0x80 {
+            if b == 0 && shift > 0 {
+                return Err(Error::Corrupt);
+            }
             return Ok(n);
         }
     }

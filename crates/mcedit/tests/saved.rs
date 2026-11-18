@@ -88,17 +88,27 @@ fn a_session_saved_against_another_library_is_refused() {
 
 #[test]
 fn statements_inserted_before_the_theorem_do_not_let_a_save_restore_as_another_proof() {
-    let (db, bytes) = saved();
-    let src = SRC.replacen("wi $a wff", "wi2 $a wff ( ph <-> ps ) $.\nwi $a wff", 1);
-    let src = src.replacen("$c (", "$c <-> (", 1);
-    let moved = mm::parse(src.into_bytes()).unwrap();
-    assert_ne!(moved.find("t1"), db.find("t1"));
-    let g = Grammar::new(&moved, &[("|-", "wff")]).unwrap();
-    let cat = Catalog::new(&moved, &g, LIBRARY ^ 0x1000);
+    let identity = |src: &str| mcpack::library::crc32(src.as_bytes());
+    let before = mm::parse(SRC.as_bytes().to_vec()).unwrap();
+    let g = Grammar::new(&before, &[("|-", "wff")]).unwrap();
+    let mut s =
+        Session::start_in(Catalog::new(&before, &g, identity(SRC)), id(&before, "t1")).unwrap();
+    s.apply(0, id(&before, "ax-mp")).unwrap();
+    let bytes = s.save();
+
+    let edited = SRC.replacen("wi $a wff", "wn2 $a wff -. ph $.\nwi $a wff", 1);
+    assert_ne!(edited, SRC);
+    let after = mm::parse(edited.as_bytes().to_vec()).unwrap();
+    assert_ne!(after.find("t1"), before.find("t1"));
+    let g2 = Grammar::new(&after, &[("|-", "wff")]).unwrap();
+    let moved = Catalog::new(&after, &g2, identity(&edited));
     assert_eq!(
-        Session::restore(cat, &bytes).err(),
+        Session::restore(moved, &bytes).err(),
         Some(Error::WrongLibrary)
     );
+
+    let same = Catalog::new(&before, &g, identity(SRC));
+    assert!(Session::restore(same, &bytes).is_ok());
 }
 
 /// `rounds` rounds of doubling on `tbig`, as the operations a saved session holds.
@@ -120,6 +130,48 @@ fn a_saved_session_past_the_term_bound_is_refused() {
     assert!(Session::restore(catalog(&db, &g), &doubling(&db, 10)).is_ok());
     assert_eq!(
         Session::restore(catalog(&db, &g), &doubling(&db, 11)).err(),
+        Some(Error::Corrupt)
+    );
+}
+
+#[test]
+fn a_small_session_saves_as_these_exact_bytes() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = Catalog::new(&db, &g, 0x0102_0304);
+    let s = Session::start_in(cat.clone(), id(&db, "t1")).unwrap();
+    assert_eq!(id(&db, "t1"), 27);
+    let saved = s.save();
+    assert_eq!(saved, [2, 4, 3, 2, 1, 2, 27, 0, 88, 165, 18, 61]);
+    assert!(Session::restore(cat, &saved).is_ok());
+}
+
+#[test]
+fn an_overlong_number_is_refused_even_with_a_correct_checksum() {
+    let (db, bytes) = saved();
+    let g = grammar(&db);
+    assert!(Session::restore(catalog(&db, &g), &bytes).is_ok());
+    let body_len = bytes[5] as usize;
+    let mut body = bytes[6..6 + body_len].to_vec();
+    let rewrap = |length: &[u8], body: &[u8]| {
+        let mut out = vec![2];
+        out.extend(LIBRARY.to_le_bytes());
+        out.extend(length);
+        out.extend(body);
+        out.extend(mcpack::library::crc32(&out).to_le_bytes());
+        out
+    };
+    let long = [0x80 | body_len as u8, 0x00];
+    let overlong_length = rewrap(&long, &body);
+    assert_eq!(
+        Session::restore(catalog(&db, &g), &overlong_length).err(),
+        Some(Error::Corrupt)
+    );
+    body[0] |= 0x80;
+    body.insert(1, 0);
+    let overlong_body = rewrap(&[body.len() as u8], &body);
+    assert_eq!(
+        Session::restore(catalog(&db, &g), &overlong_body).err(),
         Some(Error::Corrupt)
     );
 }
