@@ -185,7 +185,12 @@ impl<'a> Grammar<'a> {
         Ok(Parsed { hyps, conclusion })
     }
 
-    fn parse_expr(&self, expr: &[Sym], floats: &[(Sym, StmtId)]) -> Result<Rc<Tree>, SyntaxError> {
+    /// Parses one expression, typecode first, reading each variable through the float hypothesis `floats` pairs it with.
+    pub fn parse_expr(
+        &self,
+        expr: &[Sym],
+        floats: &[(Sym, StmtId)],
+    ) -> Result<Rc<Tree>, SyntaxError> {
         let typecode = self
             .provable
             .iter()
