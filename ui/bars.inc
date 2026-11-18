@@ -48,8 +48,6 @@ ui_soft_keys:
 	ld (ui_kb),hl
 	ld a,5
 	ld (ui_kn),a
-	ld a,UI_ROW
-	ld (ui_rows),a
 sk_next:
 	ld hl,(ui_kp)
 	ld e,(hl)
@@ -95,7 +93,40 @@ sk_skip:
 	ld (ui_fontp),hl
 	ret
 
-; Flips a key's box from its record, HL = the record past its two x bytes. Destroys AF BC DE HL.
+; Flips a key's box from its record, HL = the record past its two x bytes: eight scanlines, with
+; one or two whole bytes between the edge bytes. Destroys AF BC DE HL.
+#macro FLIP3
+	ld a,(hl)
+	xor c
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	xor b
+	ld (hl),a
+	add hl,de
+#endmacro
+#macro FLIP4
+	ld a,(hl)
+	xor c
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	xor b
+	ld (hl),a
+	add hl,de
+#endmacro
 sk_flip:
 	ld e,(hl)
 	inc hl
@@ -106,21 +137,30 @@ sk_flip:
 	ld a,(hl)
 	inc hl
 	ld b,(hl)
-	push bc
-	push af
 	ex de,hl
-	call iv_col
-	pop af
-	ld c,$FF
-sk_mid:
-	push af
-	call iv_col
-	pop af
 	dec a
-	jr nz,sk_mid
-	pop bc
-	ld c,b
-	jp iv_col
+	jr nz,sk_flip4
+	ld de,UI_STRIDE-2
+	FLIP3
+	FLIP3
+	FLIP3
+	FLIP3
+	FLIP3
+	FLIP3
+	FLIP3
+	FLIP3
+	ret
+sk_flip4:
+	ld de,UI_STRIDE-3
+	FLIP4
+	FLIP4
+	FLIP4
+	FLIP4
+	FLIP4
+	FLIP4
+	FLIP4
+	FLIP4
+	ret
 
 ; A key box record: its first and last column, the address of its top left byte in the frame,
 ; the mask of the first byte, the number of whole bytes between, and the mask of the last. The
