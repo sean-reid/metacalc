@@ -16,8 +16,8 @@ fn the_kernel_stops_where_the_model_stops() {
     for (terms, nv, expected) in [
         (two_terms(1, 1, 0, 0), 2, Ok(())),
         (two_terms(4, 4, 7, 9), 8, Ok(())),
-        (two_terms(27, 8, 13, 77), 35, Ok(())),
-        (two_terms(27, 8, 14, 77), 35, Err(KernelError::WorkLimit)),
+        (two_terms(27, 8, 10, 77), 35, Ok(())),
+        (two_terms(27, 8, 11, 77), 35, Err(KernelError::WorkLimit)),
         (two_terms(4, 38, 0, 0), 42, Err(KernelError::WorkLimit)),
     ] {
         let (db, bytes) = disjoint_library(&terms, nv, true);
@@ -53,7 +53,7 @@ fn the_worst_disjoint_check_stays_under_ten_seconds_at_6_mhz() {
     let mut repeated = vec![var(0); 100];
     repeated.push(Tok::Const);
     let shapes: Vec<(&str, Vec<Vec<Tok>>, usize)> = vec![
-        ("27 x 8 variables, 595 pairs", two_terms(27, 8, 13, 77), 35),
+        ("27 x 8 variables, 595 pairs", two_terms(27, 8, 10, 77), 35),
         (
             "60 x 60 variables, 7140 pairs",
             two_terms(60, 60, 0, 0),
@@ -136,9 +136,11 @@ fn in_code(pc: u16, ranges: &[(&str, &str)]) -> bool {
         .any(|&(from, to)| (label(from)..label(to)).contains(&pc))
 }
 
-/// The proof loop, the copy helpers and the parts of an apply around its disjoint check.
+/// The proof loop, the copy helpers, the record parser and the parts of an apply around its
+/// disjoint check.
 const PROOF_CODE: &[(&str, &str)] = &[
     ("COPY_BC", "CMP24"),
+    ("PR_U8", "REQUIRE_SOUND"),
     ("MAP_CUR", "WORK_ONE"),
     ("APPLY", "AP_DV"),
     ("AP_INSTALL", "KERNEL_CRC_BEGIN"),
@@ -148,7 +150,7 @@ const CHECK_CODE: &[(&str, &str)] = &[("WORK_ONE", "APPLY"), ("AP_DV", "AP_INSTA
 
 #[test]
 fn the_on_key_interrupts_a_proof_and_a_long_check_and_the_call_can_be_run_again() {
-    let terms = two_terms(27, 8, 13, 77);
+    let terms = two_terms(27, 8, 10, 77);
     let (db, bytes) = disjoint_library(&terms, 35, true);
     let (_, plain) = disjoint_library(&terms, 35, false);
     let id = number(&db, "t");
@@ -230,7 +232,7 @@ fn status_code(name: &str) -> u8 {
 
 #[test]
 fn the_on_key_held_from_the_start_stops_the_first_proof_step() {
-    let (db, bytes) = disjoint_library(&two_terms(27, 8, 13, 77), 35, true);
+    let (db, bytes) = disjoint_library(&two_terms(27, 8, 10, 77), 35, true);
     let id = number(&db, "t");
     let mut device = Device::with_library(&bytes);
     device.m.press_key(Machine::KEY_ON);
@@ -245,7 +247,7 @@ fn the_on_key_held_from_the_start_stops_the_first_proof_step() {
 #[test]
 fn an_interrupted_call_restores_registers_the_bank_and_interrupts() {
     let marker = *b"flash page marker";
-    let (db, bytes) = disjoint_library(&two_terms(27, 8, 13, 77), 35, true);
+    let (db, bytes) = disjoint_library(&two_terms(27, 8, 10, 77), 35, true);
     let id = number(&db, "t");
     let mut device = Device::with_library(&bytes);
     device.m.load_flash(0x50, 0, &marker);

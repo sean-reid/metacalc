@@ -59,9 +59,24 @@
 ; ended, is refused (1); kernel_crc_begin restarts. The call that ends the run on a match
 ; returns the CRC-32 in DE:HL, which the app can key its status cache on.
 ;
-; Work limit. The disjoint-variable check of a proof step takes the pairs of the applied
+; Reference list. The entries of a theorem's list appear in the order its proof first uses
+; them, every entry is used, no two entries are equal, and no dummy entry names a variable the
+; theorem has a float hypothesis for. A counter at kv_next ($B6, two bytes, in the private state)
+; starts at 0 for each proof: a step naming entry k is a repeat use if k is below it, the first
+; use if k equals it (it then rises by one), and LooseReference if k is above it; when the proof
+; ends the counter must equal the entry count, else LooseReference.
+; When several rules apply the first of these wins: Malformed, BadRecord from the record rules,
+; BadRecord from a dummy entry for a variable with a float hypothesis, BadRecord from two equal
+; entries or WorkLimit if the comparisons pass the limit first, then the proof's steps in order
+; (a step above the counter is LooseReference before its entry is looked at, so a used forward
+; reference is ForwardReference only when it is the next new entry), then at the end of the
+; proof LooseReference for an unused entry, before NotSingleton and WrongConclusion.
+;
+; Work limit. Before the proof runs, the check for equal entries compares each entry with the
+; ones after it and charges 1 per comparison before it is made, r * (r - 1) / 2 for r entries.
+; The disjoint-variable check of a proof step takes the pairs of the applied
 ; assertion one at a time, with X and Y the expressions that replace its two variables, and
-; charges every loop iteration before it runs, to one count per kernel_verify call:
+; charges every loop iteration before it runs, to the same count per kernel_verify call:
 ;   1 per pair of the applied assertion;
 ;   1 per symbol of X, constant or variable;
 ;   for each variable of X, 1 per symbol of Y;
@@ -76,7 +91,8 @@
 ; step and whenever the second byte of the work count changes. The read comes before the scan of
 ; the pair list that a comparison charges for, and the scan itself is not interrupted. The longest
 ; stretch without a read is one scan, 96 T-states per pair listed, plus up to 255 one-unit charges
-; of 288 T-states before the second byte next changes. A record holds at most 7,750 pairs in this
+; of 288 T-states before the second byte next changes. A comparison of the equal-entries check is
+; a one-unit charge. A record holds at most 7,750 pairs in this
 ; shape (about 8,000 fit a 16 KB page), so ON waits at most 0.83 million T-states, 0.14 s at
 ; 6 MHz; with 600 pairs, 130,000 T-states, 22 ms. With ON down kernel_verify returns
 ; ST_INTERRUPTED, restoring the stack, port 7 and the interrupt state as for any other exit and
@@ -90,6 +106,7 @@
 ;           8 TypecodeMismatch 9 HypothesisMismatch
 ;          10 DisjointViolation 11 StackNotSingleton 12 WrongConclusion
 ;          13 WorkLimit         14 Interrupted (kernel_verify only)
+;          15 LooseReference
 ;         255 ST_CRC_MORE (kernel_crc_chunk only)
 ;
 ; RAM, bank C of page KERNEL_RAM_PAGE, shown for the default bases:
@@ -213,6 +230,9 @@ fail_work_limit:
 	jr leave
 fail_interrupted:
 	ld a,ST_INTERRUPTED
+	jr leave
+fail_loose:
+	ld a,ST_LOOSE_REF
 	jr leave
 
 ; in: HL = source, DE = destination, BC = count (may be 0)

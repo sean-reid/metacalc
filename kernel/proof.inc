@@ -62,6 +62,102 @@ push_var:
 	ld bc,2
 	jp stack_push
 
+; in: A = variable. out: carry if the current record has a float hypothesis for it.
+; Destroys AF BC HL.
+has_float:
+	ld c,a
+	ld a,(CUR_DESC+D_NHYPS)
+	or a
+	ret z
+	ld b,a
+	ld hl,(CUR_DESC+D_HYPS)
+hf_next:
+	ld a,(hl)
+	inc hl
+	or a
+	jr z,hf_float
+	ld a,(hl)
+	inc hl
+	call add_hl_a
+	djnz hf_next
+	or a
+	ret
+hf_float:
+	ld a,(hl)
+	inc hl
+	cp c
+	jr z,hf_found
+	djnz hf_next
+	or a
+	ret
+hf_found:
+	scf
+	ret
+
+; Refuses a current record whose reference list has a dummy entry for a variable it has a float
+; hypothesis for, or two equal entries; each comparison is charged one unit before it is made.
+check_references:
+	ld hl,(CUR_DESC+D_REFS)
+	ld bc,(CUR_DESC+D_NREFS)
+cf_dummy:
+	ld a,b
+	or c
+	jr z,cf_pairs
+	dec bc
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	ld a,d
+	cp $80
+	jr nz,cf_dummy
+	push hl
+	push bc
+	ld a,e
+	call has_float
+	pop bc
+	pop hl
+	jp c,fail_bad_record
+	jr cf_dummy
+cf_pairs:
+	ld hl,(CUR_DESC+D_REFS)
+	ld bc,(CUR_DESC+D_NREFS)
+cf_outer:
+	ld a,b
+	or c
+	ret z
+	dec bc
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	ld (kv_tmp16),de
+	push hl
+	push bc
+cf_inner:
+	ld a,b
+	or c
+	jr z,cf_next
+	dec bc
+	push hl
+	call work_one
+	pop hl
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	ld a,(kv_tmp16)
+	cp e
+	jr nz,cf_inner
+	ld a,(kv_tmp16+1)
+	cp d
+	jp z,fail_bad_record
+	jr cf_inner
+cf_next:
+	pop bc
+	pop hl
+	jr cf_outer
+
 verify_body:
 	ld (kv_arg_id),hl
 	call require_ready
@@ -93,6 +189,9 @@ verify_body:
 	add hl,de
 	inc hl
 	ld (kv_charge),hl
+	ld hl,0
+	ld (kv_next),hl
+	call check_references
 
 vb_loop:
 	in a,(4)
@@ -239,6 +338,17 @@ vb_essential:
 
 ; in: DE = index into the reference list.
 vb_ref:
+	ld hl,(kv_next)
+	or a
+	sbc hl,de
+	jr z,vb_ref_first
+	jr nc,vb_ref_known
+	jp fail_loose
+vb_ref_first:
+	ld hl,(kv_next)
+	inc hl
+	ld (kv_next),hl
+vb_ref_known:
 	ld hl,(CUR_DESC+D_REFS)
 	add hl,de
 	add hl,de
@@ -306,6 +416,11 @@ vb_back_end:
 	jp vb_loop
 
 vb_done:
+	ld hl,(kv_next)
+	ld de,(CUR_DESC+D_NREFS)
+	or a
+	sbc hl,de
+	jp nz,fail_loose
 	ld hl,(kv_nstack)
 	dec hl
 	ld a,h
