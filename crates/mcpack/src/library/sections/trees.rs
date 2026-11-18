@@ -3,11 +3,15 @@ use crate::library::{Assertion, Hypothesis, PackError};
 use crate::mm::{Database, Grammar, Kind, StmtId, Sym, Tree as Parsed};
 use std::collections::{BTreeSet, HashMap};
 
-/// Syntax axioms a library's trees can use, which is the first 128 byte values.
-pub const AXIOM_CAPACITY: usize = 128;
-/// Variables a library's trees can use, which is the last 128 byte values.
-pub const VARIABLE_CAPACITY: usize = 128;
+/// Where an index stops fitting in the node byte itself and takes an escape byte after it.
+const INLINE: usize = 127;
+/// Syntax axioms a library's trees can use: 127 in the node byte, 256 more behind the escape.
+pub const AXIOM_CAPACITY: usize = INLINE + 256;
+/// Variables a library's trees can use; a library has fewer symbols than this.
+pub const VARIABLE_CAPACITY: usize = INLINE + 256;
+const AXIOM_ESCAPE: u8 = 0x7F;
 const VARIABLE: u8 = 0x80;
+const VARIABLE_ESCAPE: u8 = 0xFF;
 const NONE: u8 = 0xFE;
 const LONG: u8 = 0xFF;
 const MAX_INLINE: usize = 0xFD;
@@ -144,7 +148,7 @@ pub(super) fn prepare(
         return Err(PackError::TreeCapacity("syntax axioms", used.len()));
     }
     let numbers: Vec<u16> = used.into_iter().collect();
-    let index: HashMap<u16, u8> = numbers.iter().zip(0u8..).map(|(&n, i)| (n, i)).collect();
+    let index: HashMap<u16, usize> = numbers.iter().zip(0..).map(|(&n, i)| (n, i)).collect();
     let by_number: HashMap<u16, StmtId> = local_stmt.iter().map(|(&id, &n)| (n, id)).collect();
     let syntax = numbers
         .iter()
@@ -167,9 +171,10 @@ pub(super) fn prepare(
                     if var >= VARIABLE_CAPACITY {
                         return Err(PackError::TreeCapacity("variables", var + 1));
                     }
-                    bytes.push(VARIABLE | var as u8);
+                    push_index(&mut bytes, var, VARIABLE, VARIABLE_ESCAPE);
                 } else {
-                    bytes.push(index[&local_stmt[&node.stmt]]);
+                    let axiom = index[&local_stmt[&node.stmt]];
+                    push_index(&mut bytes, axiom, 0, AXIOM_ESCAPE);
                 }
                 pending.extend(node.children.iter().rev());
             }
@@ -183,10 +188,19 @@ pub(super) fn prepare(
     Ok(Some(Prepared { syntax, items }))
 }
 
+/// Writes `n` as `base + n` when it fits under the escape byte, else the escape and `n - 127`.
+fn push_index(out: &mut Vec<u8>, n: usize, base: u8, escape: u8) {
+    if n < INLINE {
+        out.push(base + n as u8);
+    } else {
+        out.extend([escape, (n - INLINE) as u8]);
+    }
+}
+
 pub(super) fn encode(w: &mut Writer, trees: &Prepared) -> Result<(), PackError> {
     let too_large = || PackError::SectionTooLarge;
     w.open(TREES);
-    w.put(&[trees.syntax.len() as u8]);
+    w.put(&(trees.syntax.len() as u16).to_le_bytes());
     for &(number, arity) in &trees.syntax {
         w.put(&number.to_le_bytes());
         w.put(&[arity]);
@@ -239,14 +253,22 @@ fn syntax_parts(assertion: &Assertion) -> Option<Vec<Part>> {
 fn tree(bytes: &[u8], syntax: &[SyntaxAxiom], ctx: &Ctx) -> Option<Tree> {
     let mut nodes = Vec::with_capacity(bytes.len());
     let mut open = 1usize;
-    for &byte in bytes {
+    let mut bytes = bytes.iter().copied();
+    while let Some(byte) = bytes.next() {
         open = open.checked_sub(1)?;
-        if byte < VARIABLE {
-            let axiom = syntax.get(byte as usize)?;
-            open += axiom.arity;
-            nodes.push(Node::Axiom(byte as usize));
+        let mut number = |escape: u8, base: u8| -> Option<usize> {
+            if byte == escape {
+                Some(INLINE + bytes.next()? as usize)
+            } else {
+                Some((byte - base) as usize)
+            }
+        };
+        if byte <= AXIOM_ESCAPE {
+            let index = number(AXIOM_ESCAPE, 0)?;
+            open += syntax.get(index)?.arity;
+            nodes.push(Node::Axiom(index));
         } else {
-            let id = ctx.constants + (byte - VARIABLE) as usize;
+            let id = ctx.constants + number(VARIABLE_ESCAPE, VARIABLE)?;
             if id >= ctx.names.len() {
                 return None;
             }
@@ -261,7 +283,7 @@ pub(super) fn decode(bytes: &[u8], entry: &Entry, ctx: &Ctx) -> Result<Trees, Se
     let end = entry.offset + entry.length;
     let mut cur = Cursor::new(bytes, entry.offset, end);
     let mut syntax = Vec::new();
-    for _ in 0..cur.u8().ok_or(bad)? {
+    for _ in 0..cur.u16().ok_or(bad)? {
         let assertion = cur.u16().ok_or(bad)?;
         let arity = cur.u8().ok_or(bad)?;
         let source = ctx.assertions.get(assertion).ok_or(bad)?;

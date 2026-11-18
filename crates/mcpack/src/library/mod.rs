@@ -45,14 +45,16 @@
 //!            the section's start per symbol, then per symbol: spacing flags (u8: bit 0 gap
 //!            before, 1 gap after, 2 gap beside another var, 3 no gap after), glyph count (u8),
 //!            the glyph codes of the main display font
-//! trees      id 3: syntax axiom count (u8), per axiom its assertion number (u16) and its arity
+//! trees      id 3: syntax axiom count (u16), per axiom its assertion number (u16) and its arity
 //!            (u8), one u32 file offset per assertion, then per assertion a tree for each
 //!            essential hypothesis in record order and one for the conclusion; a tree is its
-//!            length (u8, FEh for no tree, FFh then a u16) and its nodes in preorder: a byte
-//!            under 80h is an index into the syntax table, whose arity says how many subtrees
-//!            follow, and 80h + n is the variable with symbol id n + the constant count;
-//!            at most 128 syntax axioms and 128 variables, or the pack fails; a library
-//!            whose database has no grammar has no trees section
+//!            length in bytes (u8, FEh for no tree, FFh then a u16) and its nodes in preorder:
+//!            00h..7Eh is a syntax table index, 7Fh then n is index 127 + n, and the arity of
+//!            the axiom says how many subtrees follow; 80h..FEh is the variable with symbol id
+//!            constants + byte - 80h, FFh then n the one with 127 + n; at most 383 syntax
+//!            axioms or the pack fails; a library whose database has no grammar has no
+//!            trees section; identical trees are stored once per use, and storing them once
+//!            would save about 17.6 KB in the ring library
 //! ```
 //!
 //! A record is only usable if its float hypotheses name distinct variables, each of its

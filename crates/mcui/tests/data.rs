@@ -311,3 +311,42 @@ fn a_library_gives_its_section_titles() {
     assert!(lib(&[], &[]).titles().is_empty());
     assert!(lib_from(kernel_only_bytes()).titles().is_empty());
 }
+
+/// 130 syntax axioms and 130 variables, so the last statement's tree needs both escapes.
+fn escaped_source() -> String {
+    let vars: Vec<String> = (0..130).map(|i| format!("v{i}")).collect();
+    let mut src = format!("$c ( ) |- wff a b $.\n$v {} $.\n", vars.join(" "));
+    for v in &vars {
+        src += &format!("f{v} $f wff {v} $.\n");
+    }
+    let mut made = 0;
+    for len in 1..=8usize {
+        for bits in 0..1usize << len {
+            if made == 130 {
+                break;
+            }
+            let body: Vec<&str> = (0..len)
+                .map(|i| if bits >> i & 1 == 0 { "a" } else { "b" })
+                .collect();
+            src += &format!("w{made} $a wff {} $.\n", body.join(" "));
+            made += 1;
+        }
+    }
+    src += "wi $a wff ( v0 v1 ) $.\nax-top $a |- ( v128 v129 ) $.\n";
+    src
+}
+
+#[test]
+fn a_statement_whose_tree_needs_escaped_bytes_folds_as_the_export_parse_does() {
+    let db = db(&escaped_source());
+    let (stored, parsed) = (
+        support::pack_all(&db).unwrap(),
+        support::pack_all_kernel(&db).unwrap(),
+    );
+    let (stored, parsed) = (lib_from(stored), lib_from(parsed));
+    let top = index(&stored, "ax-top");
+    let (a, b) = (stored.statement(top), parsed.statement(top));
+    assert_eq!(a.all(), b.all());
+    assert_eq!(a.conclusion.tokens(), ["|-", "(", "v128", "v129", ")"]);
+    assert_eq!(a.conclusion.len(), 3, "the wi node and its two variables");
+}

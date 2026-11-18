@@ -1,5 +1,5 @@
 use super::*;
-use mcpack::library::{AXIOM_CAPACITY, CheckError, Node, PackError, TREES, VARIABLE_CAPACITY};
+use mcpack::library::{AXIOM_CAPACITY, CheckError, Node, PackError, TREES};
 use mcpack::mm::Kind;
 use std::path::Path;
 
@@ -218,11 +218,26 @@ fn a_database_with_no_grammar_has_no_tree_section() {
     library::check(&bytes).unwrap();
 }
 
+/// Strings over `a` and `b`, shortest first: each is the body of its own syntax axiom, and no
+/// string is read two ways, so the grammar needs no constant per axiom.
+fn strings(n: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    for len in 1..=8usize {
+        for bits in 0..1usize << len {
+            let text: Vec<&str> = (0..len)
+                .map(|i| if bits >> i & 1 == 0 { "a" } else { "b" })
+                .collect();
+            out.push(text.join(" "));
+        }
+    }
+    out.truncate(n);
+    out
+}
+
 fn axioms(n: usize) -> Database {
-    let constants: Vec<String> = (0..n).map(|i| format!("c{i}")).collect();
-    let mut src = format!("$c |- wff {} $.\n", constants.join(" "));
-    for c in &constants {
-        src += &format!("w{c} $a wff {c} $.\nax-{c} $a |- {c} $.\n");
+    let mut src = String::from("$c |- wff a b $.\n");
+    for (i, body) in strings(n).iter().enumerate() {
+        src += &format!("w{i} $a wff {body} $.\nax-{i} $a |- {body} $.\n");
     }
     parse(&src)
 }
@@ -243,20 +258,83 @@ fn pack_everything(db: &Database) -> Result<Vec<u8>, PackError> {
     pack(db, &everything(db))
 }
 
+fn sound(db: &Database, bytes: &[u8]) {
+    library::check(bytes).unwrap();
+    assert_eq!(trees_of(bytes).without_tree(), 0);
+    agree(db, bytes, &everything(db));
+}
+
 #[test]
-fn a_library_at_the_capacity_of_the_encoding_packs_and_one_past_it_fails_clearly() {
-    let at = pack_everything(&axioms(AXIOM_CAPACITY)).unwrap();
-    assert_eq!(trees_of(&at).syntax.len(), AXIOM_CAPACITY);
+fn syntax_tables_of_every_size_up_to_the_ceiling_pack_and_one_past_it_fails_clearly() {
+    for n in [126, 127, 128, 255, AXIOM_CAPACITY] {
+        let db = axioms(n);
+        let bytes = pack_everything(&db).unwrap();
+        assert_eq!(trees_of(&bytes).syntax.len(), n);
+        sound(&db, &bytes);
+    }
+    assert_eq!(AXIOM_CAPACITY, 383);
     assert_eq!(
         pack_everything(&axioms(AXIOM_CAPACITY + 1)),
         Err(PackError::TreeCapacity("syntax axioms", AXIOM_CAPACITY + 1))
     );
-    let at = pack_everything(&variables(VARIABLE_CAPACITY)).unwrap();
-    assert_eq!(trees_of(&at).without_tree(), 0);
+}
+
+#[test]
+fn libraries_with_many_variables_pack_and_every_variable_reads_back() {
+    for n in [126, 127, 128, 253] {
+        let db = variables(n);
+        let bytes = pack_everything(&db).unwrap();
+        sound(&db, &bytes);
+        let library = decode(&bytes).unwrap();
+        let trees = trees_of(&bytes);
+        let last = &trees.items[n - 1][0].as_ref().unwrap().nodes;
+        assert_eq!(last, &[Node::Variable(library.constants.len() + n - 1)]);
+    }
+}
+
+/// 130 syntax axioms, then `wi`, then a statement over the last two of 130 variables.
+pub(super) fn escaped_source() -> String {
+    let mut src = String::from("$c ( ) |- wff a b $.\n");
+    let vars: Vec<String> = (0..130).map(|i| format!("v{i}")).collect();
+    src += &format!("$v {} $.\n", vars.join(" "));
+    for v in &vars {
+        src += &format!("f{v} $f wff {v} $.\n");
+    }
+    for (i, body) in strings(130).iter().enumerate() {
+        src += &format!("w{i} $a wff {body} $.\n");
+    }
+    src += "wi $a wff ( v0 v1 ) $.\n";
+    src += "ax-top $a |- ( v128 v129 ) $.\n";
+    src
+}
+
+#[test]
+fn a_tree_using_an_escaped_axiom_and_escaped_variables_round_trips() {
+    let db = parse(&escaped_source());
+    let bytes = pack_everything(&db).unwrap();
+    sound(&db, &bytes);
+    let library = decode(&bytes).unwrap();
+    let trees = trees_of(&bytes);
+    let top = library
+        .assertions
+        .iter()
+        .position(|a| a.label == "ax-top")
+        .unwrap();
+    let c = library.constants.len();
     assert_eq!(
-        pack_everything(&variables(VARIABLE_CAPACITY + 1)),
-        Err(PackError::TreeCapacity("variables", VARIABLE_CAPACITY + 1))
+        trees.items[top][0].as_ref().unwrap().nodes,
+        [
+            Node::Axiom(130),
+            Node::Variable(c + 128),
+            Node::Variable(c + 129)
+        ]
     );
+    let entry = section(&bytes, TREES);
+    let count = u16::from_le_bytes([bytes[entry.offset], bytes[entry.offset + 1]]) as usize;
+    assert_eq!(count, 131);
+    let index = entry.offset + 2 + 3 * count;
+    let at = u32::from_le_bytes(bytes[index + 4 * top..][..4].try_into().unwrap()) as usize;
+    assert_eq!(bytes[at..at + 7], [6, 0x7F, 3, 0xFF, 1, 0xFF, 2]);
 }
 
 #[test]
@@ -296,8 +374,8 @@ fn a_tree_that_does_not_expand_to_its_statement_fails_the_check() {
     let mut bytes = pack(&db, &closure(&db)).unwrap();
     let library = decode(&bytes).unwrap();
     let entry = section(&bytes, TREES);
-    let syntax = bytes[entry.offset] as usize;
-    let index = entry.offset + 1 + 3 * syntax;
+    let syntax = u16::from_le_bytes([bytes[entry.offset], bytes[entry.offset + 1]]) as usize;
+    let index = entry.offset + 2 + 3 * syntax;
     let ax1 = library
         .assertions
         .iter()
@@ -348,5 +426,22 @@ fn the_shipped_libraries_carry_the_grammars_trees_and_none_is_missing() {
             "{name}: {compared} statements agree, {} titles",
             titles.len()
         );
+    }
+}
+
+#[test]
+fn escaped_node_bytes_survive_a_hostile_byte_too() {
+    let db = parse(&escaped_source());
+    let bytes = pack_everything(&db).unwrap();
+    let entry = section(&bytes, TREES);
+    let end = entry.offset + entry.length;
+    for at in end - 400..end {
+        for flip in [0x01u8, 0x7F, 0x80, 0xFF] {
+            let mut hostile = bytes.clone();
+            hostile[at] ^= flip;
+            reseal(&mut hostile);
+            let _ = decode(&hostile);
+            let _ = library::check(&hostile);
+        }
     }
 }
