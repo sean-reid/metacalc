@@ -57,7 +57,8 @@ fn the_busy_window_is_the_same_time_at_both_speeds() {
     }
 }
 
-/// 10 NOPs, 40 clocks, plus the tail of the OUT and the lead of the IN make 50.
+// From the timer start (end of the OUT plus the port delay) to the status sample (the IN's 11 clocks
+// plus the same port delay) is 4n + 11 clocks: 47 for n = 9, 51 for n = 10, so 50 first holds at 10.
 #[test]
 fn the_busy_window_at_6_mhz_is_50_clocks_to_within_a_nop() {
     for start in [Start::Command, Start::DataRead] {
