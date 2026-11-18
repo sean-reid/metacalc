@@ -11,7 +11,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 fake=$tmp/repo
-mkdir -p "$fake/scripts" "$fake/libraries" "$fake/docs/src/guide" "$fake/target/release" "$tmp/elsewhere"
+mkdir -p "$fake/scripts" "$fake/libraries" "$fake/docs/src/guide" "$fake/docs/src/libraries" "$fake/target/release" "$tmp/elsewhere"
 for item in Cargo.toml Cargo.lock crates; do ln -s "$root/$item" "$fake/$item"; done
 cp "$root"/scripts/build-libraries.sh "$root"/scripts/worked-examples.sh "$root"/scripts/fetch-tilem.sh "$fake/scripts/"
 
@@ -48,12 +48,19 @@ printf 'name = "tiny"\ntitle = "Tiny"\ndescription = "One theorem."\norder = 1\n
 cat >"$fake/docs/src/guide/worked-examples.md" <<'PAGE'
 # Page
 
-<!-- outline: th-g -->
+## 1. Example
 
+[`th-g`](../libraries/tiny.md#th-g)
+
+![th-g](examples/th-g.png)
+
+<!-- outline: th-g -->
 ```text
 old
 ```
 PAGE
+
+: >"$fake/docs/src/libraries/tiny.md"
 
 fail() {
 	echo "FAIL $1" >&2
