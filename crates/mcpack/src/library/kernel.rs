@@ -24,7 +24,8 @@ pub enum KernelError {
 }
 
 /// The most work one `verify` call may spend. Before the proof runs, the duplicate check on the
-/// reference list charges 1 per comparison, `r * (r - 1) / 2` for `r` entries. The
+/// reference list charges 1 per comparison, `r * (r - 1) / 2` for `r` entries, so a list longer
+/// than 512 entries cannot pass the duplicate check within the work limit. The
 /// disjoint-variable check of each proof step applies one pair of the applied assertion at a time,
 /// to the two substituted expressions `X` and `Y` that replace its variables, and every loop
 /// iteration is charged before it runs:

@@ -14,12 +14,12 @@ mod launch;
 mod libraries;
 #[path = "kernel/limits.rs"]
 mod limits;
+#[path = "kernel/references.rs"]
+mod references;
 #[path = "kernel/sources.rs"]
 mod sources;
 #[path = "common/stackfree.rs"]
 mod stackfree;
-#[path = "kernel/references.rs"]
-mod references;
 #[path = "kernel/state.rs"]
 mod state;
 #[path = "kernel/support.rs"]

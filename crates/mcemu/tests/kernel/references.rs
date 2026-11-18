@@ -45,12 +45,23 @@ fn no_byte_of_a_reference_list_or_proof_makes_the_kernel_disagree() {
 
 #[test]
 fn the_device_charges_the_duplicate_check_as_the_model_does() {
-    for entries in [3, 4, 100, 512] {
+    let sizes = (3..=40).chain([100, 255, 256, 257, 361, 362, 363, 364, 511, 512]);
+    for entries in sizes {
         let bytes = cases::pack_source(&cases::long_source(entries));
         let mut kernel = Kernel::new(&bytes, clamped(ASKED_UNBOUNDED)).unwrap();
         assert_eq!(kernel.verify(entries), Ok(()));
-        assert_eq!(kernel.work() as usize, entries * (entries - 1) / 2);
+        let charged = entries * (entries - 1) / 2;
+        assert_eq!(kernel.work() as usize, charged);
         agree(&bytes, entries, Ok(()), "long list");
+        let mut device = Device::with_library(&bytes);
+        assert_eq!(device.verify(entries, ASKED_UNBOUNDED).verify, 0);
+        let left = device.kram_label("kv_work", 3);
+        let left = u32::from_le_bytes([left[0], left[1], left[2], 0]);
+        assert_eq!(
+            left as usize,
+            constant("WORK_LIMIT") as usize - charged,
+            "{entries}"
+        );
     }
     let bytes = cases::pack_source(&cases::long_source(513));
     agree(

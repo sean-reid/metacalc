@@ -74,6 +74,7 @@
 ;
 ; Work limit. Before the proof runs, the check for equal entries compares each entry with the
 ; ones after it and charges 1 per comparison before it is made, r * (r - 1) / 2 for r entries.
+; A reference list longer than 512 entries cannot pass the duplicate check within the work limit.
 ; The disjoint-variable check of a proof step takes the pairs of the applied
 ; assertion one at a time, with X and Y the expressions that replace its two variables, and
 ; charges every loop iteration before it runs, to the same count per kernel_verify call:

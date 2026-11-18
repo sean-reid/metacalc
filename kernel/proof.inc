@@ -130,8 +130,35 @@ cf_pairs:
 	ld hl,512
 	or a
 	sbc hl,bc
-	jr c,cf_slow
+	jp c,cf_slow
 	push bc
+	ld hl,362
+	or a
+	sbc hl,bc
+	jr c,cf_big
+	ld h,b
+	ld l,c
+	srl h
+	rr l
+	ex de,hl
+	jr c,cf_odd
+	dec bc
+cf_odd:
+	ld hl,0
+cf_mul:
+	srl b
+	rr c
+	jr nc,cf_skip
+	add hl,de
+cf_skip:
+	sla e
+	rl d
+	ld a,b
+	or c
+	jr nz,cf_mul
+	ld d,0
+	jr cf_charge
+cf_big:
 	dec bc
 	ld hl,0
 	ld d,0
