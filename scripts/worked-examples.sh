@@ -13,6 +13,9 @@ page=$root/docs/src/guide/worked-examples.md
 command=${1:?usage: worked-examples.sh check|write database | images dir}
 target=${2:?usage: worked-examples.sh check|write database | images dir}
 
+mcpack() { cargo run --release --locked -q --manifest-path "$root/Cargo.toml" -p mcpack -- "$@"; }
+mcglyph() { cargo run --release --locked -q --manifest-path "$root/Cargo.toml" -p mcglyph -- "$@"; }
+
 labels() { sed -n 's/^<!-- outline: \(.*\) -->$/\1/p' "$page"; }
 
 # Prints the lines of the block that follows the marker for $1.
@@ -25,10 +28,9 @@ block() {
 }
 
 outlines() {
-	cargo build --release --locked -p mcpack >&2
 	mkdir -p "$1"
 	for label in $(labels); do
-		"$root/target/release/mcpack" outline "$target" "$label" >"$1/$label"
+		mcpack outline "$target" "$label" >"$1/$label"
 	done
 }
 
@@ -64,13 +66,12 @@ write)
 	cp "$tmp/page" "$page"
 	;;
 images)
-	cargo build --release --locked -p mcglyph >&2
 	mkdir -p "$target"
 	set -f
 	for label in $(labels); do
 		statement=$(block "$label" | head -n 1 | sed 's/  \[[^]]*\]$//')
 		# shellcheck disable=SC2086
-		"$root/target/release/mcglyph" -o "$target/$label.png" $statement
+		mcglyph -o "$target/$label.png" $statement
 		if [ ! -f "$target/$label.png" ]; then
 			echo "worked-examples: the statement of $label needs more than one screen, so $label.png was not written; choose another example or link the numbered files by hand" >&2
 			exit 1

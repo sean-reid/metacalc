@@ -1,10 +1,11 @@
 #!/bin/sh
 # Usage: fetch-tilem.sh [dir]
-# Fetches TilEm at the pinned commit into dir (default .tilem) and verifies it.
+# Fetches TilEm at the pinned commit into dir (default .tilem at the repo root) and verifies it.
 set -eu
 
 rev=f56ad637d0524ee841dd381be6ecbaf5b8975600
-dir=${1:-.tilem}
+root=$(cd "$(dirname "$0")/.." && pwd)
+dir=${1:-$root/.tilem}
 
 if [ ! -d "$dir/.git" ]; then
 	git init -q "$dir"
