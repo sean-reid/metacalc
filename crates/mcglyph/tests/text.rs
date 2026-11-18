@@ -34,10 +34,18 @@ fn a_character_the_font_lacks_shows_as_a_question_mark() {
 
 #[test]
 fn braces_bar_backslash_and_caret_have_their_own_glyphs() {
-    let question = font().text("?");
-    for c in ['{', '}', '|', '\\', '^'] {
-        let text = font().text(&c.to_string());
-        assert!(text != question, "{c:?}");
+    for (c, name) in [
+        ('{', "lbrace"),
+        ('}', "rbrace"),
+        ('|', "bar"),
+        ('\\', "backslash"),
+        ('^', "caret"),
+    ] {
+        assert_eq!(
+            font().text(&c.to_string()),
+            *font().glyph(name).unwrap(),
+            "{c:?}"
+        );
     }
 }
 

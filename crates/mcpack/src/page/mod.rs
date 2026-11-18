@@ -236,7 +236,7 @@ pub fn unexplained(library: &[u8]) -> Result<Vec<String>, ReadError> {
         .constants
         .iter()
         .chain(symbol_variables(&library))
-        .filter(|s| notation::meaning(s).is_none())
+        .filter(|s| notation::meaning(s).is_none_or(str::is_empty))
         .cloned()
         .collect())
 }
