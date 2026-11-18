@@ -1,0 +1,10 @@
+#include "equates.inc"
+
+.org ENTRY
+#ifdef JUMP
+	bjump(SERVICE)
+#else
+	bcall(SERVICE)
+#endif
+	ld (RESULT), a
+	halt
