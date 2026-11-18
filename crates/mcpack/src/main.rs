@@ -101,11 +101,18 @@ fn parse(db: &Database) -> Result<ExitCode, ExitCode> {
         }
         parsed += 1;
         match grammar.parse(id) {
-            Ok(tree) if grammar.expr(&tree.conclusion)[1..] != stmt.expr[1..] => {
-                failed += 1;
-                eprintln!("{}: the parse does not spell the statement", stmt.label);
+            Ok(parsed) => {
+                let essentials = stmt.frame.hyps.iter().map(|&hyp| db.stmt(hyp));
+                let essentials = essentials.filter(|hyp| hyp.kind == Kind::Essential);
+                let spelled = essentials
+                    .chain([stmt])
+                    .zip(parsed.hyps.iter().chain([&parsed.conclusion]))
+                    .all(|(stmt, tree)| grammar.expr(tree)[1..] == stmt.expr[1..]);
+                if !spelled {
+                    failed += 1;
+                    eprintln!("{}: the parse does not spell the statement", stmt.label);
+                }
             }
-            Ok(_) => {}
             Err(e) => {
                 failed += 1;
                 eprintln!("{}: {e:?}", stmt.label);

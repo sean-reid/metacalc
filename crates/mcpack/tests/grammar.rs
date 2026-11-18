@@ -1,4 +1,6 @@
 use mcpack::mm::{self, Database, Grammar, GrammarError, StmtId, SyntaxError};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const DB: &str = "
 $c ( ) -> <- = T wff class setvar |- $.
@@ -93,6 +95,12 @@ fn a_statement_with_two_readings_is_refused() {
     assert_eq!(parse_error(tail, "two"), SyntaxError::Ambiguous);
 }
 
+#[test]
+fn two_readings_of_a_subexpression_reach_the_whole_statement() {
+    let tail = "wtru2 $a wff T $. inner $a |- ( ( p -> T ) <- q ) $.";
+    assert_eq!(parse_error(tail, "inner"), SyntaxError::Ambiguous);
+}
+
 fn grammar_error(tail: &str, provable: &[(&str, &str)]) -> GrammarError {
     let db = db(tail);
     match Grammar::new(&db, provable) {
@@ -145,28 +153,59 @@ fn left_recursion_through_another_typecode_is_found() {
     ));
 }
 
-fn parse_command(database: &str) -> (Option<i32>, String) {
-    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_mcpack"))
-        .arg("parse")
-        .arg(corpus.join(database))
+fn mcpack(command: &str, database: &Path, roots: &[&str]) -> (Option<i32>, String, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_mcpack"))
+        .arg(command)
+        .arg(database)
+        .args(roots)
         .output()
         .expect("mcpack runs");
-    (
-        out.status.code(),
-        String::from_utf8(out.stdout).expect("output is text"),
-    )
+    let text = |bytes| String::from_utf8(bytes).expect("output is text");
+    (out.status.code(), text(out.stdout), text(out.stderr))
+}
+
+fn corpus(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/corpus")
+        .join(name)
+}
+
+fn unreadable_database(name: &str) -> PathBuf {
+    let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let src = format!("{DB} odd $a |- ( p -> ) $. uses $p |- ( p -> ) $= wp odd $.");
+    std::fs::write(&path, src).expect("database is written");
+    path
 }
 
 #[test]
 fn parse_command_counts_the_assertions_it_read() {
+    let (code, out, _) = mcpack("parse", &corpus("demo0.mm"), &[]);
     assert_eq!(
-        parse_command("demo0.mm"),
-        (Some(0), "8 assertions parsed, 0 failed\n".into())
+        (code, out.as_str()),
+        (Some(0), "8 assertions parsed, 0 failed\n")
     );
 }
 
 #[test]
-fn parse_command_fails_on_a_grammar_it_cannot_use() {
-    assert_eq!(parse_command("miu.mm"), (Some(1), String::new()));
+fn parse_command_names_the_axiom_that_breaks_the_grammar() {
+    let (code, out, err) = mcpack("parse", &corpus("miu.mm"), &[]);
+    assert_eq!((code, out.as_str()), (Some(1), ""));
+    assert!(err.contains("UnsupportedRule(\"we\")"), "{err}");
+}
+
+#[test]
+fn parse_command_names_each_statement_it_cannot_read() {
+    let (code, out, err) = mcpack("parse", &unreadable_database("parse.mm"), &[]);
+    assert_eq!(
+        (code, out.as_str()),
+        (Some(1), "10 assertions parsed, 2 failed\n")
+    );
+    assert_eq!(err, "odd: NoParse\nuses: NoParse\n");
+}
+
+#[test]
+fn closure_command_names_the_statement_it_cannot_read() {
+    let (code, out, err) = mcpack("closure", &unreadable_database("closure.mm"), &["uses"]);
+    assert_eq!((code, out.as_str()), (Some(1), ""));
+    assert!(err.ends_with(": NoParse\n"), "{err}");
 }
