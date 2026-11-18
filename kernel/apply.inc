@@ -115,6 +115,47 @@ sub_end:
 	ld (kv_wr),de
 	ret
 
+; Charges one unit of disjoint-variable work. Keeps BC. Destroys AF DE HL.
+work_one:
+	ld hl,(kv_work)
+	ld a,h
+	or l
+	jr z,wo_borrow
+	dec hl
+	ld (kv_work),hl
+	ld a,l
+	inc a
+	ret nz
+	jr work_poll
+wo_borrow:
+	ld de,1
+
+; in: DE = units, 1 to $FFFF. Charges them to the 24-bit count of units left in this call and
+; refuses the call if fewer are left. The ON key is read whenever the second byte of the count
+; changes. Keeps BC. Destroys AF DE HL.
+work_charge:
+	ld hl,(kv_work)
+	ld a,h
+	ld (kv_wold),a
+	or a
+	sbc hl,de
+	jr nc,wc_store
+	ld a,(kv_work+2)
+	or a
+	jp z,fail_work_limit
+	dec a
+	ld (kv_work+2),a
+wc_store:
+	ld (kv_work),hl
+	ld a,(kv_wold)
+	cp h
+	ret z
+work_poll:
+	in a,(4)
+	and 8
+	ret nz
+	jp fail_interrupted
+
 ; in: B, C = two variables. out: returns if they are different and the theorem being checked
 ; lists them as a pair; the used record's page is mapped again.
 pair_allowed:
@@ -315,6 +356,9 @@ ap_pair:
 	jp z,ap_install
 	dec bc
 	push bc
+	push hl
+	call work_one
+	pop hl
 	ld a,(hl)
 	inc hl
 	ld e,(hl)
@@ -342,6 +386,8 @@ ap_outer:
 	inc hl
 	ld (kv_xp),hl
 	ld (kv_a),a
+	call work_one
+	ld a,(kv_a)
 	ld h,TYPECODES>>8
 	ld l,a
 	ld a,(hl)
@@ -359,12 +405,17 @@ ap_inner:
 	ld a,(hl)
 	inc hl
 	ld (kv_yp),hl
+	push af
+	call work_one
+	pop af
 	ld c,a
 	ld h,TYPECODES>>8
 	ld l,a
 	ld a,(hl)
 	inc a
 	jr z,ap_inner
+	ld de,(kv_charge)
+	call work_charge
 	ld a,(kv_a)
 	ld b,a
 	call pair_allowed
@@ -372,7 +423,7 @@ ap_inner:
 ap_pair_done:
 	pop hl
 	pop bc
-	jr ap_pair
+	jp ap_pair
 
 ap_install:
 	ld a,(USED_DESC+D_NCONC)

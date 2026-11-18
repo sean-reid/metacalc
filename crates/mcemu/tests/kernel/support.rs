@@ -36,11 +36,20 @@ pub fn label_in(image: Image, name: &str) -> u16 {
 
 /// A label from an assembler label file.
 pub fn label_of(labels: &str, name: &str) -> u16 {
+    u16::try_from(constant_of(labels, name)).unwrap_or_else(|_| panic!("{name} is not an address"))
+}
+
+/// A constant of the assembled kernel, such as `WORK_LIMIT`, which may not fit 16 bits.
+pub fn constant(name: &str) -> u32 {
+    constant_of(DEFAULT.labels, name)
+}
+
+fn constant_of(labels: &str, name: &str) -> u32 {
     labels
         .lines()
         .find_map(|line| {
             let (key, value) = line.split_once(" = ")?;
-            (key == name.to_uppercase()).then(|| u16::from_str_radix(&value[1..], 16).unwrap())
+            (key == name.to_uppercase()).then(|| u32::from_str_radix(&value[1..], 16).unwrap())
         })
         .unwrap_or_else(|| panic!("no label {name}"))
 }
@@ -362,6 +371,75 @@ pub fn same_as_model(
     assert_eq!(got.init, 0, "{what}");
     assert_eq!(got.verify, model_one(bytes, id, limits), "{what}");
     got.verify
+}
+
+#[derive(Clone, Copy)]
+pub enum Tok {
+    Var(usize),
+    Const,
+}
+
+/// A library whose theorem `t` applies an axiom of `terms.len()` variables, all pairwise disjoint,
+/// to one term per variable; `nv` variables w0.. are free to use in the terms and the theorem
+/// declares all of them disjoint. Without `checked` neither declares a pair, and the proof does
+/// the same steps with no disjoint check to make.
+pub fn disjoint_source(terms: &[Vec<Tok>], nv: usize, checked: bool) -> String {
+    let zs: Vec<String> = (0..terms.len()).map(|i| format!("z{i}")).collect();
+    let ws: Vec<String> = (0..nv).map(|i| format!("w{i}")).collect();
+    let mut src = format!(
+        "$c wff |- R k $. $v p q {} {} $.\n\
+         fp $f wff p $. fq $f wff q $. wk $a wff k $. wc $a wff p q $.\n",
+        zs.join(" "),
+        ws.join(" ")
+    );
+    for var in zs.iter().chain(&ws) {
+        src += &format!("f{var} $f wff {var} $.\n");
+    }
+    let dv = |vars: &[String]| {
+        if checked && vars.len() > 1 {
+            format!("$d {} $.", vars.join(" "))
+        } else {
+            String::new()
+        }
+    };
+    src += &format!("${{ {} ax-d $a |- R {} $. $}}\n", dv(&zs), zs.join(" "));
+    let (mut expr, mut proof) = (Vec::new(), Vec::new());
+    for term in terms {
+        for (i, tok) in term.iter().enumerate() {
+            let (sym, label) = match tok {
+                Tok::Var(v) => (format!("w{v}"), format!("fw{v}")),
+                Tok::Const => ("k".to_string(), "wk".to_string()),
+            };
+            expr.push(sym);
+            proof.push(label);
+            if i > 0 {
+                proof.push("wc".into());
+            }
+        }
+    }
+    proof.push("ax-d".into());
+    src += &format!(
+        "${{ {} t $p |- R {} $= {} $. $}}\n",
+        dv(&ws),
+        expr.join(" "),
+        proof.join(" ")
+    );
+    src
+}
+
+/// `x` variables then `xk` constants, and `y` other variables then `yk` constants.
+pub fn two_terms(x: usize, y: usize, xk: usize, yk: usize) -> Vec<Vec<Tok>> {
+    let mut left: Vec<Tok> = (0..x).map(Tok::Var).collect();
+    left.extend(vec![Tok::Const; xk]);
+    let mut right: Vec<Tok> = (x..x + y).map(Tok::Var).collect();
+    right.extend(vec![Tok::Const; yk]);
+    vec![left, right]
+}
+
+pub fn disjoint_library(terms: &[Vec<Tok>], nv: usize, checked: bool) -> (Database, Vec<u8>) {
+    let db = parse(&disjoint_source(terms, nv, checked));
+    let bytes = pack_all(&db);
+    (db, bytes)
 }
 
 pub const PORT_BANK_B: u8 = 7;

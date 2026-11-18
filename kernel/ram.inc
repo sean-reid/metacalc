@@ -17,6 +17,9 @@ kv_saved_sp         .equ KERNEL_RAM+$10
 kv_saved_bank       .equ KERNEL_RAM+$12
 kv_saved_iff        .equ KERNEL_RAM+$13
 kv_ready            .equ KERNEL_RAM+$A0
+kv_work             .equ KERNEL_RAM+$B0
+kv_wold             .equ KERNEL_RAM+$B3
+kv_charge           .equ KERNEL_RAM+$B4
 kv_crc_state        .equ KERNEL_RAM+$A2
 kv_crc_chunk        .equ KERNEL_RAM+$A4
 kv_crc_last         .equ KERNEL_RAM+$A5
@@ -120,4 +123,11 @@ ST_HYP_MISMATCH     .equ 9
 ST_DISJOINT         .equ 10
 ST_NOT_SINGLETON    .equ 11
 ST_WRONG_CONCLUSION .equ 12
+ST_WORK_LIMIT       .equ 13
+ST_INTERRUPTED      .equ 14
 ST_CRC_MORE         .equ $FF
+
+WORK_LIMIT          .equ 131072
+#if WORK_LIMIT < 1 || WORK_LIMIT > $FFFFFF
+ .error "WORK_LIMIT must fit the 24-bit work counter"
+#endif

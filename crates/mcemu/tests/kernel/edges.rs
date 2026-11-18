@@ -233,7 +233,7 @@ fn a_library_that_ends_inside_a_record_is_judged_as_the_model_would() {
     }
 }
 
-const REGISTERS: [u8; 10] = [0x57, 0x13, 0x68, 0x24, 0x9C, 0x36, 0xAE, 0x48, 0xC0, 0x5A];
+pub const REGISTERS: [u8; 10] = [0x57, 0x13, 0x68, 0x24, 0x9C, 0x36, 0xAE, 0x48, 0xC0, 0x5A];
 
 fn failing_libraries() -> Vec<(Vec<u8>, usize)> {
     let mut theorems = String::new();
@@ -276,6 +276,8 @@ fn failing_libraries() -> Vec<(Vec<u8>, usize)> {
          wrong $p |- ph $= vx ax $.",
     );
     cases.push((pack_all(&typecodes), number(&typecodes, "wrong")));
+    let (db, over) = disjoint_library(&two_terms(4, 38, 0, 0), 42, true);
+    cases.push((over, number(&db, "t")));
     let mut magic = bytes;
     magic[0] = b'X';
     cases.push((magic, 0));
@@ -327,7 +329,7 @@ fn registers_the_bank_and_interrupts_survive_every_kind_of_failure() {
             }
         }
     }
-    for code in [0, 1, 2, 4, 6, 7, 8, 9, 10, 11, 12] {
+    for code in [0, 1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13] {
         assert!(
             seen.contains(&(code as u8)),
             "no case ended in status {code}"
