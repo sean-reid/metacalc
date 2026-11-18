@@ -1,5 +1,6 @@
 name = "prop"
 title = "Propositional calculus"
 description = "Formulas built with not, implies, and, or and if and only if."
+order = 1
 roots = ["ringlz", "ringnegl", "ringcom"]
 before = "vx"

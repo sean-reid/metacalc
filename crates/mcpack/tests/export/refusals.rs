@@ -259,7 +259,7 @@ fn the_command_names_the_assertion_the_exporter_refuses() {
 }
 
 fn page_renders(bytes: &[u8]) -> bool {
-    let manifest = "name = \"t\"\ntitle = \"T\"\ndescription = \"d\"\nroots = [\"a\"]\n";
+    let manifest = "name = \"t\"\ntitle = \"T\"\ndescription = \"d\"\norder = 1\nroots = [\"a\"]\n";
     let pin = Pin {
         repository: "https://example.org/r".into(),
         commit: "abc".into(),

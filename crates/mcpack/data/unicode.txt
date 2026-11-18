@@ -14,12 +14,12 @@ _V V
 -u -
 , ,
 : :
-.+ +
-.0. 0
-.1. 1
-.o. ⚬
+.+ + dotted
+.0. 0 dotted
+.1. 1 dotted
+.o. ⚬ dotted
 .r .r
-.x. ·
+.x. · dotted
 " “
 ( (
 (/) ∅

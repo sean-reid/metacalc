@@ -29,7 +29,7 @@ fn escape(text: &str) -> String {
 fn statement(tokens: &[String]) -> String {
     format!(
         "{}<samp>{}</samp>",
-        escape(&unicode::spell(tokens)),
+        unicode::spell(tokens),
         escape(&tokens.join(" "))
     )
 }
@@ -93,7 +93,7 @@ impl Kind {
     fn explanation(self) -> &'static str {
         match self {
             Kind::Syntax => {
-                "They say how formulas, classes and variables are built from smaller parts, and claim nothing is provable."
+                "They say how formulas, classes and variables are built from smaller parts. Most are taken as given, and the few marked derived are proved from the others."
             }
             Kind::Axiom => "The library takes each of these as true without a proof.",
             Kind::Definition => {
@@ -111,7 +111,7 @@ impl Kind {
 
 fn counted(count: usize, noun: &str) -> String {
     let plural = if count == 1 { "" } else { "s" };
-    format!("{count} {noun}{plural}")
+    format!("{} {noun}{plural}", thousands(count))
 }
 
 /// Groups with a thousands separator, as in `57,985`.
@@ -133,6 +133,9 @@ fn entry(out: &mut String, a: &Assertion) {
         out,
         "<div class=\"mm\" id=\"{label}\"><a href=\"{LABEL_PAGES}/{label}.html\">{label}</a>"
     );
+    if a.theorem && Kind::of(a) == Kind::Syntax {
+        out.push_str(" <small>derived</small>");
+    }
     for h in &a.hypotheses {
         if let Hypothesis::Essential(tokens) = h {
             let _ = write!(out, "\n<p class=\"h\">{}</p>", statement(tokens));
@@ -140,17 +143,16 @@ fn entry(out: &mut String, a: &Assertion) {
     }
     let _ = write!(out, "\n<p class=\"c\">{}</p>", statement(&a.conclusion));
     if !a.disjoint.is_empty() {
-        let pairs = |sep: &str| -> Vec<String> {
-            a.disjoint
-                .iter()
-                .map(|(x, y)| format!("{}{sep}{}", unicode::spell(&[x]), unicode::spell(&[y])))
-                .collect()
-        };
+        let pairs: Vec<String> = a
+            .disjoint
+            .iter()
+            .map(|(x, y)| format!("{},{}", unicode::html(x), unicode::html(y)))
+            .collect();
         let ascii: Vec<String> = a.disjoint.iter().map(|(x, y)| format!("{x} {y}")).collect();
         let _ = write!(
             out,
             "\n<p class=\"d\">Distinct variables: {}<samp>{}</samp></p>",
-            escape(&pairs(",").join("; ")),
+            pairs.join("; "),
             escape(&ascii.join(", "))
         );
     }
@@ -179,10 +181,7 @@ fn variables(out: &mut String, library: &Library) {
         };
         let shown = &names[..names.len().min(3)];
         let more = names.len() - shown.len();
-        let rendered: Vec<String> = shown
-            .iter()
-            .map(|n| escape(&unicode::spell(&[n])))
-            .collect();
+        let rendered: Vec<String> = shown.iter().map(|n| unicode::html(n)).collect();
         let ascii: Vec<String> = shown
             .iter()
             .map(|n| format!("<samp>{}</samp>", escape(n)))
@@ -202,18 +201,28 @@ fn variables(out: &mut String, library: &Library) {
     }
 }
 
+/// The symbols set.mm draws as variables with a dotted underline, which the key lists too.
+fn symbol_variables(library: &Library) -> impl Iterator<Item = &String> {
+    library
+        .variables
+        .iter()
+        .map(|v| &v.name)
+        .filter(|n| unicode::glyph(n).is_some_and(|s| s.dotted))
+}
+
 fn notation(out: &mut String, library: &Library) {
     out.push_str("<div class=\"table-wrapper\"><table>\n<thead><tr><th>ASCII</th><th>Unicode</th><th>Meaning</th></tr></thead>\n<tbody>\n");
     let not_typecode = |t: &&String| !matches!(t.as_str(), "|-" | "wff" | "setvar" | "class");
-    let mut constants: Vec<&String> = library.constants.iter().collect();
-    constants.sort_by_key(not_typecode);
-    for token in constants {
+    let mut symbols: Vec<&String> = library.constants.iter().collect();
+    symbols.sort_by_key(not_typecode);
+    symbols.extend(symbol_variables(library));
+    for token in symbols {
         let meaning = notation::meaning(token).unwrap_or_default();
         let _ = writeln!(
             out,
             "<tr><td><samp>{}</samp></td><td>{}</td><td>{}</td></tr>",
             escape(token),
-            escape(unicode::glyph(token).unwrap_or(token)),
+            unicode::html(token),
             escape(meaning)
         );
     }
@@ -244,15 +253,19 @@ fn pages(library: &[u8]) -> usize {
     library.len().div_ceil(library::CHUNK)
 }
 
+fn cell(text: &str) -> String {
+    text.replace('|', "\\|")
+}
+
 /// One row of the table on the index page: the library, what it covers, and its counts.
 pub fn row(manifest: &Manifest, library: &[u8]) -> Result<String, ReadError> {
     let assertions = library::read(library)?;
     let counts = tally(&assertions);
     Ok(format!(
         "| [{}]({}.md) | {} | {} | {} | {} | {} |",
-        manifest.title,
+        cell(&manifest.title),
         manifest.name,
-        manifest.description,
+        cell(&manifest.description),
         thousands(counts[Kind::Axiom as usize]),
         thousands(counts[Kind::Theorem as usize]),
         thousands(library.len()),
@@ -260,12 +273,36 @@ pub fn row(manifest: &Manifest, library: &[u8]) -> Result<String, ReadError> {
     ))
 }
 
+/// The index table of `libraries`, ordered by their manifests' `order`.
+pub fn table(mut libraries: Vec<(Manifest, Vec<u8>)>) -> Result<String, String> {
+    libraries.sort_by_key(|(m, _)| m.order);
+    if let Some(pair) = libraries.windows(2).find(|w| w[0].0.order == w[1].0.order) {
+        return Err(format!(
+            "{} and {} have the same order, {}",
+            pair[0].0.name, pair[1].0.name, pair[0].0.order
+        ));
+    }
+    let mut out = String::from(
+        "| Library | Covers | Axioms | Theorems | Size (bytes) | Flash pages |\n| --- | --- | ---: | ---: | ---: | ---: |\n",
+    );
+    for (manifest, bytes) in &libraries {
+        let row = row(manifest, bytes).map_err(|e| format!("{}: {e}", manifest.name))?;
+        out.push_str(&row);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
 /// Renders the page for `library`, a packed library the kernel has accepted.
 pub fn render(manifest: &Manifest, pin: &Pin, library: &[u8]) -> Result<String, ReadError> {
     let decoded = library::decode(library)?;
     let counts = tally(&decoded.assertions);
     let mut out = String::new();
-    let _ = writeln!(out, "# {}\n\n{}\n", manifest.title, manifest.description);
+    let _ = writeln!(
+        out,
+        "# {} {{#page:title}}\n\n{}\n",
+        manifest.title, manifest.description
+    );
     let contents: Vec<String> = Kind::ALL
         .iter()
         .filter(|&&k| counts[k as usize] > 0)
@@ -295,15 +332,21 @@ pub fn render(manifest: &Manifest, pin: &Pin, library: &[u8]) -> Result<String, 
          and a theorem can only be applied once each of its hypotheses is proved. \
          Labels link to the page for the same label on us.metamath.org.\n\n",
     );
-    let mut jumps = vec!["[Notation](#notation)".to_string()];
+    let mut jumps = vec!["[Notation](#page:notation)".to_string()];
     for kind in Kind::ALL {
         if counts[kind as usize] > 0 {
             let anchor = kind.heading().to_lowercase().replace(' ', "-");
-            jumps.push(format!("[{}](#{anchor})", kind.heading()));
+            jumps.push(format!("[{}](#page:{anchor})", kind.heading()));
         }
     }
     let _ = writeln!(out, "On this page: {}.\n", jumps.join(", "));
-    out.push_str("## Notation\n\nEvery constant symbol this library uses.\n\n");
+    out.push_str("## Notation {#page:notation}\n\nEvery constant symbol this library uses");
+    if symbol_variables(&decoded).next().is_some() {
+        out.push_str(
+            ", and the dotted symbols. A dotted symbol is a variable that stands for whatever operation or element a hypothesis says it is",
+        );
+    }
+    out.push_str(".\n\n");
     notation(&mut out, &decoded);
     variables(&mut out, &decoded);
     for kind in Kind::ALL {
@@ -313,8 +356,9 @@ pub fn render(manifest: &Manifest, pin: &Pin, library: &[u8]) -> Result<String, 
         }
         let _ = writeln!(
             out,
-            "\n## {}\n\n{}. {}\n",
+            "\n## {} {{#page:{}}}\n\n{}. {}\n",
             kind.heading(),
+            kind.heading().to_lowercase().replace(' ', "-"),
             counted(count, kind.noun()),
             kind.explanation()
         );

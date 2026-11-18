@@ -1,5 +1,6 @@
 name = "pred"
 title = "Predicate calculus with equality"
 description = "Adds quantifiers, equality and substitution."
+order = 2
 roots = ["ringlz", "ringnegl", "ringcom"]
 before = "ax-ext"

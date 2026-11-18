@@ -4,7 +4,7 @@ use mcpack::library::{self, check};
 use mcpack::manifest::{Manifest, Pin};
 use mcpack::mm::{Database, StmtId};
 use mcpack::{build as plan, page};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 fn pack_checked(db: &Database, kept: &[StmtId], output: &Path) -> Result<ExitCode, ExitCode> {
@@ -72,13 +72,17 @@ pub fn doc(
     Ok(ExitCode::SUCCESS)
 }
 
-pub fn summary(manifest: &Path, library: &Path) -> Result<ExitCode, ExitCode> {
-    let (manifest, _) = manifest_and_pin(manifest)?;
-    let bytes = read(library)?;
-    check(&bytes).map_err(|e| fail(format_args!("{}: {e}", library.display())))?;
-    let row = page::row(&manifest, &bytes)
-        .map_err(|e| fail(format_args!("{}: {e}", library.display())))?;
-    println!("{row}");
+pub fn summary(manifests: &[PathBuf], libdir: &Path) -> Result<ExitCode, ExitCode> {
+    let mut libraries = Vec::new();
+    for path in manifests {
+        let (manifest, _) = manifest_and_pin(path)?;
+        let file = libdir.join(format!("{}.mclib", manifest.name));
+        let bytes = read(&file)?;
+        check(&bytes).map_err(|e| fail(format_args!("{}: {e}", file.display())))?;
+        libraries.push((manifest, bytes));
+    }
+    let table = page::table(libraries).map_err(unusable)?;
+    print!("{table}");
     Ok(ExitCode::SUCCESS)
 }
 

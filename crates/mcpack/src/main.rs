@@ -67,12 +67,12 @@ enum Command {
         #[arg(long)]
         require_unicode: bool,
     },
-    /// Print the row of a packed library in the index table of the library pages
+    /// Print the index table of the library pages, one row per manifest in manifest order
     Summary {
-        manifest: PathBuf,
-        /// A library written by `build`
-        #[arg(long)]
-        library: PathBuf,
+        /// The directory holding the libraries written by `build`, as NAME.mclib
+        libdir: PathBuf,
+        #[arg(required = true)]
+        manifests: Vec<PathBuf>,
     },
     /// Write a packed library back out as a Metamath database
     Export {
@@ -111,7 +111,7 @@ fn main() -> ExitCode {
             output,
             require_unicode,
         } => cmd::doc(&manifest, &library, &output, require_unicode),
-        Command::Summary { manifest, library } => cmd::summary(&manifest, &library),
+        Command::Summary { libdir, manifests } => cmd::summary(&manifests, &libdir),
         Command::Export { library, output } => cmd::export(&library, &output),
     }
     .unwrap_or_else(|code| code)

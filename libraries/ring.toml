@@ -1,4 +1,5 @@
 name = "ring"
 title = "Ring theory"
 description = "Adds set theory, numbers, groups and rings."
+order = 3
 roots = ["ringlz", "ringnegl", "ringcom"]
