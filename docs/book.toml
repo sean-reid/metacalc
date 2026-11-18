@@ -7,3 +7,4 @@ src = "src"
 [output.html]
 git-repository-url = "https://github.com/sean-reid/metacalc"
 site-url = "/metacalc/"
+additional-css = ["theme/library.css"]

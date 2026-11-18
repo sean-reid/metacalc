@@ -260,27 +260,46 @@ fn doc_writes_the_page_of_a_built_library() {
     assert_eq!(lines[2], "One theorem.");
     assert_eq!(
         lines[4],
-        "- Source: `demo0.mm` in [example.org/demo](https://example.org/demo/tree/abc123) at commit `abc123`"
+        "- Contents: 4 syntax rules, 3 other unproved assertions, 1 theorem"
     );
-    assert_eq!(lines[5], "- Axioms: 7");
-    assert_eq!(lines[6], "- Theorems: 1");
     assert_eq!(
-        lines[7],
-        format!("- Size: {} bytes in 1 pages of 16384 bytes", bytes.len())
+        lines[5],
+        format!(
+            "- Size: {} bytes in 1 flash pages of 16,384 bytes",
+            bytes.len()
+        )
     );
-    assert_eq!(lines[9], "## Assertions");
     assert_eq!(
-        lines[11..],
-        [
-            "- <span id=\"tze\"></span>**tze** (axiom): `term 0`",
-            "- <span id=\"tpl\"></span>**tpl** (axiom): `term ( t + r )`",
-            "- <span id=\"weq\"></span>**weq** (axiom): `wff t = r`",
-            "- <span id=\"wim\"></span>**wim** (axiom): `wff ( P -> Q )`",
-            "- <span id=\"a1\"></span>**a1** (axiom): `|- ( t = r -> ( t = s -> r = s ) )`",
-            "- <span id=\"a2\"></span>**a2** (axiom): `|- ( t + 0 ) = t`",
-            "- <span id=\"mp\"></span>**mp** (axiom) given `|- P`, `|- ( P -> Q )`: `|- Q`",
-            "- <span id=\"th1\"></span>**th1** (theorem): `|- t = t`",
-        ]
+        lines[6],
+        "- Source: `demo0.mm` in [example.org/demo](https://example.org/demo) at commit [abc123](https://example.org/demo/commit/abc123)"
+    );
+    for label in ["tze", "tpl", "weq", "wim", "a1", "a2", "mp", "th1"] {
+        assert!(
+            page.contains(&format!("<div class=\"mm\" id=\"{label}\">")),
+            "{label}"
+        );
+    }
+}
+
+#[test]
+fn summary_prints_the_index_row_of_a_built_library() {
+    let real = sha256_hex(&std::fs::read(corpus("demo0.mm")).unwrap());
+    let dir = workspace("row", &real);
+    let library = build_demo(&dir);
+    let bytes = std::fs::read(&library).unwrap();
+    let out = mcpack(&[
+        Path::new("summary"),
+        &dir.join("demo.toml"),
+        Path::new("--library"),
+        &library,
+    ]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        text(out.stdout),
+        format!(
+            "| [Demo](demo.md) | One theorem. | 0 | 1 | {} | 1 |\n",
+            bytes.len()
+        )
     );
 }
 

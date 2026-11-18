@@ -1,0 +1,45 @@
+.mm {
+  margin: 1.2em 0;
+  padding-left: 0.8em;
+  border-left: 3px solid var(--table-border-color);
+}
+
+.mm > a {
+  font-weight: 600;
+}
+
+.mm p {
+  margin: 0.3em 0;
+  overflow-wrap: anywhere;
+}
+
+.mm .h::before {
+  content: "given ";
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+.mm .c {
+  font-size: 1.1em;
+}
+
+.mm .d {
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+
+.mm samp {
+  display: block;
+  padding: 0;
+  background: none;
+  font-family: var(--mono-font);
+  font-size: 0.75em;
+  opacity: 0.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.table-wrapper samp {
+  font-family: var(--mono-font);
+  font-size: 0.9em;
+}

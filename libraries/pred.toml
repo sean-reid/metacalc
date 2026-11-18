@@ -1,5 +1,5 @@
 name = "pred"
 title = "Predicate calculus with equality"
-description = "Propositional and predicate calculus with equality from set.mm, as far as the ring theorems depend on them, up to the first set theory axiom."
+description = "Adds quantifiers, equality and substitution."
 roots = ["ringlz", "ringnegl", "ringcom"]
 before = "ax-ext"

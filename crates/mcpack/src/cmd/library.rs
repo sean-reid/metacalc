@@ -47,15 +47,38 @@ pub fn build(manifest: &Path, database: &Path, output: &Path) -> Result<ExitCode
     pack_checked(&db, &kept, output)
 }
 
-pub fn doc(manifest: &Path, library: &Path, output: &Path) -> Result<ExitCode, ExitCode> {
+pub fn doc(
+    manifest: &Path,
+    library: &Path,
+    output: &Path,
+    require_unicode: bool,
+) -> Result<ExitCode, ExitCode> {
     let (manifest, pin) = manifest_and_pin(manifest)?;
     let bytes = read(library)?;
     check(&bytes).map_err(|e| fail(format_args!("{}: {e}", library.display())))?;
-    let text = page::render(&manifest, &pin, &bytes)
-        .map_err(|e| fail(format_args!("{}: {e}", library.display())))?;
+    let broken = |e| fail(format_args!("{}: {e}", library.display()));
+    let text = page::render(&manifest, &pin, &bytes).map_err(broken)?;
+    let unmapped = page::unmapped(&bytes).map_err(broken)?;
+    if require_unicode && !unmapped.is_empty() {
+        return Err(fail(format_args!(
+            "{}: no Unicode spelling for {}",
+            library.display(),
+            unmapped.join(" ")
+        )));
+    }
     std::fs::write(output, &text)
         .map_err(|e| unusable(format_args!("{}: {e}", output.display())))?;
     println!("{}: {} bytes", output.display(), text.len());
+    Ok(ExitCode::SUCCESS)
+}
+
+pub fn summary(manifest: &Path, library: &Path) -> Result<ExitCode, ExitCode> {
+    let (manifest, _) = manifest_and_pin(manifest)?;
+    let bytes = read(library)?;
+    check(&bytes).map_err(|e| fail(format_args!("{}: {e}", library.display())))?;
+    let row = page::row(&manifest, &bytes)
+        .map_err(|e| fail(format_args!("{}: {e}", library.display())))?;
+    println!("{row}");
     Ok(ExitCode::SUCCESS)
 }
 
