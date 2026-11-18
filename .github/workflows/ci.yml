@@ -13,7 +13,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.jobs.outputs.rust }}
+      emu: ${{ steps.jobs.outputs.emu }}
+      audit: ${{ steps.jobs.outputs.audit }}
+      docs: ${{ steps.jobs.outputs.docs }}
+      app: ${{ steps.jobs.outputs.app }}
+      libraries: ${{ steps.jobs.outputs.libraries }}
+      site: ${{ steps.jobs.outputs.site }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - run: sh scripts/test-ci-changes.sh
+      - id: jobs
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            git diff --no-renames --name-only "$BASE...$HEAD" > "$RUNNER_TEMP/changed"
+          else
+            echo every-job > "$RUNNER_TEMP/changed"
+          fi
+          sh scripts/ci-changes.sh < "$RUNNER_TEMP/changed" > "$RUNNER_TEMP/jobs"
+          cat "$RUNNER_TEMP/jobs" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/jobs"
+
   rust:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,6 +60,8 @@ jobs:
       - run: cargo build --release --locked
 
   emu:
+    needs: changes
+    if: needs.changes.outputs.emu == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,6 +79,8 @@ jobs:
       - run: cargo test -p mcemu --locked
 
   audit:
+    needs: changes
+    if: needs.changes.outputs.audit == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -55,6 +90,8 @@ jobs:
       - run: cargo deny check advisories licenses
 
   docs:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,6 +101,8 @@ jobs:
       - run: mdbook build docs
 
   app:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,13 +113,12 @@ jobs:
       - run: make -C probe check
 
   libraries:
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
-      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
-        with:
-          tool: mdbook
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .setmm
@@ -92,7 +130,29 @@ jobs:
           echo "path=$path" >> "$GITHUB_OUTPUT"
       - run: sh scripts/build-libraries.sh "${{ steps.setmm.outputs.path }}" "$RUNNER_TEMP/libraries" "$RUNNER_TEMP/pages"
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked --release -p mcpack --test sections -- --ignored
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: libraries
+          path: ${{ runner.temp }}/libraries
+          retention-days: 1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pages
+          path: ${{ runner.temp }}/pages
+          retention-days: 1
+
+  library-apps:
+    needs: [changes, libraries]
+    if: needs.changes.outputs.libraries == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       - uses: ./.github/actions/spasm
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: libraries
+          path: ${{ runner.temp }}/libraries
       - run: |
           for lib in "$RUNNER_TEMP"/libraries/*.mclib; do
             name=$(basename "$lib" .mclib)
@@ -103,28 +163,97 @@ jobs:
           done
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
+          path: .tilem
+          key: tilem-${{ hashFiles('scripts/fetch-tilem.sh') }}
+      - run: sh scripts/fetch-tilem.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test kernel -- --ignored --exact libraries::the_shipped_libraries_verify_on_the_device_as_the_model_does --nocapture
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test reader -- --ignored --exact libraries::the_shipped_libraries_read_back_as_the_decoder_decodes_them --nocapture
+
+  library-exports:
+    needs: [changes, libraries]
+    if: needs.changes.outputs.libraries == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: libraries
+          path: ${{ runner.temp }}/libraries
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
           path: .metamath
           key: metamath-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-metamath.sh') }}
       - run: sh scripts/fetch-metamath.sh
       - run: sh scripts/verify-exports.sh "$RUNNER_TEMP/libraries"
       - run: sh scripts/test-verify-exports.sh
       - run: sh scripts/replay-libraries.sh "$RUNNER_TEMP/libraries"
+
+  library-screens:
+    needs: [changes, libraries]
+    if: needs.changes.outputs.libraries == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .tilem
-          key: tilem-${{ hashFiles('scripts/fetch-tilem.sh') }}
-      - run: sh scripts/fetch-tilem.sh
-      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test kernel -- --ignored --exact libraries::the_shipped_libraries_verify_on_the_device_as_the_model_does --nocapture
-      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test reader -- --ignored --exact libraries::the_shipped_libraries_read_back_as_the_decoder_decodes_them --nocapture
+          path: .setmm
+          key: setmm-${{ hashFiles('libraries/source.toml') }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - id: setmm
+        run: |
+          path=$(sh scripts/fetch-setmm.sh)
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: libraries
+          path: ${{ runner.temp }}/libraries
       - run: sh scripts/worked-examples.sh check "${{ steps.setmm.outputs.path }}"
       - run: SETMM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test unicode_pin -- --ignored --exact the_spellings_match_the_althtmldef_entries_of_the_pinned_set_mm
       - run: SETMM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test notation_meanings -- --ignored --exact every_symbol_in_a_shipped_notation_table_has_a_meaning
       - run: MCUI_LIBS="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --release --locked -p mcui --test checking -- --ignored --exact stepping_through_a_real_library_is_quick --nocapture
       - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 3 cargo test --release --locked -p mcui --test ring -- --ignored --nocapture
       - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test font_symbols -- --ignored --exact font_fixture_matches_the_ring_closure_of_set_mm
+
+  site:
+    needs: [changes, libraries]
+    if: needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with:
+          tool: mdbook
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pages
+          path: ${{ runner.temp }}/pages
       - run: sh scripts/test-build-site.sh
       - run: sh scripts/test-worked-examples.sh
       - run: sh scripts/test-require-tests.sh
       - run: sh scripts/test-release-config.sh
       - run: sh scripts/test-script-paths.sh
       - run: sh scripts/build-site.sh "$RUNNER_TEMP/pages" "$RUNNER_TEMP/docs"
+
+  ci-ok:
+    needs: [changes, rust, emu, audit, docs, app, libraries, library-apps, library-exports, library-screens, site]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+          CHANGES: ${{ needs.changes.result }}
+          FLAGS: ${{ toJSON(needs.changes.outputs) }}
+        run: |
+          echo "changes: $CHANGES, all: $RESULTS"
+          echo "$FLAGS"
+          [ "$CHANGES" = success ] || exit 1
+          [ "$(echo "$FLAGS" | grep -cE '"(true|false)"')" -eq 7 ] || exit 1
+          for result in $RESULTS; do
+            case $result in success | skipped) ;; *) exit 1 ;; esac
+          done
