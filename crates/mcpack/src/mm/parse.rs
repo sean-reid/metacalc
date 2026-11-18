@@ -23,7 +23,11 @@ pub fn parse(src: Vec<u8>) -> Result<Database, ParseError> {
     match parser.run() {
         Ok(()) => {
             let (syms, stmts) = (parser.syms, parser.stmts);
-            Ok(Database { syms, stmts })
+            Ok(Database {
+                syms,
+                stmts,
+                var_scopes: parser.var_scopes,
+            })
         }
         Err(message) => Err(ParseError {
             line: 1 + src[..parser.token_start]
@@ -54,6 +58,7 @@ struct Parser<'a> {
     labels: HashMap<&'a [u8], StmtId>,
     hyp_active: Vec<bool>,
     scopes: Vec<Scope>,
+    var_scopes: Vec<(Sym, StmtId, StmtId)>,
     mark: Vec<u32>,
     generation: u32,
 }
@@ -78,6 +83,7 @@ impl<'a> Parser<'a> {
             labels: HashMap::new(),
             hyp_active: Vec::new(),
             scopes: vec![Scope::default()],
+            var_scopes: Vec::new(),
             mark: Vec::new(),
             generation: 0,
         }
@@ -212,6 +218,8 @@ impl<'a> Parser<'a> {
                 None => self.new_symbol(token, true),
             };
             self.scopes.last_mut().unwrap().vars.push(id);
+            self.var_scopes
+                .push((id, self.stmts.len() as StmtId, StmtId::MAX));
             count += 1;
         }
         if count == 0 {
@@ -259,6 +267,7 @@ impl<'a> Parser<'a> {
         let scope = self.scopes.pop().unwrap();
         for hyp in scope.hyps {
             self.hyp_active[hyp as usize] = false;
+            self.stmts[hyp as usize].scope_end = self.stmts.len() as StmtId;
             let stmt = &self.stmts[hyp as usize];
             if stmt.kind == Kind::Float {
                 self.float_of[stmt.expr[1] as usize] = None;
@@ -266,6 +275,14 @@ impl<'a> Parser<'a> {
         }
         for var in scope.vars {
             self.var_active[var as usize] = false;
+            let open = self
+                .var_scopes
+                .iter_mut()
+                .rev()
+                .find(|e| e.0 == var && e.2 == StmtId::MAX);
+            if let Some(entry) = open {
+                entry.2 = self.stmts.len() as StmtId;
+            }
         }
         Ok(())
     }
@@ -352,6 +369,7 @@ impl<'a> Parser<'a> {
             expr,
             frame,
             proof,
+            scope_end: StmtId::MAX,
         });
         Ok(())
     }
