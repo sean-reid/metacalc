@@ -93,15 +93,8 @@ fn check_trees(library: &Library, trees: &super::Trees) -> Result<(), SectionChe
                     out
                 },
             );
-            if expanded.as_deref()
-                != Some(
-                    statement[1..]
-                        .iter()
-                        .map(String::as_str)
-                        .collect::<Vec<_>>()
-                        .as_slice(),
-                )
-            {
+            let tokens: Vec<&str> = statement.iter().skip(1).map(String::as_str).collect();
+            if expanded.as_deref() != Some(tokens.as_slice()) {
                 return Err(SectionCheckError(format!(
                     "{}: a parse tree does not expand to the statement `{}`",
                     assertion.label,

@@ -224,7 +224,9 @@ fn syntax_parts(assertion: &Assertion) -> Option<Vec<Part>> {
             Hypothesis::Essential(_) => return None,
         }
     }
-    let parts = assertion.conclusion[1..]
+    let parts = assertion
+        .conclusion
+        .get(1..)?
         .iter()
         .map(|token| match floats.iter().position(|f| f == token) {
             Some(slot) => Part::Child(slot),
