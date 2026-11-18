@@ -9,5 +9,6 @@ license = "MIT"
 repository = "https://github.com/sean-reid/metacalc"
 
 [profile.release]
+overflow-checks = true
 lto = true
 codegen-units = 1

@@ -6,7 +6,7 @@ metacalc has two halves. A desktop tool extracts a dependency-complete subset of
 
 ## Status
 
-Early development. The repository holds the build scaffold; nothing runs on a calculator yet.
+Early development. The desktop tool parses and verifies Metamath databases; nothing runs on a calculator yet.
 
 ## Build
 
@@ -20,7 +20,7 @@ cargo test
 ## Usage
 
 ```sh
-cargo run -p mcpack -- --help
+cargo run --release -p mcpack -- verify set.mm
 ```
 
 ## Licence
