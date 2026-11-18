@@ -1,10 +1,12 @@
 //! Metamath database model, parser and reference verifier.
 
 mod closure;
+mod grammar;
 mod parse;
 mod verify;
 
 pub use closure::closure;
+pub use grammar::{Grammar, GrammarError, Parsed, SyntaxError, Tree};
 pub use parse::{ParseError, parse};
 pub use verify::{Usage, Verifier};
 

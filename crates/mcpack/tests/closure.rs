@@ -1,5 +1,5 @@
 use mcpack::measure::measure;
-use mcpack::mm::{self, Database, ProofError, StmtId, Usage, Verifier, closure};
+use mcpack::mm::{self, Database, Grammar, ProofError, StmtId, SyntaxError, Usage, Verifier};
 use std::path::Path;
 use std::process::Command;
 
@@ -43,6 +43,11 @@ fn ids(db: &Database, labels: &[&str]) -> Vec<StmtId> {
         .collect()
 }
 
+fn closure(db: &Database, roots: &[&str]) -> Vec<StmtId> {
+    let grammar = Grammar::new(db, &[("|-", "wff")]).expect("grammar builds");
+    mm::closure(db, &grammar, &ids(db, roots)).expect("statements parse")
+}
+
 fn labels(db: &Database, ids: &[StmtId]) -> Vec<String> {
     ids.iter().map(|&id| db.stmt(id).label.clone()).collect()
 }
@@ -50,7 +55,7 @@ fn labels(db: &Database, ids: &[StmtId]) -> Vec<String> {
 #[test]
 fn closure_follows_proofs_and_hypotheses_in_database_order() {
     let db = db();
-    let got = closure(&db, &ids(&db, &["use"]));
+    let got = closure(&db, &["use"]);
     assert_eq!(
         labels(&db, &got),
         [
@@ -60,10 +65,37 @@ fn closure_follows_proofs_and_hypotheses_in_database_order() {
 }
 
 #[test]
+fn closure_keeps_syntax_axioms_no_proof_step_names() {
+    let src = "
+        $c wff |- T $.
+        wtru $a wff T $.
+        tru $a |- T $.
+        tru2 $p |- T $= tru $.
+    ";
+    let db = mm::parse(src.as_bytes().to_vec()).expect("database parses");
+    let got = closure(&db, &["tru2"]);
+    assert_eq!(labels(&db, &got), ["wtru", "tru", "tru2"]);
+}
+
+#[test]
+fn closure_stops_at_a_statement_the_grammar_cannot_read() {
+    let src = "
+        $c wff |- T F $.
+        wtru $a wff T $.
+        fal $a |- F $.
+        fal2 $p |- T $= fal $.
+    ";
+    let db = mm::parse(src.as_bytes().to_vec()).expect("database parses");
+    let grammar = Grammar::new(&db, &[("|-", "wff")]).expect("grammar builds");
+    let got = mm::closure(&db, &grammar, &ids(&db, &["fal2"]));
+    assert_eq!(got, Err((db.find("fal").unwrap(), SyntaxError::NoParse)));
+}
+
+#[test]
 fn closure_leaves_out_what_the_roots_do_not_use() {
     let db = db();
-    let got = closure(&db, &ids(&db, &["th", "th"]));
-    assert_eq!(labels(&db, &got), ["wp", "wq", "ax-1", "th"]);
+    let got = closure(&db, &["th", "th"]);
+    assert_eq!(labels(&db, &got), ["wp", "wq", "wi", "ax-1", "th"]);
 }
 
 #[test]
@@ -121,7 +153,7 @@ fn usage_is_empty_for_a_proof_that_never_ran() {
 #[test]
 fn measure_counts_each_segment_and_checks_the_proofs() {
     let db = db();
-    let all = closure(&db, &ids(&db, &["use", "th"]));
+    let all = closure(&db, &["use", "th"]);
     let report = measure(&db, &all, &ids(&db, &["a1i.1"]));
     assert!(report.failures.is_empty());
     let [first, second] = &report.segments[..] else {
@@ -151,7 +183,7 @@ fn measure_counts_each_segment_and_checks_the_proofs() {
 #[test]
 fn measure_orders_splits_and_ignores_repeats() {
     let db = db();
-    let all = closure(&db, &ids(&db, &["use", "th"]));
+    let all = closure(&db, &["use", "th"]);
     let report = measure(&db, &all, &ids(&db, &["a1i.1", "ax-1", "a1i.1"]));
     let rows: Vec<(&str, usize)> = report
         .segments
@@ -164,7 +196,7 @@ fn measure_orders_splits_and_ignores_repeats() {
 #[test]
 fn measure_counts_an_uncompressed_proof_as_length_only() {
     let db = db();
-    let report = measure(&db, &closure(&db, &ids(&db, &["plain"])), &[]);
+    let report = measure(&db, &closure(&db, &["plain"]), &[]);
     let total = report.total();
     assert_eq!((total.proof_refs, total.proof_len, total.steps), (0, 3, 3));
 }
@@ -172,7 +204,7 @@ fn measure_counts_an_uncompressed_proof_as_length_only() {
 #[test]
 fn measure_reports_a_proof_that_fails() {
     let db = db();
-    let report = measure(&db, &closure(&db, &ids(&db, &["bad"])), &[]);
+    let report = measure(&db, &closure(&db, &["bad"]), &[]);
     assert_eq!(
         report.failures,
         [("bad".to_string(), ProofError::WrongConclusion)]
