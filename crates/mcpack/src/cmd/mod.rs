@@ -2,7 +2,7 @@ mod inspect;
 mod library;
 
 pub use inspect::{closure, outline, parse, verify};
-pub use library::{build, doc, pack};
+pub use library::{build, doc, export, pack};
 
 use mcpack::mm::{self, Database, Grammar};
 use std::path::Path;

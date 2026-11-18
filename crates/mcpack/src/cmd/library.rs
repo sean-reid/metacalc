@@ -58,3 +58,14 @@ pub fn doc(manifest: &Path, library: &Path, output: &Path) -> Result<ExitCode, E
     println!("{}: {} bytes", output.display(), text.len());
     Ok(ExitCode::SUCCESS)
 }
+
+pub fn export(library: &Path, output: &Path) -> Result<ExitCode, ExitCode> {
+    let bytes = read(library)?;
+    check(&bytes).map_err(|e| fail(format_args!("{}: {e}", library.display())))?;
+    let text =
+        library::export(&bytes).map_err(|e| fail(format_args!("{}: {e}", library.display())))?;
+    std::fs::write(output, &text)
+        .map_err(|e| unusable(format_args!("{}: {e}", output.display())))?;
+    println!("{}: {} bytes", output.display(), text.len());
+    Ok(ExitCode::SUCCESS)
+}
