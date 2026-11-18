@@ -721,3 +721,416 @@ fn the_checksum_is_not_checked_here() {
     let (init, got, _) = Device::with_library(&bytes).verify_all(count, ASKED_UNBOUNDED);
     assert_eq!((init, got), (0, want));
 }
+
+fn model_one(bytes: &[u8], id: usize, limits: Limits) -> u8 {
+    status(Kernel::new(bytes, clamped(limits)).and_then(|mut kernel| kernel.verify(id)))
+}
+
+/// The device's status for `id` under `limits`, which must be the model's.
+fn same_as_model(device: &mut Device, bytes: &[u8], id: usize, limits: Limits, what: &str) -> u8 {
+    let got = device.verify(id, limits);
+    assert_eq!(got.init, 0, "{what}");
+    assert_eq!(got.verify, model_one(bytes, id, limits), "{what}");
+    got.verify
+}
+
+#[test]
+fn the_kernel_needs_the_memory_the_reference_measures() {
+    let ok = status(Ok(()));
+    let oom = status(Err(KernelError::OutOfMemory));
+    let mut fitting = 0;
+    for name in ["big-unifier.mm", "demo0.mm", "miu.mm", "anatomy.mm"] {
+        let db = corpus(name);
+        let bytes = pack_all(&db);
+        let mut device = Device::with_library(&bytes);
+        let mut reference = Verifier::new(&db);
+        for (local, &id) in assertions(&db).iter().enumerate() {
+            if db.stmt(id).kind != Kind::Theorem {
+                continue;
+            }
+            reference.verify(id).expect("the proof is valid");
+            let usage = reference.usage();
+            let what = format!("{name} {}", db.stmt(id).label);
+            let exact = Limits {
+                stack_syms: usage.stack_syms,
+                stack_entries: usage.stack_depth,
+                ..ASKED_UNBOUNDED
+            };
+            let short = |limits: Limits| {
+                [
+                    Limits {
+                        stack_syms: limits.stack_syms - 1,
+                        ..limits
+                    },
+                    Limits {
+                        stack_entries: limits.stack_entries - 1,
+                        ..limits
+                    },
+                ]
+            };
+            let fits = usage.stack_syms <= label("CAP_STACK_SYMS") as usize
+                && usage.stack_depth <= label("CAP_STACK_ENTRIES") as usize
+                && usage.saved_syms <= label("CAP_SAVED_SYMS") as usize;
+            let want = if fits { ok } else { oom };
+            fitting += usize::from(fits);
+            assert_eq!(
+                same_as_model(&mut device, &bytes, local, exact, &what),
+                want
+            );
+            for limits in short(exact) {
+                assert_eq!(
+                    same_as_model(&mut device, &bytes, local, limits, &what),
+                    oom
+                );
+            }
+            if usage.saved_syms > 0 && fits {
+                let saved = Limits {
+                    saved_syms: usage.saved_syms,
+                    ..ASKED_UNBOUNDED
+                };
+                assert_eq!(same_as_model(&mut device, &bytes, local, saved, &what), ok);
+                let less = Limits {
+                    saved_syms: usage.saved_syms - 1,
+                    ..saved
+                };
+                assert_eq!(same_as_model(&mut device, &bytes, local, less, &what), oom);
+            }
+        }
+    }
+    assert!(fitting >= 3, "{fitting} theorems fit");
+}
+
+/// A theorem that pushes `copies` copies of an axiom's statement of `size` symbols and drops
+/// them pairwise, saving each copy first when `saving` is set.
+fn copies_src(size: usize, copies: usize, saving: bool) -> String {
+    let body = "T ".repeat(size - 1);
+    let proof = if saving {
+        format!("( n0 drop ) A{}", "AZB".repeat(copies))
+    } else {
+        format!(
+            "n0{}",
+            " n0".repeat(copies - 1) + &" drop".repeat(copies - 1)
+        )
+    };
+    format!(
+        "$c T wff $.\n${{ d.1 $e wff {body}$. d.2 $e wff {body}$. drop $a wff {body}$. $}}\n\
+         n0 $a wff {body}$.\nbig $p wff {body}$= {proof} $.\n"
+    )
+}
+
+/// The device's status for the copies theorem under the largest limits, checked against the model
+/// and the reference verifier.
+fn copies(size: usize, copies: usize, saving: bool) -> (u8, mcpack::mm::Usage) {
+    let db = parse(&copies_src(size, copies, saving));
+    let mut reference = Verifier::new(&db);
+    reference.verify(db.find("big").unwrap()).expect("valid");
+    let bytes = pack_all(&db);
+    let id = number(&db, "big");
+    let mut device = Device::with_library(&bytes);
+    let got = same_as_model(&mut device, &bytes, id, ASKED_UNBOUNDED, "copies");
+    (got, reference.usage())
+}
+
+#[test]
+fn a_limit_above_a_buffer_is_clamped_to_it() {
+    let ok = status(Ok(()));
+    let oom = status(Err(KernelError::OutOfMemory));
+    let cap = |name: &str| label(name) as usize;
+
+    let size = 96;
+    let fit = cap("CAP_STACK_SYMS") / size - 1;
+    let (got, usage) = copies(size, fit, false);
+    assert_eq!(usage.stack_syms, cap("CAP_STACK_SYMS"));
+    assert_eq!(got, ok, "stack symbols, at the capacity");
+    assert_eq!(
+        copies(size, fit + 1, false).0,
+        oom,
+        "stack symbols, past it"
+    );
+
+    let entries = cap("CAP_STACK_ENTRIES");
+    let (got, usage) = copies(2, entries, false);
+    assert_eq!(usage.stack_depth, entries);
+    assert_eq!(got, ok, "stack entries, at the capacity");
+    assert_eq!(
+        copies(2, entries + 1, false).0,
+        oom,
+        "stack entries, past it"
+    );
+
+    let fit = cap("CAP_SAVED_SYMS") / size;
+    let (got, usage) = copies(size, fit, true);
+    assert_eq!(usage.saved_syms, cap("CAP_SAVED_SYMS"));
+    assert_eq!(got, ok, "saved symbols, at the capacity");
+    assert_eq!(copies(size, fit + 1, true).0, oom, "saved symbols, past it");
+
+    let saved = cap("CAP_SAVED_ENTRIES");
+    assert_eq!(
+        copies(2, saved, true).0,
+        ok,
+        "saved entries, at the capacity"
+    );
+    assert_eq!(copies(2, saved + 1, true).0, oom, "saved entries, past it");
+}
+
+const REPLACEMENTS: [u8; 8] = [0x00, 0x01, 0x7F, 0x80, 0xEF, 0xF0, 0xFE, 0xFF];
+
+/// The model's view of a library the device reads from flash: the device trusts the length field,
+/// so the bytes the model sees are the ones that length covers, with erased flash past the end.
+/// None when the length is more than the flash pages left can hold.
+fn flash_view(bytes: &[u8]) -> Option<Vec<u8>> {
+    let length = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+    let room = (0x80 - LIB_PAGE as usize) * PAGE;
+    if length > room {
+        return None;
+    }
+    let mut view = bytes.to_vec();
+    view.resize(length, 0xFF);
+    if view.len() >= 8 {
+        reseal(&mut view);
+    }
+    Some(view)
+}
+
+/// Runs the device and the model over one byte string and reports how they differ; each status
+/// the model gives is counted in `seen`.
+fn disagreement(
+    device: &mut Device,
+    bytes: &[u8],
+    limits: Limits,
+    seen: &mut [usize; 16],
+) -> Option<String> {
+    device.load(bytes);
+    let (want_init, want) = match flash_view(bytes) {
+        Some(view) => model_statuses(&view, limits),
+        None => (status(Err(KernelError::Malformed)), Vec::new()),
+    };
+    let malformed = vec![status(Err(KernelError::Malformed))];
+    let want = if want.is_empty() { malformed } else { want };
+    seen[want_init as usize] += 1;
+    want.iter().for_each(|&s| seen[s as usize] += 1);
+    let (init, got, _) = device.verify_all(want.len(), limits);
+    ((init, &got) != (want_init, &want))
+        .then(|| format!("device {init} {got:?}, model {want_init} {want:?}"))
+}
+
+fn sweep(original: &[u8], limits: Limits) -> [usize; 16] {
+    let mut device = Device::new();
+    let mut seen = [0; 16];
+    let mut runs = 0;
+    for at in 8..original.len() {
+        for value in REPLACEMENTS {
+            let mut bytes = original.to_vec();
+            bytes[at] = value;
+            reseal(&mut bytes);
+            if let Some(difference) = disagreement(&mut device, &bytes, limits, &mut seen) {
+                panic!("byte {at} set to {value:#04x}: {difference}");
+            }
+            runs += 1;
+        }
+    }
+    println!("{runs} mutations, statuses seen by code: {seen:?}");
+    seen
+}
+
+#[test]
+fn no_single_byte_change_makes_the_kernel_disagree_with_the_model() {
+    let db = parse(DB);
+    let bytes = pack_all(&db);
+    let seen = sweep(&bytes, ASKED_UNBOUNDED);
+    for code in (0..=12).filter(|&code| code != 3 && code != 5) {
+        assert!(seen[code] > 0, "no mutation gave status {code}");
+    }
+    let tight = Limits {
+        stack_syms: 10,
+        stack_entries: 4,
+        saved_syms: 4,
+        saved_entries: 1,
+    };
+    let seen = sweep(&bytes, tight);
+    assert!(seen[5] > 0, "no mutation ran out of memory");
+}
+
+#[test]
+fn no_single_byte_change_to_a_proof_library_makes_the_kernel_disagree() {
+    for name in ["demo0.mm", "miu.mm"] {
+        let bytes = pack_all(&corpus(name));
+        sweep(&bytes, ASKED_UNBOUNDED);
+    }
+}
+
+#[test]
+fn a_length_at_the_edge_of_flash_is_judged_as_the_model_would() {
+    let db = parse(DB);
+    let original = pack_all(&db);
+    let room = (0x80 - LIB_PAGE as u32) << 14;
+    let mut device = Device::new();
+    for length in [
+        0,
+        19,
+        20,
+        original.len() as u32 - 1,
+        original.len() as u32,
+        original.len() as u32 + 1,
+        room - 1,
+        room,
+        room + 1,
+    ] {
+        let mut bytes = original.clone();
+        bytes[8..12].copy_from_slice(&length.to_le_bytes());
+        reseal(&mut bytes);
+        if let Some(difference) = disagreement(&mut device, &bytes, ASKED_UNBOUNDED, &mut [0; 16]) {
+            panic!("length {length}: {difference}");
+        }
+    }
+}
+
+#[test]
+fn a_library_page_beyond_flash_is_refused() {
+    let db = parse(DB);
+    let bytes = pack_all(&db);
+    let mut device = Device::with_library(&bytes);
+    for page in [0x80u8, 0x81, 0xFF] {
+        device.params(ASKED_UNBOUNDED);
+        device.m.load_ram(label("KERNEL_LIB_PAGE"), &[page]);
+        device.run("ENTRY_ONE");
+        assert_eq!(
+            device.byte("TEST_INIT_STATUS"),
+            status(Err(KernelError::Malformed))
+        );
+        assert_eq!(
+            device.byte("TEST_VERIFY_STATUS"),
+            status(Err(KernelError::Malformed))
+        );
+    }
+}
+
+const PORT_BANK_B: u8 = 7;
+const RAM_PAGE: u8 = 0x81;
+
+/// Every assertion of the small library, which reaches every error path the model has.
+fn small_library() -> (Database, Vec<u8>) {
+    let db = parse(&format!(
+        "{DB} ${{ $d x y $. t $p |- R x x $= vx vy vy vx ax-d ax-m $. $}}"
+    ));
+    let bytes = pack_all(&db);
+    (db, bytes)
+}
+
+#[test]
+fn the_kernel_restores_bank_b_and_writes_only_its_own_memory() {
+    let (db, bytes) = small_library();
+    let count = assertions(&db).len();
+    let marker = *b"flash page marker";
+    let free_start = label("KERNEL_RAM_END");
+    let free_len = usize::from(label("TEST_BLOCK") - free_start);
+    for entry_page in [RAM_PAGE, 0x50] {
+        let mut device = Device::with_library(&bytes);
+        device.m.load_flash(0x50, 0, &marker);
+        let ram_pattern = vec![0xA5; PAGE];
+        let free_pattern = vec![0x5A; free_len];
+        device.m.load_ram(0x8000, &ram_pattern);
+        device.m.load_ram(free_start, &free_pattern);
+        let stack = usize::from(label("KSTACK_TOP") - label("KSTACK"));
+        device.m.load_ram(label("KSTACK"), &vec![0xCC; stack]);
+        let mut deepest = stack;
+        for id in 0..count {
+            device.m.out_port(PORT_BANK_B, entry_page);
+            device.verify(id, ASKED_UNBOUNDED);
+            let bank = device.m.read_ram(0x8000, marker.len());
+            if entry_page == RAM_PAGE {
+                assert_eq!(bank, vec![0xA5; marker.len()], "bank B after {id}");
+            } else {
+                assert_eq!(bank, marker, "bank B after {id}");
+            }
+            assert_eq!(
+                device.m.read_ram(free_start, free_len),
+                free_pattern,
+                "bank C after {id}"
+            );
+            let used = device.m.read_ram(label("KSTACK"), stack);
+            deepest = deepest.min(used.iter().position(|&b| b != 0xCC).unwrap_or(stack));
+        }
+        device.m.out_port(PORT_BANK_B, RAM_PAGE);
+        assert_eq!(
+            device.m.read_ram(0x8000, PAGE),
+            ram_pattern,
+            "RAM page of bank B"
+        );
+        println!("kernel stack: {} of {stack} bytes used", stack - deepest);
+        assert!(
+            deepest >= 128,
+            "the kernel stack comes within 128 bytes of its end"
+        );
+    }
+}
+
+#[test]
+fn the_kernel_restores_the_interrupt_state() {
+    let (_, bytes) = small_library();
+    let mut device = Device::with_library(&bytes);
+    device.params(ASKED_UNBOUNDED);
+    device.run("ENTRY_IFF");
+    assert_eq!(device.byte("TEST_INIT_STATUS"), 0);
+    assert_eq!(device.byte("TEST_IFF"), 1, "interrupts were on at the call");
+    device.verify(0, ASKED_UNBOUNDED);
+    assert_eq!(
+        device.byte("TEST_IFF"),
+        0,
+        "interrupts were off at the call"
+    );
+}
+
+#[test]
+fn the_kernel_halts_within_budget_on_every_corpus_proof() {
+    let mut longest = 0;
+    for name in ["big-unifier.mm", "demo0.mm", "miu.mm", "anatomy.mm"] {
+        let db = corpus(name);
+        let bytes = pack_all(&db);
+        let (_, _, tstates) =
+            Device::with_library(&bytes).verify_all(assertions(&db).len(), ASKED_UNBOUNDED);
+        longest = longest.max(tstates);
+    }
+    assert!(longest < RUN_LIMIT / 4, "{longest} T-states");
+}
+
+#[test]
+fn measurements_at_15_mhz_from_flash() {
+    for name in ["big-unifier.mm", "demo0.mm"] {
+        let db = corpus(name);
+        let bytes = pack_all(&db);
+        let mut device = Device::with_library(&bytes);
+        let init = device.verify_all(0, ASKED_UNBOUNDED).2;
+        println!("{name}: init {init} T-states");
+        let mut reference = Verifier::new(&db);
+        let (mut total, mut steps) = (0, 0);
+        for (local, &id) in assertions(&db).iter().enumerate() {
+            let got = device.verify(local, ASKED_UNBOUNDED);
+            let tstates = got.tstates - init;
+            let stmt = db.stmt(id);
+            if stmt.kind != Kind::Theorem {
+                println!("{name} {}: axiom, {tstates} T-states", stmt.label);
+                continue;
+            }
+            reference.verify(id).expect("the proof is valid");
+            let proof_steps = reference.usage().steps;
+            let outcome = if got.verify == 0 {
+                total += tstates;
+                steps += proof_steps;
+                "accepted"
+            } else {
+                "stopped by the memory limit"
+            };
+            println!(
+                "{name} {}: {tstates} T-states, {proof_steps} proof steps, {outcome}",
+                stmt.label
+            );
+        }
+        if steps > 0 {
+            println!(
+                "{name}: {} T-states per proof step over the accepted theorems",
+                total / steps as u32
+            );
+        }
+    }
+}

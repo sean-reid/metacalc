@@ -64,7 +64,10 @@ all_done:
 	halt
 
 entry_iff:
+	xor a
+	out (3),a
 	ei
+	nop
 	call kernel_init
 	ld (TEST_INIT_STATUS),a
 	call iff_flag
