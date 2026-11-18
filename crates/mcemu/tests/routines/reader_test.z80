@@ -23,6 +23,9 @@ OUT_P5		.equ $A01D
 OUT_P7		.equ $A01E
 TEST_BUF	.equ $A100
 TEST_MASK	.equ $A01F
+NODE_COUNT	.equ $A020
+NODE_PTR	.equ $A022
+NODES		.equ $AC00
 IRQ_COUNT	.equ $A5F0
 IRQ_HANDLER	.equ $A600
 
@@ -51,6 +54,37 @@ call_load:
 	ret
 
 call_nop:
+	ret
+
+; Runs lib_node over the bytes at HL, C of them, and lists the nodes at NODES as kind, value (2).
+call_walk:
+	push hl
+	ld hl,NODES
+	ld (NODE_PTR),hl
+	xor a
+	ld (NODE_COUNT),a
+	pop hl
+walk_loop:
+	ld a,c
+	or a
+	jr z,walk_done
+	call lib_node
+	ret nz
+	push hl
+	ld hl,(NODE_PTR)
+	ld (hl),b
+	inc hl
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	inc hl
+	ld (NODE_PTR),hl
+	ld hl,NODE_COUNT
+	inc (hl)
+	pop hl
+	jr walk_loop
+walk_done:
+	xor a
 	ret
 
 ; Runs from RAM at IRQ_HANDLER: acknowledges the interrupt as the stub does and leaves the shadow
@@ -104,4 +138,5 @@ call_iff_off:
 #ifdef WITH_KERNEL
 #include "kernel.z80"
 #endif
+#include "font.inc"
 #include "lib/lib.z80"

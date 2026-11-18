@@ -1,5 +1,9 @@
+#[path = "reader/damaged.rs"]
+mod damaged;
 #[path = "reader/differential.rs"]
 mod differential;
+#[path = "reader/escapes.rs"]
+mod escapes;
 #[path = "reader/guards.rs"]
 mod guards;
 #[path = "reader/interleave.rs"]
@@ -10,12 +14,20 @@ mod interrupts;
 mod isolation;
 #[path = "reader/libraries.rs"]
 mod libraries;
+#[path = "reader/placements.rs"]
+mod placements;
 #[path = "reader/ports.rs"]
 mod ports;
 #[path = "reader/ramplan.rs"]
 mod ramplan;
 #[path = "reader/reads.rs"]
 mod reads;
+#[path = "reader/safety.rs"]
+mod safety;
+#[path = "reader/secrig.rs"]
+mod secrig;
+#[path = "reader/sections.rs"]
+mod sections;
 #[path = "reader/speed.rs"]
 mod speed;
 #[path = "common/stackfree.rs"]

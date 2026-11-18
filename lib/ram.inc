@@ -32,7 +32,7 @@ LIB_SPARE_PAGE      .equ 3
 #if LIB_STATE < $8000
  .error "LIB_STATE must be in bank B"
 #endif
-LIB_STATE_SIZE      .equ $2A8
+LIB_STATE_SIZE      .equ $2D0
 LIB_INDEX           .equ LIB_STATE+$A8
 #if LIB_STATE + LIB_STATE_SIZE > $C000
  .error "LIB_STATE and its index must end below $C000"
@@ -94,9 +94,34 @@ lr_q                .equ LIB_STATE+$82
 lr_dc               .equ LIB_STATE+$84
 lr_cn               .equ LIB_STATE+$A4
 
+ls_have             .equ LIB_STATE+$2A8
+ls_ti               .equ LIB_STATE+$2A9
+ls_gl               .equ LIB_STATE+$2B2
+ls_tr               .equ LIB_STATE+$2BB
+ls_ti_n             .equ LIB_STATE+$2C4
+ls_gl_fp            .equ LIB_STATE+$2C6
+ls_tr_n             .equ LIB_STATE+$2C8
+ls_ts               .equ LIB_STATE+$2CA
+ls_te               .equ LIB_STATE+$2CD
+LS_TITLES           .equ 1
+LS_GLYPHS           .equ 2
+LS_TREES            .equ 4
+LS_FONT             .equ 8
+LS_FIRST            .equ 6
+
+ls_lo               .equ lr_n
+ls_hi               .equ lr_sr
+ls_mid              .equ lr_q
+ls_k                .equ lr_cn
+
 LIB_OK              .equ 0
 LIB_ERR_RANGE       .equ 1
 LIB_ERR_ARG         .equ 2
 LIB_ERR_BAD         .equ 3
 LIB_ERR_CLOSED      .equ 4
 LIB_ERR_INDEX       .equ 5
+LIB_ERR_TRAILER     .equ 6
+LIB_ERR_TABLE       .equ 7
+LIB_ERR_SECTION     .equ 8
+LIB_ERR_NONE        .equ 9
+LIB_ERR_GLYPHS      .equ 10

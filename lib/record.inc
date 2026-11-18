@@ -132,6 +132,7 @@ llb_done:
 lib_record:
 	call lr_need
 	ret nz
+lr_record:
 	ld bc,(lr_count)
 	push hl
 	or a

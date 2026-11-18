@@ -477,9 +477,23 @@ fn assemble_reader(out: &Path) {
     println!("cargo:rerun-if-changed=tests/routines/reader_test.z80");
     println!("cargo:rerun-if-changed=tests/routines/ramplan.z80");
     let src = Path::new("tests/routines/reader_test.z80");
-    let args = ["-I", "../../kernel", "-I", "../..", "-L"];
+    let font_dir = out.join("ui_font");
+    let args = [
+        "-I",
+        "../../kernel",
+        "-I",
+        "../..",
+        "-I",
+        font_dir.to_str().unwrap(),
+        "-L",
+    ];
+    let foreign = format!(
+        "LIB_FONT_FINGERPRINT=${:04X}",
+        mcglyph::z80::Table::builtin().fingerprint() ^ 1
+    );
     for (name, defines) in [
         ("reader_test", &[][..]),
+        ("reader_foreign", &[foreign.as_str()][..]),
         ("reader_kernel_test", &["WITH_KERNEL"][..]),
         (
             "reader_moved",
