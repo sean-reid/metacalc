@@ -174,7 +174,7 @@ impl Theorem {
         } else {
             canvas.cursor(&rects, GUTTER + self.indent(s), row, window);
         }
-        canvas.soft_keys(["Fold", "Dist", "Why", "Try", ""]);
+        canvas.soft_keys(["Hide", "Dist", "Why", "Try", ""]);
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {

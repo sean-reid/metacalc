@@ -69,47 +69,50 @@ fn a_long_title_is_cut_short_of_its_status() {
 }
 
 #[test]
-fn every_soft_key_label_sits_inside_its_fifth() {
+fn every_used_soft_key_is_its_own_inverted_box_with_the_label_centred_inside() {
     let labels = [
         ["See", "Run", "Info", "", ""],
         ["See", "Find", "Kind", "Try", ""],
-        ["Fold", "Dist", "Why", "Try", ""],
-        ["Fold", "Up", "Thm", "", ""],
+        ["Hide", "Dist", "Why", "Try", ""],
+        ["Hide", "Up", "Thm", "", ""],
     ];
+    let font = Font::builtin();
+    let slots = [(0, 18), (19, 37), (38, 57), (58, 76), (77, 95)];
     for set in labels {
         let mut canvas = Canvas::default();
         canvas.soft_keys(set);
         let frame = canvas.into_bitmap();
-        let edges = [0, 19, 38, 58, 77, 96];
-        let columns = ink_columns(&frame, 56..64);
-        for (i, label) in set.iter().enumerate() {
-            let inside: Vec<usize> = columns
-                .iter()
-                .copied()
-                .filter(|&x| (edges[i]..edges[i + 1]).contains(&x))
-                .collect();
-            assert_eq!(inside.is_empty(), label.is_empty());
-            if label.is_empty() {
-                continue;
-            }
-            let width = text_width(label);
-            let (first, last) = (inside[0], *inside.last().unwrap());
-            assert_eq!(last - first + 1, width, "{label}");
-            let slack = edges[i + 1] - edges[i] - width;
-            assert_eq!(first, edges[i] + slack.div_ceil(2), "{label} is centred");
+        for y in 0..56 {
+            assert!((0..WIDTH).all(|x| !frame.get(x, y)));
         }
-        for b in &edges[1..5] {
-            assert!(!(columns.contains(&(b - 1)) && columns.contains(b)));
+        for (i, label) in set.iter().enumerate() {
+            let (from, to) = slots[i];
+            for y in 56..64 {
+                for x in from..=to {
+                    let inside = x >= from && x < to;
+                    let ink = if label.is_empty() || !inside {
+                        false
+                    } else {
+                        let text = font.text(label);
+                        let slack = (to - from) - text.width();
+                        assert!(slack >= 2, "{label} touches its box");
+                        let left = from + slack.div_ceil(2);
+                        let glyph = x >= left && y >= 57 && text.get(x - left, y - 57);
+                        !glyph
+                    };
+                    assert_eq!(frame.get(x, y), ink, "{label} at {x},{y}");
+                }
+            }
         }
     }
 }
 
 #[test]
-fn a_soft_key_label_wider_than_its_fifth_is_cut() {
+fn a_soft_key_label_wider_than_its_box_is_cut() {
     let mut canvas = Canvas::default();
     canvas.soft_keys(["Prove it now", "", "", "", ""]);
     let frame = canvas.into_bitmap();
-    assert!(ink_columns(&frame, 56..64).iter().all(|&x| x < 19));
+    assert!(ink_columns(&frame, 56..64).iter().all(|&x| x < 18));
 }
 
 #[test]

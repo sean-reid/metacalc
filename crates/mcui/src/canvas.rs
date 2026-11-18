@@ -116,13 +116,19 @@ impl Canvas {
         self.invert_row(0);
     }
 
-    /// The labels of the five keys under the screen, each centred in its fifth of the width.
+    /// The labels of the five keys under the screen. A key with a label is an inverted box
+    /// across its fifth of the width, one column short on the right so neighbours stay apart,
+    /// with the label centred in it; a key without one stays blank.
     pub fn soft_keys(&mut self, labels: [&str; 5]) {
         for (i, label) in labels.iter().enumerate() {
-            let (from, to) = ((WIDTH * i + 2) / 5, (WIDTH * (i + 1) + 2) / 5);
-            let label = truncate(label, to - from);
+            if label.is_empty() {
+                continue;
+            }
+            let (from, to) = ((WIDTH * i + 2) / 5, (WIDTH * (i + 1) + 2) / 5 - 1);
+            let label = truncate(label, to - from - 2);
             let x = from + (to - from - text_width(&label)).div_ceil(2);
             self.text(x, CONTENT_ROWS + 1, &label);
+            self.invert(from, Self::top(CONTENT_ROWS + 1), to - from, ROW);
         }
     }
 

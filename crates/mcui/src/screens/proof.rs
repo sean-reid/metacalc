@@ -157,7 +157,7 @@ impl Proof {
                 canvas.invert_row(row as usize);
             }
         }
-        canvas.soft_keys(["Fold", "Up", "Thm", "", ""]);
+        canvas.soft_keys(["Hide", "Up", "Thm", "", ""]);
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {
