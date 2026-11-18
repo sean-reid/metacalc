@@ -36,7 +36,7 @@ fn a_multi_page_app_keeps_its_pages_in_order_and_pads_the_last() {
     let app = App::parse(&file).unwrap();
     assert_eq!(app.name, "pages");
     assert_eq!(app.page_count(), 3);
-    assert_eq!(app.data_len(), 2 * PAGE + 5000 + 68);
+    assert_eq!(app.data_len(), 2 * PAGE + 5000 + 96);
     assert_eq!(app.image(), expected_image(&pages));
 }
 
@@ -103,6 +103,56 @@ fn an_unsigned_app_is_refused() {
     assert!(refusal(&missing).contains("no signature"));
     let zero = build_8xk("plain", &sample_pages(1, 100), 0x73, 0x24, Signature::Zero);
     assert!(refusal(&zero).contains("no signature"));
+}
+
+/// The signer drops the leading zero bytes of its number, so the field is `02 2D n` with n from 1
+/// to 64, and check-8xk.sh accepts that whole range.
+#[test]
+fn a_signature_field_of_any_length_from_1_to_64_is_accepted() {
+    for n in [1, 2, 63, 64] {
+        let file = build_8xk("sig", &sample_pages(1, 100), 0x73, 0x24, Signature::Len(n));
+        App::parse(&file).unwrap_or_else(|e| panic!("n = {n}: {e}"));
+    }
+}
+
+#[test]
+fn a_signature_field_of_length_0_or_65_is_refused() {
+    for n in [0, 65] {
+        let file = build_8xk("sig", &sample_pages(1, 100), 0x73, 0x24, Signature::Len(n));
+        assert!(refusal(&file).contains("no signature"), "n = {n}");
+    }
+}
+
+#[test]
+fn a_signature_whose_length_byte_disagrees_with_its_bytes_is_refused() {
+    let file = build_8xk("sig", &sample_pages(1, 100), 0x73, 0x24, Signature::Short);
+    assert!(refusal(&file).contains("no signature"));
+}
+
+#[test]
+fn a_signature_field_not_filled_to_96_bytes_is_refused() {
+    let file = build_8xk(
+        "sig",
+        &sample_pages(1, 100),
+        0x73,
+        0x24,
+        Signature::Unfilled,
+    );
+    assert!(refusal(&file).contains("no signature"));
+}
+
+#[test]
+fn bytes_after_the_declared_data_are_refused() {
+    let mut file = FIXTURE.to_vec();
+    file.extend_from_slice(b"\x00\x00");
+    assert!(refusal(&file).contains("bytes after the data"));
+}
+
+#[test]
+fn a_declared_length_past_the_end_of_the_file_is_refused() {
+    let mut file = FIXTURE.to_vec();
+    file[74..78].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(refusal(&file).contains("shorter than its header says"));
 }
 
 #[test]

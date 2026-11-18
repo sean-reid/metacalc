@@ -9,13 +9,9 @@ use crate::packet::vtype;
 use crate::session::{Session, into_expected};
 use crate::tifile::App;
 use crate::transport::Transport;
-use std::time::Duration;
 
 /// Product number of the 84 Plus family in the parameter data.
 pub const PRODUCT_84_PLUS: u64 = 0x0A;
-
-/// How long to listen after the end of transmission for a verdict from the calculator.
-const VERDICT_GRACE: Duration = Duration::from_secs(3);
 
 #[derive(Debug)]
 pub struct Info {
@@ -24,8 +20,8 @@ pub struct Info {
     pub free_flash: Option<u64>,
 }
 
+/// Asks for the model and the free flash. The session must have begun.
 pub fn info<T: Transport>(session: &mut Session<T>) -> Result<Info, Error> {
-    session.begin()?;
     let ids = [PARAM_PRODUCT_NUMBER, PARAM_PRODUCT_NAME, PARAM_FREE_FLASH];
     session.send_virtual(vtype::PARAM_REQUEST, &param_request(&ids), &mut |_| {})?;
     let params = parse_params(&session.expect(vtype::PARAM_DATA)?)?;
@@ -52,9 +48,8 @@ pub fn info<T: Transport>(session: &mut Session<T>) -> Result<Info, Error> {
     })
 }
 
-/// Names of the apps installed on the calculator.
+/// Names of the apps installed on the calculator. The session must have begun.
 pub fn installed_apps<T: Transport>(session: &mut Session<T>) -> Result<Vec<String>, Error> {
-    session.begin()?;
     session.send_virtual(
         vtype::DIR_REQUEST,
         &dir_request(&[ATTR_VAR_TYPE]),
@@ -79,14 +74,14 @@ pub fn installed_apps<T: Transport>(session: &mut Session<T>) -> Result<Vec<Stri
     }
 }
 
-/// Sends the app. `progress` gets the bytes of the app image acknowledged so far.
+/// Sends the app and stops after the end of transmission, as the calculator says nothing more.
+/// The session must have begun. `progress` gets the bytes of the app image acknowledged so far.
 pub fn send_app<T: Transport>(
     session: &mut Session<T>,
     app: &App,
     progress: &mut dyn FnMut(usize),
 ) -> Result<(), Error> {
     let image = app.image();
-    session.begin()?;
     let request = request_to_send_app(&app.name, image.len() as u32);
     session.send_virtual(vtype::REQUEST_TO_SEND, &request, &mut |_| {})?;
     session.expect(vtype::DATA_ACK).map_err(|e| match e {
@@ -98,13 +93,5 @@ pub fn send_app<T: Transport>(
     })?;
     session.send_virtual(vtype::VAR_CONTENT, &image, progress)?;
     session.expect(vtype::DATA_ACK)?;
-    session.send_virtual(vtype::EOT, &[], &mut |_| {})?;
-    match session.recv_optional(VERDICT_GRACE)? {
-        None => Ok(()),
-        Some(packet) if packet.kind == vtype::EOT_ACK => match packet.data.first() {
-            Some(0) => Err(Error::Rejected),
-            _ => Ok(()),
-        },
-        Some(packet) => into_expected(packet, vtype::EOT_ACK).map(|_| ()),
-    }
+    session.send_virtual(vtype::EOT, &[], &mut |_| {})
 }

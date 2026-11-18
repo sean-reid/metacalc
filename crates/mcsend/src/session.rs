@@ -10,15 +10,28 @@ use std::io::Write;
 use std::time::Duration;
 
 /// The raw packet size asked for in the buffer negotiation, the size TI Connect asks for.
-const REQUESTED_BUFFER: u32 = 0x400;
+pub const REQUESTED_BUFFER: u32 = 0x400;
 const MIN_BUFFER: u32 = 16;
-/// A delay the calculator asks for is honoured up to this long.
-const MAX_DELAY: Duration = Duration::from_secs(600);
+/// A delay the calculator announces, in microseconds, is honoured up to this long.
+pub const MAX_DELAY: Duration = Duration::from_secs(60);
+/// Delay packets accepted while one packet is awaited.
+pub const MAX_DELAYS: usize = 50;
+/// Empty reads in a row accepted while one packet is awaited.
+pub const MAX_EMPTY_READS: usize = 64;
+
+/// The deadline of one awaited packet. Every read draws on it, and a delay packet moves it.
+struct Wait {
+    deadline: Duration,
+    total: Duration,
+    delays: usize,
+    empty: usize,
+}
 
 /// One connection to the calculator: raw packets, virtual packets, and the delay rule.
 pub struct Session<T: Transport> {
     transport: T,
     timeout: Duration,
+    write_wait: Duration,
     pending: Vec<u8>,
     max_raw: usize,
     tracer: Option<Tracer>,
@@ -29,6 +42,7 @@ impl<T: Transport> Session<T> {
         Session {
             transport,
             timeout,
+            write_wait: timeout,
             pending: Vec::new(),
             max_raw: 0,
             tracer: None,
@@ -43,26 +57,29 @@ impl<T: Transport> Session<T> {
         self.tracer = Some(Tracer::new(out));
     }
 
-    /// Negotiates the raw packet size and sets the normal mode. Every operation starts here.
+    /// Negotiates the raw packet size and sets the normal mode.
     pub fn begin(&mut self) -> Result<(), Error> {
         self.pending.clear();
         self.send_raw(RawKind::BufferRequest, &REQUESTED_BUFFER.to_be_bytes())?;
-        let raw = self.recv_raw(self.timeout)?;
+        let mut wait = self.wait();
+        let raw = self.recv_raw(&mut wait)?;
         if raw.kind != RawKind::BufferAllocation || raw.data.len() != 4 {
             return Err(Error::Protocol("no buffer size allocation".into()));
         }
         let size = u32::from_be_bytes([raw.data[0], raw.data[1], raw.data[2], raw.data[3]]);
-        if !(MIN_BUFFER..=REQUESTED_BUFFER).contains(&size) {
+        if size < MIN_BUFFER {
             return Err(Error::Protocol(format!("buffer size {size}")));
         }
-        self.max_raw = size as usize;
+        self.max_raw = size.min(REQUESTED_BUFFER) as usize;
         self.send_virtual(vtype::PING, &MODE_NORMAL_PING, &mut |_| {})?;
         self.expect(vtype::MODE_ACK)?;
         Ok(())
     }
 
     /// Sends one virtual packet over as many raw packets as the buffer needs, waiting for each
-    /// acknowledgement. `progress` gets the payload bytes acknowledged so far.
+    /// acknowledgement. A packet that fills more than one raw packet ends with a raw packet
+    /// shorter than the buffer, empty if the data divides evenly. `progress` gets the payload
+    /// bytes acknowledged so far.
     pub fn send_virtual(
         &mut self,
         kind: u16,
@@ -74,35 +91,33 @@ impl<T: Transport> Session<T> {
         }
         let bytes = encode_virtual(kind, data);
         let mut sent = 0;
-        while sent < bytes.len() {
-            let end = bytes.len().min(sent + self.max_raw);
-            let kind = if end == bytes.len() {
-                RawKind::DataLast
+        loop {
+            let left = bytes.len() - sent;
+            let (raw_kind, end) = if left > self.max_raw || (sent > 0 && left == self.max_raw) {
+                (RawKind::Data, sent + self.max_raw)
             } else {
-                RawKind::Data
+                (RawKind::DataLast, bytes.len())
             };
-            self.send_raw(kind, &bytes[sent..end])?;
-            let ack = self.recv_raw(self.timeout)?;
-            if matches!(ack.kind, RawKind::Data | RawKind::DataLast) {
-                let packet = self.recv_one_virtual(Some(ack), self.timeout)?;
-                return into_expected(packet, vtype::DATA_ACK).and(Err(Error::Protocol(
-                    "a packet where an acknowledgement was due".into(),
-                )));
-            }
-            if ack.kind != RawKind::Ack || ack.data != ACK_PAYLOAD {
-                return Err(Error::Protocol(
-                    "no acknowledgement of a data packet".into(),
-                ));
-            }
+            self.send_raw(raw_kind, &bytes[sent..end])?;
+            self.await_ack()?;
             sent = end;
             progress(sent.saturating_sub(VIRTUAL_HEADER));
+            if raw_kind == RawKind::DataLast {
+                return Ok(());
+            }
         }
-        Ok(())
     }
 
-    /// Reads one virtual packet. A delay packet extends the wait for the one after it.
+    /// Reads one virtual packet. A delay packet moves the deadline and is not returned.
     pub fn recv_virtual(&mut self) -> Result<Virtual, Error> {
-        self.recv_virtual_within(self.timeout)
+        let mut wait = self.wait();
+        loop {
+            let packet = self.recv_one_virtual(None, &mut wait)?;
+            if packet.kind != vtype::DELAY_ACK {
+                return Ok(packet);
+            }
+            self.extend(&mut wait, &packet)?;
+        }
     }
 
     /// Reads one virtual packet that must be of `kind`, turning an error packet into an error.
@@ -111,33 +126,66 @@ impl<T: Transport> Session<T> {
         into_expected(packet, kind)
     }
 
-    /// Reads one more virtual packet if the calculator sends one within `grace`.
-    pub fn recv_optional(&mut self, grace: Duration) -> Result<Option<Virtual>, Error> {
-        match self.recv_virtual_within(grace) {
-            Ok(packet) => Ok(Some(packet)),
-            Err(Error::Timeout(_)) => Ok(None),
-            Err(e) => Err(e),
+    fn wait(&mut self) -> Wait {
+        self.write_wait = self.timeout;
+        Wait {
+            deadline: self.transport.elapsed() + self.timeout,
+            total: self.timeout,
+            delays: 0,
+            empty: 0,
         }
     }
 
-    fn recv_virtual_within(&mut self, first_wait: Duration) -> Result<Virtual, Error> {
-        let mut wait = first_wait;
+    /// Takes a delay packet into account: the calculator is alive, so the wait restarts from now
+    /// and lasts the timeout plus what the packet announces.
+    fn extend(&mut self, wait: &mut Wait, packet: &Virtual) -> Result<(), Error> {
+        let micros = match packet.data[..] {
+            [a, b, c, d] => u32::from_be_bytes([a, b, c, d]),
+            _ => return Err(Error::Protocol("delay packet is not four bytes".into())),
+        };
+        wait.delays += 1;
+        if wait.delays > MAX_DELAYS {
+            return Err(Error::Protocol("too many delay packets".into()));
+        }
+        let announced = Duration::from_micros(micros as u64).min(MAX_DELAY);
+        wait.total = self.timeout + announced;
+        wait.deadline = self.transport.elapsed() + wait.total;
+        wait.empty = 0;
+        self.write_wait = wait.total;
+        Ok(())
+    }
+
+    /// Waits for the raw acknowledgement of a packet just sent. The calculator may send a delay
+    /// packet first, which is acknowledged and waited out, or an error packet.
+    fn await_ack(&mut self) -> Result<(), Error> {
+        let mut wait = self.wait();
         loop {
-            let packet = self.recv_one_virtual(None, wait)?;
-            if packet.kind != vtype::DELAY_ACK {
-                return Ok(packet);
+            let raw = self.recv_raw(&mut wait)?;
+            match raw.kind {
+                RawKind::Ack if raw.data == ACK_PAYLOAD => return Ok(()),
+                RawKind::Data | RawKind::DataLast => {
+                    let packet = self.recv_one_virtual(Some(raw), &mut wait)?;
+                    if packet.kind == vtype::DELAY_ACK {
+                        self.extend(&mut wait, &packet)?;
+                    } else {
+                        into_expected(packet, vtype::DATA_ACK)?;
+                        return Err(Error::Protocol(
+                            "a packet where an acknowledgement was due".into(),
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(Error::Protocol(
+                        "no acknowledgement of a data packet".into(),
+                    ));
+                }
             }
-            let ms = match packet.data[..] {
-                [a, b, c, d] => u32::from_be_bytes([a, b, c, d]),
-                _ => return Err(Error::Protocol("delay packet is not four bytes".into())),
-            };
-            wait = self.timeout + Duration::from_millis(ms as u64).min(MAX_DELAY);
         }
     }
 
     /// Reads raw packets, acknowledging each, until a virtual packet is complete. `first` is a
     /// raw packet already read.
-    fn recv_one_virtual(&mut self, first: Option<Raw>, wait: Duration) -> Result<Virtual, Error> {
+    fn recv_one_virtual(&mut self, first: Option<Raw>, wait: &mut Wait) -> Result<Virtual, Error> {
         let mut bytes = Vec::new();
         let mut first = first;
         loop {
@@ -164,10 +212,11 @@ impl<T: Transport> Session<T> {
         if let Some(tracer) = &mut self.tracer {
             tracer.packet(Direction::ToCalculator, kind, data);
         }
-        self.transport.send(&encode_raw(kind, data))
+        self.transport
+            .send(&encode_raw(kind, data), self.write_wait)
     }
 
-    fn recv_raw(&mut self, wait: Duration) -> Result<Raw, Error> {
+    fn recv_raw(&mut self, wait: &mut Wait) -> Result<Raw, Error> {
         loop {
             if let Some((raw, used)) = parse_raw(&self.pending)? {
                 self.pending.drain(..used);
@@ -176,8 +225,32 @@ impl<T: Transport> Session<T> {
                 }
                 return Ok(raw);
             }
-            let bytes = self.transport.recv(wait)?;
-            self.pending.extend_from_slice(&bytes);
+            let now = self.transport.elapsed();
+            if now >= wait.deadline {
+                return Err(self.timed_out(wait));
+            }
+            match self.transport.recv(wait.deadline - now) {
+                Ok(bytes) if bytes.is_empty() => {
+                    wait.empty += 1;
+                    if wait.empty > MAX_EMPTY_READS {
+                        return Err(Error::Timeout(wait.total));
+                    }
+                }
+                Ok(bytes) => {
+                    wait.empty = 0;
+                    self.pending.extend_from_slice(&bytes);
+                }
+                Err(Error::Timeout(_)) => return Err(self.timed_out(wait)),
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    fn timed_out(&self, wait: &Wait) -> Error {
+        if self.pending.is_empty() {
+            Error::Timeout(wait.total)
+        } else {
+            Error::Protocol("the calculator went quiet in the middle of a packet".into())
         }
     }
 }

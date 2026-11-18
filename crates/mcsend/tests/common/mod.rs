@@ -56,14 +56,37 @@ pub struct Calc {
     pub apps: Vec<String>,
     /// A variable that is not an app, listed before the apps.
     pub variable: String,
-    /// Delay packets sent before the acknowledgement of the content: milliseconds announced and
+    /// Delay packets sent before the acknowledgement of the content: microseconds announced and
     /// seconds of silence that follow each.
     pub delays: Vec<(u32, u64)>,
+    /// Holds before the acknowledgement of one content packet.
+    pub holds: Vec<Hold>,
+    pub after_send: After,
     pub silent_after_content: Option<Duration>,
     pub error_at_content_packet: Option<(usize, u16)>,
     pub disconnect_at_content_packet: Option<usize>,
     pub refuse_rts: Option<u16>,
-    pub verdict: Option<u8>,
+}
+
+/// The calculator keeps the sender waiting for the acknowledgement of content packet `at`:
+/// it sends a delay packet announcing `delay_micros` if given, then is silent for `quiet_secs`.
+pub struct Hold {
+    pub at: usize,
+    pub delay_micros: Option<u32>,
+    pub quiet_secs: u64,
+}
+
+/// What the calculator does once the end of transmission arrives.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum After {
+    /// It lists the app among the installed ones.
+    Lists,
+    /// It lists everything but the app.
+    Absent,
+    /// It answers nothing on a new connection.
+    Silent,
+    /// It drops off the bus.
+    Gone,
 }
 
 impl Default for Calc {
@@ -76,11 +99,12 @@ impl Default for Calc {
             apps: vec!["Finance".into()],
             variable: "A".into(),
             delays: Vec::new(),
+            holds: Vec::new(),
+            after_send: After::Lists,
             silent_after_content: None,
             error_at_content_packet: None,
             disconnect_at_content_packet: None,
             refuse_rts: None,
-            verdict: None,
         }
     }
 }
@@ -104,8 +128,11 @@ pub struct Peer {
     aborted: bool,
     /// Virtual time: what the sender has waited in total.
     pub clock: Duration,
-    /// The timeout of every `recv` call.
+    /// The timeout of every `recv` call and of every `send`.
     pub waits: Vec<Duration>,
+    pub write_waits: Vec<Duration>,
+    raws_in_vpkt: usize,
+    sent_done: bool,
     pub events: Vec<&'static str>,
     pub rts_name: Option<String>,
     pub image: Option<Vec<u8>>,
@@ -126,6 +153,9 @@ impl Peer {
             aborted: false,
             clock: Duration::ZERO,
             waits: Vec::new(),
+            write_waits: Vec::new(),
+            raws_in_vpkt: 0,
+            sent_done: false,
             events: Vec::new(),
             rts_name: None,
             image: None,
@@ -187,10 +217,13 @@ impl Peer {
                     "directory trailer"
                 );
                 self.events.push("dir");
-                let listing: Vec<(String, u8)> = [(self.cfg.variable.clone(), 0u8)]
+                let mut listing: Vec<(String, u8)> = [(self.cfg.variable.clone(), 0u8)]
                     .into_iter()
                     .chain(self.cfg.apps.iter().map(|a| (a.clone(), 0x24)))
                     .collect();
+                if self.sent_done && self.cfg.after_send == After::Lists {
+                    listing.push((self.rts_name.clone().unwrap(), 0x24));
+                }
                 for (name, kind) in listing {
                     let mut h = vec![0, name.len() as u8];
                     h.extend_from_slice(name.as_bytes());
@@ -241,9 +274,7 @@ impl Peer {
                     self.image.is_some(),
                     "end of transmission before the content"
                 );
-                if let Some(v) = self.cfg.verdict {
-                    self.queue(0x0006, &[v]);
-                }
+                self.sent_done = true;
             }
             other => panic!("virtual packet {other:#06x} was not expected"),
         }
@@ -251,7 +282,8 @@ impl Peer {
 }
 
 impl Transport for Peer {
-    fn send(&mut self, data: &[u8]) -> Result<(), Error> {
+    fn send(&mut self, data: &[u8], timeout: Duration) -> Result<(), Error> {
+        self.write_waits.push(timeout);
         assert!(data.len() >= 5, "raw packet shorter than its header");
         assert!(
             !self.aborted || data[4] == 5,
@@ -265,12 +297,17 @@ impl Transport for Peer {
                 self.negotiated = true;
                 self.mode_set = false;
                 self.vbuf.clear();
+                self.raws_in_vpkt = 0;
                 self.events.push("negotiate");
                 let alloc = self.cfg.alloc.to_be_bytes();
-                self.out.push_back(Out::Packet {
-                    bytes: raw(2, &alloc),
-                    data: false,
-                });
+                if self.sent_done && self.cfg.after_send == After::Gone {
+                    self.out.push_back(Out::Disconnect);
+                } else if !(self.sent_done && self.cfg.after_send == After::Silent) {
+                    self.out.push_back(Out::Packet {
+                        bytes: raw(2, &alloc),
+                        data: false,
+                    });
+                }
             }
             5 => {
                 assert_eq!(payload, ACK, "acknowledgement payload");
@@ -287,6 +324,19 @@ impl Transport for Peer {
                     payload.len() <= self.cfg.alloc as usize,
                     "raw packet over the negotiated size"
                 );
+                if kind == 3 {
+                    assert_eq!(
+                        payload.len(),
+                        self.cfg.alloc as usize,
+                        "a short packet with continuation"
+                    );
+                } else if self.raws_in_vpkt > 0 {
+                    assert!(
+                        payload.len() < self.cfg.alloc as usize,
+                        "the last of several raw packets is not short"
+                    );
+                }
+                self.raws_in_vpkt += 1;
                 self.vbuf.extend_from_slice(payload);
                 if self.vbuf.len() >= 6 && self.vbuf[4..6] == [0x00, 0x0D] {
                     self.content_raw += 1;
@@ -301,8 +351,22 @@ impl Transport for Peer {
                         return Ok(());
                     }
                 }
+                let holds: Vec<(Option<u32>, u64)> = self
+                    .cfg
+                    .holds
+                    .iter()
+                    .filter(|h| h.at == self.content_raw && self.vbuf[4..6] == [0, 0x0D])
+                    .map(|h| (h.delay_micros, h.quiet_secs))
+                    .collect();
+                for (micros, quiet) in holds {
+                    if let Some(m) = micros {
+                        self.queue(0xBB00, &m.to_be_bytes());
+                    }
+                    self.out.push_back(Out::Quiet(Duration::from_secs(quiet)));
+                }
                 self.queue_ack();
                 if kind == 4 {
+                    self.raws_in_vpkt = 0;
                     let bytes = std::mem::take(&mut self.vbuf);
                     assert_eq!(be32(&bytes), bytes.len() - 6, "virtual length field");
                     let vkind = be16(&bytes[4..]) as u16;
@@ -312,6 +376,10 @@ impl Transport for Peer {
             other => panic!("raw packet type {other} from the sender"),
         }
         Ok(())
+    }
+
+    fn elapsed(&self) -> Duration {
+        self.clock
     }
 
     fn recv(&mut self, timeout: Duration) -> Result<Vec<u8>, Error> {
@@ -377,22 +445,37 @@ pub fn wrap_8xk(name: &str, body: &str, device: u8, kind: u8) -> Vec<u8> {
 
 pub enum Signature {
     Valid,
+    /// A field of this many signature bytes and a matching length byte.
+    Len(usize),
     Zero,
     Missing,
+    /// A length byte of 64 over 63 signature bytes.
+    Short,
+    /// A whole field with no FF fill after the trailer.
+    Unfilled,
 }
 
+/// The signer's field: `02 2D n`, n bytes, a 00 trailer, and FF to 96 bytes in all.
 fn signature_field(sig: &Signature) -> Vec<u8> {
-    let mut out = Vec::new();
-    if !matches!(sig, Signature::Missing) {
-        out.extend_from_slice(&[0x02, 0x2D, 0x40]);
-        let fill = |i: usize| match sig {
-            Signature::Valid => 0xA0 + (i % 16) as u8,
-            _ => 0,
-        };
-        out.extend((0..64).map(fill));
-        out.push(0x00);
+    let (declared, bytes): (usize, Vec<u8>) = match sig {
+        Signature::Missing => return Vec::new(),
+        Signature::Valid => (64, number(64)),
+        Signature::Len(n) => (*n, number(*n)),
+        Signature::Zero => (64, vec![0; 64]),
+        Signature::Short => (64, number(63)),
+        Signature::Unfilled => (64, number(64)),
+    };
+    let mut out = vec![0x02, 0x2D, declared as u8];
+    out.extend_from_slice(&bytes);
+    out.push(0x00);
+    if !matches!(sig, Signature::Unfilled) {
+        out.resize(96, 0xFF);
     }
     out
+}
+
+fn number(n: usize) -> Vec<u8> {
+    (0..n).map(|i| 0xA0 + (i % 16) as u8).collect()
 }
 
 /// An app of `pages` of data, the last followed by the signature field.

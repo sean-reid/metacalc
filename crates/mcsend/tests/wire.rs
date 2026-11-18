@@ -8,7 +8,9 @@ use mcsend::message::*;
 use mcsend::packet::*;
 use mcsend::session::Session;
 use mcsend::transport::Transport;
+use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -17,23 +19,29 @@ enum Step {
     Reply(Vec<u8>),
 }
 
+type Steps = Rc<RefCell<VecDeque<Step>>>;
+
 struct Script {
-    steps: VecDeque<Step>,
+    steps: Steps,
     waits: Vec<Duration>,
 }
 
 impl Script {
     fn new(steps: Vec<Step>) -> Script {
         Script {
-            steps: steps.into(),
+            steps: Rc::new(RefCell::new(steps.into())),
             waits: Vec::new(),
         }
     }
 }
 
 impl Transport for Script {
-    fn send(&mut self, data: &[u8]) -> Result<(), Error> {
-        match self.steps.pop_front() {
+    fn elapsed(&self) -> Duration {
+        Duration::ZERO
+    }
+
+    fn send(&mut self, data: &[u8], _timeout: Duration) -> Result<(), Error> {
+        match self.steps.borrow_mut().pop_front() {
             Some(Step::Expect(want)) => assert_eq!(data, want, "bytes written"),
             _ => panic!("the sender wrote {data:02x?} where the script reads"),
         }
@@ -42,7 +50,7 @@ impl Transport for Script {
 
     fn recv(&mut self, timeout: Duration) -> Result<Vec<u8>, Error> {
         self.waits.push(timeout);
-        match self.steps.pop_front() {
+        match self.steps.borrow_mut().pop_front() {
             Some(Step::Reply(bytes)) => Ok(bytes),
             _ => panic!("the sender read where the script expects a write"),
         }
@@ -207,10 +215,11 @@ fn request_to_send_matches_the_guide() {
     assert_eq!(request_to_send_app("metacalc", 0x70000), want);
 }
 
-/// The Guide, opcode bb00: data `00 01 d4 c0`, 120000. The next wait is that long on top of the
-/// timeout, and the delay packet is acknowledged like any other.
+/// The Guide, opcode bb00: data `00 01 d4 c0`. The unit is microseconds, so this one asks for
+/// 120 ms: the next wait is the timeout plus that, and the delay packet is acknowledged like any
+/// other.
 #[test]
-fn a_delay_packet_from_the_guide_extends_the_next_wait_by_120_seconds() {
+fn a_delay_packet_from_the_guide_extends_the_next_wait_by_120_milliseconds() {
     let ack = vec![0, 0, 0, 2, 0x05, 0xE0, 0x00];
     let script = Script::new(vec![
         Step::Reply(vec![
@@ -229,7 +238,10 @@ fn a_delay_packet_from_the_guide_extends_the_next_wait_by_120_seconds() {
         }
     );
     let waits = session_waits(session);
-    assert_eq!(waits, [Duration::from_secs(60), Duration::from_secs(180)]);
+    assert_eq!(
+        waits,
+        [Duration::from_secs(60), Duration::from_millis(60_120)]
+    );
 }
 
 fn session_waits(session: Session<Script>) -> Vec<Duration> {
@@ -290,4 +302,150 @@ fn trace_prints_packets_and_masks_parameter_data() {
         "{text}"
     );
     assert!(!text.contains("de ad") && !text.contains("ef 42"), "{text}");
+}
+
+fn negotiated(alloc: u32) -> (Session<Script>, Steps) {
+    let ack = vec![0, 0, 0, 2, 0x05, 0xE0, 0x00];
+    let script = Script::new(vec![
+        Step::Expect(vec![0, 0, 0, 4, 0x01, 0, 0, 0x04, 0x00]),
+        Step::Reply(encode_raw(RawKind::BufferAllocation, &alloc.to_be_bytes())),
+        Step::Expect(encode_raw(
+            RawKind::DataLast,
+            &encode_virtual(vtype::PING, &PING),
+        )),
+        Step::Reply(ack.clone()),
+        Step::Reply(encode_raw(
+            RawKind::DataLast,
+            &encode_virtual(vtype::MODE_ACK, &[0, 0, 0x07, 0xD0]),
+        )),
+        Step::Expect(ack),
+    ]);
+    let steps = script.steps.clone();
+    let mut session = Session::new(script, Duration::from_secs(1));
+    session.begin().unwrap();
+    (session, steps)
+}
+
+/// A buffer allocation above the 1024 bytes asked for is cut to 1024.
+#[test]
+fn an_allocation_larger_than_requested_is_cut_to_what_was_requested() {
+    let (mut session, steps) = negotiated(0x800);
+    let ack = vec![0, 0, 0, 2, 0x05, 0xE0, 0x00];
+    let payload = vec![7u8; 1030];
+    let bytes = encode_virtual(0xAA00, &payload);
+    steps.borrow_mut().extend(vec![
+        Step::Expect(encode_raw(RawKind::Data, &bytes[..1024])),
+        Step::Reply(ack.clone()),
+        Step::Expect(encode_raw(RawKind::DataLast, &bytes[1024..])),
+        Step::Reply(ack),
+    ]);
+    session.send_virtual(0xAA00, &payload, &mut |_| {}).unwrap();
+}
+
+/// A buffer allocation too small to carry a header is refused.
+#[test]
+fn an_allocation_too_small_for_a_packet_is_refused() {
+    let script = Script::new(vec![
+        Step::Expect(vec![0, 0, 0, 4, 0x01, 0, 0, 0x04, 0x00]),
+        Step::Reply(vec![0, 0, 0, 4, 0x02, 0, 0, 0, 4]),
+    ]);
+    let mut session = Session::new(script, Duration::from_secs(1));
+    assert!(session.begin().is_err());
+}
+
+/// How a packet longer than one raw packet is cut: raw packets of the whole buffer, then a last
+/// one shorter than the buffer, empty when the data divides evenly. A packet that fits in one
+/// raw packet, exactly full included, is one type 4 packet.
+#[test]
+fn a_virtual_packet_is_cut_into_full_raw_packets_and_a_shorter_last() {
+    let ack = vec![0, 0, 0, 2, 0x05, 0xE0, 0x00];
+    let (mut session, steps) = negotiated(0xFA);
+    let exact = vec![1u8; 244];
+    let bytes = encode_virtual(0xAA00, &exact);
+    assert_eq!(bytes.len(), 250);
+    let split = vec![2u8; 494];
+    let long = encode_virtual(0xAA00, &split);
+    assert_eq!(long.len(), 500);
+    steps.borrow_mut().extend(vec![
+        Step::Expect(encode_raw(RawKind::DataLast, &bytes)),
+        Step::Reply(ack.clone()),
+        Step::Expect(encode_raw(RawKind::Data, &long[..250])),
+        Step::Reply(ack.clone()),
+        Step::Expect(encode_raw(RawKind::Data, &long[250..])),
+        Step::Reply(ack.clone()),
+        Step::Expect(encode_raw(RawKind::DataLast, &[])),
+        Step::Reply(ack),
+    ]);
+    session.send_virtual(0xAA00, &exact, &mut |_| {}).unwrap();
+    session.send_virtual(0xAA00, &split, &mut |_| {}).unwrap();
+}
+
+/// Parameter data spread over raw packets, the first holding fewer than the six header bytes,
+/// is masked from its first payload byte on. The header itself is printed.
+#[test]
+fn trace_masks_a_parameter_packet_spread_over_several_raw_packets() {
+    #[derive(Clone)]
+    struct Sink(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for Sink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let secret = [0xDE, 0xAD, 0xBE, 0xEF, 0x42, 0x13, 0x37];
+    let whole = encode_virtual(vtype::PARAM_DATA, &secret);
+    let ack = vec![0, 0, 0, 2, 0x05, 0xE0, 0x00];
+    let (mut session, steps) = negotiated(0xFA);
+    steps.borrow_mut().extend(vec![
+        Step::Reply(encode_raw(RawKind::Data, &whole[..3])),
+        Step::Expect(ack.clone()),
+        Step::Reply(encode_raw(RawKind::Data, &whole[3..8])),
+        Step::Expect(ack.clone()),
+        Step::Reply(encode_raw(RawKind::DataLast, &whole[8..])),
+        Step::Expect(ack),
+    ]);
+    let sink = Sink(Arc::default());
+    session.trace_to(Box::new(sink.clone()));
+    session.recv_virtual().unwrap();
+    let text = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
+    assert!(text.contains("ti->pc 00000003 03 00 00 00\n"), "{text}");
+    assert!(
+        text.contains("ti->pc 00000005 03 07 00 08 [2 bytes masked]\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("ti->pc 00000005 04 [5 bytes masked]\n"),
+        "{text}"
+    );
+    assert!(!text.contains("de ad") && !text.contains("13 37"), "{text}");
+}
+
+/// Bytes left over from the last exchange are dropped when a new one begins.
+#[test]
+fn begin_discards_stray_bytes_left_by_an_earlier_exchange() {
+    let ack = vec![0, 0, 0, 2, 0x05, 0xE0, 0x00];
+    let mut first = encode_raw(RawKind::DataLast, &encode_virtual(0xAA00, &[1]));
+    first.push(0x09);
+    let script = Script::new(vec![Step::Reply(first), Step::Expect(ack)]);
+    let steps = script.steps.clone();
+    let mut session = Session::new(script, Duration::from_secs(1));
+    session.recv_virtual().unwrap();
+    steps.borrow_mut().extend(vec![
+        Step::Expect(vec![0, 0, 0, 4, 0x01, 0, 0, 0x04, 0x00]),
+        Step::Reply(encode_raw(RawKind::BufferAllocation, &250u32.to_be_bytes())),
+        Step::Expect(encode_raw(
+            RawKind::DataLast,
+            &encode_virtual(vtype::PING, &PING),
+        )),
+        Step::Reply(vec![0, 0, 0, 2, 0x05, 0xE0, 0x00]),
+        Step::Reply(encode_raw(
+            RawKind::DataLast,
+            &encode_virtual(vtype::MODE_ACK, &[0, 0, 0x07, 0xD0]),
+        )),
+        Step::Expect(vec![0, 0, 0, 2, 0x05, 0xE0, 0x00]),
+    ]);
+    session.begin().unwrap();
 }

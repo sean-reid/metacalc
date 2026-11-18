@@ -7,8 +7,9 @@ const PAGE_BASE: usize = 0x4000;
 const HEADER: usize = 78;
 const DEVICE_84_PLUS: u8 = 0x73;
 const KIND_APP: u8 = 0x24;
-const SIGNATURE_FIELD: [u8; 3] = [0x02, 0x2D, 0x40];
-const SIGNATURE_LEN: usize = 64;
+const SIGNATURE_PREFIX: [u8; 2] = [0x02, 0x2D];
+const SIGNATURE_MAX: usize = 64;
+const FIELD: usize = 96;
 
 #[derive(Debug)]
 pub struct App {
@@ -39,9 +40,14 @@ impl App {
             .trim_end_matches('\0')
             .to_string();
         let declared = u32::from_le_bytes([file[74], file[75], file[76], file[77]]) as usize;
-        let body = file
-            .get(HEADER..HEADER + declared)
+        let end = HEADER
+            .checked_add(declared)
+            .filter(|&end| end <= file.len())
             .ok_or_else(|| bad("the file is shorter than its header says"))?;
+        if end != file.len() {
+            return Err(bad("there are bytes after the data the header declares"));
+        }
+        let body = &file[HEADER..end];
         let pages = read_pages(body).map_err(|e| bad(&e))?;
         let last = pages.last().expect("read_pages returns at least one page");
         if !is_signed(last) {
@@ -141,25 +147,28 @@ fn read_pages(body: &[u8]) -> Result<Vec<Vec<u8>>, String> {
     Ok(pages)
 }
 
-/// The signer ends the last page with 02 2D 40, 64 signature bytes, a 00 or 01 xx trailer and FF.
+/// The signer ends the last page with 02 2D n, then n bytes of a number whose leading zero bytes
+/// are dropped (n is 1 to 64), a 00 or 01 xx trailer, and FF to fill the field to 96 bytes.
 fn is_signed(last_page: &[u8]) -> bool {
-    (0..last_page.len().saturating_sub(SIGNATURE_FIELD.len()))
+    (0..last_page.len().saturating_sub(SIGNATURE_PREFIX.len()))
         .rev()
         .any(|at| {
             let rest = &last_page[at..];
-            if !rest.starts_with(&SIGNATURE_FIELD) {
+            let n = rest[2] as usize;
+            if !rest.starts_with(&SIGNATURE_PREFIX) || !(1..=SIGNATURE_MAX).contains(&n) {
                 return false;
             }
-            let rest = &rest[SIGNATURE_FIELD.len()..];
-            if rest.len() <= SIGNATURE_LEN {
+            let Some(rest) = rest.get(3..3 + n).map(|sig| (sig, &rest[3 + n..])) else {
                 return false;
-            }
-            let (signature, trailer) = rest.split_at(SIGNATURE_LEN);
-            let after = match trailer {
-                [0x00, tail @ ..] => tail,
-                [0x01, _, tail @ ..] => tail,
+            };
+            let (signature, trailer) = rest;
+            let (after, filled) = match trailer {
+                [0x00, tail @ ..] => (tail, FIELD - 4 - n),
+                [0x01, _, tail @ ..] => (tail, FIELD - 5 - n),
                 _ => return false,
             };
-            signature.iter().any(|&b| b != 0) && after.iter().all(|&b| b == 0xFF)
+            signature.iter().any(|&b| b != 0)
+                && after.len() >= filled
+                && after.iter().all(|&b| b == 0xFF)
         })
 }

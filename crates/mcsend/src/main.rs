@@ -3,7 +3,7 @@ use mcsend::error::Error;
 use mcsend::progress::Progress;
 use mcsend::session::Session;
 use mcsend::tifile::App;
-use mcsend::transfer::transfer;
+use mcsend::transfer::{Sent, transfer};
 use mcsend::usb::UsbTransport;
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -41,10 +41,13 @@ fn run(cli: &Cli) -> Result<String, Error> {
     let mut progress = Progress::new(stdout.lock(), stdout.is_terminal(), app.page_count());
     let result = transfer(&mut session, &app, &mut progress, &mut std::io::stdout());
     progress.finish();
-    result?;
+    let note = match result? {
+        Sent::Confirmed => "",
+        Sent::NotConfirmed => ", not confirmed",
+    };
     let secs = started.elapsed().as_secs();
     Ok(format!(
-        "sent {}, {} pages, in {}m{:02}s",
+        "sent {}, {} pages, in {}m{:02}s{note}",
         app.name,
         app.page_count(),
         secs / 60,
