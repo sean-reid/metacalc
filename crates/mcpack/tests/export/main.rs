@@ -534,3 +534,28 @@ fn any_reference_list_or_proof_the_kernel_accepts_exports_and_verifies() {
         "{accepted} accepted, {refused} refused"
     );
 }
+
+#[test]
+fn a_structured_edit_the_kernel_accepts_exports_and_verifies() {
+    let base = references::base();
+    let mut changed_and_accepted = 0;
+    for mutant in references::mutants() {
+        if check(&mutant.bytes).is_ok() {
+            assert_eq!(
+                exports_and_verifies(&mutant.bytes),
+                Ok(()),
+                "{}",
+                mutant.name
+            );
+            changed_and_accepted += usize::from(mutant.bytes != base);
+        } else {
+            let exported = export(&mutant.bytes);
+            assert!(
+                matches!(exported, Err(ExportError::Check(_))),
+                "{}",
+                mutant.name
+            );
+        }
+    }
+    assert!(changed_and_accepted > 0);
+}

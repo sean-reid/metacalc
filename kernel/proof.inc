@@ -62,51 +62,71 @@ push_var:
 	ld bc,2
 	jp stack_push
 
-; in: A = variable. out: carry if the current record has a float hypothesis for it.
-; Destroys AF BC HL.
-has_float:
-	ld c,a
+; Marks the variables the current record has a float hypothesis for in FLOATS, which holds the
+; marks of whichever record was checked last until then. Destroys AF BC DE HL.
+build_floats:
+	ld hl,FLOATS
+	ld bc,256
+	xor a
+	call fill_bytes
 	ld a,(CUR_DESC+D_NHYPS)
 	or a
 	ret z
 	ld b,a
 	ld hl,(CUR_DESC+D_HYPS)
-hf_next:
+bf_next:
 	ld a,(hl)
 	inc hl
 	or a
-	jr z,hf_float
+	jr z,bf_float
 	ld a,(hl)
 	inc hl
 	call add_hl_a
-	djnz hf_next
-	or a
+	djnz bf_next
 	ret
-hf_float:
+bf_float:
 	ld a,(hl)
 	inc hl
-	cp c
-	jr z,hf_found
-	djnz hf_next
-	or a
-	ret
-hf_found:
-	scf
+	push hl
+	ld h,FLOATS>>8
+	ld l,a
+	ld (hl),1
+	pop hl
+	djnz bf_next
 	ret
 
 ; Refuses a current record whose reference list has a dummy entry for a variable it has a float
-; hypothesis for, or two equal entries. A comparison costs one unit of work. A list of at most
-; 512 entries costs at most 130,816 units, which the count still holds when the call starts, so
-; it is charged once and the rows are scanned with the ON key read once per row. A longer list
-; is charged one unit before each comparison.
+; hypothesis for, or two equal entries. Each entry examined for the first costs one unit of work
+; and each comparison for the second one. A list of at most 511 entries costs at most 130,816
+; units, which the count still holds when the call starts, so it is charged once, with the ON key
+; read once per row of comparisons. A longer list is charged one unit before each step.
 check_references:
-	ld hl,(CUR_DESC+D_REFS)
 	ld bc,(CUR_DESC+D_NREFS)
+	ld a,b
+	or c
+	ret z
+	xor a
+	ld (kv_mode),a
+	ld (kv_tmp8),a
+	ld hl,511
+	sbc hl,bc
+	jr nc,cf_bulk
+	ld a,1
+	ld (kv_tmp8),a
+cf_bulk:
+	ld hl,(CUR_DESC+D_REFS)
 cf_dummy:
 	ld a,b
 	or c
 	jr z,cf_pairs
 	dec bc
+	ld a,(kv_tmp8)
+	or a
+	jr z,cf_free
+	push hl
+	call work_one
+	pop hl
+cf_free:
 	ld e,(hl)
 	inc hl
 	ld d,(hl)
@@ -116,18 +136,27 @@ cf_dummy:
 	jr nz,cf_dummy
 	push hl
 	push bc
-	ld a,e
-	call has_float
+	push de
+	ld a,(kv_mode)
+	or a
+	call z,build_floats
+	ld a,1
+	ld (kv_mode),a
+	pop de
+	ld h,FLOATS>>8
+	ld l,e
+	ld a,(hl)
 	pop bc
 	pop hl
-	jp c,fail_bad_record
+	or a
+	jp nz,fail_bad_record
 	jr cf_dummy
 cf_pairs:
 	ld bc,(CUR_DESC+D_NREFS)
 	ld a,b
 	or c
 	ret z
-	ld hl,512
+	ld hl,511
 	or a
 	sbc hl,bc
 	jp c,cf_slow
@@ -173,6 +202,12 @@ cf_carried:
 	dec bc
 	jr cf_sum
 cf_charge:
+	pop bc
+	push bc
+	add hl,bc
+	jr nc,cf_included
+	inc d
+cf_included:
 	ld (kv_tmp16),hl
 	ld bc,(kv_tmp16)
 	ld hl,(kv_work)

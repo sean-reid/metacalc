@@ -23,9 +23,12 @@ pub enum KernelError {
     WorkLimit,
 }
 
-/// The most work one `verify` call may spend. Before the proof runs, the duplicate check on the
-/// reference list charges 1 per comparison, `r * (r - 1) / 2` for `r` entries, so a list longer
-/// than 512 entries cannot pass the duplicate check within the work limit. The
+/// The most work one `verify` call may spend. Before the proof runs, the check on the reference
+/// list charges 1 per entry for the dummy check and 1 per comparison for the duplicate check,
+/// `r * (r + 1) / 2` for `r` entries, so a list longer than 511 entries cannot pass them within
+/// the work limit. The count is defined only after a call that returned `Ok`: the Z80 kernel
+/// charges the comparisons of a short list in one step, so after a refusal its count and this
+/// one may differ. The
 /// disjoint-variable check of each proof step applies one pair of the applied assertion at a time,
 /// to the two substituted expressions `X` and `Y` that replace its variables, and every loop
 /// iteration is charged before it runs:
@@ -314,7 +317,7 @@ impl<'a> Kernel<'a> {
         }
     }
 
-    /// The work the last `verify` call charged.
+    /// The work the last `verify` call charged, meaningful only if it returned `Ok`.
     pub fn work(&self) -> u32 {
         self.work
     }
@@ -323,7 +326,7 @@ impl<'a> Kernel<'a> {
     ///
     /// When several rules apply the first of these wins: a malformed record, a record that breaks
     /// its rules, a dummy entry for a variable with a mandatory float, two equal reference
-    /// entries (or `WorkLimit` if the comparisons pass the limit first), then the steps in order,
+    /// entries (or `WorkLimit` if the charges pass the limit first), then the steps in order,
     /// where a step that names an entry past the first unused one is `LooseReference` before the
     /// entry itself is looked at, and at the end of the proof an unused entry is `LooseReference`,
     /// before `StackNotSingleton` and `WrongConclusion`.
@@ -422,7 +425,8 @@ impl<'a> Kernel<'a> {
     }
 
     /// The rules of a theorem's reference list that do not depend on its proof: no dummy entry for
-    /// a variable with a mandatory float, then no two equal entries, one unit of work per pair.
+    /// a variable with a mandatory float, one unit of work per entry examined, then no two equal
+    /// entries, one unit of work per pair.
     fn check_references(&mut self, record: &Record) -> Res<()> {
         let entries: Vec<u16> = record
             .refs
@@ -435,8 +439,11 @@ impl<'a> Kernel<'a> {
                 .iter()
                 .any(|hyp| matches!(*hyp, Hyp::Float(var) if entry == DUMMY | var as u16))
         };
-        if entries.iter().any(|&entry| mandatory(entry)) {
-            return Err(KernelError::BadRecord);
+        for &entry in &entries {
+            charge(&mut self.work, 1)?;
+            if mandatory(entry) {
+                return Err(KernelError::BadRecord);
+            }
         }
         for (i, entry) in entries.iter().enumerate() {
             for other in &entries[i + 1..] {

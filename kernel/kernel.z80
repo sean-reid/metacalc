@@ -72,9 +72,12 @@
 ; reference is ForwardReference only when it is the next new entry), then at the end of the
 ; proof LooseReference for an unused entry, before NotSingleton and WrongConclusion.
 ;
-; Work limit. Before the proof runs, the check for equal entries compares each entry with the
-; ones after it and charges 1 per comparison before it is made, r * (r - 1) / 2 for r entries.
-; A reference list longer than 512 entries cannot pass the duplicate check within the work limit.
+; Work limit. Before the proof runs, the check on the reference list charges 1 per entry before
+; it examines the entry for a dummy of a mandatory variable, then compares each entry with the
+; ones after it and charges 1 per comparison before it is made, r * (r + 1) / 2 for r entries.
+; A reference list longer than 511 entries cannot pass these checks within the work limit.
+; The count is defined only after a call that returned ok: a list of up to 511 entries is charged
+; in one step, so after a refusal the count may differ from the model's.
 ; The disjoint-variable check of a proof step takes the pairs of the applied
 ; assertion one at a time, with X and Y the expressions that replace its two variables, and
 ; charges every loop iteration before it runs, to the same count per kernel_verify call:
@@ -92,9 +95,10 @@
 ; step and whenever the second byte of the work count changes. The read comes before the scan of
 ; the pair list that a comparison charges for, and the scan itself is not interrupted. The longest
 ; stretch without a read is one scan, 96 T-states per pair listed, plus up to 255 one-unit charges
-; of 288 T-states before the second byte next changes. The equal-entries check on a list of up to
-; 512 entries reads it before each row of at most 511 comparisons, 39 T-states each; on a longer
-; list every comparison is a one-unit charge. A record holds at most 7,750 pairs in this
+; of 288 T-states before the second byte next changes. The reference list check on a list of up to
+; 511 entries reads it before each row of at most 510 comparisons, 39 T-states each, after one
+; pass over the entries of at most 511 steps of constant time; on a longer list every entry and
+; every comparison is a one-unit charge. A record holds at most 7,750 pairs in this
 ; shape (about 8,000 fit a 16 KB page), so ON waits at most 0.83 million T-states, 0.14 s at
 ; 6 MHz; with 600 pairs, 130,000 T-states, 22 ms. With ON down kernel_verify returns
 ; ST_INTERRUPTED, restoring the stack, port 7 and the interrupt state as for any other exit and

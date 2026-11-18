@@ -502,9 +502,9 @@ fn two_terms(x: usize, y: usize, xk: usize, yk: usize) -> Vec<Vec<Tok>> {
     vec![left, right]
 }
 
-/// The units the duplicate check on a reference list of `refs` entries charges.
+/// The units the checks on a reference list of `refs` entries charge: one per entry and one per pair.
 fn duplicate_work(refs: usize) -> u32 {
-    (refs * refs.saturating_sub(1) / 2) as u32
+    (refs * (refs + 1) / 2) as u32
 }
 
 /// The entries in the reference list of the theorem `t`.
@@ -513,14 +513,15 @@ fn reference_count(bytes: &[u8], db: &Database) -> usize {
     library.assertions[number(db, "t")].references.len()
 }
 
-/// The outcome of `t`, the work it charged and the share of it the duplicate check charged.
-fn work_of(terms: &[Vec<Tok>], nv: usize) -> (Result<(), KernelError>, u32, u32) {
+/// The outcome of `t`, the work it charged if it was accepted, and the share of it the reference
+/// list checks charged.
+fn work_of(terms: &[Vec<Tok>], nv: usize) -> (Result<(), KernelError>, Option<u32>, u32) {
     let db = db(&disjoint_source(terms, nv, true));
     let bytes = pack(&db, &everything(&db)).unwrap();
     let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).unwrap();
     let result = kernel.verify(number(&db, "t"));
     let duplicates = duplicate_work(reference_count(&bytes, &db));
-    (result, kernel.work(), duplicates)
+    (result, result.is_ok().then(|| kernel.work()), duplicates)
 }
 
 #[test]
@@ -535,23 +536,22 @@ fn the_work_of_a_disjoint_check_is_charged_as_documented() {
         let (result, work, duplicates) = work_of(&two_terms(x, y, xk, yk), x + y);
         assert_eq!(result, Ok(()));
         let expected = duplicates + two_term_work(x, y, xk, yk);
-        assert_eq!(work, expected, "{x} {y} {xk} {yk}");
+        assert_eq!(work, Some(expected), "{x} {y} {xk} {yk}");
     }
 }
 
 #[test]
 fn a_disjoint_check_stops_at_the_work_limit() {
     assert_eq!(library::WORK_LIMIT, 131072);
-    let at = (27, 8, 10, 77);
+    let at = (27, 8, 7, 77);
     let (result, work, duplicates) = work_of(&two_terms(at.0, at.1, at.2, at.3), 35);
     assert_eq!(
         duplicates + two_term_work(at.0, at.1, at.2, at.3),
         library::WORK_LIMIT
     );
-    assert_eq!((result, work), (Ok(()), library::WORK_LIMIT));
-    let (result, work, _) = work_of(&two_terms(at.0, at.1, at.2 + 1, at.3), 35);
+    assert_eq!((result, work), (Ok(()), Some(library::WORK_LIMIT)));
+    let (result, ..) = work_of(&two_terms(at.0, at.1, at.2 + 1, at.3), 35);
     assert_eq!(result, Err(KernelError::WorkLimit));
-    assert!(work <= library::WORK_LIMIT);
     let (result, ..) = work_of(&two_terms(4, 38, 0, 0), 42);
     assert_eq!(result, Err(KernelError::WorkLimit));
 }
@@ -825,14 +825,14 @@ fn a_reference_list_that_is_not_canonical_is_refused() {
 }
 
 #[test]
-fn the_duplicate_check_charges_one_unit_per_pair_of_entries() {
-    for entries in [3, 4, 100, 512] {
+fn the_reference_list_checks_charge_one_unit_per_entry_and_per_pair() {
+    for entries in [3, 4, 100, 511] {
         let bytes = references::pack_source(&references::long_source(entries));
         let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).unwrap();
         assert_eq!(kernel.verify(entries), Ok(()), "{entries}");
         assert_eq!(
             kernel.work() as usize,
-            entries * (entries - 1) / 2,
+            entries * (entries + 1) / 2,
             "{entries}"
         );
     }
@@ -891,4 +891,20 @@ fn step_numbers_of_620_and_more_survive_packing_and_the_reference_verifier() {
         Step::Save => None,
     });
     assert!(largest.max().unwrap() >= 620);
+}
+
+#[test]
+fn structured_edits_of_reference_lists_are_judged_by_the_rule() {
+    let base = references::base();
+    let mut changed_and_accepted = 0;
+    for mutant in references::mutants() {
+        let got = check(&mutant.bytes, mutant.id);
+        if let Some(expected) = mutant.expected {
+            assert_eq!(got, expected, "{}", mutant.name);
+        }
+        if got.is_ok() && mutant.bytes != base {
+            changed_and_accepted += 1;
+        }
+    }
+    assert!(changed_and_accepted > 0);
 }
