@@ -23,6 +23,15 @@ pub const MOVED: Image = Image {
     labels: include_str!(concat!(env!("OUT_DIR"), "/kernel_test_moved.lab")),
 };
 
+/// The same kernel with its low region ending at $10000 and its high region at the bottom of bank C.
+pub const TOP: Image = Image {
+    code: include_bytes!(concat!(env!("OUT_DIR"), "/kernel_test_top.bin")),
+    labels: include_str!(concat!(env!("OUT_DIR"), "/kernel_test_top.lab")),
+};
+
+/// Every layout build.rs assembles as a kernel image.
+pub const LAYOUTS: [(&str, Image); 3] = [("default", DEFAULT), ("moved", MOVED), ("top", TOP)];
+
 /// The flash page of chunk 0; chunk c is at this page minus c.
 pub const LIB_PAGE: u8 = 0x6F;
 pub const PAGE: usize = 1 << 14;
@@ -173,7 +182,11 @@ impl Device {
     }
 
     pub fn with_library(library: &[u8]) -> Device {
-        let mut device = Device::new();
+        Device::with_image_library(DEFAULT, library)
+    }
+
+    pub fn with_image_library(image: Image, library: &[u8]) -> Device {
+        let mut device = Device::with_image(image);
         device.load(library);
         device
     }

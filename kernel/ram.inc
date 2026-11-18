@@ -1,8 +1,11 @@
 #ifndef KERNEL_RAM_PAGE
 KERNEL_RAM_PAGE             .equ 3
 #endif
+#if KERNEL_RAM_PAGE < 2
+ .error "KERNEL_RAM_PAGE must be 2 to 7, pages 0 and 1 belong to TI-OS"
+#endif
 #if KERNEL_RAM_PAGE > 7
- .error "KERNEL_RAM_PAGE must be a RAM page, 0 to 7"
+ .error "KERNEL_RAM_PAGE must be 2 to 7, there are no pages above 7"
 #endif
 #ifndef KERNEL_RAM_LOW
 KERNEL_RAM_LOW              .equ $C500
@@ -53,6 +56,7 @@ kv_work             .equ KERNEL_RAM_LOW+$B0
 kv_wold             .equ KERNEL_RAM_LOW+$B3
 kv_charge           .equ KERNEL_RAM_LOW+$B4
 kv_next             .equ KERNEL_RAM_LOW+$B6
+kv_saved_free       .equ KERNEL_RAM_LOW+$B8
 kv_crc_state        .equ KERNEL_RAM_LOW+$A2
 kv_crc_chunk        .equ KERNEL_RAM_LOW+$A4
 kv_crc_last         .equ KERNEL_RAM_LOW+$A5
@@ -79,7 +83,7 @@ kv_tmp16            .equ KERNEL_RAM_LOW+$2D
 kv_rec_end          .equ KERNEL_RAM_LOW+$2F
 kv_sym_limit_ptr    .equ KERNEL_RAM_LOW+$31
 kv_ent_limit        .equ KERNEL_RAM_LOW+$33
-kv_saved_sym_ptr    .equ KERNEL_RAM_LOW+$35
+kv_saved_sym_limit  .equ KERNEL_RAM_LOW+$35
 kv_saved_ent_limit  .equ KERNEL_RAM_LOW+$37
 kv_stack_top        .equ KERNEL_RAM_LOW+$39
 kv_nstack           .equ KERNEL_RAM_LOW+$3B
@@ -157,7 +161,16 @@ ST_INTERRUPTED      .equ 14
 ST_LOOSE_REF        .equ 15
 ST_CRC_MORE         .equ $FF
 
+#ifndef WORK_LIMIT
 WORK_LIMIT          .equ 131072
-#if WORK_LIMIT < 1 || WORK_LIMIT > $FFFFFF
+#endif
+#if WORK_LIMIT < 1
  .error "WORK_LIMIT must fit the 24-bit work counter"
+#endif
+#if WORK_LIMIT > $FFFFFF
+ .error "WORK_LIMIT must fit the 24-bit work counter"
+#endif
+MAX_BULK_CHARGE     .equ 511*512/2
+#if WORK_LIMIT < MAX_BULK_CHARGE
+ .error "WORK_LIMIT must be at least MAX_BULK_CHARGE, the reference list check subtracts it unchecked"
 #endif

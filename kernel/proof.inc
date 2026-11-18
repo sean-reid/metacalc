@@ -307,6 +307,8 @@ verify_body:
 	ld (kv_stack_top),hl
 	ld hl,SAVED_BUF
 	ld (kv_saved_top),hl
+	ld hl,(kv_saved_sym_limit)
+	ld (kv_saved_free),hl
 	ld hl,0
 	ld (kv_nstack),hl
 	ld (kv_nsaved),hl
@@ -347,7 +349,7 @@ vb_loop:
 	ld (kv_proof_ptr),hl
 	ld e,a
 	ld d,0
-	jr vb_dispatch
+	jp vb_dispatch
 vb_wide:
 	sub $F0
 	ld b,a
@@ -392,14 +394,11 @@ vb_save:
 	or a
 	sbc hl,de
 	jp c,fail_oom
-	ld hl,(kv_saved_top)
-	add hl,bc
-	jp c,fail_oom
-	ex de,hl
-	ld hl,(kv_saved_sym_ptr)
+	ld hl,(kv_saved_free)
 	or a
-	sbc hl,de
+	sbc hl,bc
 	jp c,fail_oom
+	ld (kv_saved_free),hl
 	ld hl,(kv_nsaved)
 	add hl,hl
 	ld de,SAVED_STARTS_BUF

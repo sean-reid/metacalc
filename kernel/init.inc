@@ -259,9 +259,7 @@ init_symbols_done:
 	ld hl,(KERNEL_LIMIT_SAVED_SYMS)
 	ld de,CAP_SAVED_SYMS
 	call clamp_hl
-	ld de,SAVED_BUF
-	add hl,de
-	ld (kv_saved_sym_ptr),hl
+	ld (kv_saved_sym_limit),hl
 	ld hl,(KERNEL_LIMIT_SAVED_ENTRIES)
 	ld de,CAP_SAVED_ENTRIES
 	call clamp_hl

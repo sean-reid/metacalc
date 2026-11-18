@@ -116,6 +116,20 @@ const OS_ROUTINES: &[(&str, &str, &[&str])] = &[
     ("os_irq.z80", "os_irq.bin", &["ENTRY=$9000", "RESULT=$A000"]),
 ];
 
+/// Kernel images with the test entry stub: output name and spasm defines. The first is the
+/// default layout; each is a layout the checks in assemble_kernel accept.
+const IMAGES: &[(&str, &[&str])] = &[
+    ("kernel_test", &[]),
+    (
+        "kernel_test_moved",
+        &["KERNEL_RAM_LOW=$C100", "KERNEL_RAM_HIGH=$E000"],
+    ),
+    (
+        "kernel_test_top",
+        &["KERNEL_RAM_LOW=$EE00", "KERNEL_RAM_HIGH=$C100"],
+    ),
+];
+
 fn fail(msg: &str) -> ! {
     eprintln!("error: {msg}");
     exit(1);
@@ -362,10 +376,30 @@ fn assemble_kernel(out: &Path) {
             Some("KERNEL_RAM_HIGH must be a multiple of $100"),
         ),
         (&["KERNEL_RAM_PAGE=7"][..], None),
+        (&["KERNEL_RAM_PAGE=2"][..], None),
         (
             &["KERNEL_RAM_PAGE=8"][..],
-            Some("KERNEL_RAM_PAGE must be a RAM page"),
+            Some("there are no pages above 7"),
         ),
+        (
+            &["KERNEL_RAM_PAGE=0"][..],
+            Some("pages 0 and 1 belong to TI-OS"),
+        ),
+        (
+            &["KERNEL_RAM_PAGE=1"][..],
+            Some("pages 0 and 1 belong to TI-OS"),
+        ),
+        (&["KERNEL_RAM_LOW=$EE00", "KERNEL_RAM_HIGH=$C100"][..], None),
+        (
+            &["KERNEL_RAM_LOW=$EE00", "KERNEL_RAM_HIGH=$E000"][..],
+            Some(overlap),
+        ),
+        (
+            &["WORK_LIMIT=130815"][..],
+            Some("WORK_LIMIT must be at least"),
+        ),
+        (&["WORK_LIMIT=1"][..], Some("WORK_LIMIT must be at least")),
+        (&["WORK_LIMIT=16777216"][..], Some("WORK_LIMIT must fit")),
     ] {
         match (assemble(defines), refusal) {
             (Ok(()), None) => {}
@@ -376,13 +410,7 @@ fn assemble_kernel(out: &Path) {
             )),
         }
     }
-    for (name, defines) in [
-        ("kernel_test", &[][..]),
-        (
-            "kernel_test_moved",
-            &["KERNEL_RAM_LOW=$C100", "KERNEL_RAM_HIGH=$E000"][..],
-        ),
-    ] {
+    for (name, defines) in IMAGES {
         spasm(
             Path::new("tests/routines/kernel_test.z80"),
             &out.join(format!("{name}.bin")),
