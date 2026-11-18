@@ -29,6 +29,7 @@ $}
 bad $p |- ( p -> q ) $= ( ax-1 ) ABC $.
 twice $p wff ( ( p -> p ) -> ( p -> p ) ) $= ( wi ) AABZCB $.
 broken $p |- p $= nope $.
+plain $p |- ( p -> ( q -> p ) ) $= wp wq ax-1 $.
 ";
 
 fn db() -> Database {
@@ -145,6 +146,27 @@ fn measure_counts_each_segment_and_checks_the_proofs() {
     assert_eq!(report.total().theorems, 3);
     assert_eq!((report.constants, report.variables), (5, 3));
     assert_eq!(report.longest_statement.label, "ax-1");
+}
+
+#[test]
+fn measure_orders_splits_and_ignores_repeats() {
+    let db = db();
+    let all = closure(&db, &ids(&db, &["use", "th"]));
+    let report = measure(&db, &all, &ids(&db, &["a1i.1", "ax-1", "a1i.1"]));
+    let rows: Vec<(&str, usize)> = report
+        .segments
+        .iter()
+        .map(|s| (s.name.as_str(), s.axioms))
+        .collect();
+    assert_eq!(rows, [("start", 1), ("ax-1", 2), ("a1i.1", 0)]);
+}
+
+#[test]
+fn measure_counts_an_uncompressed_proof_as_length_only() {
+    let db = db();
+    let report = measure(&db, &closure(&db, &ids(&db, &["plain"])), &[]);
+    let total = report.total();
+    assert_eq!((total.proof_refs, total.proof_len, total.steps), (0, 3, 3));
 }
 
 #[test]
