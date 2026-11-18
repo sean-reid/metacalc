@@ -340,7 +340,11 @@ us_next:
 #else
 	ld a,(de)
 	inc de
+#if s < 5
 	.fill s,$0F
+#else
+	.fill 8-s,$07
+#endif
 	ld c,a
 	and $FF>>s
 	or (hl)
