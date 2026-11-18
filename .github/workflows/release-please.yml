@@ -3,11 +3,18 @@ name: release-please
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and attach the assets to
+        required: true
+        type: string
 
 permissions: {}
 
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -23,7 +30,7 @@ jobs:
 
   mcsend:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
     strategy:
       fail-fast: false
       matrix:
@@ -32,18 +39,21 @@ jobs:
           - { runner: macos-15-intel, os: macos, arch: x86_64 }
           - { runner: ubuntu-22.04, os: linux, arch: x86_64 }
     runs-on: ${{ matrix.runner }}
+    env:
+      TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ env.TAG }}
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       - run: cargo build --release --locked -p mcsend
       - run: target/release/mcsend --version
       - env:
-          TAG: ${{ needs.release-please.outputs.tag_name }}
-        run: sh scripts/package-mcsend.sh "$TAG" "${{ matrix.os }}" "${{ matrix.arch }}" "$RUNNER_TEMP/dist"
+          MATRIX_OS: ${{ matrix.os }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+        run: sh scripts/package-mcsend.sh "$TAG" "$MATRIX_OS" "$MATRIX_ARCH" "$RUNNER_TEMP/dist"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mcsend-${{ matrix.os }}-${{ matrix.arch }}
@@ -52,21 +62,25 @@ jobs:
 
   app:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ env.TAG }}
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       - uses: ./.github/actions/spasm
       - id: setmm
         run: |
           path=$(sh scripts/fetch-setmm.sh)
           echo "path=$path" >> "$GITHUB_OUTPUT"
-      - run: sh scripts/build-libraries.sh "${{ steps.setmm.outputs.path }}" "$RUNNER_TEMP/libraries" "$RUNNER_TEMP/pages"
+      - env:
+          SETMM: ${{ steps.setmm.outputs.path }}
+        run: sh scripts/build-libraries.sh "$SETMM" "$RUNNER_TEMP/libraries" "$RUNNER_TEMP/pages"
       - run: |
           make -s -C app BUILD="$RUNNER_TEMP/app" LIBRARY="$RUNNER_TEMP/libraries/ring.mclib"
           sh app/scripts/check-8xk.sh -l "$RUNNER_TEMP/libraries/ring.mclib" "$RUNNER_TEMP/app/metacalc.8xk"
@@ -80,8 +94,10 @@ jobs:
 
   publish:
     needs: [release-please, mcsend, app]
-    if: needs.release-please.outputs.release_created == 'true'
+    if: ${{ !cancelled() && needs.mcsend.result == 'success' && needs.app.result == 'success' && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
     permissions:
       contents: write
     steps:
@@ -90,11 +106,10 @@ jobs:
           path: ${{ runner.temp }}/dist
           merge-multiple: true
       - env:
-          TAG: ${{ needs.release-please.outputs.tag_name }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           cd "$RUNNER_TEMP/dist"
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
-          gh release upload "$TAG" -- *
+          gh release upload "$TAG" --clobber -- *

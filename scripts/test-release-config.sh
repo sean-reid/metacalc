@@ -4,6 +4,7 @@
 # version of every crate under crates/ in Cargo.lock, so a new crate cannot keep an old version.
 # Also checks that the release workflow builds what install.sh downloads: the same platforms, the
 # same package and app names, SHA256SUMS, and every action pinned by commit.
+# shellcheck disable=SC2016
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -44,8 +45,21 @@ grep -qF 'cargo build --release --locked -p mcsend' "$workflow" || bad "the rele
 grep -qF 'scripts/package-mcsend.sh' "$workflow" || bad "the release workflow does not call package-mcsend.sh"
 grep -E 'uses: [^.]' "$workflow" | grep -qvE 'uses: [^@ ]+@[0-9a-f]{40} # [^ ]+$' && bad "an action in the release workflow is not pinned by commit with a version comment"
 jobs=$(sed -n '/^jobs:/,$s/^  \([a-z-]*\):$/\1/p' "$workflow" | grep -vx release-please | tr '\n' ' ')
-gated=$(grep -c "if: needs.release-please.outputs.release_created == 'true'" "$workflow")
-[ "$gated" -eq "$(echo "$jobs" | wc -w)" ] || bad "every job after release-please must run only when a release was created"
+count() { grep -cF -e "$1" "$workflow" || true; }
+njobs=$(echo "$jobs" | wc -w)
+[ "$(count "needs.release-please.outputs.release_created == 'true'")" -eq "$njobs" ] || bad "every job after release-please must run when a release was created"
+[ "$(count "github.event_name == 'workflow_dispatch'")" -eq "$njobs" ] || bad "every job after release-please must also run when the workflow is dispatched"
+grep -qF "if: github.event_name == 'push'" "$workflow" || bad "the release-please job must run only on push"
+grep -qF 'workflow_dispatch:' "$workflow" || bad "the release workflow has no workflow_dispatch trigger"
+grep -qF 'required: true' "$workflow" || bad "the dispatch tag input is not required"
+[ "$(count 'TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}')" -eq "$njobs" ] || bad "every job after release-please must take its tag from the same expression"
+[ "$(grep -cE 'needs\.release-please\.outputs\.tag_name|inputs\.tag' "$workflow")" -eq "$njobs" ] || bad "a tag is read somewhere other than the shared TAG expression"
+grep -qF 'gh release upload "$TAG" --clobber' "$workflow" || bad "the upload does not use --clobber"
+awk '
+	/^ *(- )?run:/ { match($0, /^ */); indent = RLENGTH; if ($0 ~ /\$\{\{/) bad = 1; inrun = ($0 ~ /\|$/); next }
+	inrun { match($0, /^ */); if (RLENGTH <= indent) inrun = 0; else if ($0 ~ /\$\{\{/) bad = 1 }
+	END { exit bad }
+' "$workflow" || bad "a run step interpolates an expression; pass it through env"
 [ $failed -ne 0 ] && status=1
 [ $failed -ne 0 ] || echo "ok release-assets"
 exit $status
