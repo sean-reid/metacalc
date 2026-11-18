@@ -56,7 +56,7 @@ impl Session<'_> {
             self.rollback_to(undo);
             return Err(e);
         }
-        Ok(self.commit(Op::Apply { goal, assertion }, undo, &before))
+        self.commit(Op::Apply { goal, assertion }, undo, &before)
     }
 
     /// One fresh metavariable per mandatory floating hypothesis, in frame order.
@@ -126,7 +126,7 @@ impl Session<'_> {
             return Err(Error::Unify(e));
         }
         self.goals[goal as usize].state = GoalState::Closed { hyp };
-        Ok(self.commit(Op::Close { goal, hyp }, undo, &before))
+        self.commit(Op::Close { goal, hyp }, undo, &before)
     }
 
     fn unbound(&self, meta: MetaId) -> Result<(), Error> {
@@ -153,7 +153,7 @@ impl Session<'_> {
             self.rollback_to(undo);
             return Err(Error::Unify(e));
         }
-        Ok(self.commit(Op::Assign { meta, var }, undo, &before))
+        self.commit(Op::Assign { meta, var }, undo, &before)
     }
 
     /// Instantiates a metavariable with a syntax axiom applied to new metavariables.
@@ -184,7 +184,7 @@ impl Session<'_> {
             return Err(Error::Unify(e));
         }
         self.push_conditions(syntax, &subst);
-        Ok(self.commit(Op::Refine { meta, syntax }, undo, &before))
+        self.commit(Op::Refine { meta, syntax }, undo, &before)
     }
 
     fn checkpoint(&self, reopened: Option<GoalId>) -> Undo {
@@ -197,7 +197,11 @@ impl Session<'_> {
         }
     }
 
-    fn commit(&mut self, op: Op, undo: Undo, before: &[bool]) -> Outcome {
+    fn commit(&mut self, op: Op, undo: Undo, before: &[bool]) -> Result<Outcome, Error> {
+        if !self.in_bounds() {
+            self.rollback_to(undo);
+            return Err(Error::TooLarge);
+        }
         let outcome = Outcome {
             goals: undo.goals..self.goals.len() as GoalId,
             metas: undo.metas..self.store.meta_count() as MetaId,
@@ -206,6 +210,6 @@ impl Session<'_> {
         self.ops.push(op);
         self.undo.push(undo);
         self.note_peak();
-        outcome
+        Ok(outcome)
     }
 }

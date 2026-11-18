@@ -149,6 +149,9 @@ impl<'a> Session<'a> {
             term,
             state: GoalState::Open,
         });
+        if !session.in_bounds() || !session.hyps.iter().all(|h| session.store.in_bounds(h.1)) {
+            return Err(Error::TooLarge);
+        }
         session.note_peak();
         Ok(session)
     }
@@ -265,6 +268,11 @@ impl<'a> Session<'a> {
         }
         let kids: Vec<TermId> = tree.children.iter().map(|c| self.build(c, subst)).collect();
         self.store.app(tree.stmt, &kids)
+    }
+
+    /// Whether every goal is within the term bounds.
+    pub(crate) fn in_bounds(&self) -> bool {
+        self.goals.iter().all(|g| self.store.in_bounds(g.term))
     }
 
     pub(crate) fn note_peak(&mut self) {

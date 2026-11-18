@@ -152,6 +152,10 @@ ${
   tq-ok.2 $e |- Q y ch $.
   tq-ok $p |- ps $= wch vy wq wps tq-ok.2 tq-ok.1 ax-mp $.
 $}
+axd $a |- ( ( ps -> ps ) -> ps ) $.
+${
+  tbig $p |- ps $= ? $.
+$}
 vq $f setvar q $.
 ";
 
