@@ -4,10 +4,21 @@ use crate::library::{self, Assertion, Hypothesis, ReadError};
 use crate::manifest::{Manifest, Pin};
 use std::fmt::Write;
 
+/// An inline code span that holds `tokens` whatever backticks they contain.
 fn code(tokens: &[String]) -> String {
     let text = tokens.join(" ");
-    let fence = if text.contains('`') { "``" } else { "`" };
-    format!("{fence}{text}{fence}")
+    let longest = text
+        .split(|c| c != '`')
+        .map(str::len)
+        .max()
+        .unwrap_or_default();
+    let fence = "`".repeat(longest + 1);
+    let pad = if text.starts_with('`') || text.ends_with('`') {
+        " "
+    } else {
+        ""
+    };
+    format!("{fence}{pad}{text}{pad}{fence}")
 }
 
 fn entry(out: &mut String, a: &Assertion) {
