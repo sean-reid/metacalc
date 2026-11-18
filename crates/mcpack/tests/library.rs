@@ -1,4 +1,4 @@
-use mcpack::library::{self, Kernel, KernelError, Limits, crc32, pack};
+use mcpack::library::{self, Kernel, KernelError, Limits, PackError, crc32, pack};
 use mcpack::mm::{self, Database, Kind, StmtId, Verifier};
 use std::path::Path;
 use std::process::Command;
@@ -65,27 +65,40 @@ fn reseal(bytes: &mut [u8]) {
     bytes[4..8].copy_from_slice(&crc.to_le_bytes());
 }
 
-/// Offsets of a theorem's extra disjoint pairs and of its references, read from the documented layout.
-fn theorem_fields(bytes: &[u8], id: usize) -> (usize, usize) {
+struct Fields {
+    hyps: usize,
+    dv: usize,
+    extra_dv: usize,
+    refs: usize,
+}
+
+/// Offsets inside a record, read from the documented layout; the last two only exist for a theorem.
+fn fields(bytes: &[u8], id: usize) -> Fields {
     let u16_at = |at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]) as usize;
     let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
     let mut at = u32_at(u32_at(16) + 4 * id);
-    assert_eq!(bytes[at], 1, "a theorem");
     at += 2 + bytes[at + 1] as usize;
-    let hyps = bytes[at];
+    let hyps = at + 1;
+    let count = bytes[at];
     at += 1;
-    for _ in 0..hyps {
+    for _ in 0..count {
         at += if bytes[at] == 0 {
             2
         } else {
             2 + bytes[at + 1] as usize
         };
     }
+    let dv = at + 2;
     at += 2 + 2 * u16_at(at);
     at += 1 + bytes[at] as usize;
-    let extra = at + 2;
-    let refs = extra + 2 * u16_at(at) + 2;
-    (extra, refs)
+    let extra_dv = at + 2;
+    let refs = extra_dv + 2 * u16_at(at) + 2;
+    Fields {
+        hyps,
+        dv,
+        extra_dv,
+        refs,
+    }
 }
 
 #[test]
@@ -247,7 +260,7 @@ fn a_proof_cannot_use_itself_or_a_later_assertion() {
     let good = number(&db, "good");
     for target in [good, good + 1] {
         let mut bytes = pack(&db, &everything(&db)).unwrap();
-        let (_, refs) = theorem_fields(&bytes, good);
+        let refs = fields(&bytes, good).refs;
         bytes[refs..refs + 2].copy_from_slice(&(target as u16).to_le_bytes());
         reseal(&mut bytes);
         assert_eq!(check(&bytes, good), Err(KernelError::ForwardReference));
@@ -259,7 +272,7 @@ fn a_dummy_variable_needs_its_own_disjoint_pair() {
     let db = db(DB);
     let dummy = number(&db, "dummy");
     let mut bytes = pack(&db, &everything(&db)).unwrap();
-    let (extra, _) = theorem_fields(&bytes, dummy);
+    let extra = fields(&bytes, dummy).extra_dv;
     let (x, y, z) = (bytes[extra], bytes[extra] + 1, bytes[extra + 1]);
     assert_eq!(z, x + 2, "the pair is x z");
     bytes[extra] = y;
@@ -272,7 +285,7 @@ fn a_pair_of_mandatory_variables_cannot_hide_among_the_dummy_pairs() {
     let db = db(DB);
     let both = number(&db, "both");
     let mut bytes = pack(&db, &everything(&db)).unwrap();
-    let (extra, _) = theorem_fields(&bytes, both);
+    let extra = fields(&bytes, both).extra_dv;
     let x = bytes[extra];
     bytes[extra + 1] = x + 1;
     reseal(&mut bytes);
@@ -291,6 +304,137 @@ fn an_assertion_with_a_variable_it_has_no_hypothesis_for_is_refused_wherever_it_
     reseal(&mut bytes);
     assert_eq!(check(&bytes, axiom), Err(KernelError::BadRecord));
     assert_eq!(check(&bytes, good), Err(KernelError::BadRecord));
+}
+
+#[test]
+fn a_mandatory_pair_needs_hypotheses_for_both_variables() {
+    let db = db(DB);
+    let (axiom, good) = (number(&db, "ax-d"), number(&db, "good"));
+    let mut bytes = pack(&db, &everything(&db)).unwrap();
+    let dv = fields(&bytes, axiom).dv;
+    bytes[dv + 1] += 1;
+    reseal(&mut bytes);
+    assert_eq!(check(&bytes, axiom), Err(KernelError::BadRecord));
+    assert_eq!(check(&bytes, good), Err(KernelError::BadRecord));
+}
+
+#[test]
+fn an_essential_hypothesis_listed_before_its_variables_reads_this_use_only() {
+    let db = db(DB);
+    let (axiom, dummy) = (number(&db, "ax-m"), number(&db, "dummy"));
+    let mut bytes = pack(&db, &everything(&db)).unwrap();
+    let hyps = fields(&bytes, axiom).hyps;
+    let floats = bytes[hyps..hyps + 4].to_vec();
+    let essential = bytes[hyps + 4..hyps + 10].to_vec();
+    assert_eq!(
+        (floats[0], floats[2], essential[0], essential[1]),
+        (0, 0, 1, 4)
+    );
+    bytes[hyps..hyps + 6].copy_from_slice(&essential);
+    bytes[hyps + 6..hyps + 10].copy_from_slice(&floats);
+    reseal(&mut bytes);
+    let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).unwrap();
+    assert_eq!(kernel.verify(number(&db, "good")), Ok(()));
+    assert_eq!(kernel.verify(axiom), Ok(()));
+    assert_eq!(kernel.verify(dummy), Err(KernelError::TypecodeMismatch));
+}
+
+#[test]
+fn a_failed_check_leaves_nothing_behind_for_the_next_one() {
+    let db = db(DB);
+    let bytes = pack(&db, &everything(&db)).unwrap();
+    let limits = Limits {
+        stack_syms: 8,
+        ..Limits::UNBOUNDED
+    };
+    let mut kernel = Kernel::new(&bytes, limits).unwrap();
+    assert_eq!(
+        kernel.verify(number(&db, "nodummy")),
+        Err(KernelError::DisjointViolation)
+    );
+    assert_eq!(kernel.verify(number(&db, "good")), Ok(()));
+}
+
+#[test]
+fn a_record_that_crosses_a_page_is_refused() {
+    let mut src = String::from("$c T wff |- $.\n");
+    for i in 0..700 {
+        src += &format!("a-long-label-to-fill-the-page-{i} $a |- T $.\n");
+    }
+    let db = db(&src);
+    let mut bytes = pack(&db, &everything(&db)).unwrap();
+    let u32_at =
+        |bytes: &[u8], at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+    let directory = u32_at(&bytes, 16) as usize;
+    let offset = |bytes: &[u8], id: usize| u32_at(bytes, directory + 4 * id) as usize;
+    let first = (0..700)
+        .find(|&id| offset(&bytes, id) >= library::CHUNK)
+        .unwrap();
+    let (start, end) = (offset(&bytes, first), offset(&bytes, first + 1));
+    assert_eq!(start, library::CHUNK, "the packer pads to the page");
+    bytes.copy_within(start..end, start - 3);
+    let entry = directory + 4 * first;
+    bytes[entry..entry + 4].copy_from_slice(&(start as u32 - 3).to_le_bytes());
+    reseal(&mut bytes);
+    assert_eq!(check(&bytes, first - 1), Ok(()));
+    assert_eq!(check(&bytes, first), Err(KernelError::Malformed));
+}
+
+fn letters(mut number: usize) -> String {
+    let mut out = vec![b'A' + (number % 20) as u8];
+    number /= 20;
+    while number > 0 {
+        number -= 1;
+        out.push(b'U' + (number % 5) as u8);
+        number /= 5;
+    }
+    out.reverse();
+    String::from_utf8(out).unwrap()
+}
+
+#[test]
+fn compressed_step_numbers_past_one_byte_survive_packing() {
+    let mut src =
+        String::from("$c T wff $.\n${ d.1 $e wff T $. d.2 $e wff T $. drop $a wff T $. $}\n");
+    let (mut labels, mut proof) = (String::new(), letters(0));
+    for i in 0..250 {
+        src += &format!("n{i} $a wff T $.\n");
+        labels += &format!("n{i} ");
+        if i > 0 {
+            proof += &letters(i);
+            proof += &letters(250);
+        }
+    }
+    src += &format!("big $p wff T $= ( {labels}drop ) {proof} $.\n");
+    let db = db(&src);
+    Verifier::new(&db)
+        .verify(db.find("big").unwrap())
+        .expect("the proof is valid");
+    let bytes = pack(&db, &everything(&db)).unwrap();
+    assert_eq!(check(&bytes, number(&db, "big")), Ok(()));
+}
+
+#[test]
+fn a_compressed_proof_the_reference_calls_malformed_does_not_pack() {
+    for proof in ["AABUZCB", "AABZCBU"] {
+        let src = format!(
+            "$c ( ) -> wff $. $v p q $. wp $f wff p $. wq $f wff q $.
+             wi $a wff ( p -> q ) $.
+             twice $p wff ( ( p -> p ) -> ( p -> p ) ) $= ( wi ) {proof} $."
+        );
+        let db = db(&src);
+        assert!(
+            Verifier::new(&db)
+                .verify(db.find("twice").unwrap())
+                .is_err()
+        );
+        let packed = pack(&db, &everything(&db));
+        assert_eq!(
+            packed,
+            Err(PackError::BrokenProof("twice".into())),
+            "{proof}"
+        );
+    }
 }
 
 #[test]

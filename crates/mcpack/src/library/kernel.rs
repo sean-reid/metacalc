@@ -1,4 +1,4 @@
-use super::{DUMMY, HEADER_LEN, MAGIC, SAVE, WIDE, crc32};
+use super::{CHUNK, DUMMY, HEADER_LEN, MAGIC, SAVE, WIDE, crc32};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KernelError {
@@ -99,7 +99,8 @@ pub struct Kernel<'a> {
     starts: Vec<usize>,
     saved: Vec<u8>,
     saved_starts: Vec<usize>,
-    subst: [(usize, usize); 256],
+    /// The stack range bound to each variable by the `apply` in progress.
+    subst: [Option<(usize, usize)>; 256],
     scratch: Vec<u8>,
     /// Outcome of `check_record` per assertion, once known.
     sound: Vec<Option<bool>>,
@@ -151,7 +152,7 @@ impl<'a> Kernel<'a> {
             starts: Vec::new(),
             saved: Vec::new(),
             saved_starts: Vec::new(),
-            subst: [(0, 0); 256],
+            subst: [None; 256],
             scratch: Vec::new(),
             sound: vec![None; assertions],
         })
@@ -179,6 +180,7 @@ impl<'a> Kernel<'a> {
             pos: self.directory + 4 * id,
         };
         reader.pos = reader.u32()?;
+        let start = reader.pos;
         let theorem = match reader.u8()? {
             0 => false,
             1 => true,
@@ -209,6 +211,9 @@ impl<'a> Kernel<'a> {
             refs = reader.take(2 * count)?;
             let len = reader.u16()?;
             proof = reader.take(len)?;
+        }
+        if start / CHUNK != (reader.pos - 1) / CHUNK {
+            return Err(KernelError::Malformed);
         }
         Ok(Record {
             theorem,
@@ -258,8 +263,8 @@ impl<'a> Kernel<'a> {
             return Err(KernelError::BadRecord);
         }
         // A pair between two mandatory variables left out of `dv` would let later proofs skip its check.
-        let has_dummy = |pair: &[u8]| !floats[pair[0] as usize] || !floats[pair[1] as usize];
-        if !record.extra_dv.chunks(2).all(has_dummy) {
+        let mandatory = |pair: &[u8]| floats[pair[0] as usize] && floats[pair[1] as usize];
+        if !record.dv.chunks(2).all(mandatory) || record.extra_dv.chunks(2).any(mandatory) {
             return Err(KernelError::BadRecord);
         }
         Ok(())
@@ -286,6 +291,7 @@ impl<'a> Kernel<'a> {
         self.starts.clear();
         self.saved.clear();
         self.saved_starts.clear();
+        self.scratch.clear();
         let hyps = record.hyps.len();
         let refs = record.refs.len() / 2;
         let mut proof = Reader {
@@ -378,26 +384,27 @@ impl<'a> Kernel<'a> {
             .len()
             .checked_sub(used.hyps.len())
             .ok_or(KernelError::StackUnderflow)?;
+        let entry = |kernel: &Self, i: usize| {
+            let start = kernel.starts[base + i];
+            let end = kernel.starts.get(base + i + 1);
+            (start, end.copied().unwrap_or(kernel.stack.len()))
+        };
+        self.subst = [None; 256];
         for (i, hyp) in used.hyps.iter().enumerate() {
-            let start = self.starts[base + i];
-            let end = self
-                .starts
-                .get(base + i + 1)
-                .copied()
-                .unwrap_or(self.stack.len());
-            match *hyp {
-                Hyp::Float(var) => {
-                    let typecode = self.typecodes.get(var as usize);
-                    if typecode != self.stack.get(start) {
-                        return Err(KernelError::TypecodeMismatch);
-                    }
-                    self.subst[var as usize] = (start + 1, end);
+            if let Hyp::Float(var) = *hyp {
+                let (start, end) = entry(self, i);
+                if self.typecodes.get(var as usize) != self.stack.get(start) {
+                    return Err(KernelError::TypecodeMismatch);
                 }
-                Hyp::Essential(expr) => {
-                    self.substitute(expr)?;
-                    if self.scratch != self.stack[start..end] {
-                        return Err(KernelError::HypothesisMismatch);
-                    }
+                self.subst[var as usize] = Some((start + 1, end));
+            }
+        }
+        for (i, hyp) in used.hyps.iter().enumerate() {
+            if let Hyp::Essential(expr) = *hyp {
+                let (start, end) = entry(self, i);
+                self.substitute(expr)?;
+                if self.scratch != self.stack[start..end] {
+                    return Err(KernelError::HypothesisMismatch);
                 }
             }
         }
@@ -406,8 +413,8 @@ impl<'a> Kernel<'a> {
             a != b && pairs.any(|pair| pair == [a, b] || pair == [b, a])
         };
         for pair in used.dv.chunks(2) {
-            let (xs, xe) = self.subst[pair[0] as usize];
-            let (ys, ye) = self.subst[pair[1] as usize];
+            let bound = |var: u8| self.subst[var as usize].ok_or(KernelError::BadRecord);
+            let ((xs, xe), (ys, ye)) = (bound(pair[0])?, bound(pair[1])?);
             for &a in self.stack[xs..xe].iter().filter(|&&a| self.is_var(a)) {
                 for &b in self.stack[ys..ye].iter().filter(|&&b| self.is_var(b)) {
                     if !allowed(a, b) {
@@ -430,7 +437,7 @@ impl<'a> Kernel<'a> {
         self.scratch.clear();
         for &sym in expr {
             if self.is_var(sym) {
-                let (start, end) = self.subst[sym as usize];
+                let (start, end) = self.subst[sym as usize].ok_or(KernelError::BadRecord)?;
                 self.scratch.extend_from_slice(&self.stack[start..end]);
             } else {
                 self.scratch.push(sym);

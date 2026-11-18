@@ -176,9 +176,12 @@ impl Packer<'_> {
                         b'U'..=b'Y' if high < CHUNK => {
                             high = high * 5 + (letter - b'U') as usize + 1
                         }
-                        b'Z' => steps.push(SAVE),
+                        b'Z' if high == 0 => steps.push(SAVE),
                         _ => return Err(broken()),
                     }
+                }
+                if high != 0 {
+                    return Err(broken());
                 }
             }
         }
