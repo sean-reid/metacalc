@@ -47,28 +47,35 @@ declared=$((0x$declared))
 
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
-grep -a -o -E ':[0-9A-F]{8}[0-9A-F]*' "$f" | awk -v dir="$dir" '
+grep -a -o -E ':[0-9A-F]{8}[0-9A-F]*' "$f" | awk -v dir="$dir" -v f="$f" '
 	function hex(s,   i, n) {
 		n = 0
 		for (i = 1; i <= length(s); i++) n = n * 16 + index("0123456789ABCDEF", substr(s, i, 1)) - 1
 		return n
 	}
+	function bad(why) { print "check-8xk: " f ": record " NR ": " why > "/dev/stderr"; exit 1 }
 	{
 		len = hex(substr($0, 2, 2)); type = substr($0, 8, 2)
-		if (length($0) != 11 + 2 * len) { print "a record has the wrong length"; exit 1 }
+		if (length($0) != 11 + 2 * len) bad("the length does not match the data")
+		sum = 0
+		for (i = 2; i < length($0); i += 2) sum += hex(substr($0, i, 2))
+		if (sum % 256 != 0) bad("the checksum is wrong")
 		if (type == "02") {
-			if (hex(substr($0, 10, 4)) != pages) { print "page records are out of order"; exit 1 }
+			if (hex(substr($0, 10, 4)) != pages) bad("page records are out of order")
 			pages++
 			file = dir "/page." pages
+			used = 0
 			printf "" > file
 		} else if (type == "00") {
-			if (!pages) { print "data before the first page record"; exit 1 }
+			if (!pages) bad("data before the first page record")
+			if (hex(substr($0, 4, 4)) != 16384 + used) bad("the address is not contiguous from 4000h in page " (pages - 1))
+			used += len
 			printf "%s", substr($0, 10, 2 * len) >> file
 			close(file)
 		}
 	}
 	END { print pages + 0 > (dir "/count") }
-' || fail "malformed Intel hex stream"
+' || exit 1
 pages=$(cat "$dir/count")
 [ "$pages" = "$declared" ] || fail "header declares $declared pages, the file has $pages"
 

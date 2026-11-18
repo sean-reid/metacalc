@@ -19,9 +19,7 @@
 
 start:
 #ifdef LIBRARY
-	in a, (6)
-	call app_lib_page
-	ld (libPage), a
+	call app_find_library
 #endif
 	bcall(_ClrLCDFull)
 	xor a

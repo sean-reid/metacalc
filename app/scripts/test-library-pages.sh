@@ -17,9 +17,9 @@ make_library() {
 
 # Library length, then the app's pages: page 0, the chunks, and one more when the last chunk
 # leaves under 96 bytes.
-for case in 32768:4 32673:4 32672:3 32671:3 16385:3 17311:3 17312:3; do
-	len=${case%:*}
-	want=${case#*:}
+for entry in 32768:4 32673:4 32672:3 32671:3 16385:3 17311:3 17312:3; do
+	len=${entry%:*}
+	want=${entry#*:}
 	make_library "$len"
 	rm -rf "$dir/build"
 	make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" > /dev/null
@@ -33,6 +33,13 @@ for case in 32768:4 32673:4 32672:3 32671:3 16385:3 17311:3 17312:3; do
 		32673 | 32671 | 17311) sh "$app/scripts/test-check-8xk.sh" -l "$dir/lib" "$dir/build/metacalc.8xk" ;;
 	esac
 done
+
+mkdir "$dir/with space"
+make_library 20000
+mv "$dir/lib" "$dir/with space/my library.mclib"
+make -s -C "$app" SPASM="$spasm" BUILD="$dir/with space/build dir" LIBRARY="$dir/with space/my library.mclib" > /dev/null
+sh "$app/scripts/check-8xk.sh" -l "$dir/with space/my library.mclib" "$dir/with space/build dir/metacalc.8xk" > /dev/null
+echo "test-library-pages: paths with spaces"
 
 : > "$dir/lib"
 if sh "$app/scripts/library-include.sh" "$dir/lib" 2> /dev/null; then
