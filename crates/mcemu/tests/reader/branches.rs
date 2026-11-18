@@ -1,6 +1,5 @@
 use crate::damaged::*;
 use crate::placements::layout;
-use crate::secrig::*;
 use crate::sections::*;
 use crate::support::*;
 use mcpack::library::{GLYPHS, TITLES, TREES, decode};
@@ -27,8 +26,7 @@ fn at(bytes: &[u8], id: u8, n: usize) -> Where {
         .table
         .iter()
         .find(|e| e.id == id)
-        .unwrap()
-        .clone();
+        .unwrap();
     Where {
         index: l.index.0 + l.entry * n,
         item: l.items[n].0,

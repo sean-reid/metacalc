@@ -1,5 +1,4 @@
 use crate::damaged::*;
-use crate::secrig::*;
 use crate::sections::*;
 use crate::support::*;
 use mcpack::library::{HEADER_LEN, TITLES, decode};
@@ -37,9 +36,9 @@ fn swapped(poison: u8) -> (Vec<u8>, usize, usize) {
         put32(b, index, item as u32);
         put32(b, row + 1, at as u32);
         put32(b, row + 5, length as u32);
-        for place in second as usize..old {
+        for (place, byte) in b.iter_mut().enumerate().take(old).skip(second as usize) {
             if place < at || place >= at + length {
-                b[place] ^= poison;
+                *byte ^= poison;
             }
         }
     });
