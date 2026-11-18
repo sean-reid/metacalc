@@ -121,5 +121,6 @@ jobs:
       - run: sh scripts/test-build-site.sh
       - run: sh scripts/test-worked-examples.sh
       - run: sh scripts/test-require-tests.sh
+      - run: sh scripts/test-release-config.sh
       - run: sh scripts/test-script-paths.sh
       - run: sh scripts/build-site.sh "$RUNNER_TEMP/pages" "$RUNNER_TEMP/docs"
