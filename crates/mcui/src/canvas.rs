@@ -83,6 +83,17 @@ pub fn tail(text: &str, limit: usize) -> String {
     ELLIPSIS.to_string()
 }
 
+/// The first and last column of the box of soft key `i`.
+fn soft_key_box(i: usize) -> (usize, usize) {
+    ((WIDTH * i + 2) / 5, (WIDTH * (i + 1) + 2) / 5 - 1)
+}
+
+/// Pixels a label of soft key `i` may use.
+pub fn soft_key_room(i: usize) -> usize {
+    let (from, to) = soft_key_box(i);
+    to - from - 2
+}
+
 pub struct Canvas {
     bitmap: Bitmap,
 }
@@ -175,8 +186,8 @@ impl Canvas {
             if label.is_empty() {
                 continue;
             }
-            let (from, to) = ((WIDTH * i + 2) / 5, (WIDTH * (i + 1) + 2) / 5 - 1);
-            let label = truncate(label, to - from - 2);
+            let (from, to) = soft_key_box(i);
+            let label = truncate(label, soft_key_room(i));
             let x = from + (to - from - text_width(&label)).div_ceil(2);
             self.text(x, CONTENT_ROWS + 1, &label);
             self.invert(from, Self::top(CONTENT_ROWS + 1), to - from, ROW);
@@ -213,6 +224,25 @@ impl Canvas {
                 let ink = piece_bitmap(&layout.pieces[placed.index]);
                 self.bitmap
                     .blit(&ink, x + placed.x, Self::top(at as usize) + 1);
+            }
+        }
+    }
+
+    /// A progress bar across the text width on `row`, `done` of `total` filled; with nothing to
+    /// do (`total` of zero) it is full.
+    pub fn bar(&mut self, row: usize, done: usize, total: usize) {
+        let (width, height) = (TEXT_WIDTH, ROW - 1);
+        let inner = width - 4;
+        let filled = (inner * done.min(total))
+            .checked_div(total)
+            .unwrap_or(inner);
+        for y in 0..height {
+            for x in 0..width {
+                let edge = y == 0 || y == height - 1 || x == 0 || x == width - 1;
+                let fill = (2..height - 2).contains(&y) && (2..2 + filled).contains(&x);
+                if edge || fill {
+                    self.bitmap.set(MARGIN + x, Self::top(row) + 1 + y, true);
+                }
             }
         }
     }

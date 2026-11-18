@@ -3,7 +3,7 @@ use crate::canvas::{
     CONTENT_ROWS, Canvas, GUTTER, MARGIN, STATEMENT_WIDTH, TEXT_WIDTH, text_width,
 };
 use crate::data::{By, Goals, Lib};
-use crate::fold::{Folds, Layout, fit_one, layout};
+use crate::fold::{Folds, Layout, fit_one, fitted, layout};
 use crate::key::Key;
 use crate::status::Mark;
 
@@ -40,7 +40,7 @@ impl Proof {
             on_goal: false,
             full: false,
             by: By::Hypothesis(0),
-            goal: layout_none(),
+            goal: Layout::empty(),
             subgoals: Vec::new(),
         };
         proof.refresh(ctx);
@@ -78,11 +78,7 @@ impl Proof {
         self.subgoals = view
             .subgoals
             .iter()
-            .map(|expr| {
-                let width = TEXT_WIDTH - indent;
-                let folds = fit_one(expr, width, 1);
-                (layout(expr, &folds, width).clipped(width, 1), indent)
-            })
+            .map(|expr| (fitted(expr, TEXT_WIDTH - indent, 1), indent))
             .collect();
     }
 
@@ -193,11 +189,6 @@ fn capped(n: u64) -> String {
     } else {
         n.to_string()
     }
-}
-
-fn layout_none() -> Layout {
-    let expr = crate::expr::Expr::flat(Vec::new(), &[]);
-    layout(&expr, &Folds::none(&expr), STATEMENT_WIDTH)
 }
 
 #[cfg(test)]

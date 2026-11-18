@@ -1,23 +1,26 @@
 //! One module per screen. A screen owns its position and reads the libraries it is shown.
 
 mod about;
+mod checking;
 mod dist;
 mod libraries;
 mod list;
 mod notice;
 mod proof;
+mod proving;
 mod theorem;
 
 use crate::canvas::Canvas;
 use crate::data::Lib;
 use crate::key::Key;
+use crate::proofs::Proofs;
 
 pub use list::Kind;
 
 /// Everything a screen reads and none changes.
 pub struct Ctx<'a> {
     pub libs: &'a [Lib],
-    pub my_proofs: usize,
+    pub proofs: &'a Proofs,
 }
 
 pub enum Nav {
@@ -40,6 +43,16 @@ pub enum Screen {
     Proof(proof::Proof),
     Notice(notice::Notice),
     About(about::About),
+    Checking(checking::Checking),
+    Proving(Box<proving::Proving>),
+}
+
+/// What the proving screen lists under the goal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    Candidates,
+    Hyps,
+    Tree,
 }
 
 /// Where a screen stands, for tests and scripts.
@@ -78,10 +91,36 @@ pub enum State {
         selected: usize,
         on_goal: bool,
     },
+    Proving {
+        label: String,
+        open: usize,
+        /// The goal on screen, none once nothing is open.
+        goal: Option<u32>,
+        /// Nothing is open and the session exports a proof: the point where the kernel check and
+        /// saving hook in.
+        finished: bool,
+        view: View,
+        /// The highlighted row of the open list.
+        selected: usize,
+        /// The label of the highlighted candidate while candidates are listed.
+        candidate: Option<String>,
+        /// Operations in force.
+        steps: usize,
+        /// Operations replayed to open the screen; none are replayed after that.
+        replayed: usize,
+    },
     Notice {
         title: String,
     },
     About,
+    Checking {
+        library: usize,
+        /// Assertions settled either way.
+        done: usize,
+        total: usize,
+        failed: usize,
+        finished: bool,
+    },
 }
 
 impl Screen {
@@ -98,6 +137,8 @@ impl Screen {
             Screen::Proof(s) => s.press(ctx, key),
             Screen::Notice(s) => s.press(key),
             Screen::About(s) => s.press(key),
+            Screen::Checking(s) => s.press(key),
+            Screen::Proving(s) => s.press(ctx, key),
         }
     }
 
@@ -110,6 +151,8 @@ impl Screen {
             Screen::Proof(s) => s.draw(ctx, canvas),
             Screen::Notice(s) => s.draw(canvas),
             Screen::About(s) => s.draw(ctx, canvas),
+            Screen::Checking(s) => s.draw(ctx, canvas),
+            Screen::Proving(s) => s.draw(ctx, canvas),
         }
     }
 
@@ -122,6 +165,8 @@ impl Screen {
             Screen::Proof(s) => s.state(ctx),
             Screen::Notice(s) => s.state(),
             Screen::About(_) => State::About,
+            Screen::Checking(s) => s.state(ctx),
+            Screen::Proving(s) => s.state(ctx),
         }
     }
 }

@@ -1,4 +1,4 @@
-use super::{Ctx, Nav, Screen, State, dist::Dist, notice::Notice, proof::Proof};
+use super::{Ctx, Nav, Screen, State, dist::Dist, notice::Notice, proof::Proof, proving::Proving};
 use crate::canvas::{CONTENT_ROWS, Canvas, GUTTER, STATEMENT_WIDTH, text_width};
 use crate::data::Statement;
 use crate::fold::{Fit, Folds, Layout, fit, layout};
@@ -138,7 +138,7 @@ impl Theorem {
                     Err(why) => Notice::screen("Proof", &[why]),
                 });
             }
-            Key::F4 => return Nav::push(Notice::unavailable("Prove")),
+            Key::F4 => return Nav::push(Proving::open(ctx, self.library, self.index)),
             Key::Clear => return Nav::Pop,
             _ => {}
         }
