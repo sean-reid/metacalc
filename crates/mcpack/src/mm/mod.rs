@@ -6,8 +6,6 @@ mod verify;
 pub use parse::{ParseError, parse};
 pub use verify::Verifier;
 
-use std::ops::Range;
-
 pub type Sym = u32;
 pub type StmtId = u32;
 
@@ -21,6 +19,7 @@ pub enum Kind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProofError {
+    NotATheorem,
     Incomplete,
     UnknownLabel,
     InactiveHypothesis,
@@ -49,10 +48,9 @@ pub struct Frame {
 
 pub enum ProofBody {
     Normal(Vec<StmtId>),
-    /// `body` is the byte range of the letter stream in `Database::src`.
     Compressed {
         labels: Vec<StmtId>,
-        body: Range<usize>,
+        letters: Vec<u8>,
     },
 }
 
@@ -71,7 +69,6 @@ pub struct Stmt {
 }
 
 pub struct Database {
-    pub src: Vec<u8>,
     pub syms: Vec<Symbol>,
     pub stmts: Vec<Stmt>,
 }

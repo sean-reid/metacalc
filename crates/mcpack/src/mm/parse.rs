@@ -23,7 +23,7 @@ pub fn parse(src: Vec<u8>) -> Result<Database, ParseError> {
     match parser.run() {
         Ok(()) => {
             let (syms, stmts) = (parser.syms, parser.stmts);
-            Ok(Database { src, syms, stmts })
+            Ok(Database { syms, stmts })
         }
         Err(message) => Err(ParseError {
             line: 1 + src[..parser.token_start]
@@ -110,6 +110,7 @@ impl<'a> Parser<'a> {
                 Some(b"$(") => loop {
                     match self.raw_token()? {
                         Some(b"$)") => break,
+                        Some(b"$(") => return Err("$( inside a comment".into()),
                         Some(_) => {}
                         None => return Err("unterminated comment".into()),
                     }
@@ -424,19 +425,15 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            let start = self.pos;
-            let mut end = start;
+            let mut letters = Vec::new();
             loop {
                 let token = self.expect_token()?;
                 if token == b"$." {
                     break;
                 }
-                end = self.pos;
+                letters.extend_from_slice(token);
             }
-            ProofBody::Compressed {
-                labels,
-                body: start..end,
-            }
+            ProofBody::Compressed { labels, letters }
         } else {
             let mut steps = Vec::new();
             while first != b"$." {

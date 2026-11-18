@@ -28,7 +28,7 @@ impl<'a> Verifier<'a> {
         let proof = match &stmt.proof {
             Some(Ok(proof)) => proof,
             Some(Err(e)) => return Err(*e),
-            None => panic!("{} is not a theorem", stmt.label),
+            None => return Err(ProofError::NotATheorem),
         };
         self.arena.clear();
         self.starts.clear();
@@ -39,8 +39,8 @@ impl<'a> Verifier<'a> {
                     self.apply(step, proof)?;
                 }
             }
-            ProofBody::Compressed { labels, body } => {
-                self.run_compressed(&stmt.frame.hyps, labels, &db.src[body.clone()], proof)?;
+            ProofBody::Compressed { labels, letters } => {
+                self.run_compressed(&stmt.frame.hyps, labels, letters, proof)?;
             }
         }
         if self.starts.len() != 1 {
@@ -96,7 +96,6 @@ impl<'a> Verifier<'a> {
                     self.saved.push(self.arena[top..].to_vec());
                 }
                 b'?' => return Err(ProofError::Incomplete),
-                c if c.is_ascii_whitespace() => {}
                 _ => return Err(ProofError::MalformedCompressed),
             }
         }

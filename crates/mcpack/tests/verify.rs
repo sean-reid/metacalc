@@ -46,13 +46,37 @@ fn normal_proof_is_accepted() {
 }
 
 #[test]
-fn compressed_proof_matches_normal_proof() {
+fn compressed_and_normal_proofs_agree() {
     let tail = "
         th $p |- ( p -> ( q -> p ) ) $= ( ax-1 ) ABC $.
-        th2 $p wff ( p -> ( p -> p ) ) $= ( wi ) AAABZBC $.
+        th-n $p |- ( p -> ( q -> p ) ) $= wp wq ax-1 $.
+        w $p wff ( p -> ( p -> p ) ) $= ( wi ) AAABB $.
+        w-n $p wff ( p -> ( p -> p ) ) $= wp wp wp wi wi $.
     ";
+    for label in ["th", "th-n", "w", "w-n"] {
+        assert_eq!(check(tail, label), Ok(()), "{label}");
+    }
+}
+
+#[test]
+fn comment_inside_a_compressed_proof_is_skipped() {
+    let tail = "th $p |- ( p -> ( q -> p ) ) $= ( ax-1 ) A $( first $) B\n $( second $) C $.";
     assert_eq!(check(tail, "th"), Ok(()));
-    assert_eq!(check(tail, "th2"), Err(ProofError::StackNotSingleton));
+}
+
+#[test]
+fn each_application_rebinds_its_variables() {
+    let p = "wp wq wp wi wi";
+    let tail = format!(
+        "th $p |- ( q -> ( p -> ( q -> p ) ) ) $= {p} wq {p} wi wp wq ax-1 {p} wq ax-1 ax-mp $."
+    );
+    assert_eq!(check(&tail, "th"), Ok(()));
+}
+
+#[test]
+fn only_theorems_can_be_verified() {
+    assert_eq!(check("", "ax-1"), Err(ProofError::NotATheorem));
+    assert_eq!(check("", "wp"), Err(ProofError::NotATheorem));
 }
 
 #[test]
@@ -236,6 +260,38 @@ fn optional_disjoint_condition_covers_a_dummy_variable() {
 }
 
 #[test]
+fn optional_floating_hypothesis_is_allowed_in_the_compressed_label_list() {
+    let axioms = "
+        ax-yy $a |- ( y -> y ) $.
+        ${ $d x y $. g $e |- ( y -> y ) $. ax-g $a |- x $. $}
+    ";
+    let tail = "${ $d p r $. th $p |- p $= ( wr ax-yy ax-g ) ABBCD $. $}";
+    assert_eq!(check(&format!("{DISJOINT}{axioms}{tail}"), "th"), Ok(()));
+}
+
+#[test]
+fn disjoint_statement_with_three_variables_covers_every_pair() {
+    for (a, b, wa, wb) in [
+        ("p", "q", "wp", "wq"),
+        ("p", "r", "wp", "wr"),
+        ("q", "r", "wq", "wr"),
+    ] {
+        let tail = format!("${{ $d p q r $. th $p |- ( {a} -> {b} ) $= {wa} {wb} ax-dv $. $}}");
+        assert_eq!(check(&format!("{DISJOINT}{tail}"), "th"), Ok(()), "{a} {b}");
+    }
+}
+
+#[test]
+fn floating_hypothesis_from_a_closed_scope_is_rejected() {
+    let src = "$c a $. ${ $v x $. f $f a x $. $} ax $a a $. th $p a $= f $.";
+    let db = mm::parse(src.as_bytes().to_vec()).unwrap();
+    assert_eq!(
+        Verifier::new(&db).verify(db.find("th").unwrap()),
+        Err(ProofError::InactiveHypothesis)
+    );
+}
+
+#[test]
 fn mandatory_hypotheses_follow_database_order() {
     let tail = "
         ${ e1 $e |- p $. e2 $e |- q $. both $a |- ( p -> q ) $. $}
@@ -269,6 +325,10 @@ fn structural_errors_fail_the_parse() {
     assert!(parse_error("$c a $. $v x $. $v x $.").contains("already active"));
     assert!(parse_error("$c a $. l $a a b $.").contains("undeclared"));
     assert!(parse_error("$c a $. $[ other.mm $]").contains("inclusion"));
+    assert!(parse_error("$c a $. $( outer $( inner $) $)").contains("inside a comment"));
+    assert!(
+        parse_error("$c a $. $v x y $. ${ $v z $. $} $d x z $.").contains("not an active variable")
+    );
 }
 
 #[test]
