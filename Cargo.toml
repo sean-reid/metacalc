@@ -1,0 +1,13 @@
+[workspace]
+resolver = "3"
+members = ["crates/mcpack"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/sean-reid/metacalc"
+
+[profile.release]
+lto = true
+codegen-units = 1
