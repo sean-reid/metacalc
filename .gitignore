@@ -2,3 +2,4 @@
 /docs/book
 *.rom
 *.8xu
+/app/build
