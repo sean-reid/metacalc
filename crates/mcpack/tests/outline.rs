@@ -48,6 +48,7 @@ syntax $p wff ( p -> p ) $= wp wp wi $.
 
 fn outline(dir: &str, label: &str) -> Output {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(dir);
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let database = dir.join("logic.mm");
     std::fs::write(&database, LOGIC).unwrap();

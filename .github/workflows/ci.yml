@@ -113,5 +113,6 @@ jobs:
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" cargo test --locked -p mcemu --test kernel -- --ignored the_shipped_libraries --nocapture
       - run: sh scripts/worked-examples.sh check "${{ steps.setmm.outputs.path }}"
       - run: SETMM="${{ steps.setmm.outputs.path }}" cargo test --locked -p mcpack --test unicode_pin -- --ignored
+      - run: SETMM="${{ steps.setmm.outputs.path }}" cargo test --locked -p mcpack --test notation_meanings -- --ignored
       - run: sh scripts/test-build-site.sh
       - run: sh scripts/build-site.sh "$RUNNER_TEMP/pages" "$RUNNER_TEMP/docs"

@@ -118,6 +118,7 @@ impl List {
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
         match key {
             Key::Up | Key::Down | Key::Left | Key::Right => {
+                self.find.clear();
                 self.missed = false;
                 self.cursor = step(self.cursor, self.items.len(), key, LIST_ROWS);
                 self.top = reveal(self.top, self.cursor, LIST_ROWS);

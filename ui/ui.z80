@@ -10,8 +10,10 @@
 ; bytes a row, the most significant bit leftmost; and UI_VARS_SIZE ($1A, 26) bytes of variables
 ; at UI_VARS, default $9882 (appBackUpScreen + $10), laid out in ram.inc. The blocks must not
 ; overlap. Call ui_set_font and ui_clear before the first draw. Registers not listed as
-; destroyed are preserved, and IX, IY and the shadow registers are never touched. The stack
-; needs 12 bytes.
+; destroyed are preserved, and IX, IY and the shadow registers are never touched. Counting
+; the caller's return address, the stack needs 14 bytes for ui_list_row, 12 for ui_title and
+; ui_soft_keys, and 10 for the text-right and centred routines; an interrupt adds the
+; handler's pushes.
 ;
 ; Fonts: every routine that draws or measures text reads the table given to ui_set_font. A
 ; table is what mcglyph z80 writes: a slot of 8 bytes per glyph, the width then seven row

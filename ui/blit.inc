@@ -1,9 +1,10 @@
 ; ui_blit   copies the frame to the LCD through ports 10h and 11h, one column of bytes at a time
 ;           in 8 bit mode with the row counter incrementing; before each write it waits for the
 ;           busy flag, bit 7 of port 10h, to clear, so it holds at 6 and 15 MHz. Each wait gives
-;           up after UI_BUSY_LIMIT polls, about 9,000 T-states and over a hundred times the
-;           controller's busy window, and writes anyway, so a flag stuck busy costs pixels, not a
-;           hang. The controller is left in 8 bit mode with increment mode 5.
+;           up after UI_BUSY_LIMIT polls, 8,925 T-states against a busy window of 50 clocks in the
+;           emulator, and writes anyway, so a flag stuck busy costs pixels, not a hang, but each
+;           blit then takes about 7.1 million T-states, 1.2 s at 6 MHz. The controller is left
+;           in 8 bit mode with increment mode 5.
 ;           destroys AF BC DE HL
 
 #macro WAIT
