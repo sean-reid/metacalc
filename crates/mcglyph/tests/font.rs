@@ -1,4 +1,6 @@
-use mcglyph::{Bitmap, Font, LEADING, MAX_GLYPH_WIDTH, RenderError, SPACE};
+use mcglyph::{
+    Bitmap, Font, FontError, FontErrorKind, LEADING, MAX_GLYPH_WIDTH, RenderError, SPACE,
+};
 use std::collections::{BTreeSet, HashMap};
 
 fn symbols() -> Vec<&'static str> {
@@ -212,31 +214,115 @@ fn a_token_wider_than_the_screen_is_an_error_not_a_split() {
     );
 }
 
+fn font_error(font: &str) -> FontError {
+    Font::parse(font, "").unwrap_err()
+}
+
+fn map_error(map: &str) -> FontError {
+    Font::parse("height 1\nglyph a\n#\n", map).unwrap_err()
+}
+
 #[test]
-fn a_bad_font_is_rejected_with_its_line() {
-    let ragged = "height 2\nglyph a\n##\n#\n";
-    assert!(
-        Font::parse(ragged, "")
-            .unwrap_err()
-            .to_string()
-            .contains("line 4")
+fn font_errors_name_their_line_and_kind() {
+    let cases: [(&str, usize, FontErrorKind); 9] = [
+        (
+            "height 1\nglyph a\n#\n\nglyph a\n#\n",
+            5,
+            FontErrorKind::DuplicateGlyph,
+        ),
+        (
+            "height 1\nglyph w\n##########\n",
+            2,
+            FontErrorKind::GlyphWidth,
+        ),
+        ("height 1\nglyph a\n#x\n", 3, FontErrorKind::BadRow),
+        ("height 1\n##\n", 2, FontErrorKind::RowOutsideGlyph),
+        ("; nothing\n", 1, FontErrorKind::MissingHeight),
+        ("height 1\nheight 1\n", 2, FontErrorKind::DuplicateHeight),
+        (
+            "height 2\nglyph a\nheight 1\n",
+            3,
+            FontErrorKind::HeightInsideGlyph,
+        ),
+        ("height 2\nglyph a\n##\n#\n", 4, FontErrorKind::RaggedRow),
+        ("height 2\nglyph a\n##\n", 2, FontErrorKind::RowCount),
+    ];
+    for (src, line, kind) in cases {
+        let e = font_error(src);
+        assert_eq!(
+            (e.file, e.line, e.kind),
+            ("metacalc.font", line, kind),
+            "{src:?}"
+        );
+    }
+    let e = font_error("glyph a\n#\n");
+    assert_eq!((e.line, e.kind), (1, FontErrorKind::GlyphBeforeHeight));
+    let e = font_error("height x\n");
+    assert_eq!((e.line, e.kind), (1, FontErrorKind::BadHeight));
+}
+
+#[test]
+fn mapping_errors_name_their_line_and_kind() {
+    let cases: [(&str, usize, FontErrorKind); 4] = [
+        ("t tight a\nt both a\n", 2, FontErrorKind::DuplicateToken),
+        ("t tight b\n", 1, FontErrorKind::UnknownGlyph),
+        ("\nt sideways a\n", 2, FontErrorKind::BadSpacing),
+        ("t tight\n", 1, FontErrorKind::NoGlyphs),
+    ];
+    for (src, line, kind) in cases {
+        let e = map_error(src);
+        assert_eq!(
+            (e.file, e.line, e.kind),
+            ("tokens.map", line, kind),
+            "{src:?}"
+        );
+    }
+}
+
+#[test]
+fn a_semicolon_is_an_ordinary_token_in_the_mapping() {
+    let font = Font::parse("height 1\nglyph a\n#\n", "; tight a\n").unwrap();
+    assert_eq!(font.token_glyphs(";"), Some(&["a".to_string()][..]));
+}
+
+fn lines_of(tokens: &[&str], limit: usize) -> Vec<(usize, Vec<usize>)> {
+    font()
+        .layout(tokens, limit)
+        .unwrap()
+        .iter()
+        .map(|l| (l.width, l.tokens.iter().map(|p| p.x).collect()))
+        .collect()
+}
+
+#[test]
+fn a_token_exactly_as_wide_as_the_limit_is_one_line() {
+    assert_eq!(lines_of(&["x"], 4), [(4, vec![0])]);
+}
+
+#[test]
+fn an_exact_fit_stays_and_one_pixel_less_wraps() {
+    let gap = 1 + SPACE;
+    let exact = 4 + gap + 3;
+    assert_eq!(lines_of(&["x", "t"], exact), [(exact, vec![0, 4 + gap])]);
+    assert_eq!(
+        lines_of(&["x", "t"], exact - 1),
+        [(4, vec![0]), (3, vec![0])]
     );
-    let short = "height 2\nglyph a\n##\n";
-    assert!(
-        Font::parse(short, "")
-            .unwrap_err()
-            .message
-            .contains("1 rows")
+}
+
+#[test]
+fn a_full_line_is_followed_by_the_next_token_on_its_own_line() {
+    assert_eq!(
+        lines_of(&["x", "(", "x"], 4),
+        [(4, vec![0]), (2, vec![0]), (4, vec![0])]
     );
-    let font = "height 1\nglyph a\n#\n";
-    assert!(
-        Font::parse(font, "t tight b\n")
-            .unwrap_err()
-            .message
-            .contains("no glyph named b")
-    );
-    assert!(Font::parse(font, "t sideways a\n").is_err());
-    assert!(Font::parse(font, "t tight a\nt both a\n").is_err());
+}
+
+#[test]
+fn no_tokens_lay_out_to_nothing() {
+    assert_eq!(font().layout(&[], 96), Ok(vec![]));
+    let bitmap = font().render(&[], 96).unwrap();
+    assert_eq!((bitmap.width(), bitmap.height()), (96, 0));
 }
 
 #[test]

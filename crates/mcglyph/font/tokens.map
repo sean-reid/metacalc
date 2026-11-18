@@ -1,9 +1,3 @@
-; token, spacing, glyphs. Spacing is tight, before, after, both, var, binder or open.
-; var: gap next to another var. binder: gap before. open: no gap after.
-; Single characters come from the latexdef and althtmldef lines of set.mm.
-; Subscript g and r are small glyphs set on the baseline row, not full letters.
-; Symbol variables (.+ .0. .1. .x. .o.) carry a dotted underline.
-
 ( open lparen
 ) tight rparen
 -> both rarr

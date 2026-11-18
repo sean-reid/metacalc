@@ -8,5 +8,5 @@ mod font;
 mod layout;
 
 pub use bitmap::Bitmap;
-pub use font::{Font, FontError, MAX_GLYPH_WIDTH, Pad};
+pub use font::{Font, FontError, FontErrorKind, MAX_GLYPH_WIDTH, Pad};
 pub use layout::{LEADING, Line, Placed, RenderError, SPACE};
