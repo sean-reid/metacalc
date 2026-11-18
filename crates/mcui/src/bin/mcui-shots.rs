@@ -6,7 +6,7 @@
 
 use mcglyph::png;
 use mcpack::library;
-use mcui::{Installed, Key, State, Status, Statuses, Ui};
+use mcui::{CheckStep, Installed, Key, State, Status, Statuses, Ui};
 use std::path::{Path, PathBuf};
 use std::{env, fs, process};
 
@@ -81,9 +81,7 @@ impl Shots {
 
     /// Runs the check on the open checking screen to its end.
     fn check_all(&mut self) {
-        while !matches!(self.ui.state(), State::Checking { finished: true, .. }) {
-            self.ui.step_check();
-        }
+        while !matches!(self.ui.step_check(), CheckStep::Idle | CheckStep::Finished) {}
     }
 
     fn shot(&self, name: &str) {
@@ -261,4 +259,16 @@ fn main() {
     s.shot("40-checking-finished-libraries");
     s.press(&[Key::Down, Key::Down, Key::F2]);
     s.shot("41-checking-ring-with-failure");
+
+    s.theorem(0, "id");
+    s.press(&[Key::F4]);
+    for label in ["mpd", "ax-1", "ax-1"] {
+        s.select(label);
+        s.press(&[Key::F1]);
+    }
+    s.shot("42-proving-id-finished");
+    s.press(&[Key::F5]);
+    s.shot("43-proving-id-tree");
+    s.press(&[Key::F5, Key::F4]);
+    s.shot("44-proving-id-after-undo");
 }
