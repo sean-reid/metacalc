@@ -734,6 +734,10 @@ fn assemble_reader(out: &Path) {
             &["LIB_SPARE_PAGE=8"][..],
             Some("LIB_SPARE_PAGE must be a RAM page"),
         ),
+        (
+            &["FONT_AFTER_LIB"][..],
+            Some("UI_FONT_FINGERPRINT must be defined before lib/lib.z80"),
+        ),
     ] {
         match (
             spasm_try(src, &out.join("reader_probe.bin"), defines, &args),

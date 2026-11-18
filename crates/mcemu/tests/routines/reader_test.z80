@@ -138,5 +138,10 @@ call_iff_off:
 #ifdef WITH_KERNEL
 #include "kernel.z80"
 #endif
+#ifndef FONT_AFTER_LIB
 #include "font.inc"
+#endif
 #include "lib/lib.z80"
+#ifdef FONT_AFTER_LIB
+#include "font.inc"
+#endif

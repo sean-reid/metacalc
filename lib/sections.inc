@@ -1,4 +1,8 @@
 #ifndef LIB_FONT_FINGERPRINT
+#if UI_FONT_FINGERPRINT >= 0
+#else
+ .error "UI_FONT_FINGERPRINT must be defined before lib/lib.z80: include the font first"
+#endif
 LIB_FONT_FINGERPRINT .equ UI_FONT_FINGERPRINT
 #endif
 
