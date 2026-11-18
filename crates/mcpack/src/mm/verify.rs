@@ -9,6 +9,24 @@ pub struct Usage {
     pub saved_syms: usize,
 }
 
+/// One step of a traced proof, in the order the verifier executes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Event {
+    /// A hypothesis or assertion was applied. `expr` is the statement it left on the stack, with
+    /// its typecode. `consumed` counts the stack entries it popped, floating hypotheses included,
+    /// and `essentials` counts the essential hypotheses among them.
+    Applied {
+        label: StmtId,
+        expr: Vec<Sym>,
+        consumed: usize,
+        essentials: usize,
+    },
+    /// The top of the stack was saved by a compressed proof.
+    Saved,
+    /// A saved entry, counted from zero, was pushed again.
+    Reused(usize),
+}
+
 /// Checks one theorem at a time against a parsed database, reusing its buffers between proofs.
 pub struct Verifier<'a> {
     db: &'a Database,
@@ -18,6 +36,7 @@ pub struct Verifier<'a> {
     subst: Vec<(usize, usize)>,
     scratch: Vec<Sym>,
     usage: Usage,
+    trace: Option<Vec<Event>>,
 }
 
 impl<'a> Verifier<'a> {
@@ -30,7 +49,16 @@ impl<'a> Verifier<'a> {
             subst: vec![(0, 0); db.syms.len()],
             scratch: Vec::new(),
             usage: Usage::default(),
+            trace: None,
         }
+    }
+
+    /// Checks the theorem like `verify` and returns the steps the check executed.
+    pub fn trace(&mut self, id: StmtId) -> Result<Vec<Event>, ProofError> {
+        self.trace = Some(Vec::new());
+        let result = self.verify(id);
+        let events = self.trace.take().unwrap_or_default();
+        result.map(|()| events)
     }
 
     /// Measurements of the most recent `verify` call, up to the point where it stopped.
@@ -103,6 +131,9 @@ impl<'a> Verifier<'a> {
                         self.starts.push(self.arena.len());
                         self.arena.extend_from_slice(saved);
                         self.pushed();
+                        if let Some(trace) = &mut self.trace {
+                            trace.push(Event::Reused(index - hyps.len() - labels.len()));
+                        }
                     }
                 }
                 b'U'..=b'Y' => {
@@ -120,6 +151,9 @@ impl<'a> Verifier<'a> {
                     }
                     self.usage.saved_syms += self.arena.len() - top;
                     self.saved.push(self.arena[top..].to_vec());
+                    if let Some(trace) = &mut self.trace {
+                        trace.push(Event::Saved);
+                    }
                 }
                 b'?' => return Err(ProofError::Incomplete),
                 _ => return Err(ProofError::MalformedCompressed),
@@ -138,6 +172,14 @@ impl<'a> Verifier<'a> {
             self.starts.push(self.arena.len());
             self.arena.extend_from_slice(&stmt.expr);
             self.pushed();
+            if let Some(trace) = &mut self.trace {
+                trace.push(Event::Applied {
+                    label: id,
+                    expr: stmt.expr.clone(),
+                    consumed: 0,
+                    essentials: 0,
+                });
+            }
             return Ok(());
         }
         let hyps = &stmt.frame.hyps;
@@ -189,6 +231,18 @@ impl<'a> Verifier<'a> {
         self.starts.push(bottom);
         self.arena.extend_from_slice(&self.scratch);
         self.pushed();
+        if let Some(trace) = &mut self.trace {
+            let essentials = hyps
+                .iter()
+                .filter(|&&h| db.stmt(h).kind == Kind::Essential)
+                .count();
+            trace.push(Event::Applied {
+                label: id,
+                expr: self.scratch.clone(),
+                consumed: hyps.len(),
+                essentials,
+            });
+        }
         Ok(())
     }
 

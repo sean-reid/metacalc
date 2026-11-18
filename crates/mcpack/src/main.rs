@@ -17,6 +17,13 @@ enum Command {
     Verify { database: PathBuf },
     /// Parse every statement with the database's syntax axioms
     Parse { database: PathBuf },
+    /// Print the proof of one theorem as a backward goal tree
+    ///
+    /// Each line is a statement and the label applied to it in brackets, indented under the
+    /// statement that needed it. Steps that build syntax are left out. A step a compressed proof
+    /// saved appears at every place it is used. Exits 2 for an unknown label and 1 for an axiom
+    /// or a proof that does not verify.
+    Outline { database: PathBuf, label: String },
     /// Pack what the given theorems depend on into a library and check it
     Pack {
         database: PathBuf,
@@ -63,6 +70,9 @@ fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Verify { database } => cmd::load(&database).map(|db| cmd::verify(&db)),
         Command::Parse { database } => cmd::load(&database).and_then(|db| cmd::parse(&db)),
+        Command::Outline { database, label } => {
+            cmd::load(&database).and_then(|db| cmd::outline(&db, &label))
+        }
         Command::Pack {
             database,
             roots,

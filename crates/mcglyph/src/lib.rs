@@ -6,6 +6,7 @@
 mod bitmap;
 mod font;
 mod layout;
+pub mod png;
 
 pub use bitmap::Bitmap;
 pub use font::{Font, FontError, FontErrorKind, MAX_GLYPH_WIDTH, Pad};

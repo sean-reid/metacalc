@@ -86,7 +86,9 @@ jobs:
           path=$(sh scripts/fetch-setmm.sh)
           echo "path=$path" >> "$GITHUB_OUTPUT"
       - run: sh scripts/build-libraries.sh "${{ steps.setmm.outputs.path }}" "$RUNNER_TEMP/libraries" "$RUNNER_TEMP/pages"
+      - run: sh scripts/worked-examples.sh check "${{ steps.setmm.outputs.path }}"
       - run: |
           cp -r docs "$RUNNER_TEMP/docs"
           cp "$RUNNER_TEMP"/pages/*.md "$RUNNER_TEMP/docs/src/libraries/"
+          sh scripts/worked-examples.sh images "$RUNNER_TEMP/docs/src/guide/examples"
           mdbook build "$RUNNER_TEMP/docs"

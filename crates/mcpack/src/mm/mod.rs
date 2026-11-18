@@ -2,13 +2,15 @@
 
 mod closure;
 mod grammar;
+mod outline;
 mod parse;
 mod verify;
 
 pub use closure::closure;
 pub use grammar::{Grammar, GrammarError, Parsed, SyntaxError, Tree};
+pub use outline::{Node, OutlineError, outline};
 pub use parse::{ParseError, parse};
-pub use verify::{Usage, Verifier};
+pub use verify::{Event, Usage, Verifier};
 
 pub type Sym = u32;
 pub type StmtId = u32;

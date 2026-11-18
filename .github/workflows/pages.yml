@@ -10,8 +10,10 @@ on:
       - rust-toolchain*
       - libraries/**
       - crates/mcpack/**
+      - crates/mcglyph/**
       - scripts/fetch-setmm.sh
       - scripts/build-libraries.sh
+      - scripts/worked-examples.sh
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -49,6 +51,7 @@ jobs:
       - run: |
           cp -r docs "$RUNNER_TEMP/docs"
           cp "$RUNNER_TEMP"/pages/*.md "$RUNNER_TEMP/docs/src/libraries/"
+          sh scripts/worked-examples.sh images "$RUNNER_TEMP/docs/src/guide/examples"
           mdbook build "$RUNNER_TEMP/docs"
       - uses: actions/upload-pages-artifact@v5
         with:
