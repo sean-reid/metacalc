@@ -75,6 +75,15 @@ fill_bytes:
 	jp copy_bc
 
 init_body:
+	ld a,h
+	cp $C0
+	jp nc,init_refused
+	cp $BF
+	jr c,init_param_ok
+	ld a,l
+	cp $101-PARAM_LEN
+	jp nc,init_refused
+init_param_ok:
 	ld de,KERNEL_LIB_PAGE
 	ld bc,PARAM_LEN
 	ldir
@@ -285,6 +294,12 @@ init_cache_clear:
 	ld hl,READY_MAGIC
 	ld (kv_ready),hl
 	ret
+
+init_refused:
+	ld hl,0
+	ld (kv_ready),hl
+	ld (kv_crc_state),hl
+	jp fail_malformed
 
 ; out: Z if the last kernel_init succeeded. Destroys AF DE HL.
 is_ready:

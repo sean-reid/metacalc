@@ -479,3 +479,40 @@ fn the_table_is_cleared_when_the_serial_wraps() {
     let x = device.kram(table + 3 * 8, 8);
     assert_eq!(x[4..6], [1, 0], "x was rebound after the wrap");
 }
+
+#[test]
+fn a_parameter_block_that_touches_bank_c_is_refused_before_it_is_read() {
+    let (db, bytes) = small_library();
+    let both = number(&db, "both");
+    let malformed = status(Err(KernelError::Malformed));
+    let ok = status(Ok(()));
+    for (at, accepted) in [
+        (0x8100u16, true),
+        (0xBFF6, true),
+        (0xBFF7, true),
+        (0xBFF8, false),
+        (0xBFFF, false),
+        (0xC000, false),
+        (0xC001, false),
+        (0xFF00, false),
+        (0xFFF7, false),
+    ] {
+        let mut device = Device::with_library(&bytes);
+        assert_eq!(device.verify(both, ASKED_UNBOUNDED).verify, ok);
+        device.params_in_bank_b(ASKED_UNBOUNDED, at);
+        device
+            .m
+            .load_ram(device.label("TEST_ASSERTION"), &(both as u16).to_le_bytes());
+        device.run("ENTRY_ONE");
+        let (init, verify) = (
+            device.byte("TEST_INIT_STATUS"),
+            device.byte("TEST_VERIFY_STATUS"),
+        );
+        let want = if accepted {
+            (ok, ok)
+        } else {
+            (malformed, malformed)
+        };
+        assert_eq!((init, verify), want, "block at {at:04X}");
+    }
+}

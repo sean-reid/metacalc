@@ -21,13 +21,14 @@
 ; library pages at $8000 through port 7. On every exit, whatever the status, restore port 7,
 ; the caller's stack, port 5 and the interrupt state, in that order. Preserves IY and the shadow
 ; registers, destroys the rest. Between the port 5 write and the stack switch, and between the
-; stack restore and the port 5 restore, no instruction uses the stack. The mapping adds 106
-; T-states to a call.
+; stack restore and the port 5 restore, no instruction uses the stack. Entry and exit together
+; cost 374 T-states.
 ;
 ;   kernel_init     in:  HL = parameter block outside bank C: the library flash page (1 byte),
 ;                        then the four limits as 16-bit little-endian words: stack symbols,
 ;                        stack entries, saved symbols, saved entries. 9 bytes, copied before
-;                        port 7 changes, so the block may be in bank B.
+;                        port 7 changes, so the block may be in bank B. HL above $BFF7, a block
+;                        that touches bank C, is refused with Malformed before it is read.
 ;                   out: A = status
 ;   kernel_verify   in:  HL = assertion number, kernel_init returned 0
 ;                   out: A = status, 0 meaning accepted
