@@ -9,17 +9,21 @@ pub struct Image {
     pub code: &'static [u8],
     pub labels: &'static str,
     pub frame: u16,
+    pub vars: u16,
 }
 
 pub const REAL: Image = Image {
     code: include_bytes!(concat!(env!("OUT_DIR"), "/ui_test.bin")),
     labels: include_str!(concat!(env!("OUT_DIR"), "/ui_test.lab")),
-    frame: 0x9000,
+    frame: 0x9340,
+    vars: 0x9882,
 };
+
 pub const MOVED: Image = Image {
     code: include_bytes!(concat!(env!("OUT_DIR"), "/ui_moved.bin")),
     labels: include_str!(concat!(env!("OUT_DIR"), "/ui_moved.lab")),
     frame: 0xA000,
+    vars: 0xA500,
 };
 
 pub const FRAME_BYTES: usize = 768;
@@ -83,6 +87,10 @@ pub enum Op {
     Marker(u8),
     Blit,
     Clear,
+    /// An LCD command, after a delay that lets the controller take it.
+    Command(u8),
+    /// The LCD status byte, read from port 10h.
+    Status,
     SetFont(Vec<u8>),
     BuiltinFont,
     /// Pixels only the host draws, ORed into the frame between two Z80 calls.
@@ -171,6 +179,11 @@ impl Script {
         self.results += 2;
     }
 
+    fn keep_a(&mut self) {
+        self.word(&[0x32], RESULTS + self.results);
+        self.results += 2;
+    }
+
     fn emit(&mut self, op: &Op, call: bool) {
         match op {
             Op::Text { x, row, codes } => {
@@ -236,6 +249,17 @@ impl Script {
             }
             Op::Blit => self.run("ui_blit", &[], call),
             Op::Clear => self.run("ui_clear", &[], call),
+            Op::Command(value) if call => {
+                self.code
+                    .extend_from_slice(&[0x06, 0x00, 0x10, 0xFE, 0x3E, *value, 0xD3, 0x10]);
+            }
+            Op::Command(_) => {}
+            Op::Status => {
+                if call {
+                    self.code.extend_from_slice(&[0xDB, 0x10]);
+                    self.keep_a();
+                }
+            }
             Op::Ink(layer) => {
                 self.code.push(0x76);
                 self.inks
@@ -269,12 +293,14 @@ pub struct Outcome {
     pub results: Vec<u16>,
     pub tstates: u32,
     pub lcd: Vec<bool>,
-    /// The 0x100 bytes below the block and the 0x100 above it, filled with MARK before the run.
+    /// RAM from 0x100 below the lower block to 0x100 above the upper one, with both blocks left
+    /// out, filled with MARK before the run.
     pub around: Vec<u8>,
 }
 
 pub const MARK: u8 = 0xA5;
-const BLOCK: u16 = 0x330;
+const FRAME_LEN: u16 = 768;
+const VARS_LEN: u16 = 0x19;
 
 /// Flash fetch and RAM write wait states and LCD delays as TI-OS programs them.
 pub fn os_ports(m: &mut Machine) {
@@ -317,8 +343,11 @@ pub fn run_code(
     }
     m.out_port(0x10, 0x03);
     m.load_flash(FLASH_TEST_PAGE, 0, code);
-    m.load_ram(image.frame - 0x100, &[MARK; 0x100]);
-    m.load_ram(image.frame + BLOCK, &[MARK; 0x100]);
+    let (lo, hi) = (
+        image.frame.min(image.vars) - 0x100,
+        image.frame.max(image.vars) + 0x120,
+    );
+    m.load_ram(lo, &vec![MARK; usize::from(hi - lo)]);
     m.load_ram(SCRIPT, &script.code);
     m.load_ram(DATA, &script.data);
     m.set_speed(speed);
@@ -341,8 +370,15 @@ pub fn run_code(
         .chunks(2)
         .map(|w| u16::from_le_bytes([w[0], w[1]]))
         .collect();
-    let mut around = m.read_ram(image.frame - 0x100, 0x100);
-    around.extend(m.read_ram(image.frame + BLOCK, 0x100));
+    let in_block = |a: u16| {
+        (image.frame..image.frame + FRAME_LEN).contains(&a)
+            || (image.vars..image.vars + VARS_LEN).contains(&a)
+    };
+    let around: Vec<u8> = (lo..hi)
+        .zip(m.read_ram(lo, usize::from(hi - lo)))
+        .filter(|&(a, _)| !in_block(a))
+        .map(|(_, b)| b)
+        .collect();
     let lcd = m.lcd();
     let lcd = (0..LCD_HEIGHT)
         .flat_map(|y| (0..LCD_WIDTH).map(move |x| (x, y)))

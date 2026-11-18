@@ -208,16 +208,16 @@ fn assemble_ui(out: &Path) {
             &["-I", include, "-I", font_dir.to_str().unwrap(), "-L"],
         )
     };
-    for (name, defines) in [("ui_test", &[][..]), ("ui_moved", &["UI_RAM=$A000"][..])] {
+    for (name, defines) in [
+        ("ui_test", &[][..]),
+        ("ui_moved", &["UI_FRAME=$A000", "UI_VARS=$A500"][..]),
+    ] {
         if !assemble(defines, &out.join(format!("{name}.bin"))) {
             fail(&format!("spasm failed on the canvas image {name}"));
         }
     }
-    for base in ["$7F00", "$BF00"] {
-        let define = format!("UI_RAM={base}");
-        assert!(
-            !assemble(&[&define], &out.join("ui_probe.bin")),
-            "a canvas RAM base of {base} assembled"
-        );
-    }
+    assert!(
+        !assemble(&["UI_VARS=$9400"], &out.join("ui_probe.bin")),
+        "overlapping canvas blocks assembled"
+    );
 }

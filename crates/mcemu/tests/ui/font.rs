@@ -153,7 +153,7 @@ fn switching_back_to_the_built_in_font_restores_its_glyphs() {
 }
 
 #[test]
-fn the_canvas_works_at_another_ram_base_and_writes_nothing_outside_its_block() {
+fn the_canvas_works_at_another_ram_base_and_writes_nothing_outside_its_two_blocks() {
     let mut canvas = Canvas::recording();
     canvas.title("Libraries", "metacalc");
     canvas.list_row(
@@ -171,7 +171,7 @@ fn the_canvas_works_at_another_ram_base_and_writes_nothing_outside_its_block() {
         same_frame("moved base", &got.frame, &pack(&bitmap));
         assert!(
             got.around.iter().all(|&b| b == MARK),
-            "bytes outside the block changed"
+            "bytes outside the two blocks changed"
         );
     }
 }

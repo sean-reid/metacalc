@@ -3,8 +3,8 @@ mod model;
 
 use crate::support::*;
 use mcui::Key::*;
-use mcui::Ui;
-use model::{extra_ui, logic_bytes, open, press, typed, ui, ui_over};
+use mcui::{State, Ui};
+use model::{extra_ui, logic_bytes, open, press, proving_bytes, typed, ui, ui_over, unchecked_ui};
 
 /// Replays the calls that drew `ui`'s screen on the Z80 and requires all 768 bytes to equal the
 /// model's frame; the pixels of laid out tokens, which the Z80 does not draw, are ORed in by the
@@ -111,4 +111,62 @@ fn theorem_screens_with_a_cursor_and_a_marker_replay_exactly() {
             replay(theorem, &ui);
         }
     }
+}
+
+fn prove(label: &str) -> Ui {
+    let mut ui = ui_over(proving_bytes(), &[], &[]);
+    open(&mut ui, label);
+    ui.press(F4);
+    ui
+}
+
+/// Applies candidate `label` of the open goal.
+fn aply(ui: &mut Ui, label: &str) {
+    for _ in 0..300 {
+        match ui.state() {
+            State::Proving { candidate, .. } if candidate.as_deref() == Some(label) => {
+                ui.press(F1);
+                return;
+            }
+            _ => ui.press(Down),
+        }
+    }
+    panic!("no candidate {label}");
+}
+
+#[test]
+fn the_proving_screen_at_a_root_goal_and_after_applying() {
+    let mut ui = prove("a1i");
+    assert!(replay("proving-root", &ui) >= 3);
+    press(&mut ui, &[F2]);
+    replay("proving-hyps", &ui);
+    press(&mut ui, &[Clear]);
+    replay("proving-back", &ui);
+}
+
+#[test]
+fn the_tree_outline_and_its_cursor() {
+    let mut ui = prove("mpd");
+    aply(&mut ui, "ax-mp");
+    aply(&mut ui, "a2i");
+    replay("proving-goal", &ui);
+    press(&mut ui, &[F5]);
+    replay("proving-tree", &ui);
+    for key in [Down, Down, Up, Enter, F5, Down] {
+        press(&mut ui, &[key]);
+        replay("proving-tree-walk", &ui);
+    }
+}
+
+#[test]
+fn the_checking_screen_at_the_start_midway_and_finished() {
+    let mut ui = unchecked_ui(logic_bytes());
+    press(&mut ui, &[F2]);
+    replay("checking-start", &ui);
+    for _ in 0..5 {
+        ui.step_check();
+    }
+    assert!(replay("checking-midway", &ui) >= 5);
+    while ui.step_check() != mcui::CheckStep::Finished {}
+    replay("checking-finished", &ui);
 }

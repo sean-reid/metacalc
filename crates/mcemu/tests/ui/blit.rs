@@ -85,3 +85,33 @@ fn blitting_twice_gives_the_same_screen() {
     let got = run_code(REAL, REAL.code, (Speed::Mhz15, true), &script, true);
     assert!(lcd_equals(&frame, &got.lcd));
 }
+
+#[test]
+fn a_blit_leaves_the_lcd_in_8_bit_mode_with_increment_mode_5() {
+    // TI-OS enters an app with status 61h: on, 8 bit, increment mode 5
+    let (frame, calls) = busy_frame();
+    let draw = ops(&calls);
+    let mut variants = vec![vec![Op::Command(0x01), Op::Command(0x05)]];
+    for before in [0x07, 0x06, 0x04] {
+        variants.push(vec![Op::Command(0x01), Op::Command(before)]);
+    }
+    variants.push(vec![Op::Command(0x00), Op::Command(0x07)]);
+    for setup in variants {
+        for settings in SETTINGS {
+            let mut script = setup.clone();
+            script.extend(draw.iter().cloned());
+            script.extend([Op::Status, Op::Blit, Op::Status]);
+            let got = run_code(REAL, REAL.code, settings, &script, true);
+            let n = got.results.len();
+            let status: Vec<u8> = got.results[n - 2..]
+                .iter()
+                .map(|&r| r as u8 & 0x7F)
+                .collect();
+            assert_eq!(status[1], 0x61, "{setup:?} {settings:?}");
+            if let Op::Command(5) = setup[1] {
+                assert_eq!(status[0], status[1], "{settings:?}: mode changed");
+            }
+            assert!(lcd_equals(&frame, &got.lcd));
+        }
+    }
+}
