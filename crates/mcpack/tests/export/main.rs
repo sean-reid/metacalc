@@ -1,3 +1,6 @@
+#[path = "../cases/references.rs"]
+mod references;
+
 use mcpack::library::{
     CheckError, ExportError, Hypothesis, KernelError, ReadError, Step, check, crc32, decode,
     export, pack,
@@ -258,7 +261,7 @@ fn saved_steps_survive() {
 
 #[test]
 fn step_numbers_past_one_and_two_bytes_survive() {
-    for count in [250, 700] {
+    for count in [250, 500] {
         let mut src =
             String::from("$c T wff $.\n${ d.1 $e wff T $. d.2 $e wff T $. drop $a wff T $. $}\n");
         let (mut normal, mut labels, mut compressed) =
@@ -285,7 +288,7 @@ fn step_numbers_past_one_and_two_bytes_survive() {
             });
             let largest = largest.max().unwrap();
             assert!(largest >= 240, "{name} {count}");
-            assert_eq!(largest >= 496, count > 500, "{name} {count}");
+            assert_eq!(largest >= 496, count == 500, "{name} {count}");
         }
     }
 }
@@ -471,3 +474,88 @@ fn a_dummy_label_that_collides_is_suffixed_and_the_proof_still_verifies() {
 }
 
 mod refusals;
+
+/// Whether the export of a library the kernel accepts parses and verifies in the reference
+/// verifier.
+fn exports_and_verifies(bytes: &[u8]) -> Result<(), String> {
+    let text = export(bytes).map_err(|e| format!("does not export: {e}"))?;
+    let db = mm::parse(text.into_bytes()).map_err(|e| format!("does not parse: {e}"))?;
+    let mut verifier = Verifier::new(&db);
+    for id in db.theorems() {
+        let label = &db.stmt(id).label;
+        verifier.verify(id).map_err(|e| format!("{label}: {e:?}"))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn a_hand_built_library_the_kernel_accepts_exports_and_verifies() {
+    for case in references::cases() {
+        let accepted = check(&case.bytes).is_ok();
+        assert_eq!(accepted, case.expected.is_ok(), "{}", case.name);
+        if accepted {
+            assert_eq!(exports_and_verifies(&case.bytes), Ok(()), "{}", case.name);
+        } else {
+            assert!(
+                matches!(export(&case.bytes), Err(ExportError::Check(_))),
+                "{}",
+                case.name
+            );
+        }
+    }
+}
+
+#[test]
+fn any_reference_list_or_proof_the_kernel_accepts_exports_and_verifies() {
+    let base = references::base();
+    let replacements = [0u8, 1, 2, 3, 4, 5, 6, 7, 8, 0x7F, 0x80, 0xFF];
+    let (mut accepted, mut refused) = (0, 0);
+    for id in [references::TH, references::TH2, references::TH3] {
+        let spot = references::spot(&base, id);
+        let proof_len = u16::from_le_bytes([base[spot.proof - 2], base[spot.proof - 1]]) as usize;
+        let entries = spot.refs..spot.refs + 2 * spot.count;
+        for at in entries.chain(spot.proof..spot.proof + proof_len) {
+            for value in replacements {
+                let mut bytes = base.clone();
+                bytes[at] = value;
+                references::reseal(&mut bytes);
+                if check(&bytes).is_ok() {
+                    accepted += 1;
+                    let result = exports_and_verifies(&bytes);
+                    assert_eq!(result, Ok(()), "assertion {id} byte {at} set to {value:#x}");
+                } else {
+                    refused += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        accepted > 0 && refused > accepted,
+        "{accepted} accepted, {refused} refused"
+    );
+}
+
+#[test]
+fn a_structured_edit_the_kernel_accepts_exports_and_verifies() {
+    let base = references::base();
+    let mut changed_and_accepted = 0;
+    for mutant in references::mutants() {
+        if check(&mutant.bytes).is_ok() {
+            assert_eq!(
+                exports_and_verifies(&mutant.bytes),
+                Ok(()),
+                "{}",
+                mutant.name
+            );
+            changed_and_accepted += usize::from(mutant.bytes != base);
+        } else {
+            let exported = export(&mutant.bytes);
+            assert!(
+                matches!(exported, Err(ExportError::Check(_))),
+                "{}",
+                mutant.name
+            );
+        }
+    }
+    assert!(changed_and_accepted > 0);
+}

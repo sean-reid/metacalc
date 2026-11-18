@@ -17,6 +17,9 @@
 //!            pair count (u16) and the disjoint pairs that involve a dummy variable,
 //!            reference count (u16), each 8000h + dummy variable or an assertion number,
 //!            proof length (u16), proof
+//! references in first-use order: a proof's first step naming an entry names entry 0, the next
+//!            new one entry 1, and so on, every entry is named, no two entries are equal, and
+//!            a dummy entry never names a variable with a float hypothesis of its own
 //! proof      one number per step: below the hypothesis count a hypothesis, then a
 //!            reference, then a saved step; a byte under F0h is the number itself,
 //!            F0h..FEh carries eight more bits in the next byte, FFh saves the top of the stack

@@ -75,7 +75,7 @@ fn no_single_byte_change_makes_the_kernel_disagree_with_the_model() {
     let db = parse(DB);
     let bytes = pack_all(&db);
     let seen = sweep(&bytes, ASKED_UNBOUNDED, true);
-    for code in (0..=12).filter(|&code| code != 3 && code != 5) {
+    for code in (0..=12).chain([15]).filter(|&code| code != 3 && code != 5) {
         assert!(seen[code] > 0, "no mutation gave status {code}");
     }
     let tight = Limits {

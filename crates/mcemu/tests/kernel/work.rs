@@ -16,8 +16,8 @@ fn the_kernel_stops_where_the_model_stops() {
     for (terms, nv, expected) in [
         (two_terms(1, 1, 0, 0), 2, Ok(())),
         (two_terms(4, 4, 7, 9), 8, Ok(())),
-        (two_terms(27, 8, 13, 77), 35, Ok(())),
-        (two_terms(27, 8, 14, 77), 35, Err(KernelError::WorkLimit)),
+        (two_terms(27, 8, 7, 77), 35, Ok(())),
+        (two_terms(27, 8, 8, 77), 35, Err(KernelError::WorkLimit)),
         (two_terms(4, 38, 0, 0), 42, Err(KernelError::WorkLimit)),
     ] {
         let (db, bytes) = disjoint_library(&terms, nv, true);
@@ -40,10 +40,14 @@ fn check_cost(terms: &[Vec<Tok>], nv: usize) -> (u32, u32) {
     let (_, plain) = disjoint_library(terms, nv, false);
     let id = number(&db, "t");
     let mut kernel = Kernel::new(&bytes, clamped(ASKED_UNBOUNDED)).unwrap();
-    let _ = kernel.verify(id);
+    let units = match kernel.verify(id) {
+        Ok(()) => kernel.work(),
+        Err(KernelError::WorkLimit) => WORK_LIMIT,
+        Err(error) => panic!("{error:?}"),
+    };
     let with = Device::with_library(&bytes).verify(id, ASKED_UNBOUNDED);
     let without = Device::with_library(&plain).verify(id, ASKED_UNBOUNDED);
-    (with.tstates - without.tstates, kernel.work())
+    (with.tstates - without.tstates, units)
 }
 
 #[test]
@@ -53,7 +57,7 @@ fn the_worst_disjoint_check_stays_under_ten_seconds_at_6_mhz() {
     let mut repeated = vec![var(0); 100];
     repeated.push(Tok::Const);
     let shapes: Vec<(&str, Vec<Vec<Tok>>, usize)> = vec![
-        ("27 x 8 variables, 595 pairs", two_terms(27, 8, 13, 77), 35),
+        ("27 x 8 variables, 595 pairs", two_terms(27, 8, 7, 77), 35),
         (
             "60 x 60 variables, 7140 pairs",
             two_terms(60, 60, 0, 0),
@@ -109,7 +113,7 @@ const BUDGET_LONG_SCAN: u32 = 900_000;
 /// Loads the assertion and the limits and runs the init-and-verify entry for `press_at` T-states;
 /// then holds ON and finishes the run. Returns the program counter when the key went down and the
 /// T-states after that.
-fn press_on_during(device: &mut Device, id: usize, press_at: u32) -> (u16, u32) {
+pub fn press_on_during(device: &mut Device, id: usize, press_at: u32) -> (u16, u32) {
     device.params(ASKED_UNBOUNDED);
     device
         .m
@@ -123,22 +127,24 @@ fn press_on_during(device: &mut Device, id: usize, press_at: u32) -> (u16, u32) 
     (pc, rest.tstates)
 }
 
-fn verify_again(device: &mut Device) -> u8 {
+pub fn verify_again(device: &mut Device) -> u8 {
     device.m.release_key(Machine::KEY_ON);
     device.run("ENTRY_VERIFY");
     device.byte("TEST_VERIFY_STATUS")
 }
 
 /// Whether `pc` is in one of the code ranges `[from, to)` named by labels.
-fn in_code(pc: u16, ranges: &[(&str, &str)]) -> bool {
+pub fn in_code(pc: u16, ranges: &[(&str, &str)]) -> bool {
     ranges
         .iter()
         .any(|&(from, to)| (label(from)..label(to)).contains(&pc))
 }
 
-/// The proof loop, the copy helpers and the parts of an apply around its disjoint check.
+/// The proof loop, the copy helpers, the record parser and the parts of an apply around its
+/// disjoint check.
 const PROOF_CODE: &[(&str, &str)] = &[
     ("COPY_BC", "CMP24"),
+    ("PR_U8", "REQUIRE_SOUND"),
     ("MAP_CUR", "WORK_ONE"),
     ("APPLY", "AP_DV"),
     ("AP_INSTALL", "KERNEL_CRC_BEGIN"),
@@ -148,7 +154,7 @@ const CHECK_CODE: &[(&str, &str)] = &[("WORK_ONE", "APPLY"), ("AP_DV", "AP_INSTA
 
 #[test]
 fn the_on_key_interrupts_a_proof_and_a_long_check_and_the_call_can_be_run_again() {
-    let terms = two_terms(27, 8, 13, 77);
+    let terms = two_terms(27, 8, 7, 77);
     let (db, bytes) = disjoint_library(&terms, 35, true);
     let (_, plain) = disjoint_library(&terms, 35, false);
     let id = number(&db, "t");
@@ -224,13 +230,13 @@ fn the_longest_stretch_without_a_poll_is_one_scan_of_the_longest_pair_list() {
     assert!(rest.tstates < BUDGET_LONG_SCAN, "{} T-states", rest.tstates);
 }
 
-fn status_code(name: &str) -> u8 {
+pub fn status_code(name: &str) -> u8 {
     label(name) as u8
 }
 
 #[test]
 fn the_on_key_held_from_the_start_stops_the_first_proof_step() {
-    let (db, bytes) = disjoint_library(&two_terms(27, 8, 13, 77), 35, true);
+    let (db, bytes) = disjoint_library(&two_terms(27, 8, 7, 77), 35, true);
     let id = number(&db, "t");
     let mut device = Device::with_library(&bytes);
     device.m.press_key(Machine::KEY_ON);
@@ -245,7 +251,7 @@ fn the_on_key_held_from_the_start_stops_the_first_proof_step() {
 #[test]
 fn an_interrupted_call_restores_registers_the_bank_and_interrupts() {
     let marker = *b"flash page marker";
-    let (db, bytes) = disjoint_library(&two_terms(27, 8, 13, 77), 35, true);
+    let (db, bytes) = disjoint_library(&two_terms(27, 8, 7, 77), 35, true);
     let id = number(&db, "t");
     let mut device = Device::with_library(&bytes);
     device.m.load_flash(0x50, 0, &marker);

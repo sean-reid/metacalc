@@ -14,6 +14,8 @@ mod launch;
 mod libraries;
 #[path = "kernel/limits.rs"]
 mod limits;
+#[path = "kernel/references.rs"]
+mod references;
 #[path = "kernel/sources.rs"]
 mod sources;
 #[path = "common/stackfree.rs"]

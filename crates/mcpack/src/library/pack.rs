@@ -14,6 +14,14 @@ pub enum PackError {
     BrokenProof(String),
 }
 
+/// A proof step before the reference list is ordered.
+enum Raw {
+    Hyp(usize),
+    Label(StmtId),
+    Saved(usize),
+    Save,
+}
+
 struct Packer<'a> {
     db: &'a Database,
     local_sym: HashMap<Sym, u8>,
@@ -144,39 +152,37 @@ impl Packer<'_> {
             return Err(broken());
         };
         let hyps = &stmt.frame.hyps;
-        let mut labels: Vec<StmtId> = Vec::new();
-        let mut steps: Vec<u8> = Vec::new();
+        let mut raw: Vec<Raw> = Vec::new();
         match &proof.body {
             ProofBody::Normal(body) => {
-                for step in body {
-                    let number = hyps.iter().position(|hyp| hyp == step).unwrap_or_else(|| {
-                        let known = labels.iter().position(|label| label == step);
-                        hyps.len()
-                            + known.unwrap_or_else(|| {
-                                labels.push(*step);
-                                labels.len() - 1
-                            })
-                    });
-                    push_number(&mut steps, number).ok_or_else(too_large)?;
-                }
+                raw.extend(
+                    body.iter()
+                        .map(|step| match hyps.iter().position(|h| h == step) {
+                            Some(hyp) => Raw::Hyp(hyp),
+                            None => Raw::Label(*step),
+                        }),
+                );
             }
             ProofBody::Compressed {
                 labels: list,
                 letters,
             } => {
-                labels.clone_from(list);
                 let mut high = 0usize;
                 for &letter in letters {
                     match letter {
                         b'A'..=b'T' => {
                             let number = high * 20 + (letter - b'A') as usize;
-                            push_number(&mut steps, number).ok_or_else(too_large)?;
+                            raw.push(match number.checked_sub(hyps.len()) {
+                                None => Raw::Hyp(number),
+                                Some(i) if i < list.len() => Raw::Label(list[i]),
+                                Some(i) => Raw::Saved(i - list.len()),
+                            });
                             high = 0;
                         }
                         b'U'..=b'Y' if high < CHUNK => {
                             high = high * 5 + (letter - b'U') as usize + 1
                         }
-                        b'Z' if high == 0 => steps.push(SAVE),
+                        b'Z' if high == 0 => raw.push(Raw::Save),
                         _ => return Err(broken()),
                     }
                 }
@@ -184,6 +190,31 @@ impl Packer<'_> {
                     return Err(broken());
                 }
             }
+        }
+
+        // Entries sit in order of first use, so the kernel can check the list with one counter.
+        let mut labels: Vec<StmtId> = Vec::new();
+        let mut position: HashMap<StmtId, usize> = HashMap::new();
+        for step in &raw {
+            if let Raw::Label(label) = step {
+                position.entry(*label).or_insert_with(|| {
+                    labels.push(*label);
+                    labels.len() - 1
+                });
+            }
+        }
+        let mut steps: Vec<u8> = Vec::new();
+        for step in &raw {
+            let number = match *step {
+                Raw::Hyp(hyp) => hyp,
+                Raw::Label(label) => hyps.len() + position[&label],
+                Raw::Saved(saved) => hyps.len() + labels.len() + saved,
+                Raw::Save => {
+                    steps.push(SAVE);
+                    continue;
+                }
+            };
+            push_number(&mut steps, number).ok_or_else(too_large)?;
         }
 
         let mut dummies: Vec<Sym> = Vec::new();

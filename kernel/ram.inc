@@ -52,6 +52,7 @@ kv_ready            .equ KERNEL_RAM_LOW+$A0
 kv_work             .equ KERNEL_RAM_LOW+$B0
 kv_wold             .equ KERNEL_RAM_LOW+$B3
 kv_charge           .equ KERNEL_RAM_LOW+$B4
+kv_next             .equ KERNEL_RAM_LOW+$B6
 kv_crc_state        .equ KERNEL_RAM_LOW+$A2
 kv_crc_chunk        .equ KERNEL_RAM_LOW+$A4
 kv_crc_last         .equ KERNEL_RAM_LOW+$A5
@@ -153,6 +154,7 @@ ST_NOT_SINGLETON    .equ 11
 ST_WRONG_CONCLUSION .equ 12
 ST_WORK_LIMIT       .equ 13
 ST_INTERRUPTED      .equ 14
+ST_LOOSE_REF        .equ 15
 ST_CRC_MORE         .equ $FF
 
 WORK_LIMIT          .equ 131072
