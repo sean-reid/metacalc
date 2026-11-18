@@ -78,6 +78,42 @@ fn glyphs_nine_wide_draw_at_every_alignment_and_clip_at_the_edge() {
 }
 
 #[test]
+fn glyphs_nine_wide_on_the_last_row_at_the_last_frame_byte() {
+    let font = wide_font();
+    let table = Table::new(&font).unwrap();
+    for text in ["a", "ab", "a a", "cacbc"] {
+        for x in 80..=100usize {
+            let mut model = Bitmap::new(96, 64);
+            model_text(&mut model, &font, x, 7, text);
+            let got = run(
+                REAL,
+                &[
+                    Op::SetFont(flat(&table)),
+                    Op::Text {
+                        x,
+                        row: 7,
+                        codes: table.encode(text),
+                    },
+                ],
+            );
+            same_frame(
+                &format!("{text:?} at {x} on row 7"),
+                &got.frame,
+                &pack(&model),
+            );
+        }
+    }
+}
+
+#[test]
+fn the_jump_tables_sit_on_the_boundaries_the_or_trick_needs() {
+    for image in [REAL, MOVED] {
+        assert_eq!(label(image, "ui_vtab") % 64, 0);
+        assert_eq!(label(image, "ut_rows") % 16, 0);
+    }
+}
+
+#[test]
 fn a_font_set_once_is_used_by_every_routine_until_another_is_set() {
     let font = wide_font();
     let table = Table::new(&font).unwrap();
