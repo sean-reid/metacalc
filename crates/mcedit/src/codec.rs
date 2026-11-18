@@ -1,11 +1,12 @@
 use crate::catalog::Catalog;
 use crate::error::Error;
 use crate::session::{Op, Session};
+use mcpack::library::crc32;
 use mcpack::mm::StmtId;
 use std::rc::Rc;
 
 /// The first byte of a saved session.
-const FORMAT: u8 = 1;
+const FORMAT: u8 = 2;
 
 fn put(out: &mut Vec<u8>, mut n: u32) {
     while n >= 0x80 {
@@ -25,6 +26,9 @@ fn take(bytes: &mut &[u8]) -> Result<u32, Error> {
         }
         n |= u32::from(b & 0x7f) << shift;
         if b < 0x80 {
+            if b == 0 && shift > 0 {
+                return Err(Error::Corrupt);
+            }
             return Ok(n);
         }
     }
@@ -32,12 +36,16 @@ fn take(bytes: &mut &[u8]) -> Result<u32, Error> {
 }
 
 impl Session<'_> {
-    /// A format byte, the theorem, whether new disjoint pairs are allowed and the operations in force, as bytes:
-    /// one tag and its numbers per operation.
+    /// A saved session, as bytes:
+    /// the format byte, the library's identity (u32), the length of the body (a number), the body
+    /// and the CRC-32 of everything before it (u32). Fixed-width integers are little-endian.
+    /// The body is the theorem, whether new disjoint pairs are allowed (0 or 1) and the operations
+    /// in force, one tag and its two numbers per operation. A number is seven bits per byte, low
+    /// group first, the high bit set on every byte but the last.
     pub fn save(&self) -> Vec<u8> {
-        let mut out = vec![FORMAT];
-        put(&mut out, self.theorem);
-        out.push(u8::from(self.open_dv));
+        let mut body = Vec::new();
+        put(&mut body, self.theorem);
+        body.push(u8::from(self.open_dv));
         for op in &self.ops {
             let (tag, a, b) = match *op {
                 Op::Apply { goal, assertion } => (0, goal, assertion),
@@ -45,21 +53,44 @@ impl Session<'_> {
                 Op::Assign { meta, var } => (2, meta, var),
                 Op::Refine { meta, syntax } => (3, meta, syntax),
             };
-            out.push(tag);
-            put(&mut out, a);
-            put(&mut out, b);
+            body.push(tag);
+            put(&mut body, a);
+            put(&mut body, b);
         }
+        let mut out = vec![FORMAT];
+        out.extend(self.cat.library().to_le_bytes());
+        put(&mut out, body.len() as u32);
+        out.extend(body);
+        out.extend(crc32(&out).to_le_bytes());
         out
     }
 }
 
+/// The library and the body of saved bytes whose length and checksum hold.
+fn unwrap(bytes: &[u8]) -> Result<(u32, &[u8]), Error> {
+    let (&format, rest) = bytes.split_first().ok_or(Error::Corrupt)?;
+    if format != FORMAT {
+        return Err(Error::Corrupt);
+    }
+    let (library, mut rest) = rest.split_at_checked(4).ok_or(Error::Corrupt)?;
+    let length = take(&mut rest)? as usize;
+    let (body, check) = rest.split_at_checked(length).ok_or(Error::Corrupt)?;
+    let check: [u8; 4] = check.try_into().map_err(|_| Error::Corrupt)?;
+    let covered = &bytes[..bytes.len() - 4];
+    if crc32(covered) != u32::from_le_bytes(check) {
+        return Err(Error::Corrupt);
+    }
+    let library = u32::from_le_bytes([library[0], library[1], library[2], library[3]]);
+    Ok((library, body))
+}
+
 impl<'a> Session<'a> {
-    /// Rebuilds a saved session by replaying its operations.
-    pub fn restore(catalog: Rc<Catalog<'a>>, mut bytes: &[u8]) -> Result<Self, Error> {
-        let (&format, rest) = bytes.split_first().ok_or(Error::Corrupt)?;
-        bytes = rest;
-        if format != FORMAT {
-            return Err(Error::Corrupt);
+    /// Rebuilds a saved session by replaying its operations. Bytes that are cut short, changed or
+    /// not a session of this version are `Corrupt`; a session of another library is `WrongLibrary`.
+    pub fn restore(catalog: Rc<Catalog<'a>>, bytes: &[u8]) -> Result<Self, Error> {
+        let (library, mut bytes) = unwrap(bytes)?;
+        if library != catalog.library() {
+            return Err(Error::WrongLibrary);
         }
         let theorem: StmtId = take(&mut bytes)?;
         let mut session = Session::start_in(catalog, theorem).map_err(|_| Error::Corrupt)?;
