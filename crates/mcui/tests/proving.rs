@@ -435,6 +435,15 @@ fn a_goal_that_is_still_unknown_waits_and_cannot_be_applied_to() {
 }
 
 #[test]
+fn unknowns_of_a_goal_are_spaced_like_variables() {
+    let mut ui = prove(&proving_bytes(), "tdv2");
+    select(&mut ui, "axu");
+    ui.press(F1);
+    assert_eq!(at(&ui).open, 1);
+    check(&ui, "proving-unknowns-spaced");
+}
+
+#[test]
 fn the_tree_marks_open_and_closed_goals() {
     let mut p = Prover::new(proving_bytes(), "syl");
     p.aply("mpd");

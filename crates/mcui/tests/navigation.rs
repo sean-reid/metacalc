@@ -2,7 +2,7 @@ mod support;
 
 use mcui::Key::*;
 use mcui::{Kind, State};
-use support::{open, press, typed, ui};
+use support::{check_frame, open, press, typed, ui};
 
 fn list(state: State) -> (Option<String>, usize, usize, String, Kind, usize) {
     match state {
@@ -313,6 +313,203 @@ fn the_view_scrolls_to_follow_the_cursor_over_statements_taller_than_the_screen(
 }
 
 #[test]
+fn with_more_statements_than_rows_each_hypothesis_takes_a_row_and_the_conclusion_stays_open() {
+    let mut ui = support::ui_over(support::long_bytes(), &[], &[]);
+    open(&mut ui, "axlong");
+    let (statement, node, scroll, folded, _) = theorem(ui.state());
+    assert_eq!((statement, node), (7, 0));
+    assert!(folded >= 7, "each hypothesis is folded to its row");
+    assert!(scroll > 0, "the conclusion is in view");
+    press(&mut ui, &[Down]);
+    let (_, node, _, _, hidden) = theorem(ui.state());
+    assert_ne!(node, 0);
+    assert!(!hidden, "the conclusion shows its subexpressions");
+    check_frame(&ui.frame(), "theorem-more-statements-than-rows");
+    press(
+        &mut ui,
+        &[Up, Left, Left, Left, Left, Left, Left, Left, Left],
+    );
+    let (statement, _, scroll, _, _) = theorem(ui.state());
+    assert_eq!((statement, scroll), (0, 0));
+    check_frame(&ui.frame(), "theorem-more-statements-than-rows-top");
+}
+
+#[test]
+fn a_flat_statement_over_six_rows_scrolls_a_row_at_a_time_with_up_and_down() {
+    let mut ui = support::ui_over(support::flat_bytes(40), &[], &[]);
+    open(&mut ui, "axflat");
+    let source = support::nested(40);
+    let tokens: Vec<&str> = std::iter::once("|-").chain(source.split(' ')).collect();
+    let lines = support::font_lines(&tokens, 92);
+    assert!(lines.len() > 6);
+    let last = lines.len() - 6;
+    let first_row_is_line = |ui: &mcui::Ui, line: usize| {
+        let row: Vec<&str> = lines[line].iter().map(String::as_str).collect();
+        support::tokens_at(&ui.frame(), 3, 1, &row)
+    };
+    let (_, node, top, _, _) = theorem(ui.state());
+    assert_eq!((node, top), (0, 0));
+    assert!(first_row_is_line(&ui, 0));
+    check_frame(&ui.frame(), "theorem-flat-top");
+    for line in 1..=last {
+        ui.press(Down);
+        assert_eq!(theorem(ui.state()).2, line);
+        assert!(first_row_is_line(&ui, line), "after {line} presses of Down");
+    }
+    check_frame(&ui.frame(), "theorem-flat-end");
+    ui.press(Down);
+    assert_eq!(
+        theorem(ui.state()).2,
+        last,
+        "the view stops at the last row"
+    );
+    assert!(first_row_is_line(&ui, last));
+    for line in (0..last).rev() {
+        ui.press(Up);
+        assert_eq!(theorem(ui.state()).2, line);
+        assert!(first_row_is_line(&ui, line), "after Up to line {line}");
+    }
+    ui.press(Up);
+    assert_eq!(theorem(ui.state()).2, 0);
+    assert_eq!(
+        theorem(ui.state()).1,
+        0,
+        "the cursor stays on the statement"
+    );
+}
+
+#[test]
+fn up_and_down_on_a_tree_statement_leave_the_cursor_in_view() {
+    let mut ui = support::ui_over(support::long_bytes(), &[], &[]);
+    open(&mut ui, "axlong");
+    let (statement, _, scroll, _, _) = theorem(ui.state());
+    assert_eq!(statement, 7);
+    assert!(scroll > 0, "the conclusion starts below the first rows");
+    press(&mut ui, &[Left; 7]);
+    assert_eq!(theorem(ui.state()).0, 0);
+    assert_eq!(theorem(ui.state()).2, 0);
+    loop {
+        let before = theorem(ui.state());
+        ui.press(Down);
+        if theorem(ui.state()).1 == before.1 {
+            break;
+        }
+    }
+    let at_leaf = (theorem(ui.state()), ui.frame());
+    assert_ne!(at_leaf.0.1, 0, "the cursor is inside the first hypothesis");
+    for _ in 0..3 {
+        ui.press(Down);
+    }
+    assert_eq!(
+        theorem(ui.state()),
+        at_leaf.0,
+        "Down on a leaf scrolls nothing"
+    );
+    assert!(ui.frame() == at_leaf.1);
+    press(&mut ui, &[Up; 8]);
+    press(&mut ui, &[Right; 7]);
+    let (statement, node, scroll, _, _) = theorem(ui.state());
+    assert_eq!((statement, node), (7, 0));
+    assert!(scroll > 0);
+    let rooted = ui.frame();
+    press(&mut ui, &[Up, Up]);
+    assert_eq!(
+        theorem(ui.state()).2,
+        scroll,
+        "Up on a root scrolls nothing"
+    );
+    assert!(ui.frame() == rooted);
+}
+
+#[test]
+fn the_list_preview_of_a_flat_statement_over_one_row_ends_in_an_ellipsis() {
+    let mut ui = support::ui_over(support::flat_bytes(40), &[], &[]);
+    press(&mut ui, &[Enter, F2]);
+    typed(&mut ui, "axflat");
+    let frame = ui.frame();
+    assert!(support::tokens_at(
+        &frame,
+        1,
+        6,
+        &["|-", "(", "ph", "->", "("]
+    ));
+    assert!(support::ends_in_ellipsis(&frame, 6));
+    check_frame(&frame, "list-flat-preview-cut");
+}
+
+fn screen_of(ui: &mcui::Ui) -> String {
+    match ui.state() {
+        State::Theorem { label, .. } => format!("theorem {label}"),
+        State::Proof { label, .. } => format!("proof {label}"),
+        State::List { .. } => "list".into(),
+        State::Libraries { .. } => "libraries".into(),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn hopping_between_proofs_and_theorems_keeps_the_newest_screens_and_clear_then_reaches_the_list() {
+    let mut ui = support::ui_over(support::hops_bytes(), &[], &[]);
+    open(&mut ui, "t12");
+    assert_eq!(ui.depth(), 3);
+    for hop in 0..11 {
+        press(&mut ui, &[F3, F3]);
+        assert!(ui.depth() <= mcui::MAX_DEPTH, "hop {hop}");
+    }
+    assert_eq!(ui.depth(), mcui::MAX_DEPTH);
+    let mut back = Vec::new();
+    while screen_of(&ui) != "list" {
+        back.push(screen_of(&ui));
+        ui.press(Clear);
+    }
+    assert_eq!(
+        back,
+        [
+            "theorem t1",
+            "proof t2",
+            "theorem t2",
+            "proof t3",
+            "theorem t3",
+            "proof t4",
+        ]
+    );
+    assert_eq!(ui.depth(), 2);
+    press(&mut ui, &[Clear, Clear]);
+    assert_eq!(screen_of(&ui), "libraries");
+}
+
+#[test]
+fn one_rejected_assertion_leaves_every_statement_a_tree_and_the_list_unflattened() {
+    let sound = support::logic_bytes();
+    let alid = support::index_of(&sound, "alid") as u16;
+    let rejected = support::refreshed(support::patch_reference(&sound, "a1i", 0, alid));
+    assert!(mcpack::library::export(&rejected).is_err());
+    let mut ui = support::ui_over(rejected, &[], &[]);
+    press(&mut ui, &[Enter]);
+    assert!(support::title_is(&ui.frame(), "logic", "12/13"));
+    ui.press(Clear);
+    open(&mut ui, "syl");
+    ui.press(Down);
+    assert_ne!(
+        theorem(ui.state()).1,
+        0,
+        "the conclusion has subexpressions"
+    );
+}
+
+#[test]
+fn every_key_a_notice_offers_closes_it() {
+    for key in [F1, Clear, Enter] {
+        let mut ui = ui();
+        press(&mut ui, &[Down, Down, F2]);
+        assert!(matches!(ui.state(), State::Notice { .. }));
+        assert!(support::key_label_is(&ui.frame(), 0, "Back"));
+        ui.press(key);
+        assert_eq!(ui.depth(), 1, "{key:?}");
+    }
+}
+
+#[test]
 fn proof_nodes_descend_and_ascend_with_the_selection_restored() {
     let mut ui = ui();
     open(&mut ui, "syl");
@@ -474,6 +671,109 @@ fn hide_keeps_the_cursor_where_it_was() {
     assert_eq!(proof(&ui), (vec![], 0, true));
     press(&mut ui, &[F1, F1]);
     assert_eq!(proof(&ui), (vec![], 0, true));
+}
+
+fn proof_scroll(ui: &mcui::Ui) -> (usize, bool) {
+    match ui.state() {
+        State::Proof {
+            scroll, on_goal, ..
+        } => (scroll, on_goal),
+        other => panic!("not a proof: {other:?}"),
+    }
+}
+
+#[test]
+fn an_unfolded_goal_scrolls_a_row_at_a_time_before_the_cursor_reaches_the_subgoals() {
+    let mut ui = support::ui_over(support::tall_goal_bytes(), &[], &[]);
+    open(&mut ui, "tl");
+    press(&mut ui, &[F3, F1]);
+    let source = support::nested(30);
+    let tokens: Vec<&str> = std::iter::once("|-").chain(source.split(' ')).collect();
+    let lines = support::font_lines(&tokens, 92);
+    let first_row_is_line = |ui: &mcui::Ui, line: usize| {
+        let row: Vec<&str> = lines[line].iter().map(String::as_str).collect();
+        support::tokens_at(&ui.frame(), 3, 1, &row)
+    };
+    let by_shown = |ui: &mcui::Ui, scroll: usize| {
+        let row = (1 + lines.len()).saturating_sub(scroll);
+        let shown = (1..=6).contains(&row);
+        assert_eq!(
+            shown && support::text_at(&ui.frame(), 1, row, "by ax-mp", false),
+            shown
+        );
+        shown
+    };
+    let (bottom, on_goal) = proof_scroll(&ui);
+    assert!(!on_goal && bottom >= 3, "the first subgoal is in view");
+    assert!(first_row_is_line(&ui, bottom));
+    assert!(by_shown(&ui, bottom));
+    check_frame(&ui.frame(), "proof-tall-goal-opened");
+    ui.press(Up);
+    assert_eq!(proof_scroll(&ui), (bottom, true));
+    for row in (0..bottom).rev() {
+        ui.press(Up);
+        assert_eq!(proof_scroll(&ui), (row, true));
+        assert!(first_row_is_line(&ui, row), "scrolled up to {row}");
+    }
+    ui.press(Up);
+    assert_eq!(proof_scroll(&ui), (0, true));
+    assert!(!by_shown(&ui, 0), "the by line is below the first six rows");
+    check_frame(&ui.frame(), "proof-tall-goal-top");
+    let mut presses = 0;
+    while proof_scroll(&ui).1 {
+        let at = proof_scroll(&ui).0;
+        let by_in_view = by_shown(&ui, at);
+        ui.press(Down);
+        presses += 1;
+        if by_in_view {
+            assert!(
+                !proof_scroll(&ui).1,
+                "the cursor moves on once the by line shows"
+            );
+        } else {
+            assert_eq!(proof_scroll(&ui), (at + 1, true));
+            assert!(
+                first_row_is_line(&ui, at + 1),
+                "scrolled down to {}",
+                at + 1
+            );
+        }
+        if presses == 2 {
+            check_frame(&ui.frame(), "proof-tall-goal-middle");
+        }
+        assert!(presses < 40, "the cursor never left the goal");
+    }
+    let last = presses - 1;
+    assert!(last >= 3, "the goal has more than six rows");
+    assert!(
+        last + 5 <= lines.len(),
+        "one row earlier the by line is below the window"
+    );
+    assert_eq!(proof(&ui).1, 0);
+    ui.press(Up);
+    assert_eq!(proof_scroll(&ui), (last + 1, true));
+    ui.press(Up);
+    assert_eq!(proof_scroll(&ui), (last, true));
+}
+
+#[test]
+fn a_goal_with_no_subgoals_scrolls_with_up_and_down_and_stops_at_its_last_row() {
+    let mut ui = support::ui_over(support::tall_goal_bytes(), &[], &[]);
+    open(&mut ui, "lh");
+    press(&mut ui, &[F3, F1]);
+    assert_eq!(proof_scroll(&ui), (0, true));
+    let mut at = 0;
+    for _ in 0..40 {
+        ui.press(Down);
+        at = proof_scroll(&ui).0;
+    }
+    assert!(at >= 3);
+    ui.press(Down);
+    assert_eq!(proof_scroll(&ui), (at, true));
+    for _ in 0..40 {
+        ui.press(Up);
+    }
+    assert_eq!(proof_scroll(&ui), (0, true));
 }
 
 #[test]
@@ -728,7 +1028,7 @@ fn an_assertion_failed_by_a_forward_reference_is_listed_as_unchecked() {
     let sound = support::logic_bytes();
     let lib = mcpack::library::read(&sound).unwrap();
     let at = |label: &str| lib.iter().position(|a| a.label == label).unwrap() as u16;
-    let patched = support::patch_reference(&sound, "a1i", 0, at("alid"));
+    let patched = support::refreshed(support::patch_reference(&sound, "a1i", 0, at("alid")));
     let mut ui = support::ui_over(patched, &[], &[]);
     assert_eq!(unchecked_labels(&mut ui), ["a1i", "syl"]);
 }

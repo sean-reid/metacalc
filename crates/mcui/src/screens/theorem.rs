@@ -1,7 +1,7 @@
 use super::{Ctx, Nav, Screen, State, dist::Dist, notice::Notice, proof::Proof, proving::Proving};
 use crate::canvas::{CONTENT_ROWS, Canvas, GUTTER, STATEMENT_WIDTH, text_width};
 use crate::data::Statement;
-use crate::fold::{Fit, Folds, Layout, fit, layout};
+use crate::fold::{Fit, Folds, Layout, fit, fit_one, layout};
 use crate::key::Key;
 use std::rc::Rc;
 
@@ -19,6 +19,8 @@ pub struct Theorem {
     layouts: Vec<Layout>,
     /// First row of each statement.
     starts: Vec<usize>,
+    /// Rows of all the statements together.
+    rows: usize,
     hyp_indent: usize,
 }
 
@@ -38,6 +40,7 @@ impl Theorem {
             scroll: 0,
             layouts: Vec::new(),
             starts: Vec::new(),
+            rows: 0,
             hyp_indent,
             statement,
         };
@@ -51,7 +54,13 @@ impl Theorem {
             })
             .collect();
         screen.folds = fit(&items, CONTENT_ROWS);
-        screen.arrange();
+        if items.len() > CONTENT_ROWS {
+            let last = items.len() - 1;
+            screen.folds[last] = fit_one(items[last].expr, items[last].width, CONTENT_ROWS);
+        }
+        screen.layouts = (0..items.len()).map(|s| screen.laid_out(s)).collect();
+        screen.place();
+        screen.follow();
         Screen::Theorem(screen)
     }
 
@@ -71,12 +80,16 @@ impl Theorem {
         STATEMENT_WIDTH - self.indent(statement)
     }
 
-    /// Lays the statements out under each other and moves the view to the cursor.
-    fn arrange(&mut self) {
-        let count = self.statement.hyps.len() + 1;
-        self.layouts = (0..count)
-            .map(|s| layout(self.statement.at(s), &self.folds[s], self.width(s)))
-            .collect();
+    fn laid_out(&self, statement: usize) -> Layout {
+        layout(
+            self.statement.at(statement),
+            &self.folds[statement],
+            self.width(statement),
+        )
+    }
+
+    /// Finds the first row of each statement.
+    fn place(&mut self) {
         let mut row = 0;
         self.starts = self
             .layouts
@@ -87,6 +100,11 @@ impl Theorem {
                 at
             })
             .collect();
+        self.rows = row;
+    }
+
+    /// Moves the view to the cursor.
+    fn follow(&mut self) {
         let (s, node) = self.cursor;
         let rects = self.layouts[s].cursor(self.statement.at(s), node);
         let top = self.starts[s] + rects.first().map_or(0, |r| r.row);
@@ -96,13 +114,14 @@ impl Theorem {
         } else if bottom > self.scroll + CONTENT_ROWS {
             self.scroll = (bottom - CONTENT_ROWS).min(top);
         }
-        self.scroll = self.scroll.min(row.saturating_sub(CONTENT_ROWS));
+        self.scroll = self.scroll.min(self.rows.saturating_sub(CONTENT_ROWS));
     }
 
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
         let (s, node) = self.cursor;
         let statement = Rc::clone(&self.statement);
         let expr = statement.at(s);
+        let mut follow = true;
         match key {
             Key::Left | Key::Right => {
                 let forward = key == Key::Right;
@@ -124,15 +143,26 @@ impl Theorem {
                     && let Some(&first) = expr.children(node).first()
                 {
                     self.cursor.1 = first;
+                } else if expr.len() == 1 {
+                    follow = false;
+                    if self.scroll + CONTENT_ROWS < self.rows {
+                        self.scroll += 1;
+                    }
                 }
             }
             Key::Up => {
                 if let Some(parent) = expr.parent(node) {
                     self.cursor.1 = parent;
+                } else if expr.len() == 1 {
+                    follow = false;
+                    self.scroll = self.scroll.saturating_sub(1);
                 }
             }
             Key::Enter | Key::F1 => {
-                self.folds[s].toggle(expr, node);
+                if self.folds[s].toggle(expr, node) {
+                    self.layouts[s] = self.laid_out(s);
+                    self.place();
+                }
             }
             Key::F2 => return Nav::push(Dist::open(self.library, self.index)),
             Key::F3 => {
@@ -145,7 +175,9 @@ impl Theorem {
             Key::Clear => return Nav::Pop,
             _ => {}
         }
-        self.arrange();
+        if follow {
+            self.follow();
+        }
         Nav::Stay
     }
 

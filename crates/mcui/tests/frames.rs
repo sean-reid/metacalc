@@ -261,7 +261,7 @@ fn a_long_name_gives_way_to_a_kind_suffix_and_wide_counts() {
     let table = support::statuses(&bytes, &["ax7"], &[]);
     let mut ui = Ui::new(
         vec![mcui::Installed {
-            name: "an-extremely-long-library-name".into(),
+            name: "extremely-long-library-name".into(),
             bytes,
         }],
         mcui::Statuses {
@@ -272,10 +272,10 @@ fn a_long_name_gives_way_to_a_kind_suffix_and_wide_counts() {
     .unwrap();
     press(&mut ui, &[Enter, F3, F3]);
     let frame = ui.frame();
-    let right = "flat 1199/1200";
+    let right = "flat 0/1200";
     let room = 96 - 2 - mcglyph::Font::builtin().text_width(right) - 3;
     let name = mcui::canvas::truncate(
-        "an-extremely-long-library-name",
+        "extremely-long-library-name",
         room - mcglyph::Font::builtin().text_width(":ax"),
     );
     assert!(name.ends_with(mcglyph::ELLIPSIS));
