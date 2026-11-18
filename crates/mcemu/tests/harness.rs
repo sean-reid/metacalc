@@ -79,3 +79,30 @@ fn a_prefixed_halt_stops_the_run_where_it_executes() {
         );
     }
 }
+
+const SPIN: [u8; 2] = [0x18, 0xFE];
+
+#[test]
+fn a_limit_of_zero_returns_at_once_and_leaves_the_machine_alone() {
+    let mut m = boot();
+    m.load_ram(CODE, &SPIN);
+    let before = m.regs();
+    let run = m.run(CODE, 0);
+    assert_eq!((run.stop, run.tstates), (Stop::Limit, 0));
+    assert_eq!(m.regs(), before);
+    let run = m.run(CODE, 1000);
+    assert_eq!(run.stop, Stop::Limit);
+    assert!(run.tstates > 0);
+}
+
+#[test]
+fn run_app_with_a_limit_of_zero_returns_at_once() {
+    let mut m = boot();
+    m.launch(0x30).expect("the launch setup runs");
+    m.load_flash(0x30, 0x80, &SPIN);
+    let before = m.regs();
+    let run = m.run_app(0);
+    assert_eq!((run.stop, run.tstates), (Stop::Limit, 0));
+    assert_eq!(m.regs(), before);
+    assert_eq!(m.run_app(1000).stop, Stop::Limit);
+}

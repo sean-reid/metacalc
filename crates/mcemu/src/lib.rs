@@ -58,6 +58,14 @@ pub struct Run {
     pub tstates: u32,
 }
 
+impl Run {
+    /// What a run with a limit of 0 reports.
+    const NO_TIME: Run = Run {
+        stop: Stop::Limit,
+        tstates: 0,
+    };
+}
+
 #[derive(Debug)]
 pub struct BootError;
 
@@ -171,8 +179,12 @@ impl Machine {
     /// Runs from `pc` with interrupts off until a HALT executes with them off or `limit`
     /// T-states pass. The code may turn them on, and then its HALTs wait for an interrupt
     /// instead of ending the run. The count includes the HALT. A stub service that ends the
-    /// run reports its own stop.
+    /// run reports its own stop. A `limit` of 0 returns `Stop::Limit` with 0 T-states and
+    /// leaves the machine untouched, `pc` and interrupts included.
     pub fn run(&mut self, pc: u16, limit: u32) -> Run {
+        if limit == 0 {
+            return Run::NO_TIME;
+        }
         let limit = i32::try_from(limit).expect("limit fits in i32");
         let (reason, tstates) = self.calc.run(pc, limit);
         self.stopped(reason, tstates)
