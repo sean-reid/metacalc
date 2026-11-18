@@ -16,7 +16,7 @@ printf '# Prop\n\ngenerated prop text\n' >"$tmp/pages/prop.md"
 printf '[book]\ntitle = "t"\n' >"$tmp/docs/book.toml"
 printf '# Summary\n\n- [Libraries](libraries/index.md)\n  - [Prop](libraries/prop.md)\n' >"$tmp/docs/src/SUMMARY.md"
 printf '# Prop\n\nThis page is generated from the packed library when the site is built.\n' >"$tmp/docs/src/libraries/prop.md"
-good='intro text\n\n<!-- libraries-table -->\nrow\n<!-- /libraries-table -->\n\noutro text\n'
+good='intro text\n\n<!-- libraries-table -->\nBuilt with the site\n<!-- /libraries-table -->\n\noutro text\n'
 printf "$good" >"$tmp/docs/src/libraries/index.md"
 
 # expect NAME MESSAGE SITEDIR: build-site.sh must exit nonzero with MESSAGE on stderr.
