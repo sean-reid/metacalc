@@ -54,6 +54,8 @@ pub struct Calc {
     pub name: &'static str,
     pub flash: u64,
     pub apps: Vec<String>,
+    /// A variable that is not an app, listed before the apps.
+    pub variable: String,
     /// Delay packets sent before the acknowledgement of the content: milliseconds announced and
     /// seconds of silence that follow each.
     pub delays: Vec<(u32, u64)>,
@@ -72,6 +74,7 @@ impl Default for Calc {
             name: "TI-84 Plus Silver Edition",
             flash: 1_572_864,
             apps: vec!["Finance".into()],
+            variable: "A".into(),
             delays: Vec::new(),
             silent_after_content: None,
             error_at_content_packet: None,
@@ -184,7 +187,7 @@ impl Peer {
                     "directory trailer"
                 );
                 self.events.push("dir");
-                let listing: Vec<(String, u8)> = [("A".to_string(), 0u8)]
+                let listing: Vec<(String, u8)> = [(self.cfg.variable.clone(), 0u8)]
                     .into_iter()
                     .chain(self.cfg.apps.iter().map(|a| (a.clone(), 0x24)))
                     .collect();

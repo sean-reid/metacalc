@@ -82,3 +82,27 @@ fn map(error: rusb::Error) -> Error {
         other => Error::Usb(other.to_string()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::map;
+    use crate::error::Error;
+
+    #[test]
+    fn access_denied_and_busy_tell_the_user_to_quit_ti_connect() {
+        for e in [rusb::Error::Access, rusb::Error::Busy] {
+            let text = map(e).to_string();
+            assert!(text.contains("TI Connect CE"), "{text}");
+        }
+    }
+
+    #[test]
+    fn unplugging_reads_as_a_disconnect() {
+        assert!(matches!(map(rusb::Error::NoDevice), Error::Disconnected));
+    }
+
+    #[test]
+    fn other_failures_keep_the_libusb_message() {
+        assert!(map(rusb::Error::Pipe).to_string().starts_with("USB error"));
+    }
+}

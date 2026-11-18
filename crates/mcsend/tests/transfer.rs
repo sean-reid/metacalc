@@ -172,6 +172,15 @@ fn an_app_name_already_installed_is_refused_before_anything_is_sent() {
 }
 
 #[test]
+fn a_variable_that_shares_the_apps_name_is_not_a_duplicate() {
+    let cfg = Calc {
+        variable: "metacalc".into(),
+        ..Calc::default()
+    };
+    run(cfg, 120, &sample_pages(1, 100)).result.unwrap();
+}
+
+#[test]
 fn a_refusal_of_the_request_to_send_says_to_delete_the_app() {
     let cfg = Calc {
         refuse_rts: Some(0x000E),
