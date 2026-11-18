@@ -6,6 +6,9 @@ use std::io::Write;
 /// A cursor move must redraw within 50 ms.
 const BUDGET_MS: u32 = 50;
 
+/// T-states the typical frame alone may take, about 10 percent above what it takes.
+const FRAME_CEILING: u32 = 158_000;
+
 /// Printed straight to stderr so a passing run shows it.
 fn report(line: String) {
     let _ = writeln!(std::io::stderr(), "{line}");
@@ -88,6 +91,11 @@ fn a_typical_frame_and_its_blit_redraw_within_50_ms_at_both_speeds() {
         );
         line("blit", t.blit);
         line("typical frame and blit", t.frame + t.blit);
+        assert!(
+            t.frame < FRAME_CEILING,
+            "{name}: the typical frame took {} T-states against a ceiling of {FRAME_CEILING}",
+            t.frame
+        );
         let whole = t.frame + t.blit;
         assert!(
             whole < BUDGET_MS * mhz,
