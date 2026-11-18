@@ -42,6 +42,7 @@ pub fn code(error: KernelError) -> u8 {
         KernelError::WrongConclusion => 12,
         KernelError::WorkLimit => 13,
         KernelError::LooseReference => 15,
+        KernelError::BadSymbol => 16,
     }
 }
 
@@ -56,9 +57,19 @@ pub fn corpus(name: &str) -> Vec<u8> {
 
 /// A library of `count` axioms, long enough to span several chunks.
 pub fn axioms(count: usize) -> Vec<u8> {
+    library_of_axioms(count, "|- T")
+}
+
+/// The same axioms over one symbol, so that kernel_init has no names to compare and never reads
+/// the ON key.
+pub fn single_symbol_axioms(count: usize) -> Vec<u8> {
+    library_of_axioms(count, "T")
+}
+
+fn library_of_axioms(count: usize, conclusion: &str) -> Vec<u8> {
     let mut src = String::from("$c T wff |- $.\n");
     for i in 0..count {
-        src += &format!("a-long-label-to-fill-the-page-{i} $a |- T $.\n");
+        src += &format!("a-long-label-to-fill-the-page-{i} $a {conclusion} $.\n");
     }
     let db = mm::parse(src.into_bytes()).expect("it parses");
     let all: Vec<_> = (0..db.stmts.len() as mm::StmtId).collect();
@@ -129,6 +140,7 @@ impl Rig {
             assert_ne!(run.stop, Stop::Fault);
             pc = self.m.pc();
             if pc != halted_in_wait && pc + 1 != halted_in_wait {
+                assert_eq!(run.stop, Stop::Halted, "the routine did not reach its end");
                 return waits;
             }
             pc = halted_in_wait;
@@ -141,14 +153,13 @@ impl Rig {
 
     /// Runs in steps of `step` T-states, from the start, until the trace holds `marker`.
     pub fn run_until_trace_has(&mut self, marker: &str, step: u32) -> u16 {
-        let mut pc = ENTRY;
+        let mut run = self.m.run(ENTRY, step);
         for _ in 0..100_000 {
-            let run = self.m.run(pc, step);
             assert_eq!(run.stop, Stop::Limit, "the run ended before {marker:?}");
-            pc = self.m.pc();
             if String::from_utf8_lossy(&self.trace()).contains(marker) {
-                return pc;
+                return self.m.pc();
             }
+            run = self.m.resume(step);
         }
         panic!("no {marker:?} in the trace");
     }

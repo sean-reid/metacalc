@@ -26,7 +26,7 @@ pub fn disagreement(
     device: &mut Device,
     bytes: &[u8],
     limits: Limits,
-    seen: &mut [usize; 16],
+    seen: &mut [usize; 17],
 ) -> Option<String> {
     device.load(bytes);
     let (want_init, want) = match flash_view(bytes) {
@@ -42,9 +42,9 @@ pub fn disagreement(
         .then(|| format!("device {init} {got:?}, model {want_init} {want:?}"))
 }
 
-fn sweep(original: &[u8], limits: Limits, near: bool) -> [usize; 16] {
+fn sweep(original: &[u8], limits: Limits, near: bool) -> [usize; 17] {
     let mut device = Device::new();
-    let mut seen = [0; 16];
+    let mut seen = [0; 17];
     let mut runs = 0;
     for at in 8..original.len() {
         let neighbours = [
@@ -75,7 +75,10 @@ fn no_single_byte_change_makes_the_kernel_disagree_with_the_model() {
     let db = parse(DB);
     let bytes = pack_all(&db);
     let seen = sweep(&bytes, ASKED_UNBOUNDED, true);
-    for code in (0..=12).chain([15]).filter(|&code| code != 3 && code != 5) {
+    for code in (0..=12)
+        .chain([15, 16])
+        .filter(|&code| code != 3 && code != 5)
+    {
         assert!(seen[code] > 0, "no mutation gave status {code}");
     }
     let tight = Limits {
@@ -116,7 +119,7 @@ fn a_length_at_the_edge_of_flash_is_judged_as_the_model_would() {
         let mut bytes = original.clone();
         bytes[8..12].copy_from_slice(&length.to_le_bytes());
         reseal(&mut bytes);
-        if let Some(difference) = disagreement(&mut device, &bytes, ASKED_UNBOUNDED, &mut [0; 16]) {
+        if let Some(difference) = disagreement(&mut device, &bytes, ASKED_UNBOUNDED, &mut [0; 17]) {
             panic!("length {length}: {difference}");
         }
     }

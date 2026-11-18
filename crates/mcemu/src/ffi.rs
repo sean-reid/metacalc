@@ -15,6 +15,10 @@ unsafe extern "C" {
     fn mcemu_ram_size(calc: *const Raw) -> usize;
     fn mcemu_ltop(calc: *mut Raw, addr: u32) -> u32;
     fn mcemu_out(calc: *mut Raw, port: u8, value: u8);
+    fn mcemu_in(calc: *mut Raw, port: u8) -> u8;
+    fn mcemu_banks(calc: *mut Raw, out: *mut [[u8; 32]; 3]);
+    fn mcemu_stick_lcd_busy(calc: *mut Raw, on: i32);
+    fn mcemu_khz(calc: *const Raw) -> i32;
     fn mcemu_out_unlocked(calc: *mut Raw, port: u8, value: u8);
     fn mcemu_get_regs(calc: *const Raw, out: *mut Regs);
     fn mcemu_set_regs(calc: *mut Raw, regs: *const Regs);
@@ -78,6 +82,38 @@ impl Calc {
     pub fn out_port(&mut self, port: u8, value: u8) {
         // SAFETY: the handle is live.
         unsafe { mcemu_out(self.0.as_ptr(), port, value) }
+    }
+
+    /// Reads a port that has no side effects, such as 5 and 7.
+    pub fn in_port(&mut self, port: u8) -> u8 {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_in(self.0.as_ptr(), port) }
+    }
+
+    /// Ports 5, 6 and 7 with the values written to them since the last run began.
+    pub fn banks_written(&mut self) -> Vec<(u8, u8)> {
+        let mut sets = [[0u8; 32]; 3];
+        // SAFETY: the C side writes exactly the 96 bytes of `sets`.
+        unsafe { mcemu_banks(self.0.as_ptr(), &mut sets) };
+        let mut found = Vec::new();
+        for (port, set) in (5u8..).zip(sets) {
+            for value in 0..=255u8 {
+                if set[usize::from(value >> 3)] >> (value & 7) & 1 == 1 {
+                    found.push((port, value));
+                }
+            }
+        }
+        found
+    }
+
+    pub fn stick_lcd_busy(&mut self, on: bool) {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_stick_lcd_busy(self.0.as_ptr(), on.into()) }
+    }
+
+    pub fn khz(&self) -> i32 {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_khz(self.0.as_ptr()) }
     }
 
     pub fn out_port_unlocked(&mut self, port: u8, value: u8) {

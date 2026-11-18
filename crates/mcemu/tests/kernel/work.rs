@@ -107,7 +107,7 @@ fn a_check_over_the_limit_returns_within_budget() {
 
 const BUDGET_MID_PROOF: u32 = 25_000;
 const BUDGET_MID_CHECK: u32 = 60_000;
-const BUDGET_ON_AT_START: u32 = 350_000;
+const BUDGET_ON_AT_START: u32 = 226_000;
 const BUDGET_LONG_SCAN: u32 = 900_000;
 
 /// Loads the assertion and the limits and runs the init-and-verify entry for `press_at` T-states;
@@ -122,9 +122,24 @@ pub fn press_on_during(device: &mut Device, id: usize, press_at: u32) -> (u16, u
     assert_eq!(first.stop, Stop::Limit, "the run ended before ON went down");
     let pc = device.m.pc();
     device.m.press_key(Machine::KEY_ON);
-    let rest = device.m.run(pc, RUN_LIMIT);
+    let rest = device.m.resume(RUN_LIMIT);
     assert_eq!(rest.stop, Stop::Halted);
     (pc, rest.tstates)
+}
+
+/// The T-states `kernel_init` takes on `bytes`, entry and exit included.
+pub fn init_tstates(bytes: &[u8]) -> u32 {
+    Device::with_library(bytes).verify_all(0, ASKED_UNBOUNDED).2
+}
+
+/// Runs `entry` until init, which takes `init` T-states, has just ended, then holds ON and
+/// finishes the run. The last read of ON in init is far earlier, so only kernel_verify sees it.
+pub fn run_with_on_after_init(device: &mut Device, entry: &str, init: u32) {
+    let first = device.m.run(device.label(entry), init - 500);
+    assert_eq!(first.stop, Stop::Limit, "{entry} ended before init did");
+    device.m.press_key(Machine::KEY_ON);
+    let rest = device.m.run(device.m.pc(), RUN_LIMIT);
+    assert_eq!(rest.stop, Stop::Halted, "{entry}");
 }
 
 pub fn verify_again(device: &mut Device) -> u8 {
@@ -212,11 +227,11 @@ fn the_longest_stretch_without_a_poll_is_one_scan_of_the_longest_pair_list() {
     device.m.run(device.label("ENTRY_ONE"), 500_000);
     let scan = (label("PAIR_SCAN"), label("APPLY"));
     while !(scan.0..scan.1).contains(&device.m.pc()) {
-        let run = device.m.run(device.m.pc(), 500);
+        let run = device.m.resume(500);
         assert_eq!(run.stop, Stop::Limit, "the call ended before a scan began");
     }
     device.m.press_key(Machine::KEY_ON);
-    let rest = device.m.run(device.m.pc(), RUN_LIMIT);
+    let rest = device.m.resume(RUN_LIMIT);
     assert_eq!(rest.stop, Stop::Halted);
     println!(
         "{pairs} pairs: ON seen {} T-states after it went down, {:.3} s at 6 MHz",
@@ -235,16 +250,21 @@ pub fn status_code(name: &str) -> u8 {
 }
 
 #[test]
-fn the_on_key_held_from_the_start_stops_the_first_proof_step() {
+fn the_on_key_down_as_init_ends_stops_the_first_proof_step() {
     let (db, bytes) = disjoint_library(&two_terms(27, 8, 7, 77), 35, true);
     let id = number(&db, "t");
+    let init = Device::with_library(&bytes)
+        .verify_all(0, ASKED_UNBOUNDED)
+        .2;
     let mut device = Device::with_library(&bytes);
-    device.m.press_key(Machine::KEY_ON);
-    let got = device.verify(id, ASKED_UNBOUNDED);
-    println!("ON held: {} T-states", got.tstates);
-    assert_eq!(got.init, 0);
-    assert_eq!(got.verify, status_code("ST_INTERRUPTED"));
-    assert!(got.tstates < BUDGET_ON_AT_START, "{} T-states", got.tstates);
+    let (_, after) = press_on_during(&mut device, id, init);
+    println!("ON down as init ends: {after} T-states");
+    assert_eq!(device.byte("TEST_INIT_STATUS"), 0);
+    assert_eq!(
+        device.byte("TEST_VERIFY_STATUS"),
+        status_code("ST_INTERRUPTED")
+    );
+    assert!(after < BUDGET_ON_AT_START, "{after} T-states");
     assert_eq!(verify_again(&mut device), status(Ok(())));
 }
 
@@ -253,6 +273,7 @@ fn an_interrupted_call_restores_registers_the_bank_and_interrupts() {
     let marker = *b"flash page marker";
     let (db, bytes) = disjoint_library(&two_terms(27, 8, 7, 77), 35, true);
     let id = number(&db, "t");
+    let init = init_tstates(&bytes);
     let mut device = Device::with_library(&bytes);
     device.m.load_flash(0x50, 0, &marker);
     device.m.load_ram(0x8000, &[0xA5; 64]);
@@ -263,17 +284,25 @@ fn an_interrupted_call_restores_registers_the_bank_and_interrupts() {
     device.m.press_key(Machine::KEY_ON);
     device.run("ENTRY_REGS");
     assert_eq!(
+        device.byte("TEST_INIT_STATUS"),
+        status_code("ST_INTERRUPTED")
+    );
+    assert_eq!(device.m.read_ram(device.label("TEST_REGS"), 10), REGISTERS);
+    device.m.release_key(Machine::KEY_ON);
+    run_with_on_after_init(&mut device, "ENTRY_REGS", init);
+    assert_eq!(
         device.byte("TEST_VERIFY_STATUS"),
         status_code("ST_INTERRUPTED")
     );
     assert_eq!(device.m.read_ram(device.label("TEST_REGS"), 10), REGISTERS);
     for page in [0x81u8, 0x50] {
         for interrupts in [0u8, 1] {
+            device.m.release_key(Machine::KEY_ON);
             device.m.out_port(7, page);
             device
                 .m
                 .load_ram(device.label("TEST_IFF_IN"), &[interrupts]);
-            device.run("ENTRY_IFFV");
+            run_with_on_after_init(&mut device, "ENTRY_IFFV", init);
             assert_eq!(
                 device.byte("TEST_VERIFY_STATUS"),
                 status_code("ST_INTERRUPTED")

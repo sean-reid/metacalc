@@ -131,7 +131,7 @@ fn the_cpu_runs_at_15_mhz_and_returns_to_the_speed_it_had() {
 
 #[test]
 fn on_held_before_the_run_stops_it_in_the_checksum() {
-    let bytes = axioms(300);
+    let bytes = single_symbol_axioms(300);
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     rig.m.press_key(Machine::KEY_ON);
     assert_eq!(rig.finish(ENTRY, 3), 3);
@@ -199,21 +199,21 @@ fn press_in_proof(bytes: &[u8], nth: usize) -> (bool, Rig) {
     let proofs = label("VERIFY_BODY")..label("KERNEL_CRC_BEGIN");
     let on_down = label("KD_ON_DOWN");
     let mut rig = Rig::new(bytes, Speed::Mhz15);
-    let mut pc = rig.run_until_trace_has("\rchk 00000/", 5_000);
+    rig.run_until_trace_has("\rchk 00000/", 5_000);
     let mut seen = 0;
     while seen < nth {
-        let run = rig.m.run(pc, 40);
+        let run = rig.m.resume(40);
         assert_eq!(run.stop, Stop::Limit, "the run ended before a proof step");
-        pc = rig.m.pc();
-        seen += usize::from(proofs.contains(&pc));
+        seen += usize::from(proofs.contains(&rig.m.pc()));
     }
     rig.m.press_key(Machine::KEY_ON);
     let mut driver_looked = false;
+    let waiting = label("ON_WAIT_HALTED");
     loop {
-        let run = rig.m.run(pc, 40);
-        pc = rig.m.pc();
+        let run = rig.m.resume(40);
+        let pc = rig.m.pc();
         driver_looked |= pc == on_down;
-        if run.stop == Stop::Halted {
+        if run.stop == Stop::Halted || pc == waiting || pc + 1 == waiting {
             assert!(rig.finish(pc, 1) >= 1);
             return (driver_looked, rig);
         }
@@ -295,7 +295,7 @@ const FLAGS: usize = 0x3800 + 9;
 
 #[test]
 fn after_an_on_stop_the_report_waits_for_the_key_to_come_up() {
-    let bytes = axioms(300);
+    let bytes = single_symbol_axioms(300);
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     rig.m.press_key(Machine::KEY_ON);
     let halted_in_wait = label("ON_WAIT_HALTED");
@@ -333,7 +333,7 @@ fn after_an_on_stop_the_report_waits_for_the_key_to_come_up() {
 
 #[test]
 fn the_pending_os_break_is_cleared_after_an_on_stop_and_nothing_else_is_touched() {
-    let bytes = axioms(300);
+    let bytes = single_symbol_axioms(300);
     for (press, want) in [(true, 0xEFu8), (false, 0xFF)] {
         let mut rig = Rig::new(&bytes, Speed::Mhz15);
         rig.m.ram_page(1)[FLAGS] = 0xFF;
@@ -368,6 +368,7 @@ fn the_wait_returns_with_interrupts_on_whether_or_not_on_was_down() {
             assert_ne!(run.stop, Stop::Fault);
             let at = rig.m.pc();
             if at != halted_in_wait && at + 1 != halted_in_wait {
+                assert_eq!(run.stop, Stop::Halted, "the routine did not reach its end");
                 break;
             }
             pc = halted_in_wait;

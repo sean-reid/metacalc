@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::{CHUNK, DUMMY, HEADER_LEN, MAGIC, SAVE, WIDE, crc32};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +23,8 @@ pub enum KernelError {
     LooseReference,
     /// The disjoint-variable checks of one `verify` call would pass `WORK_LIMIT` units of work.
     WorkLimit,
+    /// A symbol name is empty, has a byte outside 21h to 7Eh or a `$`, or equals another name.
+    BadSymbol,
 }
 
 /// The most work one `verify` call may spend. Before the proof runs, the check on the reference
@@ -117,6 +121,14 @@ impl<'a> Reader<'a> {
     }
 }
 
+/// Every name is 1 or more bytes in 21h to 7Eh without `$`, and no two names are equal.
+fn valid_names(names: &[&[u8]]) -> bool {
+    let printable = |name: &&[u8]| {
+        !name.is_empty() && name.iter().all(|b| (0x21..=0x7E).contains(b) && *b != b'$')
+    };
+    names.iter().all(printable) && names.iter().collect::<HashSet<_>>().len() == names.len()
+}
+
 /// Checks a library the way the calculator does: from its bytes alone, trusting none of them.
 pub struct Kernel<'a> {
     bytes: &'a [u8],
@@ -124,6 +136,7 @@ pub struct Kernel<'a> {
     constants: usize,
     /// Typecode of each variable, indexed by symbol id; constants hold FFh.
     typecodes: Vec<u8>,
+    names: Vec<&'a [u8]>,
     assertions: usize,
     directory: usize,
     stack: Vec<u8>,
@@ -139,6 +152,7 @@ pub struct Kernel<'a> {
 }
 
 impl<'a> Kernel<'a> {
+    /// Loads a library. Unlike `kernel_init` it cannot be interrupted by the ON key.
     pub fn new(bytes: &'a [u8], limits: Limits) -> Res<Self> {
         let mut reader = Reader { bytes, pos: 0 };
         let magic = reader.take(4)?;
@@ -153,10 +167,11 @@ impl<'a> Kernel<'a> {
         }
         let symbols = constants + variables;
         let mut typecodes = Vec::with_capacity(symbols);
+        let mut names = Vec::with_capacity(symbols);
         for id in 0..symbols {
             let typecode = reader.u8()?;
             let name = reader.u8()? as usize;
-            reader.take(name)?;
+            names.push(reader.take(name)?);
             let valid = if id < constants {
                 typecode == 0xFF
             } else {
@@ -171,17 +186,22 @@ impl<'a> Kernel<'a> {
             .checked_mul(4)
             .and_then(|n| n.checked_add(directory));
         if symbols > 255
+            || reader.pos > CHUNK
             || directory < reader.pos
             || directory % 4 != 0
             || end.is_none_or(|end| end > bytes.len())
         {
             return Err(KernelError::Malformed);
         }
+        if !valid_names(&names) {
+            return Err(KernelError::BadSymbol);
+        }
         Ok(Kernel {
             bytes,
             limits,
             constants,
             typecodes,
+            names,
             assertions,
             directory,
             stack: Vec::new(),
@@ -193,6 +213,11 @@ impl<'a> Kernel<'a> {
             sound: vec![None; assertions],
             work: 0,
         })
+    }
+
+    /// The name of every symbol, constants first, indexed by symbol id.
+    pub fn symbol_names(&self) -> &[&'a [u8]] {
+        &self.names
     }
 
     pub fn assertions(&self) -> usize {
@@ -271,23 +296,38 @@ impl<'a> Kernel<'a> {
     /// The rules a record keeps for later proofs to rely on it, proved or not.
     fn check_record(&self, record: &Record) -> Res<()> {
         let mut floats = [false; 256];
-        for hyp in &record.hyps {
-            if let Hyp::Float(var) = *hyp
-                && (!self.is_var(var) || std::mem::replace(&mut floats[var as usize], true))
-            {
-                return Err(KernelError::BadRecord);
-            }
-        }
-        let essentials = record.hyps.iter().filter_map(|hyp| match hyp {
-            Hyp::Essential(expr) => Some(*expr),
-            Hyp::Float(_) => None,
-        });
-        for expr in essentials.chain([record.conclusion]) {
+        let mut used = [false; 256];
+        let mut expression = |expr: &[u8], floats: &[bool; 256]| {
             let starts_with_constant = expr.first().is_some_and(|&s| (s as usize) < self.constants);
             let known = |&s: &u8| (s as usize) < self.constants || floats[s as usize];
             if !starts_with_constant || !expr.iter().all(known) {
                 return Err(KernelError::BadRecord);
             }
+            expr.iter().for_each(|&s| used[s as usize] = true);
+            Ok(())
+        };
+        let mut essential_seen = false;
+        for hyp in &record.hyps {
+            match *hyp {
+                Hyp::Float(var) => {
+                    let repeated = std::mem::replace(&mut floats[var as usize], true);
+                    if essential_seen || !self.is_var(var) || repeated {
+                        return Err(KernelError::BadRecord);
+                    }
+                }
+                Hyp::Essential(expr) => {
+                    essential_seen = true;
+                    expression(expr, &floats)?
+                }
+            }
+        }
+        expression(record.conclusion, &floats)?;
+        if record
+            .hyps
+            .iter()
+            .any(|hyp| matches!(*hyp, Hyp::Float(var) if !used[var as usize]))
+        {
+            return Err(KernelError::BadRecord);
         }
         let distinct_vars =
             |pair: &[u8]| self.is_var(pair[0]) && self.is_var(pair[1]) && pair[0] != pair[1];

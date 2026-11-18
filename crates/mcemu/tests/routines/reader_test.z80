@@ -87,8 +87,8 @@ walk_done:
 	xor a
 	ret
 
-; Runs from RAM at IRQ_HANDLER: acknowledges the interrupt as the stub does and leaves the shadow
-; registers holding junk, as the interrupt handler of the OS does.
+; Runs from RAM at IRQ_HANDLER: acknowledges the interrupt by writing port 3 as zero and then again,
+; counts it, and leaves the shadow registers holding junk. It does not scan the keys.
 irq_body_start:
 	push af
 	in a,(3)

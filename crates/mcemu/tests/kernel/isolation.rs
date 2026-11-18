@@ -1,8 +1,9 @@
 use crate::crc::padded;
 use crate::edges::failing_libraries;
 use crate::support::*;
+use crate::work::{init_tstates, run_with_on_after_init};
 use mcemu::Machine;
-use mcpack::library::CHUNK;
+use mcpack::library::{CHUNK, KernelError};
 use std::ops::Range;
 
 const OS_PAGE: u8 = 0;
@@ -168,12 +169,31 @@ fn every_failure_status_leaves_the_other_pages_alone() {
 fn an_interrupted_call_leaves_the_other_pages_alone() {
     for (layout, image) in LAYOUTS {
         let (db, bytes) = small_library();
+        let id = number(&db, "both");
         let mut device = primed(image, &bytes);
         device.m.press_key(Machine::KEY_ON);
-        let (init, got) = run_one(&mut device, number(&db, "both"));
+        let (init, got) = run_one(&mut device, id);
+        assert_eq!(
+            (init, got),
+            (
+                label("ST_INTERRUPTED") as u8,
+                status(Err(KernelError::Malformed))
+            )
+        );
+        let stray = stray_writes(&mut device, 0, layout_regions(layout, image));
+        assert!(stray.is_empty(), "init stopped, {layout}: {stray:x?}");
+        let mut device = primed(image, &bytes);
+        device
+            .m
+            .load_ram(device.label("TEST_ASSERTION"), &(id as u16).to_le_bytes());
+        run_with_on_after_init(&mut device, "ENTRY_ONE", init_tstates(&bytes));
+        let (init, got) = (
+            device.byte("TEST_INIT_STATUS"),
+            device.byte("TEST_VERIFY_STATUS"),
+        );
         assert_eq!((init, got), (0, label("ST_INTERRUPTED") as u8));
         let stray = stray_writes(&mut device, 0, layout_regions(layout, image));
-        assert!(stray.is_empty(), "{layout}: {stray:x?}");
+        assert!(stray.is_empty(), "verify stopped, {layout}: {stray:x?}");
     }
 }
 
@@ -225,7 +245,15 @@ fn the_default_regions_are_the_gaps_ti_os_leaves() {
 
 /// Runs init, one verify, a checksum run and one chunk call too many, from `initial` in port 5
 /// and with interrupts on or off, and returns the device afterwards.
-fn p5_run(image: Image, bytes: &[u8], id: usize, initial: u8, interrupts: u8, on: bool) -> Device {
+/// When the ON key goes down in a run.
+#[derive(Clone, Copy, PartialEq)]
+enum On {
+    Never,
+    AtStart,
+    AfterInit,
+}
+
+fn p5_run(image: Image, bytes: &[u8], id: usize, initial: u8, interrupts: u8, on: On) -> Device {
     let mut device = Device::with_image(image);
     device.load(bytes);
     device.m.out_port(5, initial);
@@ -236,10 +264,16 @@ fn p5_run(image: Image, bytes: &[u8], id: usize, initial: u8, interrupts: u8, on
     load(&mut device, "TEST_ASSERTION", &(id as u16).to_le_bytes());
     load(&mut device, "TEST_IFF_IN", &[interrupts]);
     load(&mut device, "TEST_P5_WANT", &[initial]);
-    if on {
-        device.m.press_key(Machine::KEY_ON);
-    }
-    device.run("ENTRY_P5");
+    match on {
+        On::Never => {
+            device.run("ENTRY_P5");
+        }
+        On::AtStart => {
+            device.m.press_key(Machine::KEY_ON);
+            device.run("ENTRY_P5");
+        }
+        On::AfterInit => run_with_on_after_init(&mut device, "ENTRY_P5", init_tstates(bytes)),
+    };
     device
 }
 
@@ -274,7 +308,7 @@ fn port_5_is_restored_on_every_exit_path() {
     for initial in [0u8, 1, 3] {
         for interrupts in [0u8, 1] {
             for (n, (bytes, id, device_says)) in cases.iter().enumerate() {
-                let mut device = p5_run(DEFAULT, bytes, *id, initial, interrupts, false);
+                let mut device = p5_run(DEFAULT, bytes, *id, initial, interrupts, On::Never);
                 let what = format!("case {n}, port 5 {initial}, interrupts {interrupts}");
                 assert_port5_kept(&mut device, initial, interrupts, &what);
                 let want = device_says.unwrap_or_else(|| model_one(bytes, *id, ASKED_UNBOUNDED));
@@ -282,8 +316,19 @@ fn port_5_is_restored_on_every_exit_path() {
                 statuses.insert(want);
             }
             let id = number(&db, "both");
-            let mut device = p5_run(DEFAULT, &small, id, initial, interrupts, true);
-            let what = format!("ON held, port 5 {initial}, interrupts {interrupts}");
+            let mut device = p5_run(DEFAULT, &small, id, initial, interrupts, On::AtStart);
+            let what = format!("ON held at the start, port 5 {initial}, interrupts {interrupts}");
+            assert_port5_kept(&mut device, initial, interrupts, &what);
+            assert_eq!(
+                device.byte("TEST_INIT_STATUS"),
+                label("ST_INTERRUPTED") as u8
+            );
+            assert_eq!(
+                device.byte("TEST_VERIFY_STATUS"),
+                status(Err(KernelError::Malformed))
+            );
+            let mut device = p5_run(DEFAULT, &small, id, initial, interrupts, On::AfterInit);
+            let what = format!("ON down after init, port 5 {initial}, interrupts {interrupts}");
             assert_port5_kept(&mut device, initial, interrupts, &what);
             assert_eq!(
                 device.byte("TEST_VERIFY_STATUS"),
@@ -313,7 +358,7 @@ fn port_5_is_restored_on_every_layout() {
             if initial == SPARE_PAGE && stub_variables_in_regions(layout, image) {
                 continue;
             }
-            let mut device = p5_run(image, &small, id, initial, 1, false);
+            let mut device = p5_run(image, &small, id, initial, 1, On::Never);
             assert_port5_kept(&mut device, initial, 1, layout);
             assert_eq!(device.byte("TEST_VERIFY_STATUS"), 0, "{layout}");
         }
@@ -347,5 +392,38 @@ fn a_caller_already_on_the_spare_page_keeps_everything_outside_the_regions() {
         page[block..block + 0x30].fill(0x6B);
         page[0x4000 - STACK_BYTES..].fill(0x6B);
         assert_eq!(first_outside_not(&page, image, 0x6B), None);
+    }
+}
+
+/// Pages 82h to 87h are one page, so only the value written to port 5 shows which one the kernel
+/// selects: the documented spare page, 3, and nothing else but the caller's own page.
+#[test]
+fn the_kernel_selects_the_documented_spare_page_and_no_other_through_the_ports() {
+    let bytes = pack_all(&corpus("demo0.mm"));
+    let (_, want) = model_statuses(&bytes, ASKED_UNBOUNDED);
+    for (layout, image) in LAYOUTS {
+        let mut device = primed(image, &bytes);
+        run_all(&mut device, want.len());
+        let written = device.m.banks_written();
+        let values = |port: u8| -> Vec<u8> {
+            written
+                .iter()
+                .filter(|&&(p, _)| p == port)
+                .map(|&(_, v)| v)
+                .collect()
+        };
+        let port5 = values(5);
+        assert!(port5.contains(&SPARE_PAGE), "{layout}: {port5:x?}");
+        assert!(
+            port5.iter().all(|&v| v == SPARE_PAGE || v == 0),
+            "{layout}: port 5 got {port5:x?}"
+        );
+        let port7 = values(7);
+        assert!(!port7.is_empty(), "{layout}: the library is never mapped");
+        assert!(
+            port7.iter().all(|&v| v == 0x81 || v < 0x80),
+            "{layout}: port 7 got {port7:x?}"
+        );
+        assert!(values(6).is_empty(), "{layout}: the kernel wrote port 6");
     }
 }

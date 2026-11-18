@@ -4,6 +4,7 @@ use std::ops::Range;
 const STACK_BYTES: usize = 64;
 
 pub fn pattern(page: u8, at: usize) -> u8 {
+    let page = page.min(2);
     ((at.wrapping_mul(31) ^ (at >> 8).wrapping_mul(7)) as u8) ^ page.wrapping_mul(0x55) ^ 0xA7
 }
 
@@ -52,7 +53,7 @@ pub fn stray(rig: &mut Rig, allowed: &Allowed) -> Vec<(u8, u16)> {
     let bounce = offset(allowed.bounce, 0xC000)..offset(allowed.bounce, 0xC000) + 256;
     let stack = 0x4000 - STACK_BYTES..0x4000;
     let mut found = Vec::new();
-    for page in 0..8u8 {
+    for page in [OS_PAGE, APP_PAGE, allowed.spare] {
         let bytes = rig.m.ram_page(page).to_vec();
         for (at, &byte) in bytes.iter().enumerate() {
             if byte == pattern(page, at) {
@@ -171,4 +172,52 @@ fn a_stray_write_to_the_caller_stack_page_is_caught() {
     rig.m.ram_page(APP_PAGE)[0x0100] ^= 1;
     let found = stray(&mut rig, &Allowed::of(DEFAULT));
     assert_eq!(found, [(OS_PAGE, 0xD234), (APP_PAGE, 0x8100)]);
+}
+
+#[test]
+fn a_stray_write_to_the_spare_page_is_caught_through_any_of_its_page_numbers() {
+    let bytes = big_library();
+    for via in [2u8, 3, 5, 7] {
+        let mut rig = Rig::with_library(&bytes);
+        prime(&mut rig);
+        workout(&mut rig, &bytes);
+        rig.m.ram_page(via)[0x0200] ^= 1;
+        let found = stray(&mut rig, &Allowed::of(DEFAULT));
+        assert_eq!(found, [(SPARE_PAGE, 0xC200)], "written through page {via}");
+    }
+}
+
+/// Pages 82h to 87h are one page, so only the value written to port 5 shows which one the reader
+/// selects: the page its image documents, and nothing else but the caller's own page.
+#[test]
+fn the_reader_selects_the_page_it_documents_and_no_other_through_the_ports() {
+    let bytes = big_library();
+    for (image, spare) in [(DEFAULT, 3u8), (MOVED, 5)] {
+        let mut rig = Rig::with_image(image);
+        rig.load(&bytes);
+        rig.open_ok();
+        let written = rig.m.banks_written();
+        assert_eq!(rig.read(0, 64).0, ST_OK);
+        let read = rig.m.banks_written();
+        for (what, written) in [("open", written), ("read", read)] {
+            let values = |port: u8| -> Vec<u8> {
+                written
+                    .iter()
+                    .filter(|&&(p, _)| p == port)
+                    .map(|&(_, v)| v)
+                    .collect()
+            };
+            let port5 = values(5);
+            assert!(port5.contains(&spare), "{what}: {port5:x?}");
+            assert!(
+                port5.iter().all(|&v| v == spare || v == 0),
+                "{what}: port 5 got {port5:x?}"
+            );
+            assert!(
+                values(7).iter().all(|&v| v == 0x81 || v < 0x80),
+                "{what}: port 7 got {:x?}",
+                values(7)
+            );
+        }
+    }
 }
