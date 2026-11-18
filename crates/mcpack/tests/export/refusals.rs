@@ -40,8 +40,8 @@ fn u32_at(bytes: &[u8], at: usize) -> usize {
 /// Positions inside a record, read from the documented layout.
 pub(super) struct Record {
     start: usize,
-    hyps: usize,
-    conclusion: usize,
+    pub(super) hyps: usize,
+    pub(super) conclusion: usize,
     pub(super) refs: usize,
     proof: usize,
 }

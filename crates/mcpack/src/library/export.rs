@@ -1,6 +1,6 @@
-use super::check::{Rejected, check_each};
+use super::check::{HOST_LIMITS, Rejected, check_each};
 use super::read::{Assertion, Hypothesis, Library, Reference, Step, decode};
-use super::{CheckError, KernelError, ReadError};
+use super::{CheckError, KernelError, Limits, ReadError};
 use crate::mm::shown;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -69,8 +69,9 @@ impl From<ReadError> for ExportError {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Export {
     pub text: String,
-    /// The assertions the kernel rejects and why, in library order. Each is written with its
-    /// statement and, for a theorem, the unknown proof `?`.
+    /// The theorems whose proofs the kernel rejects and why, in library order. Each is written
+    /// with its statement and the unknown proof `?`. A library with any other refusal does not
+    /// export.
     pub rejected: Vec<(String, KernelError)>,
 }
 
@@ -79,7 +80,7 @@ pub struct Export {
 /// Every variable's float is declared once after `$v`, in an order that gives each record its
 /// floats in the order it stores them, and each assertion gets a block for its `$d` and `$e`.
 pub fn export(bytes: &[u8]) -> Result<String, ExportError> {
-    let (count, rejected) = check_each(bytes, false)?;
+    let (count, rejected) = check_each(bytes, HOST_LIMITS, false)?;
     debug_assert!(rejected.is_empty());
     write(bytes, count, &rejected)
 }
@@ -87,8 +88,14 @@ pub fn export(bytes: &[u8]) -> Result<String, ExportError> {
 /// `export` for a library in which the kernel rejects some assertions. A rejected theorem keeps
 /// its statement and its proof is `?`; everything else is written as `export` writes it.
 pub fn export_accepted(bytes: &[u8]) -> Result<Export, ExportError> {
-    let (count, rejected) = check_each(bytes, true)?;
+    export_within(bytes, HOST_LIMITS)
+}
+
+/// `export_accepted` with the kernel held to `limits`.
+pub fn export_within(bytes: &[u8], limits: Limits) -> Result<Export, ExportError> {
+    let (count, rejected) = check_each(bytes, limits, true)?;
     let text = write(bytes, count, &rejected)?;
+    let rejected = rejected.into_iter().map(|(_, l, e)| (l, e)).collect();
     Ok(Export { text, rejected })
 }
 
@@ -127,11 +134,10 @@ fn write(bytes: &[u8], count: usize, rejected: &Rejected) -> Result<String, Expo
         records.push(record_floats(assertion, &index)?);
     }
     let order = float_order(&library, &records)?;
-    let unproved: Vec<bool> = library
-        .assertions
-        .iter()
-        .map(|a| rejected.iter().any(|(label, _)| *label == a.label))
-        .collect();
+    let mut unproved = vec![false; library.assertions.len()];
+    for (at, _, _) in rejected {
+        unproved[*at] = library.assertions[*at].theorem;
+    }
 
     let mut out = String::new();
     out += &format!("$( Exported from a metacalc library of {count} assertions. $)\n");

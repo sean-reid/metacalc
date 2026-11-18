@@ -1,6 +1,6 @@
 use super::refusals::{packed, patched, record};
 use super::*;
-use mcpack::library::{Export, export_accepted};
+use mcpack::library::{Export, KernelError, Limits, export_accepted, export_within};
 use mcpack::mm::ProofError;
 
 const SRC: &str = "$c |- wff R S $. $v x $. vx $f wff x $.
@@ -152,12 +152,106 @@ fn a_library_that_does_not_decode_or_export_fails_either_way() {
     symbol[at] = b'$';
     for bytes in [&short[..], &symbol[..], &[1, 2, 3][..]] {
         let strict = export(bytes).expect_err("export refuses");
-        assert!(export_accepted(bytes).is_err());
-        assert!(matches!(
-            strict,
-            ExportError::Check(_) | ExportError::Read(_)
-        ));
+        assert_eq!(export_accepted(bytes), Err(strict));
     }
+}
+
+const SOUND: &str = "$c |- wff R $. $v x y $. vx $f wff x $. vy $f wff y $.
+    ${ $d x y $. ax-d $a |- R x y $. $}
+    ${ m.1 $e |- R x y $. ax-m $a |- R x x $. $}
+    ${ $d x y $. good $p |- R x y $= vx vy ax-d $. $}";
+
+/// Both entry points refuse the library with the same error, which names only refusals that are
+/// not about a proof, and the tolerant one never gets as far as a rejected list.
+fn refused_whole(name: &str, bytes: &[u8], want: KernelError) {
+    let strict = export(bytes).expect_err("export refuses");
+    assert_eq!(export_accepted(bytes), Err(strict), "{name}");
+    let Err(ExportError::Check(CheckError::Assertions(failed))) = export(bytes) else {
+        panic!("{name}: not a kernel refusal");
+    };
+    assert!(failed.iter().any(|(_, e)| *e == want), "{name}: {failed:?}");
+    assert!(
+        failed.iter().any(|(_, e)| !e.is_proof_rejection()),
+        "{name}"
+    );
+}
+
+#[test]
+fn a_statement_the_kernel_cannot_trust_fails_the_whole_export() {
+    let original = packed(SOUND);
+    let variable = 3;
+    let conclusion = |id| record(&original, id).conclusion;
+    let hypothesis = record(&original, 1).hyps + 6;
+    assert!(check(&original).is_ok());
+    let cases = [
+        ("a damaged conclusion", conclusion(2), variable),
+        ("a damaged hypothesis", hypothesis, variable),
+        (
+            "a damaged $d",
+            conclusion(0) - 2,
+            original[conclusion(0) - 3],
+        ),
+    ];
+    for (name, at, value) in cases {
+        let bytes = patched(original.clone(), |b| b[at] = value);
+        refused_whole(name, &bytes, KernelError::BadRecord);
+    }
+}
+
+#[test]
+fn a_theorem_citing_an_unsound_record_fails_the_whole_export() {
+    let original = packed(SOUND);
+    let at = record(&original, 0).conclusion;
+    let bytes = patched(original, |b| b[at] = 3);
+    let Err(ExportError::Check(CheckError::Assertions(failed))) = export_accepted(&bytes) else {
+        panic!("the export went through");
+    };
+    let labels: Vec<&str> = failed.iter().map(|(l, _)| l.as_str()).collect();
+    assert_eq!(labels, ["ax-d", "good"]);
+    assert!(failed.iter().all(|(_, e)| *e == KernelError::BadRecord));
+}
+
+#[test]
+fn a_proof_the_host_cannot_decide_fails_the_whole_export() {
+    let tiny = Limits {
+        stack_syms: 1,
+        stack_entries: 1,
+        saved_syms: 1,
+        saved_entries: 1,
+    };
+    let bytes = packed(SRC);
+    assert!(export_accepted(&bytes).is_ok());
+    let Err(ExportError::Check(CheckError::Assertions(failed))) = export_within(&bytes, tiny)
+    else {
+        panic!("the export went through under a stack of one");
+    };
+    assert!(!failed.is_empty());
+    assert!(failed.iter().all(|(_, e)| *e == KernelError::OutOfMemory));
+    assert_eq!(
+        export_within(&bytes, tiny),
+        Err(ExportError::Check(CheckError::Assertions(failed)))
+    );
+}
+
+#[test]
+fn a_proof_past_the_host_limits_fails_the_whole_export() {
+    let src = format!(
+        "$c wff $. $v x $. vx $f wff x $. ax $a wff {} $. t $p wff x $= vx {} $.",
+        "x ".repeat(250),
+        "ax ".repeat(3)
+    );
+    let bytes = references::pack_source(&src);
+    refused_whole(
+        "a proof of millions of symbols",
+        &bytes,
+        KernelError::OutOfMemory,
+    );
+}
+
+#[test]
+fn a_proof_past_the_work_limit_fails_the_whole_export() {
+    let bytes = references::pack_source(&references::long_source(512));
+    refused_whole("512 reference entries", &bytes, KernelError::WorkLimit);
 }
 
 /// The shipped libraries, as scripts/build-libraries.sh writes them into `MC_LIBRARIES`, give the

@@ -72,27 +72,33 @@ impl std::fmt::Display for CheckError {
 /// its labels, then checks its sections against its records, and returns how many assertions there
 /// are.
 pub fn check(bytes: &[u8]) -> Result<usize, CheckError> {
-    let (count, rejected) = check_each(bytes, false)?;
+    let (count, rejected) = check_each(bytes, HOST_LIMITS, false)?;
     debug_assert!(rejected.is_empty());
     Ok(count)
 }
 
-/// The labels of the assertions the kernel rejects, with the reason, in library order.
-pub(super) type Rejected = Vec<(String, KernelError)>;
+/// The assertions the kernel rejects: position, label and reason, in library order.
+pub(super) type Rejected = Vec<(usize, String, KernelError)>;
 
-/// `check`, except that with `tolerate` an assertion the kernel rejects does not fail the check:
-/// the library's labels and sections are checked all the same and the rejected assertions come
-/// back with the count.
-pub(super) fn check_each(bytes: &[u8], tolerate: bool) -> Result<(usize, Rejected), CheckError> {
-    let mut kernel = Kernel::new(bytes, HOST_LIMITS).map_err(CheckError::Load)?;
+/// `check` within `limits`, except that with `tolerate` a theorem whose proof the kernel rejects
+/// does not fail the check: the labels and sections are checked all the same and the rejected
+/// theorems come back with the count. Any other refusal fails it, with every refusal listed.
+pub(super) fn check_each(
+    bytes: &[u8],
+    limits: Limits,
+    tolerate: bool,
+) -> Result<(usize, Rejected), CheckError> {
+    let mut kernel = Kernel::new(bytes, limits).map_err(CheckError::Load)?;
     let mut failed = Vec::new();
     for id in 0..kernel.assertions() {
         if let Err(e) = kernel.verify(id) {
             let label = String::from_utf8_lossy(kernel.label(id).unwrap_or_default());
-            failed.push((label.into_owned(), e));
+            failed.push((id, label.into_owned(), e));
         }
     }
-    if !failed.is_empty() && !tolerate {
+    let tolerable = tolerate && failed.iter().all(|(_, _, e)| e.is_proof_rejection());
+    if !failed.is_empty() && !tolerable {
+        let failed = failed.into_iter().map(|(_, label, e)| (label, e)).collect();
         return Err(CheckError::Assertions(failed));
     }
     if let Some(label) = labels::first_bad(&kernel) {
