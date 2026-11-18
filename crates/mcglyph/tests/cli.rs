@@ -89,3 +89,25 @@ fn a_statement_past_one_screen_is_written_as_numbered_files() {
     let listed = String::from_utf8(out.stdout).unwrap();
     assert!(listed.starts_with(&format!("{}\n{}\n", first.display(), second.display())));
 }
+
+#[test]
+fn the_keys_font_draws_each_label_as_an_inverted_box() {
+    let dir = temp("cli-keys");
+    let png = dir.join("k.png");
+    let out = run(&[
+        "--font",
+        "keys",
+        "--scale",
+        "2",
+        "-o",
+        png.to_str().unwrap(),
+        "Open",
+        "Go",
+    ]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(width(&png), (96 + 4) * 2);
+    let out = run(&["--font", "tiny", "-o", png.to_str().unwrap(), "Open"]);
+    assert_eq!(out.status.code(), Some(2));
+    let out = run(&["--font", "keys", "-o", png.to_str().unwrap(), "no way"]);
+    assert_eq!(out.status.code(), Some(2));
+}
