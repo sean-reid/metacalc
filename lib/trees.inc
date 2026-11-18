@@ -112,17 +112,33 @@ ltr_in_range:
 	ld a,(lr_tr+2)
 	call lw_seek
 	ld a,(lr_len)
+	ld (lr_id),a
+	xor a
 	ld (lr_want),a
 ltr_all:
 	call ltr_head
 	ret nz
+	ld a,(lr_want)
+	ld hl,lr_k
+	cp (hl)
+	jr nz,ltr_next
+	call lw_pos
+	ld (lr_n),hl
+	ld (lr_tc),a
+	ld hl,(lr_hdr)
+	ld (lr_sr),hl
+	ld a,(lr_hdr+2)
+	ld (lr_sid),a
+ltr_next:
 	ld bc,(lr_hdr)
 	call lw_skip
-	ld a,(lr_want)
+	ld a,(lr_id)
 	or a
 	jr z,ltr_whole
 	dec a
-	ld (lr_want),a
+	ld (lr_id),a
+	ld hl,lr_want
+	inc (hl)
 	jr ltr_all
 ltr_whole:
 	call lw_pos
@@ -134,40 +150,22 @@ ltr_whole:
 	ld (ls_ts+2),a
 	call lsx_chunk
 	ret nz
-	ld hl,(lr_tr)
-	ld a,(lr_tr+2)
-	call lw_seek
-	ld a,(lr_k)
-	ld (lr_want),a
-ltr_skip:
-	ld a,(lr_want)
-	or a
-	jr z,ltr_target
-	call ltr_head
-	ret nz
-	ld bc,(lr_hdr)
-	call lw_skip
-	ld hl,lr_want
-	dec (hl)
-	jr ltr_skip
-ltr_target:
-	call ltr_head
-	ret nz
-	ld a,(lr_hdr+2)
+	ld a,(lr_sid)
 	or a
 	jp nz,lsx_nothing
-	ld hl,(lr_hdr)
+	ld hl,(lr_sr)
 	ld a,h
 	or l
 	jp z,lr_bad
-	call lw_pos
+	ld hl,(lr_n)
+	ld a,(lr_tc)
 	ld (lr_tr),hl
 	ld (lr_tr+2),a
-	ld bc,(lr_hdr)
+	ld bc,(lr_sr)
 	ld de,ls_tr
 	call lsx_within
 	ret nz
-	ld bc,(lr_hdr)
+	ld bc,(lr_sr)
 	ld a,b
 	or a
 	jr nz,ltr_cap
@@ -182,7 +180,7 @@ ltr_copy:
 	ld de,(lr_bufp)
 	call lr_rd
 	ret nz
-	ld bc,(lr_hdr)
+	ld bc,(lr_sr)
 	ld hl,(lr_tr)
 	ld a,(lr_tr+2)
 	ld e,a
