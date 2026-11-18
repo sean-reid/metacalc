@@ -45,6 +45,14 @@
 //!            the section's start per symbol, then per symbol: spacing flags (u8: bit 0 gap
 //!            before, 1 gap after, 2 gap beside another var, 3 no gap after), glyph count (u8),
 //!            the glyph codes of the main display font
+//! trees      id 3: syntax axiom count (u8), per axiom its assertion number (u16) and its arity
+//!            (u8), one u32 file offset per assertion, then per assertion a tree for each
+//!            essential hypothesis in record order and one for the conclusion; a tree is its
+//!            length (u8, FEh for no tree, FFh then a u16) and its nodes in preorder: a byte
+//!            under 80h is an index into the syntax table, whose arity says how many subtrees
+//!            follow, and 80h + n is the variable with symbol id n + the constant count;
+//!            at most 128 syntax axioms and 128 variables, or the pack fails; a library
+//!            whose database has no grammar has no trees section
 //! ```
 //!
 //! A record is only usable if its float hypotheses name distinct variables, each of its
@@ -67,8 +75,9 @@ pub use read::{
     Assertion, Hypothesis, Library, ReadError, Reference, Step, Variable, decode, read,
 };
 pub use sections::{
-    ENTRY_LEN, Entry, GLYPHS, GlyphMap, Glyphs, SectionCheckError, SectionError, Sections, TITLES,
-    TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION, Title, read as read_sections, verify_sections,
+    AXIOM_CAPACITY, ENTRY_LEN, Entry, GLYPHS, GlyphMap, Glyphs, Node, Part, SectionCheckError,
+    SectionError, Sections, SyntaxAxiom, TITLES, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION,
+    TREES, Title, Tree, Trees, VARIABLE_CAPACITY, locate as locate_sections, verify_sections,
 };
 
 pub const MAGIC: &[u8; 4] = b"MCL1";

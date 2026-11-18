@@ -35,7 +35,7 @@ impl std::fmt::Display for SectionError {
 impl std::error::Error for SectionError {}
 
 /// Locates the section table: `None` when the file has no trailer.
-pub(crate) fn table(bytes: &[u8]) -> Result<Option<Vec<Entry>>, SectionError> {
+pub fn table(bytes: &[u8]) -> Result<Option<Vec<Entry>>, SectionError> {
     let Some(start) = bytes.len().checked_sub(TRAILER_LEN) else {
         return Ok(None);
     };

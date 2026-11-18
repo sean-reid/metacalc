@@ -1,3 +1,5 @@
+mod trees;
+
 use mcglyph::z80::Table;
 use mcpack::library::{
     self, ENTRY_LEN, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION, Title, crc32, decode, pack,

@@ -1,0 +1,352 @@
+use super::*;
+use mcpack::library::{AXIOM_CAPACITY, CheckError, Node, PackError, TREES, VARIABLE_CAPACITY};
+use mcpack::mm::Kind;
+use std::path::Path;
+
+fn trees_of(bytes: &[u8]) -> library::Trees {
+    decode(bytes)
+        .unwrap()
+        .sections
+        .unwrap()
+        .trees
+        .expect("a tree section")
+}
+
+fn everything(db: &Database) -> Vec<StmtId> {
+    (0..db.stmts.len() as StmtId).collect()
+}
+
+/// The closure of every assertion of `db`, or `None` when it has no grammar or does not close.
+fn kept(db: &Database) -> Option<Vec<StmtId>> {
+    let grammar = Grammar::new(db, &[("|-", "wff")]).ok()?;
+    let roots: Vec<StmtId> = everything(db)
+        .into_iter()
+        .filter(|&id| db.stmt(id).kind.is_assertion())
+        .collect();
+    mm::closure(db, &grammar, &roots).ok()
+}
+
+fn corpus() -> Vec<(String, Database)> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
+    let mut files: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "mm"))
+        .collect();
+    files.sort();
+    let mut all: Vec<(String, Database)> = files
+        .into_iter()
+        .filter_map(|p| {
+            let name = p.file_name()?.to_string_lossy().into_owned();
+            Some((name, mm::parse(std::fs::read(p).ok()?).ok()?))
+        })
+        .collect();
+    all.push(("logic".into(), db()));
+    all
+}
+
+/// A tree as the grammar's labels in preorder, a variable as its name.
+fn grammar_preorder(db: &Database, tree: &mm::Tree) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut pending = vec![tree];
+    while let Some(node) = pending.pop() {
+        let stmt = db.stmt(node.stmt);
+        out.push(match stmt.kind {
+            Kind::Float => format!("var {}", db.syms[stmt.expr[1] as usize].name),
+            _ => stmt.label.clone(),
+        });
+        pending.extend(node.children.iter().rev().map(|c| &**c));
+    }
+    out
+}
+
+fn stored_preorder(library: &library::Library, tree: &library::Tree) -> Vec<String> {
+    let trees = library.sections.as_ref().unwrap().trees.as_ref().unwrap();
+    let names: Vec<&String> = library
+        .constants
+        .iter()
+        .chain(library.variables.iter().map(|v| &v.name))
+        .collect();
+    tree.nodes
+        .iter()
+        .map(|node| match *node {
+            Node::Axiom(i) => library.assertions[trees.syntax[i].assertion].label.clone(),
+            Node::Variable(id) => format!("var {}", names[id]),
+        })
+        .collect()
+}
+
+/// Checks the stored trees of `bytes` against what `grammar` gives for the statements `ids`
+/// hold, and returns how many statements it compared.
+fn agree(db: &Database, bytes: &[u8], ids: &[StmtId]) -> usize {
+    let grammar = Grammar::new(db, &[("|-", "wff")]).unwrap();
+    let library = decode(bytes).unwrap();
+    let trees = library.sections.as_ref().unwrap().trees.as_ref().unwrap();
+    let ids: Vec<StmtId> = ids
+        .iter()
+        .copied()
+        .filter(|&id| db.stmt(id).kind.is_assertion())
+        .collect();
+    assert_eq!(ids.len(), trees.items.len());
+    let mut compared = 0;
+    for (&id, item) in ids.iter().zip(&trees.items) {
+        let stmt = db.stmt(id);
+        let floats: Vec<_> = stmt
+            .frame
+            .hyps
+            .iter()
+            .filter(|&&h| db.stmt(h).kind == Kind::Float)
+            .map(|&h| (db.stmt(h).expr[1], h))
+            .collect();
+        let essentials = stmt
+            .frame
+            .hyps
+            .iter()
+            .filter(|&&h| db.stmt(h).kind == Kind::Essential);
+        let exprs = essentials.map(|&h| &db.stmt(h).expr).chain([&stmt.expr]);
+        for (expr, stored) in exprs.zip(item) {
+            match (grammar.parse_expr(expr, &floats).ok(), stored) {
+                (None, None) => {}
+                (Some(want), Some(got)) => assert_eq!(
+                    grammar_preorder(db, &want),
+                    stored_preorder(&library, got),
+                    "{}",
+                    stmt.label
+                ),
+                _ => panic!("{}: the stored tree and the grammar disagree", stmt.label),
+            }
+            compared += 1;
+        }
+    }
+    compared
+}
+
+#[test]
+fn the_stored_trees_are_the_grammars_on_every_statement_of_the_corpus() {
+    let (mut compared, mut libraries) = (0, 0);
+    for (name, db) in corpus() {
+        let Some(ids) = kept(&db) else { continue };
+        let bytes = pack(&db, &ids).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        compared += agree(&db, &bytes, &ids);
+        libraries += 1;
+    }
+    assert!(
+        libraries >= 3 && compared > 50,
+        "{libraries} libraries, {compared} statements"
+    );
+}
+
+#[test]
+fn every_corpus_library_passes_the_check_with_its_sections() {
+    let mut passed = 0;
+    for (name, db) in corpus() {
+        let Some(ids) = kept(&db) else { continue };
+        let bytes = pack(&db, &ids).unwrap();
+        let sections = decode(&bytes).unwrap().sections.unwrap();
+        assert!(
+            sections.titles.is_some() && sections.glyphs.is_some() && sections.trees.is_some(),
+            "{name}"
+        );
+        match library::check(&bytes) {
+            Ok(_) => passed += 1,
+            Err(CheckError::Assertions(_)) => {}
+            Err(e) => panic!("{name}: a section is wrong: {e}"),
+        }
+    }
+    assert!(passed >= 3, "{passed} libraries pass");
+}
+
+fn item_nodes(item: &[Option<library::Tree>]) -> Vec<Vec<Node>> {
+    item.iter()
+        .map(|t| t.as_ref().unwrap().nodes.clone())
+        .collect()
+}
+
+#[test]
+fn the_logic_has_a_tree_for_every_statement() {
+    let db = db();
+    let bytes = pack(&db, &closure(&db)).unwrap();
+    let trees = trees_of(&bytes);
+    assert_eq!(trees.without_tree(), 0);
+    let library = decode(&bytes).unwrap();
+    let at = |label: &str| {
+        library
+            .assertions
+            .iter()
+            .position(|a| a.label == label)
+            .unwrap()
+    };
+    assert_eq!(
+        trees.items[at("ax-mp")].len(),
+        3,
+        "two hypotheses and the conclusion"
+    );
+    let syntax: Vec<&str> = trees
+        .syntax
+        .iter()
+        .map(|a| library.assertions[a.assertion].label.as_str())
+        .collect();
+    assert_eq!(syntax, ["wi", "wal"]);
+    assert_eq!(
+        trees.syntax.iter().map(|a| a.arity).collect::<Vec<_>>(),
+        [2, 2]
+    );
+    let ax1 = item_nodes(&trees.items[at("ax-1")]);
+    assert_eq!(ax1.len(), 1);
+    assert_eq!(ax1[0].len(), 5, "two wi nodes and three variable leaves");
+}
+
+#[test]
+fn a_statement_the_grammar_cannot_read_gets_the_no_tree_marker() {
+    let db = parse(
+        "$c |- wff foo bar $.\n$v ph $.\nwph $f wff ph $.\nax $a |- foo bar ph $.\nok $a |- ph $.\n",
+    );
+    let bytes = pack(&db, &everything(&db)).unwrap();
+    let trees = trees_of(&bytes);
+    assert_eq!(trees.without_tree(), 1);
+    assert!(trees.items[0][0].is_none() && trees.items[1][0].is_some());
+    library::check(&bytes).unwrap();
+}
+
+#[test]
+fn a_database_with_no_grammar_has_no_tree_section() {
+    let db = parse("$c |- foo $.\nax $a |- foo $.\n");
+    let bytes = pack(&db, &everything(&db)).unwrap();
+    let sections = decode(&bytes).unwrap().sections.unwrap();
+    assert!(sections.trees.is_none());
+    assert!(sections.titles.is_some() && sections.glyphs.is_some());
+    library::check(&bytes).unwrap();
+}
+
+fn axioms(n: usize) -> Database {
+    let constants: Vec<String> = (0..n).map(|i| format!("c{i}")).collect();
+    let mut src = format!("$c |- wff {} $.\n", constants.join(" "));
+    for c in &constants {
+        src += &format!("w{c} $a wff {c} $.\nax-{c} $a |- {c} $.\n");
+    }
+    parse(&src)
+}
+
+fn variables(n: usize) -> Database {
+    let vars: Vec<String> = (0..n).map(|i| format!("v{i}")).collect();
+    let mut src = format!("$c |- wff $.\n$v {} $.\n", vars.join(" "));
+    for v in &vars {
+        src += &format!("f{v} $f wff {v} $.\n");
+    }
+    for v in &vars {
+        src += &format!("ax-{v} $a |- {v} $.\n");
+    }
+    parse(&src)
+}
+
+fn pack_everything(db: &Database) -> Result<Vec<u8>, PackError> {
+    pack(db, &everything(db))
+}
+
+#[test]
+fn a_library_at_the_capacity_of_the_encoding_packs_and_one_past_it_fails_clearly() {
+    let at = pack_everything(&axioms(AXIOM_CAPACITY)).unwrap();
+    assert_eq!(trees_of(&at).syntax.len(), AXIOM_CAPACITY);
+    assert_eq!(
+        pack_everything(&axioms(AXIOM_CAPACITY + 1)),
+        Err(PackError::TreeCapacity("syntax axioms", AXIOM_CAPACITY + 1))
+    );
+    let at = pack_everything(&variables(VARIABLE_CAPACITY)).unwrap();
+    assert_eq!(trees_of(&at).without_tree(), 0);
+    assert_eq!(
+        pack_everything(&variables(VARIABLE_CAPACITY + 1)),
+        Err(PackError::TreeCapacity("variables", VARIABLE_CAPACITY + 1))
+    );
+}
+
+#[test]
+fn no_tree_crosses_a_16_kb_boundary_and_the_index_may() {
+    let mut src = String::from("$c |- wff $.\n$v ph $.\nwph $f wff ph $.\n");
+    for i in 0..5000 {
+        src += &format!("ax-{i} $a |- ph $.\n");
+    }
+    let db = parse(&src);
+    let bytes = pack_everything(&db).unwrap();
+    let entry = section(&bytes, TREES);
+    assert!(entry.offset / library::CHUNK < (entry.offset + entry.length) / library::CHUNK);
+    let trees = trees_of(&bytes);
+    assert_eq!(trees.items.len(), 5000);
+    assert_eq!(trees.without_tree(), 0);
+}
+
+#[test]
+fn the_tree_section_survives_a_hostile_byte_in_its_table_index_and_items() {
+    let db = db();
+    let bytes = pack(&db, &closure(&db)).unwrap();
+    let entry = section(&bytes, TREES);
+    for at in entry.offset..entry.offset + entry.length {
+        for flip in [0x01u8, 0x02, 0x40, 0x80, 0xFF] {
+            let mut hostile = bytes.clone();
+            hostile[at] ^= flip;
+            reseal(&mut hostile);
+            let _ = decode(&hostile);
+            let _ = library::check(&hostile);
+        }
+    }
+}
+
+#[test]
+fn a_tree_that_does_not_expand_to_its_statement_fails_the_check() {
+    let db = db();
+    let mut bytes = pack(&db, &closure(&db)).unwrap();
+    let library = decode(&bytes).unwrap();
+    let entry = section(&bytes, TREES);
+    let syntax = bytes[entry.offset] as usize;
+    let index = entry.offset + 1 + 3 * syntax;
+    let ax1 = library
+        .assertions
+        .iter()
+        .position(|a| a.label == "ax-1")
+        .unwrap();
+    let at = u32::from_le_bytes(bytes[index + 4 * ax1..][..4].try_into().unwrap()) as usize;
+    let len = bytes[at] as usize;
+    let variable = (at + 1..at + 1 + len).find(|&i| bytes[i] >= 0x80).unwrap();
+    bytes[variable] = if bytes[variable] == 0x80 { 0x81 } else { 0x80 };
+    reseal(&mut bytes);
+    assert!(decode(&bytes).is_ok());
+    let Err(CheckError::Sections(e)) = library::check(&bytes) else {
+        panic!("the check accepts a wrong tree");
+    };
+    assert!(e.to_string().contains("ax-1"), "{e}");
+}
+
+#[test]
+fn a_damaged_tree_section_does_not_decode() {
+    let db = db();
+    let bytes = pack(&db, &closure(&db)).unwrap();
+    let entry = section(&bytes, TREES);
+    let mut far = bytes.clone();
+    far[entry.offset + 1] = 0xFF;
+    far[entry.offset + 2] = 0xFF;
+    reseal(&mut far);
+    assert!(
+        decode(&far).is_err(),
+        "a syntax axiom past the last assertion"
+    );
+}
+
+/// The shipped libraries, as scripts/build-libraries.sh writes them into `MC_LIBRARIES`, carry the
+/// trees the grammar of their own export gives, and none is missing.
+#[test]
+#[ignore = "needs MC_LIBRARIES pointing at the built libraries"]
+fn the_shipped_libraries_carry_the_grammars_trees_and_none_is_missing() {
+    let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES is set");
+    for name in ["prop", "pred", "ring"] {
+        let bytes = std::fs::read(Path::new(&dir).join(format!("{name}.mclib"))).unwrap();
+        library::check(&bytes).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(trees_of(&bytes).without_tree(), 0, "{name}");
+        let exported = library::export(&bytes).unwrap();
+        let db = mm::parse(exported.into_bytes()).unwrap();
+        let compared = agree(&db, &bytes, &everything(&db));
+        let titles = decode(&bytes).unwrap().sections.unwrap().titles.unwrap();
+        println!(
+            "{name}: {compared} statements agree, {} titles",
+            titles.len()
+        );
+    }
+}

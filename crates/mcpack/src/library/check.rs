@@ -1,6 +1,6 @@
 use super::{
-    Kernel, KernelError, Limits, ReadError, SectionCheckError, SectionError, decode, read_sections,
-    verify_sections,
+    Kernel, KernelError, Limits, ReadError, SectionCheckError, SectionError, decode,
+    locate_sections, verify_sections,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -48,7 +48,7 @@ pub fn check(bytes: &[u8]) -> Result<usize, CheckError> {
     if !failed.is_empty() {
         return Err(CheckError::Assertions(failed));
     }
-    let sections = read_sections(bytes).map_err(CheckError::Damaged)?;
+    let sections = locate_sections(bytes).map_err(CheckError::Damaged)?;
     if sections.is_some() {
         let library = decode(bytes).map_err(CheckError::Read)?;
         verify_sections(&library).map_err(CheckError::Sections)?;

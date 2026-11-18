@@ -1,4 +1,4 @@
-use super::{Counts, Cursor, Entry, GLYPHS, SectionError, Writer, within_chunk};
+use super::{Cursor, Entry, GLYPHS, SectionError, Writer, within_chunk};
 use crate::library::PackError;
 use mcglyph::Pad;
 use mcglyph::z80::Table;
@@ -75,18 +75,18 @@ pub(super) fn encode(w: &mut Writer, map: &GlyphMap) -> Result<(), PackError> {
 pub(super) fn decode(
     bytes: &[u8],
     entry: &Entry,
-    counts: &Counts,
+    symbols: usize,
 ) -> Result<GlyphMap, SectionError> {
     let bad = SectionError::Glyphs;
     let end = entry.offset + entry.length;
     let mut cur = Cursor::new(bytes, entry.offset, end);
     let fingerprint = cur.u16().ok_or(bad)? as u16;
-    if cur.u8().ok_or(bad)? != counts.symbols {
+    if cur.u8().ok_or(bad)? != symbols {
         return Err(bad);
     }
-    let first_item = cur.pos + 2 * counts.symbols;
-    let mut symbols = Vec::with_capacity(counts.symbols);
-    for _ in 0..counts.symbols {
+    let first_item = cur.pos + 2 * symbols;
+    let mut map = Vec::with_capacity(symbols);
+    for _ in 0..symbols {
         let at = entry.offset + cur.u16().ok_or(bad)?;
         if at < first_item {
             return Err(bad);
@@ -98,10 +98,10 @@ pub(super) fn decode(
         if Pad::from_bits(flags).is_none() || !within_chunk(at, item.pos - at) {
             return Err(bad);
         }
-        symbols.push(Glyphs { codes, flags });
+        map.push(Glyphs { codes, flags });
     }
     Ok(GlyphMap {
         fingerprint,
-        symbols,
+        symbols: map,
     })
 }

@@ -1,4 +1,4 @@
-use super::sections::{self, Counts, Sections};
+use super::sections::{self, Ctx, Sections};
 use super::{DUMMY, HEADER_LEN, MAGIC, SAVE, WIDE};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,11 +230,12 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
         }
         assertions.push(assertion);
     }
-    let sections = sections::read_with(
+    let sections = sections::read(
         bytes,
-        &Counts {
-            assertions: assertions.len(),
-            symbols: names.len(),
+        &Ctx {
+            assertions: &assertions,
+            names: &names,
+            constants,
         },
     )
     .map_err(|_| ReadError)?;
