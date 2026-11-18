@@ -1,5 +1,14 @@
 use super::{Database, Kind, Proof, ProofBody, ProofError, StmtId, Sym, dv_pair};
 
+/// High-water marks of one proof check, in the units a fixed-memory kernel has to budget.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Usage {
+    pub steps: usize,
+    pub stack_depth: usize,
+    pub stack_syms: usize,
+    pub saved_syms: usize,
+}
+
 /// Checks one theorem at a time against a parsed database, reusing its buffers between proofs.
 pub struct Verifier<'a> {
     db: &'a Database,
@@ -8,6 +17,7 @@ pub struct Verifier<'a> {
     saved: Vec<Vec<Sym>>,
     subst: Vec<(usize, usize)>,
     scratch: Vec<Sym>,
+    usage: Usage,
 }
 
 impl<'a> Verifier<'a> {
@@ -19,7 +29,19 @@ impl<'a> Verifier<'a> {
             saved: Vec::new(),
             subst: vec![(0, 0); db.syms.len()],
             scratch: Vec::new(),
+            usage: Usage::default(),
         }
+    }
+
+    /// Measurements of the most recent `verify` call, up to the point where it stopped.
+    pub fn usage(&self) -> Usage {
+        self.usage
+    }
+
+    fn pushed(&mut self) {
+        self.usage.steps += 1;
+        self.usage.stack_depth = self.usage.stack_depth.max(self.starts.len());
+        self.usage.stack_syms = self.usage.stack_syms.max(self.arena.len());
     }
 
     pub fn verify(&mut self, id: StmtId) -> Result<(), ProofError> {
@@ -33,6 +55,7 @@ impl<'a> Verifier<'a> {
         self.arena.clear();
         self.starts.clear();
         self.saved.clear();
+        self.usage = Usage::default();
         match &proof.body {
             ProofBody::Normal(steps) => {
                 for &step in steps {
@@ -79,6 +102,7 @@ impl<'a> Verifier<'a> {
                             .ok_or(ProofError::BadBackReference)?;
                         self.starts.push(self.arena.len());
                         self.arena.extend_from_slice(saved);
+                        self.pushed();
                     }
                 }
                 b'U'..=b'Y' => {
@@ -94,6 +118,7 @@ impl<'a> Verifier<'a> {
                     if high != 0 {
                         return Err(ProofError::MalformedCompressed);
                     }
+                    self.usage.saved_syms += self.arena.len() - top;
                     self.saved.push(self.arena[top..].to_vec());
                 }
                 b'?' => return Err(ProofError::Incomplete),
@@ -112,6 +137,7 @@ impl<'a> Verifier<'a> {
         if matches!(stmt.kind, Kind::Float | Kind::Essential) {
             self.starts.push(self.arena.len());
             self.arena.extend_from_slice(&stmt.expr);
+            self.pushed();
             return Ok(());
         }
         let hyps = &stmt.frame.hyps;
@@ -157,11 +183,14 @@ impl<'a> Verifier<'a> {
             }
         }
         self.substitute(&stmt.expr);
+        let held = self.arena.len() + self.scratch.len();
+        self.usage.stack_syms = self.usage.stack_syms.max(held);
         let bottom = self.starts.get(base).copied().unwrap_or(self.arena.len());
         self.starts.truncate(base);
         self.arena.truncate(bottom);
         self.starts.push(bottom);
         self.arena.extend_from_slice(&self.scratch);
+        self.pushed();
         Ok(())
     }
 
