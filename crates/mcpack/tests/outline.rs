@@ -44,9 +44,22 @@ $}
 bad $p |- ( p -> p ) $= wp wq ax-1 $.
 syntax-reuse $p |- ( ( p -> p ) -> ( ( p -> p ) -> ( p -> p ) ) ) $= ( wi ax-1 ) AABZDC $.
 syntax $p wff ( p -> p ) $= wp wp wi $.
+$v ph ps $.
+wph $f wff ph $.
+wps $f wff ps $.
+ax-s $a |- ( ph -> ( ps -> ph ) ) $.
+th-s $p |- ( ph -> ( ps -> ph ) ) $= wph wps ax-s $.
+${
+  hyp.1 $e |- ph $.
+  hyp $p |- ph $= hyp.1 $.
+$}
 ";
 
 fn outline(dir: &str, label: &str) -> Output {
+    outline_with(dir, label, &[])
+}
+
+fn outline_with(dir: &str, label: &str, flags: &[&str]) -> Output {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(dir);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -56,6 +69,7 @@ fn outline(dir: &str, label: &str) -> Output {
         .arg("outline")
         .arg(&database)
         .arg(label)
+        .args(flags)
         .output()
         .expect("mcpack runs")
 }
@@ -153,4 +167,93 @@ fn a_reused_syntax_step_leaves_no_trace_in_the_tree() {
         stdout("syntax-reuse"),
         "|- ( ( p -> p ) -> ( ( p -> p ) -> ( p -> p ) ) )  [ax-1]\n"
     );
+}
+
+fn links(dir: &str, text: &str) -> String {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("links");
+    std::fs::write(&file, text).unwrap();
+    file.to_str().unwrap().to_string()
+}
+
+#[test]
+fn unicode_spells_each_token_and_keeps_the_shape() {
+    let out = outline_with("outline-unicode", "th-s", &["--unicode"]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        "\u{22A2} ( \u{1D711} \u{2192} ( \u{1D713} \u{2192} \u{1D711} ) )  [ax-s]\n"
+    );
+}
+
+#[test]
+fn the_default_output_stays_ascii() {
+    assert_eq!(stdout("hyp"), "|- ph  [hyp.1]\n");
+}
+
+#[test]
+fn unicode_fails_naming_a_token_without_a_spelling() {
+    let out = outline_with("outline-unicode-missing", "plain", &["--unicode"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(out.stdout, b"");
+    assert_eq!(out.stderr, b"plain: no Unicode spelling for q\n");
+}
+
+#[test]
+fn html_links_an_assertion_and_leaves_a_hypothesis_plain() {
+    let file = links("outline-links-a", "ax-s ../libraries/prose.md\n");
+    let out = outline_with("outline-html-a", "th-s", &["--html", "--links", &file]);
+    assert_eq!(out.status.code(), Some(0), "{:?}", out.stderr);
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        "<ul class=\"tree\" data-statement=\"|- ( ph -&gt; ( ps -&gt; ph ) )\">\n  <li><span class=\"st\">\u{22A2} ( \u{1D711} \u{2192} ( \u{1D713} \u{2192} \u{1D711} ) )</span> <a class=\"lb\" href=\"../libraries/prose.md#ax-s\">ax-s</a></li>\n</ul>\n"
+    );
+    let file = links("outline-links-h", "ax-s x.md\n");
+    let out = outline_with("outline-html-h", "hyp", &["--html", "--links", &file]);
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        "<ul class=\"tree\" data-statement=\"|- ph\">\n  <li><span class=\"st\">\u{22A2} \u{1D711}</span> <span class=\"lb\">hyp.1</span></li>\n</ul>\n"
+    );
+}
+
+#[test]
+fn html_fails_for_an_assertion_on_no_page() {
+    let file = links("outline-links-none", "other x.md\n");
+    let out = outline_with("outline-html-none", "th-s", &["--html", "--links", &file]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(out.stdout, b"");
+    assert_eq!(out.stderr, b"th-s: ax-s is on no library page\n");
+}
+
+fn spell(input: &str) -> Output {
+    use std::io::Write;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mcpack"))
+        .arg("spell")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("mcpack runs");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn spell_prints_each_line_in_unicode_and_fails_on_an_unknown_token() {
+    let out = spell("|- ( ph -> ps )\n\n");
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        "\u{22A2} ( \u{1D711} \u{2192} \u{1D713} )\n\n"
+    );
+    let out = spell("ph zz yy zz\n");
+    assert_eq!(out.status.code(), Some(2));
+    assert_eq!(out.stdout, b"");
+    assert_eq!(out.stderr, b"no Unicode spelling for zz yy\n");
 }
