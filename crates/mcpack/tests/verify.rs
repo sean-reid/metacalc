@@ -233,6 +233,32 @@ fn disjoint_condition_rejects_a_shared_variable() {
 }
 
 #[test]
+fn an_axiom_inherits_the_pairs_of_the_scopes_around_it() {
+    let tail = "
+        ${ $d p q $. ${ ax-in $a |- ( p -> q ) $. $} $}
+        same $p |- ( p -> p ) $= wp wp ax-in $.
+        apart $p |- ( p -> q ) $= wp wq ax-in $.
+        ${ $d p q $. in $p |- ( p -> q ) $= wp wq ax-in $. $}
+    ";
+    let src = format!("{DISJOINT}{tail}");
+    assert_eq!(check(&src, "same"), Err(ProofError::DisjointViolation));
+    assert_eq!(check(&src, "apart"), Err(ProofError::DisjointViolation));
+    assert_eq!(check(&src, "in"), Ok(()));
+}
+
+#[test]
+fn a_theorem_inherits_the_pairs_of_the_scopes_around_it() {
+    let tail = "${ $d p q $. ${ th $p |- ( p -> q ) $= wp wq ax-dv $. $} $}";
+    assert_eq!(check(&format!("{DISJOINT}{tail}"), "th"), Ok(()));
+}
+
+#[test]
+fn an_enclosing_pair_binds_an_axiom_only_if_it_uses_both_variables() {
+    let tail = "${ $d p q $. ${ ax-p $a |- p $. $} th $p |- q $= wq ax-p $. $}";
+    assert_eq!(check(&format!("{DISJOINT}{tail}"), "th"), Ok(()));
+}
+
+#[test]
 fn disjoint_condition_from_a_closed_scope_does_not_count() {
     let tail = "
         ${ $d p q $. unrelated $a |- ( p -> q ) $. $}

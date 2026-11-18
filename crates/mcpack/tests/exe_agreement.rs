@@ -1,7 +1,8 @@
-//! Each case is a small database and whether metamath-exe reads it without error. The parser
-//! must agree with the table, and the ignored test holds the table to metamath-exe itself.
+//! Each case is a small database and whether metamath-exe reads it and verifies its proofs without
+//! error. The parser and the verifier must agree with the table, and the ignored test holds the
+//! table to metamath-exe itself.
 
-use mcpack::mm::{parse_at, parse_at_capped};
+use mcpack::mm::{Database, Kind, StmtId, Verifier, parse_at, parse_at_capped};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -248,6 +249,49 @@ const CASES: &[Case] = &[
             ("sub/b.mm", BASE),
         ],
     ),
+    refused(
+        "a pair declared outside the scope of the axiom binds its uses",
+        "be disjoint",
+        "DisjointViolation",
+        &[(
+            "top.mm",
+            "$c wff |- R $. $v x y $. vx $f wff x $. vy $f wff y $.
+             $d x y $.
+             ${ ax $a |- R x y $. $}
+             th $p |- R x x $= vx vx ax $.",
+        )],
+    ),
+    case(
+        "a pair declared outside the scope of a theorem lets it use the axiom",
+        &[(
+            "top.mm",
+            "$c wff |- R $. $v x y $. vx $f wff x $. vy $f wff y $.
+             ${ $d x y $. ax $a |- R x y $. $}
+             ${ $d x y $. ${ th $p |- R x y $= vx vy ax $. $} $}",
+        )],
+    ),
+    refused(
+        "a pair declared in a closed scope binds nothing later",
+        "be disjoint",
+        "DisjointViolation",
+        &[(
+            "top.mm",
+            "$c wff |- R $. $v x y $. vx $f wff x $. vy $f wff y $.
+             ${ $d x y $. ax $a |- R x y $. $}
+             ${ $d x y $. $}
+             th $p |- R x y $= vx vy ax $.",
+        )],
+    ),
+    case(
+        "an enclosing pair with a variable the axiom does not use binds nothing",
+        &[(
+            "top.mm",
+            "$c wff |- R $. $v x y $. vx $f wff x $. vy $f wff y $.
+             $d x y $.
+             ${ ax $a |- R x $. $}
+             th $p |- R y $= vy ax $.",
+        )],
+    ),
     case(
         "path with a parent directory",
         &[
@@ -273,13 +317,28 @@ fn write(dir: &Path, case: &Case) {
     }
 }
 
+fn first_bad_proof(db: &Database) -> Result<(), String> {
+    let mut verifier = Verifier::new(db);
+    for id in 0..db.stmts.len() as StmtId {
+        let stmt = db.stmt(id);
+        if stmt.kind == Kind::Theorem {
+            verifier
+                .verify(id)
+                .map_err(|error| format!("{}: {error:?}", stmt.label))?;
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn the_parser_reads_what_the_table_says_metamath_exe_reads() {
     for (i, case) in CASES.iter().enumerate() {
         let dir = scratch(&i.to_string());
         write(&dir, case);
         let top = dir.join(case.files[0].0);
-        let parsed = parse_at(&top, std::fs::read(&top).unwrap());
+        let parsed = parse_at(&top, std::fs::read(&top).unwrap())
+            .map_err(|error| error.to_string())
+            .and_then(|db| first_bad_proof(&db));
         assert_eq!(
             parsed.is_ok(),
             case.reads,
@@ -287,8 +346,7 @@ fn the_parser_reads_what_the_table_says_metamath_exe_reads() {
             case.name,
             parsed.as_ref().err()
         );
-        if let Err(error) = parsed {
-            let message = error.to_string();
+        if let Err(message) = parsed {
             assert!(
                 message.contains(case.we_say),
                 "{}: {message} does not say {}",
@@ -316,7 +374,7 @@ fn the_table_is_what_metamath_exe_reads() {
         write(&dir, case);
         let out = Command::new(&exe)
             .current_dir(&dir)
-            .args(["read top.mm", "exit"])
+            .args(["read top.mm /verify", "exit"])
             .output()
             .expect("metamath-exe runs");
         let text = String::from_utf8_lossy(&out.stdout);
