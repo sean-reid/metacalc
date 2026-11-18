@@ -3,7 +3,13 @@ name: pages
 on:
   push:
     branches: [main]
-    paths: [docs/**, .github/workflows/pages.yml]
+    paths:
+      - docs/**
+      - libraries/**
+      - crates/mcpack/**
+      - scripts/fetch-setmm.sh
+      - scripts/build-libraries.sh
+      - .github/workflows/pages.yml
   workflow_dispatch:
 
 permissions:
@@ -26,9 +32,21 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: mdbook
-      - run: mdbook build docs
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v6
+        with:
+          path: .setmm
+          key: setmm-${{ hashFiles('libraries/source.toml') }}
+      - uses: Swatinem/rust-cache@v2
+      - id: setmm
+        run: echo "path=$(sh scripts/fetch-setmm.sh)" >> "$GITHUB_OUTPUT"
+      - run: sh scripts/build-libraries.sh "${{ steps.setmm.outputs.path }}" "$RUNNER_TEMP/libraries" "$RUNNER_TEMP/pages"
+      - run: |
+          cp -r docs "$RUNNER_TEMP/docs"
+          cp "$RUNNER_TEMP"/pages/*.md "$RUNNER_TEMP/docs/src/libraries/"
+          mdbook build "$RUNNER_TEMP/docs"
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: docs/book
+          path: ${{ runner.temp }}/docs/book
       - id: deploy
         uses: actions/deploy-pages@v5
