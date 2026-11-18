@@ -132,13 +132,16 @@ fn main() {
         );
     }
     assemble_kernel(&out);
-    spasm(
-        &Path::new("tests/routines").join("sparecheck_test.z80"),
-        &out.join("sparecheck_test.bin"),
-        &[],
-        &["-I", "../../app/src", "-I", "../../probe", "-L"],
-    );
+    for name in ["sparecheck_test", "sparescreen_test"] {
+        spasm(
+            &Path::new("tests/routines").join(format!("{name}.z80")),
+            &out.join(format!("{name}.bin")),
+            &[],
+            &["-I", "../../app/src", "-I", "../../probe", "-L"],
+        );
+    }
     println!("cargo:rerun-if-changed=../../probe/sparecore.inc");
+    println!("cargo:rerun-if-changed=../../probe/sparescreen.inc");
     println!("cargo:rerun-if-changed=../../app/src/equates.inc");
 }
 

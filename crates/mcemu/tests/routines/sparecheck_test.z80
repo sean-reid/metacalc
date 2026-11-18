@@ -2,4 +2,5 @@
 
 .org 4000h
 #include "sparecore.inc"
+	di
 	halt
