@@ -8,7 +8,7 @@ A library is a set of Metamath statements and the proofs of its theorems, packed
 | Built with the site | | | | | |
 <!-- /libraries-table -->
 
-Syntax rules and definitions are listed on each page but not counted here. A flash page holds 16,384 bytes.
+The Axioms column counts assertions labelled ax-, and the Theorems column counts assertions with a proof whose statement begins with the turnstile. Not counted here are syntax rules, including the few that are proved from the others, definitions, and any other unproved assertions. Each page lists them. A flash page holds 16,384 bytes.
 
 Every page starts with a notation key. It then lists the syntax rules, axioms, definitions and theorems in the order the library stores them, each statement in mathematical notation with its ASCII spelling under it.
 
