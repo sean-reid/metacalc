@@ -4,6 +4,8 @@ mod app;
 mod crc;
 #[path = "kernel/edges.rs"]
 mod edges;
+#[path = "kernel/libraries.rs"]
+mod libraries;
 #[path = "kernel/limits.rs"]
 mod limits;
 #[path = "kernel/state.rs"]
@@ -12,6 +14,8 @@ mod state;
 mod support;
 #[path = "kernel/sweep.rs"]
 mod sweep;
+#[path = "kernel/work.rs"]
+mod work;
 
 use crate::support::*;
 use mcpack::library::{self, Kernel, KernelError, Limits};

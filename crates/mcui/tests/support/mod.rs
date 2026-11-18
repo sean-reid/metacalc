@@ -3,6 +3,7 @@
 use mcpack::library::{self, pack};
 use mcpack::mm::{self, Database, Grammar, StmtId};
 use mcui::{Installed, Key, Status, Statuses, Ui};
+use std::path::PathBuf;
 
 /// A small logic with one binder, a distinct variable condition and a theorem whose
 /// hypotheses alone fill more rows than the screen has.
@@ -259,4 +260,142 @@ pub fn open(ui: &mut Ui, label: &str) {
         ui.press(Key::Down);
     }
     ui.press(Key::Enter);
+}
+
+/// Compares `frame` with the checked-in text art. With MCUI_BLESS set the art is rewritten first
+/// and compared as usual, so a blessing run cannot pass without a comparison; a CI run cannot bless.
+pub fn check_frame(frame: &mcglyph::Bitmap, name: &str) {
+    assert_eq!((frame.width(), frame.height()), (96, 64), "{name}");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/frames")
+        .join(format!("{name}.txt"));
+    let got = format!("{frame}\n");
+    if std::env::var("MCUI_BLESS").is_ok_and(|v| v == "1") {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "frames cannot be blessed in CI"
+        );
+        std::fs::write(&path, &got).expect("write frame");
+    }
+    let want = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+    assert!(
+        got == want,
+        "{name} differs\n--- got\n{got}--- want\n{want}"
+    );
+}
+
+/// The bytes with their checksum recomputed after a patch.
+pub fn refreshed(mut bytes: Vec<u8>) -> Vec<u8> {
+    let crc = library::crc32(&bytes[8..]);
+    bytes[4..8].copy_from_slice(&crc.to_le_bytes());
+    bytes
+}
+
+/// A user interface over one library named `logic` whose assertions are all still unchecked.
+pub fn unchecked_ui(bytes: Vec<u8>) -> Ui {
+    let table = vec![Status::Unchecked; library::read(&bytes).expect("library reads").len()];
+    Ui::new(
+        vec![Installed {
+            name: "logic".into(),
+            bytes,
+        }],
+        Statuses {
+            libraries: vec![table],
+            my_proofs: 2,
+        },
+    )
+    .expect("the library loads")
+}
+
+/// Theorems and axioms for the proving screen: many candidates for one goal, a long statement,
+/// and a theorem that applying `ax-5` to would break a distinct variable rule.
+pub const PROVING: &str = "
+axa1 $a |- ( ph -> ph ) $.
+axa2 $a |- ( ph -> ph ) $.
+axa3 $a |- ( ph -> ph ) $.
+axa4 $a |- ( ph -> ph ) $.
+axa5 $a |- ( ph -> ph ) $.
+axa6 $a |- ( ph -> ph ) $.
+tmany $p |- ( ph -> ph ) $= wph id $.
+tlong $p |- ( ( ph -> ( ps -> ch ) ) -> ( ( ph -> ps ) -> ( ph -> ch ) ) ) $= wph wps wch ax-2 $.
+axq $a |- ( ph -> A. y ph ) $.
+tq $p |- ( ph -> A. y ph ) $= wph vy axq $.
+${
+  ta1.1 $e |- ch $.
+  ta1 $p |- ( ph -> ch ) $= wch wph ta1.1 a1i $.
+$}
+${
+  $d x ps $.
+  axu.1 $e |- ( ph -> A. x ps ) $.
+  axu $a |- ph $.
+$}
+${
+  $d z ph $.
+  tdv2 $p |- ph $= wph wph vz wph vz ax-5 axu $.
+$}
+";
+
+pub fn proving_bytes() -> Vec<u8> {
+    let src = format!("{LOGIC}{EXTRA}{PROVING}");
+    let bytes = pack_all(&db(&src)).expect("the proving library packs");
+    library::check(&bytes).expect("the kernel accepts the proving library");
+    bytes
+}
+
+/// A logic with nothing that fits a bare variable, and a theorem that is its own hypothesis.
+pub const BARE: &str = "
+$c ( ) -> wff |- $.
+$v ph ps $.
+wph $f wff ph $.
+wps $f wff ps $.
+wi $a wff ( ph -> ps ) $.
+ax-1 $a |- ( ph -> ( ps -> ph ) ) $.
+${
+  th.1 $e |- ph $.
+  th $p |- ph $= th.1 $.
+$}
+";
+
+pub fn bare_bytes() -> Vec<u8> {
+    pack_all(&db(BARE)).expect("the bare logic packs")
+}
+
+/// The number of `label` in the library `bytes`.
+pub fn index_of(bytes: &[u8], label: &str) -> usize {
+    library::read(bytes)
+        .expect("library reads")
+        .iter()
+        .position(|a| a.label == label)
+        .unwrap_or_else(|| panic!("no {label}"))
+}
+
+/// A logic with one rule that turns `ps` into `( ph -> ps )`, and a theorem that nests `ph`
+/// under `depth` implications, so proving it takes `depth` applications and a hypothesis.
+pub fn chain_bytes(depth: usize) -> Vec<u8> {
+    let (mut statement, mut syntax, mut proof) =
+        ("ph".to_string(), "wph".to_string(), "chain.1".to_string());
+    for _ in 0..depth {
+        proof = format!("wph {syntax} {proof} axs");
+        statement = format!("( ph -> {statement} )");
+        syntax = format!("wph {syntax} wi");
+    }
+    let src = format!(
+        "$c ( ) -> wff |- $.
+$v ph ps $.
+wph $f wff ph $.
+wps $f wff ps $.
+wi $a wff ( ph -> ps ) $.
+${{
+  axs.1 $e |- ps $.
+  axs $a |- ( ph -> ps ) $.
+$}}
+${{
+  chain.1 $e |- ph $.
+  chain $p |- {statement} $= {proof} $.
+$}}
+"
+    );
+    let bytes = pack_all(&db(&src)).expect("the chain library packs");
+    library::check(&bytes).expect("the kernel accepts the chain library");
+    bytes
 }

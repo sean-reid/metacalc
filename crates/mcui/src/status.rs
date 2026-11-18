@@ -30,27 +30,51 @@ impl Mark {
     }
 }
 
-/// The mark of every assertion. A proof only uses earlier assertions, so one pass settles them;
-/// one that names itself or a later assertion cannot be right and shows as failed.
+/// The mark of assertion `at` given the marks of the ones before it. A proof only uses earlier
+/// assertions; one that names itself or a later assertion cannot be right and shows as failed.
+fn mark_of(assertions: &[Assertion], status: &[Status], marks: &[Mark], at: usize) -> Mark {
+    let assertion = &assertions[at];
+    let forward = assertion
+        .references
+        .iter()
+        .any(|r| matches!(r, Reference::Assertion(i) if *i >= at));
+    match status[at] {
+        _ if forward => Mark::Failed,
+        Status::Unchecked => Mark::Unchecked,
+        Status::Failed => Mark::Failed,
+        Status::Checked => {
+            let rests = assertion.references.iter().any(|r| match r {
+                Reference::Assertion(i) => marks.get(*i).is_some_and(|&m| m != Mark::Checked),
+                _ => false,
+            });
+            if rests { Mark::Resting } else { Mark::Checked }
+        }
+    }
+}
+
+/// The mark of every assertion, settled in one pass.
 pub fn marks(assertions: &[Assertion], status: &[Status]) -> Vec<Mark> {
     let mut marks: Vec<Mark> = Vec::with_capacity(assertions.len());
-    for (at, (assertion, status)) in assertions.iter().zip(status).enumerate() {
-        let forward = assertion
-            .references
-            .iter()
-            .any(|r| matches!(r, Reference::Assertion(i) if *i >= at));
-        marks.push(match status {
-            _ if forward => Mark::Failed,
-            Status::Unchecked => Mark::Unchecked,
-            Status::Failed => Mark::Failed,
-            Status::Checked => {
-                let rests = assertion.references.iter().any(|r| match r {
-                    Reference::Assertion(i) => marks.get(*i).is_some_and(|&m| m != Mark::Checked),
-                    _ => false,
-                });
-                if rests { Mark::Resting } else { Mark::Checked }
-            }
-        });
+    for at in 0..assertions.len() {
+        let mark = mark_of(assertions, status, &marks, at);
+        marks.push(mark);
     }
     marks
+}
+
+/// Settles `marks` again after the status of assertion `changed` moved: its own mark, then only
+/// the assertions that use one whose mark changed.
+pub fn update(assertions: &[Assertion], status: &[Status], marks: &mut [Mark], changed: usize) {
+    let mut moved = vec![false; assertions.len()];
+    for at in changed..assertions.len() {
+        let uses_moved = assertions[at].references.iter().any(
+            |r| matches!(r, Reference::Assertion(i) if moved.get(*i).copied().unwrap_or(false)),
+        );
+        if at != changed && !uses_moved {
+            continue;
+        }
+        let mark = mark_of(assertions, status, marks, at);
+        moved[at] = mark != marks[at];
+        marks[at] = mark;
+    }
 }

@@ -5,33 +5,10 @@ mod support;
 
 use mcui::Key::*;
 use mcui::Ui;
-use std::path::PathBuf;
-use support::{extra_ui, open, press, typed, ui};
+use support::{check_frame, extra_ui, open, press, typed, ui};
 
 fn check(ui: &Ui, name: &str) {
     check_frame(&ui.frame(), name);
-}
-
-/// Compares `frame` with the checked-in text art. With MCUI_BLESS set the art is rewritten first
-/// and compared as usual, so a blessing run cannot pass without a comparison; a CI run cannot bless.
-fn check_frame(frame: &mcglyph::Bitmap, name: &str) {
-    assert_eq!((frame.width(), frame.height()), (96, 64), "{name}");
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/frames")
-        .join(format!("{name}.txt"));
-    let got = format!("{frame}\n");
-    if std::env::var("MCUI_BLESS").is_ok_and(|v| v == "1") {
-        assert!(
-            std::env::var_os("CI").is_none(),
-            "frames cannot be blessed in CI"
-        );
-        std::fs::write(&path, &got).expect("write frame");
-    }
-    let want = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
-    assert!(
-        got == want,
-        "{name} differs\n--- got\n{got}--- want\n{want}"
-    );
 }
 
 #[test]
@@ -104,7 +81,7 @@ fn proof_subgoal() {
 #[test]
 fn not_available_yet() {
     let mut ui = ui();
-    press(&mut ui, &[Enter, F4]);
+    press(&mut ui, &[Down, Enter]);
     check(&ui, "unavailable");
 }
 

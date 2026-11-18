@@ -251,6 +251,7 @@ dependencies = [
 name = "mcui"
 version = "0.1.0"
 dependencies = [
+ "mcedit",
  "mcglyph",
  "mcpack",
 ]

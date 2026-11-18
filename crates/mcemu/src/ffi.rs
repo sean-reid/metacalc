@@ -17,6 +17,7 @@ unsafe extern "C" {
     fn mcemu_out(calc: *mut Raw, port: u8, value: u8);
     fn mcemu_key(calc: *mut Raw, scancode: i32, down: i32);
     fn mcemu_run(calc: *mut Raw, pc: u16, limit: i32, elapsed: *mut u32) -> u32;
+    fn mcemu_pc(calc: *const Raw) -> u16;
     fn mcemu_lcd(calc: *mut Raw, out: *mut u8, width: i32, height: i32) -> i32;
 }
 
@@ -63,6 +64,11 @@ impl Calc {
         // SAFETY: the handle is live and `elapsed` outlives the call.
         let reason = unsafe { mcemu_run(self.0.as_ptr(), pc, limit, &mut elapsed) };
         (reason, elapsed)
+    }
+
+    pub fn pc(&self) -> u16 {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_pc(self.0.as_ptr()) }
     }
 
     pub fn lcd(&mut self, out: &mut [u8], width: usize, height: usize) -> bool {

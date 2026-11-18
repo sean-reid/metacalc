@@ -56,6 +56,12 @@ pub struct Layout {
 }
 
 impl Layout {
+    /// A layout with nothing in it.
+    pub fn empty() -> Layout {
+        let expr = Expr::flat(Vec::new(), &[]);
+        layout(&expr, &Folds::none(&expr), 1)
+    }
+
     pub fn rows(&self) -> usize {
         self.lines.len()
     }
@@ -236,4 +242,11 @@ pub fn fit(items: &[Fit], rows: usize) -> Vec<Folds> {
 /// [`fit`] for one statement.
 pub fn fit_one(expr: &Expr, width: usize, rows: usize) -> Folds {
     fit(&[Fit { expr, width }], rows).remove(0)
+}
+
+/// `expr` folded to fit `rows` lines of `width` pixels, and cut with an ellipsis when even its
+/// root does not.
+pub fn fitted(expr: &Expr, width: usize, rows: usize) -> Layout {
+    let folds = fit_one(expr, width, rows);
+    layout(expr, &folds, width).clipped(width, rows)
 }

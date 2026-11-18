@@ -599,7 +599,7 @@ fn a_kind_with_nothing_in_it_shows_an_empty_list_that_does_not_open() {
 }
 
 #[test]
-fn my_proofs_and_verify_open_the_not_available_frame() {
+fn my_proofs_opens_the_not_available_frame_and_verify_needs_a_library() {
     let mut ui = ui();
     press(&mut ui, &[Down, Enter]);
     assert_eq!(
@@ -621,14 +621,14 @@ fn my_proofs_and_verify_open_the_not_available_frame() {
 
 #[test]
 fn notice_and_about_leave_on_clear_or_enter_and_ignore_the_rest() {
-    for open_with in [vec![F2], vec![F3]] {
+    for open_with in [vec![Down, F2], vec![F3]] {
         for leave in [Clear, Enter] {
             let mut ui = ui();
             press(&mut ui, &open_with);
             let frame = ui.frame();
             press(
                 &mut ui,
-                &[Up, Down, Left, Right, F1, F2, F3, F4, F5, Letter('x')],
+                &[Up, Down, Left, Right, F1, F2, F3, F4, F5, On, Letter('x')],
             );
             assert!(ui.frame() == frame);
             assert_eq!(ui.depth(), 2);

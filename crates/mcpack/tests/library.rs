@@ -429,6 +429,222 @@ fn a_failed_check_leaves_nothing_behind_for_the_next_one() {
     assert_eq!(kernel.verify(number(&db, "good")), Ok(()));
 }
 
+#[derive(Clone, Copy)]
+enum Tok {
+    Var(usize),
+    Const,
+}
+
+/// A library whose theorem `t` applies an axiom of `terms.len()` variables, all pairwise disjoint,
+/// to one term per variable; `nv` variables w0.. are free to use in the terms and the theorem
+/// declares all of them disjoint. Without `checked` neither declares a pair, and the proof does
+/// the same steps with no disjoint check to make.
+fn disjoint_source(terms: &[Vec<Tok>], nv: usize, checked: bool) -> String {
+    let zs: Vec<String> = (0..terms.len()).map(|i| format!("z{i}")).collect();
+    let ws: Vec<String> = (0..nv).map(|i| format!("w{i}")).collect();
+    let mut src = format!(
+        "$c wff |- R k $. $v p q {} {} $.\n\
+         fp $f wff p $. fq $f wff q $. wk $a wff k $. wc $a wff p q $.\n",
+        zs.join(" "),
+        ws.join(" ")
+    );
+    for var in zs.iter().chain(&ws) {
+        src += &format!("f{var} $f wff {var} $.\n");
+    }
+    let dv = |vars: &[String]| {
+        if checked && vars.len() > 1 {
+            format!("$d {} $.", vars.join(" "))
+        } else {
+            String::new()
+        }
+    };
+    src += &format!("${{ {} ax-d $a |- R {} $. $}}\n", dv(&zs), zs.join(" "));
+    let (mut expr, mut proof) = (Vec::new(), Vec::new());
+    for term in terms {
+        for (i, tok) in term.iter().enumerate() {
+            let (sym, label) = match tok {
+                Tok::Var(v) => (format!("w{v}"), format!("fw{v}")),
+                Tok::Const => ("k".to_string(), "wk".to_string()),
+            };
+            expr.push(sym);
+            proof.push(label);
+            if i > 0 {
+                proof.push("wc".into());
+            }
+        }
+    }
+    proof.push("ax-d".into());
+    src += &format!(
+        "${{ {} t $p |- R {} $= {} $. $}}\n",
+        dv(&ws),
+        expr.join(" "),
+        proof.join(" ")
+    );
+    src
+}
+
+/// The units of work `t` costs when `terms` is `[x vars, y vars]`, every variable distinct, with
+/// `xk` and `yk` constants added to the two terms.
+fn two_term_work(x: usize, y: usize, xk: usize, yk: usize) -> u32 {
+    let n = (x + y) * (x + y - 1) / 2;
+    (1 + (x + xk) + x * (y + yk) + x * y * (1 + n)) as u32
+}
+
+/// `x` variables then `xk` constants, and `y` other variables then `yk` constants.
+fn two_terms(x: usize, y: usize, xk: usize, yk: usize) -> Vec<Vec<Tok>> {
+    let mut left: Vec<Tok> = (0..x).map(Tok::Var).collect();
+    left.extend(vec![Tok::Const; xk]);
+    let mut right: Vec<Tok> = (x..x + y).map(Tok::Var).collect();
+    right.extend(vec![Tok::Const; yk]);
+    vec![left, right]
+}
+
+fn work_of(terms: &[Vec<Tok>], nv: usize) -> (Result<(), KernelError>, u32) {
+    let db = db(&disjoint_source(terms, nv, true));
+    let bytes = pack(&db, &everything(&db)).unwrap();
+    let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).unwrap();
+    let result = kernel.verify(number(&db, "t"));
+    (result, kernel.work())
+}
+
+#[test]
+fn the_work_of_a_disjoint_check_is_charged_as_documented() {
+    for (x, y, xk, yk) in [
+        (1, 1, 0, 0),
+        (2, 3, 0, 0),
+        (2, 3, 5, 0),
+        (2, 3, 0, 5),
+        (4, 4, 7, 9),
+    ] {
+        let (result, work) = work_of(&two_terms(x, y, xk, yk), x + y);
+        assert_eq!(result, Ok(()));
+        assert_eq!(work, two_term_work(x, y, xk, yk), "{x} {y} {xk} {yk}");
+    }
+}
+
+#[test]
+fn a_disjoint_check_stops_at_the_work_limit() {
+    assert_eq!(library::WORK_LIMIT, 131072);
+    let at = (27, 8, 13, 77);
+    assert_eq!(two_term_work(at.0, at.1, at.2, at.3), library::WORK_LIMIT);
+    let (result, work) = work_of(&two_terms(at.0, at.1, at.2, at.3), 35);
+    assert_eq!((result, work), (Ok(()), library::WORK_LIMIT));
+    let (result, work) = work_of(&two_terms(at.0, at.1, at.2 + 1, at.3), 35);
+    assert_eq!(result, Err(KernelError::WorkLimit));
+    assert!(work <= library::WORK_LIMIT);
+    let (result, _) = work_of(&two_terms(4, 38, 0, 0), 42);
+    assert_eq!(result, Err(KernelError::WorkLimit));
+}
+
+#[test]
+fn the_work_count_starts_again_with_each_call() {
+    let db = db(&disjoint_source(&two_terms(3, 3, 0, 0), 6, true));
+    let bytes = pack(&db, &everything(&db)).unwrap();
+    let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).unwrap();
+    let id = number(&db, "t");
+    for _ in 0..3 {
+        assert_eq!(kernel.verify(id), Ok(()));
+        assert_eq!(kernel.work(), two_term_work(3, 3, 0, 0));
+    }
+    assert_eq!(kernel.verify(number(&db, "ax-d")), Ok(()));
+    assert_eq!(kernel.work(), 0);
+}
+
+/// A theorem `t` that applies an axiom with the pair x y disjoint once for each `(x, y)` term
+/// pair and joins the results; w0.. `listed` of them declared pairwise disjoint, `nv` available.
+fn joined_source(applies: &[(Vec<Tok>, Vec<Tok>)], nv: usize, listed: usize) -> String {
+    let ws: Vec<String> = (0..nv).map(|i| format!("w{i}")).collect();
+    let mut src = format!(
+        "$c wff |- R k $. $v p q x y {} $.\n\
+         fp $f wff p $. fq $f wff q $. fx $f wff x $. fy $f wff y $.\n\
+         wk $a wff k $. wc $a wff p q $. ax-gen $a |- R x y $.\n\
+         ${{ $d x y $. ax-e.1 $e |- R x y $. ax-e $a |- R k $. $}}\n\
+         ${{ j.1 $e |- R k $. j.2 $e |- R k $. ax-j $a |- R k $. $}}\n",
+        ws.join(" ")
+    );
+    for var in &ws {
+        src += &format!("f{var} $f wff {var} $.\n");
+    }
+    let term = |tokens: &[Tok]| {
+        let mut proof = Vec::new();
+        for (i, tok) in tokens.iter().enumerate() {
+            proof.push(match tok {
+                Tok::Var(v) => format!("fw{v}"),
+                Tok::Const => "wk".to_string(),
+            });
+            if i > 0 {
+                proof.push("wc".into());
+            }
+        }
+        proof.join(" ")
+    };
+    let mut proof: Vec<String> = Vec::new();
+    for (i, (x, y)) in applies.iter().enumerate() {
+        let (x, y) = (term(x), term(y));
+        proof.push(format!("{x} {y} {x} {y} ax-gen ax-e"));
+        if i > 0 {
+            proof.push("ax-j".into());
+        }
+    }
+    let dv = if listed > 1 {
+        format!("$d {} $.", ws[..listed].join(" "))
+    } else {
+        String::new()
+    };
+    src += &format!("${{ {dv} t $p |- R k $= {} $. $}}\n", proof.join(" "));
+    src
+}
+
+type Applies = Vec<(Vec<Tok>, Vec<Tok>)>;
+
+fn pair(terms: Vec<Vec<Tok>>) -> (Vec<Tok>, Vec<Tok>) {
+    let mut terms = terms.into_iter();
+    (terms.next().unwrap(), terms.next().unwrap())
+}
+
+/// Three proofs of `|- R k` that apply the disjoint axiom twice, the first by `big` units.
+fn joined_cases() -> Vec<(&'static str, Applies, usize, usize, KernelError)> {
+    let var = |i| (vec![Tok::Var(0)], vec![Tok::Var(i)]);
+    vec![
+        (
+            "each apply alone is under the limit",
+            vec![pair(two_terms(27, 8, 0, 0)), pair(two_terms(27, 8, 0, 0))],
+            35,
+            35,
+            KernelError::WorkLimit,
+        ),
+        (
+            "a violation just inside the limit",
+            vec![pair(two_terms(27, 8, 0, 0)), var(35)],
+            36,
+            35,
+            KernelError::DisjointViolation,
+        ),
+        (
+            "a violation whose comparison charge crosses the limit",
+            vec![pair(two_terms(27, 8, 0, 60)), var(35)],
+            36,
+            35,
+            KernelError::WorkLimit,
+        ),
+    ]
+}
+
+#[test]
+fn the_work_of_all_the_applies_of_a_call_is_added_up() {
+    let alone = db(&joined_source(&[pair(two_terms(27, 8, 0, 0))], 35, 35));
+    let bytes = pack(&alone, &everything(&alone)).unwrap();
+    let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).unwrap();
+    assert_eq!(kernel.verify(number(&alone, "t")), Ok(()));
+    assert!(kernel.work() < library::WORK_LIMIT && 2 * kernel.work() > library::WORK_LIMIT);
+    for (name, applies, nv, listed, expected) in joined_cases() {
+        let db = db(&joined_source(&applies, nv, listed));
+        let bytes = pack(&db, &everything(&db)).unwrap();
+        let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).unwrap();
+        assert_eq!(kernel.verify(number(&db, "t")), Err(expected), "{name}");
+    }
+}
+
 #[test]
 fn a_record_that_crosses_a_page_is_refused() {
     let mut src = String::from("$c T wff |- $.\n");

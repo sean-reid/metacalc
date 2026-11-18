@@ -1,4 +1,4 @@
-use super::{Ctx, Nav, Screen, State, notice::Notice, reveal, step, theorem::Theorem};
+use super::{Ctx, Nav, Screen, State, proving::Proving, reveal, step, theorem::Theorem};
 use crate::canvas::{Canvas, PREFIX_WIDTH, TEXT_WIDTH, tail};
 use crate::fold::{Fit, Layout, fit, layout};
 use crate::key::Key;
@@ -143,7 +143,11 @@ impl List {
                     self.jump(ctx);
                 }
             }
-            Key::F4 => return Nav::push(Notice::unavailable("Prove")),
+            Key::F4 => {
+                if let Some(i) = self.current() {
+                    return Nav::push(Proving::open(ctx, self.library, i));
+                }
+            }
             Key::Letter(c) if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') => {
                 self.find.push(c);
                 self.jump(ctx);

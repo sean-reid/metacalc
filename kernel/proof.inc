@@ -83,8 +83,20 @@ verify_body:
 	ld bc,(CUR_DESC+D_PLEN)
 	add hl,bc
 	ld (kv_proof_end),hl
+	ld hl,WORK_LIMIT & $FFFF
+	ld (kv_work),hl
+	ld a,WORK_LIMIT >> 16
+	ld (kv_work+2),a
+	ld hl,(CUR_DESC+D_NDV)
+	ld de,(CUR_DESC+D_NEXTRA)
+	add hl,de
+	inc hl
+	ld (kv_charge),hl
 
 vb_loop:
+	in a,(4)
+	and 8
+	jp z,fail_interrupted
 	ld hl,(kv_proof_ptr)
 	ld de,(kv_proof_end)
 	or a

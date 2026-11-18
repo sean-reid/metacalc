@@ -17,7 +17,20 @@ pub enum KernelError {
     DisjointViolation,
     StackNotSingleton,
     WrongConclusion,
+    /// The disjoint-variable checks of one `verify` call would pass `WORK_LIMIT` units of work.
+    WorkLimit,
 }
+
+/// The most work one `verify` call may spend in disjoint-variable checks. The check applies one
+/// pair of the applied assertion at a time, to the two substituted expressions `X` and `Y` that
+/// replace its variables, and every loop iteration is charged before it runs:
+/// 1 per pair of the applied assertion; 1 per symbol of `X`, constant or variable; for each
+/// variable of `X`, 1 per symbol of `Y`; and for each variable of `X` against each variable of `Y`,
+/// `1 + n` more, `n` being the number of pairs in the theorem being checked (both lists), however
+/// early the scan would find a match. A charge that would take the total past `WORK_LIMIT` makes
+/// the call return `WorkLimit` without doing that work. Kernel status 14 (ON key pressed) is never
+/// produced here.
+pub const WORK_LIMIT: u32 = 131072;
 
 /// The working memory a check may use, in the units the calculator budgets.
 #[derive(Debug, Clone, Copy)]
@@ -38,6 +51,16 @@ impl Limits {
 }
 
 type Res<T> = Result<T, KernelError>;
+
+fn charge(work: &mut u32, amount: u32) -> Res<()> {
+    match work.checked_add(amount) {
+        Some(total) if total <= WORK_LIMIT => {
+            *work = total;
+            Ok(())
+        }
+        _ => Err(KernelError::WorkLimit),
+    }
+}
 
 enum Hyp<'a> {
     Float(u8),
@@ -104,6 +127,7 @@ pub struct Kernel<'a> {
     scratch: Vec<u8>,
     /// Outcome of `check_record` per assertion, once known.
     sound: Vec<Option<bool>>,
+    work: u32,
 }
 
 impl<'a> Kernel<'a> {
@@ -159,6 +183,7 @@ impl<'a> Kernel<'a> {
             subst: [None; 256],
             scratch: Vec::new(),
             sound: vec![None; assertions],
+            work: 0,
         })
     }
 
@@ -284,8 +309,14 @@ impl<'a> Kernel<'a> {
         }
     }
 
+    /// The work the last `verify` call charged.
+    pub fn work(&self) -> u32 {
+        self.work
+    }
+
     /// Checks one assertion: its record, and for a theorem its proof against earlier records.
     pub fn verify(&mut self, id: usize) -> Res<()> {
+        self.work = 0;
         let record = self.record(id)?;
         self.require_sound(id, &record)?;
         if !record.theorem {
@@ -412,21 +443,10 @@ impl<'a> Kernel<'a> {
                 }
             }
         }
-        let allowed = |a: u8, b: u8| {
-            let mut pairs = current.dv.chunks(2).chain(current.extra_dv.chunks(2));
-            a != b && pairs.any(|pair| pair == [a, b] || pair == [b, a])
-        };
-        for pair in used.dv.chunks(2) {
-            let bound = |var: u8| self.subst[var as usize].ok_or(KernelError::BadRecord);
-            let ((xs, xe), (ys, ye)) = (bound(pair[0])?, bound(pair[1])?);
-            for &a in self.stack[xs..xe].iter().filter(|&&a| self.is_var(a)) {
-                for &b in self.stack[ys..ye].iter().filter(|&&b| self.is_var(b)) {
-                    if !allowed(a, b) {
-                        return Err(KernelError::DisjointViolation);
-                    }
-                }
-            }
-        }
+        let mut work = self.work;
+        let checked = self.check_disjoint(&used, current, &mut work);
+        self.work = work;
+        checked?;
         self.substitute(used.conclusion)?;
         let bottom = self.starts.get(base).copied().unwrap_or(self.stack.len());
         self.starts.truncate(base);
@@ -435,6 +455,36 @@ impl<'a> Kernel<'a> {
         self.stack.extend_from_slice(&self.scratch);
         self.scratch.clear();
         self.within_limits()
+    }
+
+    fn check_disjoint(&self, used: &Record, current: &Record, work: &mut u32) -> Res<()> {
+        let pairs = (current.dv.len() + current.extra_dv.len()) / 2;
+        let allowed = |a: u8, b: u8| {
+            let mut pairs = current.dv.chunks(2).chain(current.extra_dv.chunks(2));
+            a != b && pairs.any(|pair| pair == [a, b] || pair == [b, a])
+        };
+        for pair in used.dv.chunks(2) {
+            charge(work, 1)?;
+            let bound = |var: u8| self.subst[var as usize].ok_or(KernelError::BadRecord);
+            let ((xs, xe), (ys, ye)) = (bound(pair[0])?, bound(pair[1])?);
+            for &a in &self.stack[xs..xe] {
+                charge(work, 1)?;
+                if !self.is_var(a) {
+                    continue;
+                }
+                for &b in &self.stack[ys..ye] {
+                    charge(work, 1)?;
+                    if !self.is_var(b) {
+                        continue;
+                    }
+                    charge(work, 1 + pairs as u32)?;
+                    if !allowed(a, b) {
+                        return Err(KernelError::DisjointViolation);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn substitute(&mut self, expr: &[u8]) -> Res<()> {
