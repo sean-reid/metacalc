@@ -53,7 +53,8 @@ impl Session<'_> {
     /// The proof as an uncompressed label sequence, when nothing is open, unresolved or violated.
     pub fn export(&self) -> Result<Finished, Error> {
         self.check_terms()?;
-        let status = self.status();
+        let report = self.dv_report()?;
+        let status = self.status_of(&report);
         if !(status.open.is_empty() && status.metas.is_empty() && status.violations.is_empty()) {
             return Err(Error::Unfinished {
                 open: status.open.len(),
@@ -85,7 +86,6 @@ impl Session<'_> {
                 }
             }
         }
-        let report = self.dv_report();
         let mut dv = db.stmt(self.theorem).frame.dv.clone();
         dv.extend(report.used);
         dv.sort_unstable();

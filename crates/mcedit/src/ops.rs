@@ -50,7 +50,7 @@ impl Session<'_> {
     pub fn apply(&mut self, goal: GoalId, assertion: StmtId) -> Result<Outcome, Error> {
         self.open_goal(goal)?;
         let parsed = self.usable(assertion)?;
-        let before = self.broken();
+        let before = self.broken()?;
         let undo = self.checkpoint(Some(goal));
         if let Err(e) = self.apply_unchecked(goal, assertion, &parsed) {
             self.rollback_to(undo);
@@ -118,7 +118,7 @@ impl Session<'_> {
             .iter()
             .find(|h| h.0 == hyp)
             .ok_or(Error::NotAHypothesis)?;
-        let before = self.broken();
+        let before = self.broken()?;
         let undo = self.checkpoint(Some(goal));
         let target = self.goals[goal as usize].term;
         if let Err(e) = self.store.unify(target, term) {
@@ -146,7 +146,7 @@ impl Session<'_> {
         if !self.vars.of_typecode(typecode).any(|v| v == var) {
             return Err(Error::NotAVariable);
         }
-        let before = self.broken();
+        let before = self.broken()?;
         let undo = self.checkpoint(None);
         let term = self.store.var(var);
         if let Err(e) = self.store.bind(meta, term) {
@@ -168,7 +168,7 @@ impl Session<'_> {
         if syntax >= self.theorem {
             return Err(Error::Forward);
         }
-        let before = self.broken();
+        let before = self.broken()?;
         let undo = self.checkpoint(None);
         let subst: Vec<(Sym, TermId)> = stmt
             .frame
@@ -201,10 +201,17 @@ impl Session<'_> {
             self.rollback_to(undo);
             return Err(Error::TooLarge);
         }
+        let violations = match self.newly_broken(before) {
+            Ok(found) => found,
+            Err(e) => {
+                self.rollback_to(undo);
+                return Err(e);
+            }
+        };
         let outcome = Outcome {
             goals: undo.goals..self.goals.len() as GoalId,
             metas: undo.metas..self.store.meta_count() as MetaId,
-            violations: self.newly_broken(before),
+            violations,
         };
         self.ops.push(op);
         self.undo.push(undo);

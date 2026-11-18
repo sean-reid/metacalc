@@ -1,9 +1,10 @@
 use crate::catalog::Catalog;
-use crate::dv::{DvCond, Violation};
+use crate::dv::{DvCond, Report, Violation};
 use crate::error::Error;
 use crate::term::{Mark, MetaId, Peak, Store, TermId};
 use crate::vars::Vars;
 use mcpack::mm::{Database, Kind, ProofError, StmtId, Sym, Tree};
+use std::cell::Cell;
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -90,6 +91,8 @@ pub struct Session<'a> {
     pub(crate) undo: Vec<Undo>,
     pub(crate) peak: Sizes,
     pub(crate) auto_nodes: usize,
+    pub(crate) walks: Cell<usize>,
+    pub(crate) visits: Cell<usize>,
 }
 
 impl<'a> Session<'a> {
@@ -126,6 +129,8 @@ impl<'a> Session<'a> {
             undo: Vec::new(),
             peak: Sizes::default(),
             auto_nodes: 0,
+            walks: Cell::new(0),
+            visits: Cell::new(0),
         };
         let essentials = stmt
             .frame
@@ -225,8 +230,22 @@ impl<'a> Session<'a> {
         peak
     }
 
+    /// How many times the proof was walked for syntax-axiom pairs and how many terms those walks
+    /// visited.
+    #[doc(hidden)]
+    pub fn syntax_walk_stats(&self) -> (usize, usize) {
+        (self.walks.get(), self.visits.get())
+    }
+
+    /// The state of the proof. A live session's goal and metavariable ids are always valid, so
+    /// the walk behind the report cannot fail here and the stored pairs alone stand in if it
+    /// does; `export` reports the error.
     pub fn status(&self) -> Status {
-        let report = self.dv_report();
+        let report = self.dv_report().unwrap_or_else(|_| self.stored_report());
+        self.status_of(&report)
+    }
+
+    pub(crate) fn status_of(&self, report: &Report) -> Status {
         let mut open = Vec::new();
         let mut pending = vec![0 as GoalId];
         while let Some(goal) = pending.pop() {
@@ -239,8 +258,8 @@ impl<'a> Session<'a> {
         Status {
             open,
             metas: self.store.unbound().collect(),
-            violations: report.violations,
-            added_dv: report.added,
+            violations: report.violations.clone(),
+            added_dv: report.added.clone(),
         }
     }
 

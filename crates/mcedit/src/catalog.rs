@@ -1,4 +1,4 @@
-use mcpack::mm::{Database, Grammar, Parsed, StmtId, SyntaxError};
+use mcpack::mm::{Database, Grammar, Kind, Parsed, StmtId, SyntaxError};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -8,6 +8,7 @@ pub struct Catalog<'a> {
     pub db: &'a Database,
     library: u32,
     grammar: &'a Grammar<'a>,
+    syntax_dv: bool,
     parsed: RefCell<HashMap<StmtId, Result<Rc<Parsed>, SyntaxError>>>,
 }
 
@@ -19,8 +20,14 @@ impl<'a> Catalog<'a> {
             db,
             library,
             grammar,
+            syntax_dv: has_syntax_dv(db),
             parsed: RefCell::new(HashMap::new()),
         })
+    }
+
+    /// Whether some syntax axiom declares a disjoint pair.
+    pub(crate) fn syntax_dv(&self) -> bool {
+        self.syntax_dv
     }
 
     pub fn library(&self) -> u32 {
@@ -35,4 +42,15 @@ impl<'a> Catalog<'a> {
         self.parsed.borrow_mut().insert(id, result.clone());
         result
     }
+}
+
+fn has_syntax_dv(db: &Database) -> bool {
+    let typed = |code| {
+        db.stmts
+            .iter()
+            .any(|s| s.kind == Kind::Float && s.expr[0] == code)
+    };
+    db.stmts
+        .iter()
+        .any(|s| s.kind == Kind::Axiom && !s.frame.dv.is_empty() && typed(s.expr[0]))
 }
