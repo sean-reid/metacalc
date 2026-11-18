@@ -1,4 +1,5 @@
 use crate::support::*;
+use mcpack::library::{Kernel, WORK_LIMIT};
 
 // T-state ceilings per library, 5 percent above the measured cost; they fail a kernel change that slows verification.
 const CEILINGS: [(&str, u32); 3] = [
@@ -42,4 +43,48 @@ fn the_shipped_libraries_verify_on_the_device_as_the_model_does() {
             "{name} took {tstates} T-states, over the ceiling of {ceiling}"
         );
     }
+}
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn no_honest_proof_in_a_shipped_library_charges_over_an_eighth_of_the_work_limit() {
+    let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    let mut largest = (0, String::new());
+    for name in ["prop", "pred", "ring"] {
+        let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
+        let mut kernel = Kernel::new(&bytes, clamped(ASKED_UNBOUNDED)).expect("library loads");
+        let mut worst = (0, 0);
+        for id in 0..kernel.assertions() {
+            assert_eq!(kernel.verify(id), Ok(()), "{name} {id}");
+            if kernel.work() > worst.0 {
+                worst = (kernel.work(), id);
+            }
+        }
+        let (work, id) = worst;
+        let label = String::from_utf8_lossy(kernel.label(id).unwrap()).into_owned();
+        let mut device = Device::with_library(&bytes);
+        assert_eq!(
+            device.verify(id, ASKED_UNBOUNDED).verify,
+            0,
+            "{name} {label}"
+        );
+        assert_eq!(
+            device.work_charged(),
+            work,
+            "{name} {label}: the device's count"
+        );
+        println!("{name}: largest count {work}, in {label}");
+        if work > largest.0 {
+            largest = (work, format!("{name} {label}"));
+        }
+    }
+    println!(
+        "largest count {} in {}, limit {WORK_LIMIT}",
+        largest.0, largest.1
+    );
+    assert!(
+        u64::from(largest.0) * 8 <= u64::from(WORK_LIMIT),
+        "{} is over an eighth of {WORK_LIMIT}",
+        largest.0
+    );
 }
