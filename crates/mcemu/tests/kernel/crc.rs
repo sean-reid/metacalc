@@ -5,17 +5,17 @@ use mcpack::library::{CHUNK, Kernel, crc32};
 const MORE: u8 = 0xFF;
 const MALFORMED: u8 = 1;
 
-struct Crc {
-    init: u8,
-    begin: u8,
-    statuses: Vec<u8>,
-    value: u32,
-    tstates: u32,
+pub(crate) struct Crc {
+    pub(crate) init: u8,
+    pub(crate) begin: u8,
+    pub(crate) statuses: Vec<u8>,
+    pub(crate) value: u32,
+    pub(crate) tstates: u32,
 }
 
 impl Crc {
     /// The status the app would see: the first refusal, else the last chunk's.
-    fn overall(&self) -> u8 {
+    pub(crate) fn overall(&self) -> u8 {
         if self.init != 0 {
             self.init
         } else if self.begin != 0 {
@@ -43,7 +43,7 @@ fn run_entry(device: &mut Device, entry: &str, max_calls: u8) -> Crc {
     }
 }
 
-fn run_crc(device: &mut Device) -> Crc {
+pub(crate) fn run_crc(device: &mut Device) -> Crc {
     run_entry(device, "ENTRY_CRC", 255)
 }
 
@@ -56,7 +56,7 @@ fn model_accepts(bytes: &[u8]) -> bool {
 }
 
 /// `base` with deterministic filler appended up to `len` bytes, sealed.
-fn padded(base: &[u8], len: usize) -> Vec<u8> {
+pub(crate) fn padded(base: &[u8], len: usize) -> Vec<u8> {
     let mut bytes = base.to_vec();
     let mut state = 0x2545_F491u32;
     while bytes.len() < len {
