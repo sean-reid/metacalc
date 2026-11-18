@@ -82,8 +82,9 @@ ui_invert_row:
 	call ui_row_addr
 	ld de,-UI_STRIDE
 	add hl,de
-	ld b,UI_ROW*UI_STRIDE/4
+	ld b,UI_ROW*UI_STRIDE/16
 ir_loop:
+#macro CPL4
 	ld a,(hl)
 	cpl
 	ld (hl),a
@@ -100,6 +101,11 @@ ir_loop:
 	cpl
 	ld (hl),a
 	inc hl
+#endmacro
+	CPL4
+	CPL4
+	CPL4
+	CPL4
 	djnz ir_loop
 	ret
 
