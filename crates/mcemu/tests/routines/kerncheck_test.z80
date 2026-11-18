@@ -6,6 +6,7 @@ OUT_PTR   = 0A000h
 OUT_SPEED = 0A002h
 OUT_AFTER = 0A003h
 OUT_BUF   = 0A010h
+IY_TEST   = 0B800h
 
 .org 4000h
 	jp main
@@ -15,6 +16,7 @@ main:
 	out (3), a
 	ld hl, OUT_BUF
 	ld (OUT_PTR), hl
+	ld iy, IY_TEST
 	ei
 	nop
 	call kernchk_run

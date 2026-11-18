@@ -5,7 +5,8 @@
 ; the kernel restores after every call; the parameter block for kernel_init is its first nine bytes.
 ; Checks the library whose first chunk is on the page below the app: kernel_init, the CRC-32 run
 ; chunk by chunk, then kernel_verify for assertion 0 to count - 1, with a progress line between
-; calls. Stops when a call returns 14 or ON is down between calls. Runs at 15 MHz and restores the
+; calls. Stops when a call returns 14 or ON is down between calls, then waits for ON to come up and clears the
+; OS break before printing, so the app stays running. IY must be the OS flags pointer. Runs at 15 MHz and restores the
 ; speed on return. The result stays in scratch and is printed last.
 
 KD_PORT_SPEED = 20h
@@ -245,6 +246,9 @@ kd_show_check:
 	jp putdec
 
 kd_report:
+	ld a, (K_STOPPED)
+	or a
+	call nz, on_release_and_clear
 	ld a, 0Ch
 	call putchar
 	ld hl, s_title
@@ -337,3 +341,4 @@ s_stopped_at:
 	.db "stopped ", 0
 
 #include "printnum.inc"
+#include "onbreak.inc"

@@ -113,10 +113,29 @@ impl Rig {
         u16::from_le_bytes([b[0], b[1]])
     }
 
-    pub fn run_to_end(&mut self) -> u32 {
-        let run = self.m.run(ENTRY, LIMIT);
-        assert_eq!(run.stop, Stop::Halted);
-        run.tstates
+    pub fn run_to_end(&mut self) -> usize {
+        self.finish(ENTRY, 0)
+    }
+
+    /// Runs from `pc` to the end of the test routine. Each time the driver halts in its wait for
+    /// ON to come up it counts one wait, and after `holds` of them the key is released. Returns
+    /// the waits.
+    pub fn finish(&mut self, mut pc: u16, holds: usize) -> usize {
+        let halted_in_wait = label("ON_WAIT_HALTED");
+        let mut waits = 0;
+        loop {
+            let run = self.m.run(pc, LIMIT);
+            assert_ne!(run.stop, Stop::Fault);
+            pc = self.m.pc();
+            if pc != halted_in_wait && pc + 1 != halted_in_wait {
+                return waits;
+            }
+            pc = halted_in_wait;
+            waits += 1;
+            if waits == holds {
+                self.m.release_key(Machine::KEY_ON);
+            }
+        }
     }
 
     /// Runs in steps of `step` T-states, from the start, until the trace holds `marker`.

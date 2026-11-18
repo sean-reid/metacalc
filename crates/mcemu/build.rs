@@ -233,6 +233,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../probe/sparescreen.inc");
     println!("cargo:rerun-if-changed=../../probe/printnum.inc");
     println!("cargo:rerun-if-changed=../../probe/kerndriver.inc");
+    println!("cargo:rerun-if-changed=../../probe/onbreak.inc");
     println!("cargo:rerun-if-changed=../../app/src/libpage.inc");
     println!("cargo:rerun-if-changed=../../app/src/equates.inc");
     println!("cargo:rerun-if-changed=../../app/src/header.inc");

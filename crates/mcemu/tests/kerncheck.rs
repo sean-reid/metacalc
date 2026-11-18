@@ -134,7 +134,7 @@ fn on_held_before_the_run_stops_it_in_the_checksum() {
     let bytes = axioms(300);
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     rig.m.press_key(Machine::KEY_ON);
-    rig.run_to_end();
+    assert_eq!(rig.finish(ENTRY, 3), 3);
     let (_, result) = screens(&rig.trace());
     assert_eq!(
         result,
@@ -154,8 +154,7 @@ fn on_pressed_during_the_checksum_stops_it_at_that_chunk() {
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     let pc = rig.run_until_trace_has("\rcrc 00002/", 100_000);
     rig.m.press_key(Machine::KEY_ON);
-    let run = rig.m.run(pc, LIMIT);
-    assert_eq!(run.stop, Stop::Halted);
+    assert!(rig.finish(pc, 2) >= 1);
     let (_, result) = screens(&rig.trace());
     let at = rig.word("K_STOP_AT");
     assert!((2..=3).contains(&at), "stopped at chunk {at}");
@@ -177,8 +176,7 @@ fn on_pressed_during_verification_stops_there_and_reports_where() {
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     let pc = rig.run_until_trace_has("\rchk 00064/", 5_000);
     rig.m.press_key(Machine::KEY_ON);
-    let run = rig.m.run(pc, LIMIT);
-    assert_eq!(run.stop, Stop::Halted);
+    assert!(rig.finish(pc, 2) >= 1);
     let (_, result) = screens(&rig.trace());
     let done = rig.word("K_DONE");
     assert!((64..2000).contains(&usize::from(done)), "stopped at {done}");
@@ -216,6 +214,7 @@ fn press_in_proof(bytes: &[u8], nth: usize) -> (bool, Rig) {
         pc = rig.m.pc();
         driver_looked |= pc == on_down;
         if run.stop == Stop::Halted {
+            assert!(rig.finish(pc, 1) >= 1);
             return (driver_looked, rig);
         }
     }
@@ -290,4 +289,63 @@ fn the_app_builds_from_a_library_and_passes_the_checker() {
         "check-8xk: {}",
         String::from_utf8_lossy(&check.stderr)
     );
+}
+
+const FLAGS: usize = 0x3800 + 9;
+
+#[test]
+fn after_an_on_stop_the_report_waits_for_the_key_to_come_up() {
+    let bytes = axioms(300);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    rig.m.press_key(Machine::KEY_ON);
+    let halted_in_wait = label("ON_WAIT_HALTED");
+    let mut pc = ENTRY;
+    for held in 1..=6 {
+        let run = rig.m.run(pc, LIMIT);
+        assert_ne!(run.stop, Stop::Fault);
+        pc = rig.m.pc();
+        assert!(
+            pc == halted_in_wait || pc + 1 == halted_in_wait,
+            "poll {held}"
+        );
+        let trace = rig.trace();
+        assert_eq!(
+            count_of(&trace, "\u{c}"),
+            1,
+            "nothing is printed while ON is down"
+        );
+        pc = halted_in_wait;
+    }
+    rig.m.release_key(Machine::KEY_ON);
+    assert_eq!(rig.finish(pc, 0), 0);
+    let (_, result) = screens(&rig.trace());
+    assert_eq!(
+        result,
+        [
+            "kernchk v1",
+            "crc stopped",
+            "checked 00000",
+            "accepted 00000",
+            "stopped 00000"
+        ]
+    );
+}
+
+#[test]
+fn the_pending_os_break_is_cleared_after_an_on_stop_and_nothing_else_is_touched() {
+    let bytes = axioms(300);
+    for (press, want) in [(true, 0xEFu8), (false, 0xFF)] {
+        let mut rig = Rig::new(&bytes, Speed::Mhz15);
+        rig.m.ram_page(1)[FLAGS] = 0xFF;
+        if press {
+            rig.m.press_key(Machine::KEY_ON);
+            assert_eq!(rig.finish(ENTRY, 2), 2);
+        } else {
+            rig.run_to_end();
+        }
+        assert_eq!(rig.m.ram_page(1)[FLAGS], want, "ON pressed: {press}");
+        assert_eq!(rig.m.ram_page(1)[FLAGS - 1], 0, "the flags next to it");
+        let (_, result) = screens(&rig.trace());
+        assert_eq!(result.len(), if press { 5 } else { 4 });
+    }
 }

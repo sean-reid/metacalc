@@ -14,3 +14,5 @@ plotSScreen      = 9340h
 appBackUpScreen  = 9872h
 libPage          = appBackUpScreen
 skClear          = 0Fh
+onFlags          = 9
+onInterrupt      = 4
