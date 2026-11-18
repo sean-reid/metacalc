@@ -76,6 +76,7 @@ fn a_three_page_app_is_sent_and_confirmed_by_a_listing_on_a_fresh_link() {
     let pages = sample_pages(3, 5000);
     let o = run(Calc::default(), 120, &pages);
     assert_eq!(o.result.unwrap(), Sent::Confirmed);
+    assert!(o.peer.pauses.is_empty());
     assert_eq!(o.peer.image.unwrap(), expected_image(&pages));
     assert_eq!(o.peer.events, SEQUENCE);
     assert_eq!(o.peer.rts_name.as_deref(), Some("metacalc"));
@@ -115,6 +116,7 @@ fn a_calculator_that_cannot_be_asked_afterwards_leaves_the_send_unconfirmed() {
         let sent = o.peer.events.iter().position(|e| *e == "eot").unwrap();
         let tries = o.peer.events[sent..].iter().filter(|e| **e == "reconnect");
         assert_eq!(tries.count(), 4, "the listing is tried four times");
+        assert_eq!(o.peer.pauses, [secs(3); 3], "a pause between tries only");
     }
 }
 
@@ -404,6 +406,7 @@ fn a_calculator_that_allocates_a_small_buffer_gets_small_packets() {
         &pages,
     );
     assert_eq!(o.result.unwrap(), Sent::Confirmed);
+    assert!(o.peer.pauses.is_empty());
     assert_eq!(o.peer.image.unwrap(), expected_image(&pages));
 }
 
@@ -505,8 +508,31 @@ fn an_app_still_installing_is_asked_about_again_and_found() {
     let listings = found.peer.events.iter().filter(|e| **e == "dir").count();
     assert_eq!(found.result.unwrap(), Sent::Confirmed);
     assert_eq!(listings, 5, "one before the send and four after");
+    assert_eq!(found.peer.pauses, [secs(3); 3]);
     let err = slow(4).result.unwrap_err();
     assert!(matches!(err.root(), Error::NotInstalled(_)), "{err}");
+}
+
+#[test]
+fn one_failed_try_among_listings_without_the_app_leaves_the_send_unconfirmed() {
+    let cfg = Calc {
+        after_send: After::Absent,
+        fail_reconnect: Some(3),
+        ..Calc::default()
+    };
+    let o = run(cfg, 120, &sample_pages(1, 100));
+    assert!(
+        matches!(o.result, Ok(Sent::NotConfirmed(ref r)) if r.contains("disconnected")),
+        "{:?}",
+        o.result
+    );
+    let sent = o.peer.events.iter().position(|e| *e == "eot").unwrap();
+    let listings = o.peer.events[sent..].iter().filter(|e| **e == "dir");
+    assert_eq!(
+        listings.count(),
+        3,
+        "the tries after the failed one still run"
+    );
 }
 
 #[test]

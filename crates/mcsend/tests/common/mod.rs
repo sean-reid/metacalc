@@ -149,6 +149,7 @@ pub struct Peer {
     /// The timeout of every `recv` call and of every `send`.
     pub waits: Vec<Duration>,
     pub write_waits: Vec<Duration>,
+    pub pauses: Vec<Duration>,
     raws_in_vpkt: usize,
     sent_done: bool,
     pub events: Vec<&'static str>,
@@ -175,6 +176,7 @@ impl Peer {
             clock: Duration::ZERO,
             waits: Vec::new(),
             write_waits: Vec::new(),
+            pauses: Vec::new(),
             raws_in_vpkt: 0,
             sent_done: false,
             events: Vec::new(),
@@ -440,6 +442,7 @@ impl Transport for Peer {
     }
 
     fn pause(&mut self, time: Duration) {
+        self.pauses.push(time);
         self.clock += time;
     }
 

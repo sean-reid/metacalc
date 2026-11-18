@@ -55,20 +55,30 @@ pub fn transfer<T: Transport, W: Write>(
     calculator::send_app(session, app, &mut |sent| progress.update(sent))?;
     progress.finish();
     let _ = writeln!(out, "app sent, asking the calculator to confirm it");
-    session.set_timeout(CONFIRM_TIMEOUT.min(session.timeout()));
-    let mut last = Ok(false);
+    let timeout = session.timeout();
+    session.set_timeout(CONFIRM_TIMEOUT.min(timeout));
+    let sent = confirm_with_retries(session, &app.name);
+    session.set_timeout(timeout);
+    sent
+}
+
+/// A try that fails says nothing about the app, so the send counts as failed only when every
+/// listing answered and none had the app.
+fn confirm_with_retries<T: Transport>(session: &mut Session<T>, name: &str) -> Result<Sent, Error> {
+    let mut failure = None;
     for attempt in 0..CONFIRM_TRIES {
         if attempt > 0 {
             session.pause(CONFIRM_PAUSE);
         }
-        last = confirm(session, &app.name);
-        if matches!(last, Ok(true)) {
-            return Ok(Sent::Confirmed);
+        match confirm(session, name) {
+            Ok(true) => return Ok(Sent::Confirmed),
+            Ok(false) => {}
+            Err(e) => failure = Some(e),
         }
     }
-    match last {
-        Ok(_) => Err(Error::Send(Box::new(Error::NotInstalled(app.name.clone())))),
-        Err(e) => Ok(Sent::NotConfirmed(e.to_string())),
+    match failure {
+        None => Err(Error::Send(Box::new(Error::NotInstalled(name.to_string())))),
+        Some(e) => Ok(Sent::NotConfirmed(e.to_string())),
     }
 }
 
