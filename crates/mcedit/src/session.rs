@@ -44,7 +44,7 @@ pub enum Op {
 pub struct Outcome {
     pub goals: Range<GoalId>,
     pub metas: Range<MetaId>,
-    /// Conditions this operation completed and found broken.
+    /// The violations of the conditions this operation left broken that were not broken before it.
     pub violations: Vec<Violation>,
 }
 
