@@ -1,0 +1,9 @@
+[book]
+title = "metacalc"
+authors = ["Sean Reid"]
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/sean-reid/metacalc"
+site-url = "/metacalc/"
