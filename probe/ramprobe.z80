@@ -1,0 +1,278 @@
+#include "equates.inc"
+
+VERSION    = 1
+BANKC_PORT = 05h
+
+S_PORT5  = appBackUpScreen
+S_PAGE   = S_PORT5 + 1
+S_ADDR   = S_PORT5 + 2
+S_CUR    = S_PORT5 + 3
+S_ACC    = S_PORT5 + 4
+S_RES    = S_PORT5 + 8
+S_PRE    = S_PORT5 + 16
+
+FIRST_PAGE = 2
+END_PAGE   = 8
+NUM_ADDRS  = 3
+RES_NONE   = 0FEh
+RES_BAD    = 0FFh
+ALIAS_BASE = 88h
+
+.org 4000h
+	.db 80h, 0Fh, 0, 0, 0, 0
+	.db 80h, 12h, 01h, 04h
+	.db 80h, 21h, VERSION
+	.db 80h, 31h, 01h
+	.db 80h, 48h, "ramprobe"
+	.db 80h, 81h, 01h
+	.db 80h, 90h
+	.db 03h, 26h, 09h, 04h, 04h, 6Fh, 1Bh, 80h
+	.db 02h, 0Dh, 40h
+	.db 0A1h, 6Bh, 99h, 0F6h, 59h, 0BCh, 67h, 0F5h, 85h, 9Ch, 09h, 6Ch, 0Fh, 0B4h, 03h, 9Bh
+	.db 0C9h, 03h, 32h, 2Ch, 0E0h, 03h, 20h, 0E3h, 2Ch, 0F4h, 2Dh, 73h, 0B4h, 27h, 0C4h, 0A0h
+	.db 72h, 54h, 0B9h, 0EAh, 7Ch, 3Bh, 0AAh, 16h, 0F6h, 77h, 83h, 7Ah, 0EEh, 1Ah, 0D4h, 42h
+	.db 4Ch, 6Bh, 8Bh, 13h, 1Fh, 0BBh, 93h, 8Bh, 0FCh, 19h, 1Ch, 3Ch, 0ECh, 4Dh, 0E5h, 75h
+	.db 80h, 7Fh, 0, 0, 0, 0
+	.fill 4080h - $, 0
+
+; Contract: from DI to the final port 5 write nothing uses the stack, CALL, RST, PUSH or POP,
+; because the stack lives in bank C. Scratch lives in bank B, which port 5 does not touch.
+; Per page p (2..7) and test address a, in order:
+;   1. survey: map every page q, store the byte at a in S_PRE[q]
+;   2. map p, E = byte at a, V = complement of E, or 55h when that is 00h or FFh
+;   3. save the byte at a+1, write V to a, write E to a+1 so the bus holds a value other than V
+;   4. read a back; if it is not V the page is not RAM here
+;   5. for each q != p with S_PRE[q] == E, map q; reading V means p aliases q
+;   6. map p, write E to a and the saved byte to a+1, read both back; a mismatch is BAD
+; Result per page, max over addresses: 0 OK, 88h-q alias of q, RES_NONE, RES_BAD.
+start:
+	ld a, i
+	push af
+	di
+	in a, (BANKC_PORT)
+	ld (S_PORT5), a
+	xor a
+	ld hl, S_RES
+	ld b, END_PAGE - FIRST_PAGE
+clear:
+	ld (hl), a
+	inc hl
+	djnz clear
+	ld a, FIRST_PAGE
+	ld (S_PAGE), a
+
+page_loop:
+	xor a
+	ld (S_ACC), a
+	ld (S_ADDR), a
+
+addr_loop:
+	xor a
+	ld (S_CUR), a
+	ld a, (S_ADDR)
+	add a, a
+	ld e, a
+	ld d, 0
+	ld hl, addrs
+	add hl, de
+	ld e, (hl)
+	inc hl
+	ld d, (hl)
+	ex de, hl
+
+	ld ix, S_PRE
+	ld c, 0
+survey:
+	ld a, c
+	out (BANKC_PORT), a
+	ld a, (hl)
+	ld (ix+0), a
+	inc ix
+	inc c
+	ld a, c
+	cp 8
+	jr nz, survey
+
+	ld a, (S_PAGE)
+	out (BANKC_PORT), a
+	ld e, (hl)
+	ld a, e
+	cpl
+	ld d, a
+	inc a
+	cp 2
+	jr nc, have_v
+	ld d, 55h
+have_v:
+	inc hl
+	ld c, (hl)
+	dec hl
+	ld (hl), d
+	inc hl
+	ld (hl), e
+	dec hl
+	ld a, (hl)
+	cp d
+	jr z, is_ram
+	ld a, RES_NONE
+	ld (S_CUR), a
+	jr restore
+
+is_ram:
+	ld ix, S_PRE
+	ld b, 0
+scan:
+	ld a, (S_PAGE)
+	cp b
+	jr z, next_q
+	ld a, b
+	out (BANKC_PORT), a
+	ld a, (ix+0)
+	cp e
+	jr nz, next_q
+	ld a, (hl)
+	cp d
+	jr nz, next_q
+	ld a, ALIAS_BASE
+	sub b
+	ld (S_CUR), a
+	jr restore
+next_q:
+	inc ix
+	inc b
+	ld a, b
+	cp 8
+	jr nz, scan
+
+restore:
+	ld a, (S_PAGE)
+	out (BANKC_PORT), a
+	ld (hl), e
+	inc hl
+	ld (hl), c
+	dec hl
+	ld a, (S_CUR)
+	cp RES_NONE
+	jr z, merge
+	ld a, (hl)
+	cp e
+	jr nz, bad
+	inc hl
+	ld a, (hl)
+	cp c
+	jr z, merge
+bad:
+	ld a, RES_BAD
+	ld (S_CUR), a
+
+merge:
+	ld a, (S_CUR)
+	ld b, a
+	ld a, (S_ACC)
+	cp b
+	jr nc, kept
+	ld a, b
+	ld (S_ACC), a
+kept:
+	ld a, (S_ADDR)
+	inc a
+	ld (S_ADDR), a
+	cp NUM_ADDRS
+	jp nz, addr_loop
+
+	ld a, (S_PAGE)
+	sub FIRST_PAGE
+	ld e, a
+	ld d, 0
+	ld hl, S_RES
+	add hl, de
+	ld a, (S_ACC)
+	ld (hl), a
+	ld a, (S_PAGE)
+	inc a
+	ld (S_PAGE), a
+	cp END_PAGE
+	jp nz, page_loop
+
+	ld a, (S_PORT5)
+	out (BANKC_PORT), a
+	pop af
+	jp po, show
+	ei
+
+; Contract: the stack and the OS are usable again; prints one line per page, then waits for a key.
+show:
+	bcall(_ClrLCDFull)
+	xor a
+	ld (curRow), a
+	ld (curCol), a
+	ld hl, title
+	call putstr
+	bcall(_NewLine)
+	xor a
+	ld (S_ADDR), a
+line:
+	ld a, '8'
+	bcall(_PutC)
+	ld a, (S_ADDR)
+	add a, '0' + FIRST_PAGE
+	bcall(_PutC)
+	ld a, ' '
+	bcall(_PutC)
+	ld a, (S_ADDR)
+	ld e, a
+	ld d, 0
+	ld hl, S_RES
+	add hl, de
+	ld a, (hl)
+	ld (S_CUR), a
+	ld hl, text_ok
+	or a
+	jr z, put
+	ld hl, text_none
+	cp RES_NONE
+	jr z, put
+	ld hl, text_bad
+	cp RES_BAD
+	jr z, put
+	ld a, '='
+	bcall(_PutC)
+	ld a, '8'
+	bcall(_PutC)
+	ld a, (S_CUR)
+	cpl
+	add a, ALIAS_BASE + '0' + 1
+	bcall(_PutC)
+	jr eol
+put:
+	call putstr
+eol:
+	bcall(_NewLine)
+	ld a, (S_ADDR)
+	inc a
+	ld (S_ADDR), a
+	cp END_PAGE - FIRST_PAGE
+	jr nz, line
+	bcall(_GetKey)
+	bjump(_JForceCmdNoChar)
+
+; Contract: HL points at a zero-terminated string in the app page, which a bcall swaps out, so it
+; is read here and passed to the OS one character at a time.
+putstr:
+	ld a, (hl)
+	or a
+	ret z
+	bcall(_PutC)
+	inc hl
+	jr putstr
+
+addrs:
+	.dw 0C100h, 0D000h, 0E000h
+title:
+	.db "ramprobe v", '0' + VERSION, 0
+text_ok:
+	.db "OK", 0
+text_none:
+	.db "NONE", 0
+text_bad:
+	.db "BAD", 0
