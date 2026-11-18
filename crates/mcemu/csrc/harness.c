@@ -9,10 +9,12 @@
 
 void *tilem_malloc(size_t s) { void *p = malloc(s); if (!p) abort(); return p; }
 void *tilem_malloc0(size_t s) { void *p = calloc(1, s); if (!p) abort(); return p; }
-void *tilem_malloc_atomic(size_t s) { return tilem_malloc0(s); }
+/* The core's LCD read can run one byte past the memory block it allocates here. */
+#define SLACK 16
+void *tilem_malloc_atomic(size_t s) { return tilem_malloc0(s + SLACK); }
 void *tilem_try_malloc(size_t s) { return malloc(s); }
 void *tilem_try_malloc0(size_t s) { return calloc(1, s); }
-void *tilem_try_malloc_atomic(size_t s) { return calloc(1, s); }
+void *tilem_try_malloc_atomic(size_t s) { return calloc(1, s + SLACK); }
 void *tilem_realloc(void *p, size_t s) { return realloc(p, s); }
 void tilem_free(void *p) { free(p); }
 const char *tilem_gettext(const char *s) { return s; }
