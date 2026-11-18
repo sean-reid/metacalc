@@ -6,6 +6,17 @@ _GetCSC           .equ $4018
 _JForceCmdNoChar  .equ $4027
 _ClrLCDFull       .equ $4540
 _GrBufCpy         .equ $486A
+_ChkFindSym       .equ $42F1
+_EnoughMem        .equ $42FD
+_CreateAppVar     .equ $4E6A
+_DelVarArc        .equ $4FC6
+_Arc_Unarc        .equ $4FD8
+_CreateRList      .equ $4315
+_LoadDEIndPaged   .equ $501A
+
+OP1               .equ $8478
+E_MEMORY          .equ $8E
+E_BAD_CALL        .equ $FF
 
 kbdScanCode       .equ $843F
 plotSScreen       .equ $9340
@@ -17,6 +28,7 @@ PORT_LCD_CMD      .equ $10
 PORT_LCD_DATA     .equ $11
 LCD_READY         .equ $02
 
+JUNK_IX           .equ $1D27
 JUNK_AF           .equ $AF5A
 JUNK_BC           .equ $BC0B
 JUNK_DE           .equ $DE0D
@@ -160,6 +172,13 @@ bcall_table:
 	.dw _GetCSC, get_csc
 	.dw _ClrLCDFull, clr_lcd_full
 	.dw _GrBufCpy, gr_buf_cpy
+	.dw _ChkFindSym, chk_find_sym
+	.dw _EnoughMem, enough_mem
+	.dw _CreateAppVar, create_app_var
+	.dw _DelVarArc, del_var_arc
+	.dw _Arc_Unarc, arc_unarc
+	.dw _CreateRList, create_r_list
+	.dw _LoadDEIndPaged, load_de_ind_paged
 	.dw 0
 
 bjump_table:
@@ -309,3 +328,5 @@ os_init:
 	xor a
 	ld (kbdScanCode),a
 	halt
+
+#include "vars.z80"

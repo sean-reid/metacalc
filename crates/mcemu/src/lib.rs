@@ -4,12 +4,14 @@
 mod app;
 mod ffi;
 mod launch;
+mod vars;
 mod stub {
     include!(concat!(env!("OUT_DIR"), "/stub_labels.rs"));
 }
 
 pub use app::{AppError, decode as decode_app};
 pub use ffi::Regs;
+pub use vars::{E_BAD_CALL, E_MEMORY, NoRoom, Var};
 
 /// Free stub ROM: boots to a known state and jumps to `ENTRY`.
 pub const STUB_ROM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stub.rom"));
@@ -45,6 +47,9 @@ pub enum Stop {
     UnsupportedBcall(u16),
     /// The app made a `bjump` the stub does not implement.
     UnsupportedBjump(u16),
+    /// An OS call raised an error the app did not catch, as TI-OS does with ERR:MEMORY; the
+    /// code is the one in A.
+    OsError(u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -182,6 +187,7 @@ impl Machine {
                     stub::APP_EXIT => Stop::Exited,
                     stub::FAULT_BCALL => Stop::UnsupportedBcall(r.bc),
                     stub::FAULT_BJUMP => Stop::UnsupportedBjump(r.bc),
+                    stub::FAULT_ERROR => Stop::OsError((r.af >> 8) as u8),
                     _ => Stop::Halted,
                 }
             }

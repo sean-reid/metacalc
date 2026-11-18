@@ -1,0 +1,297 @@
+; Sets every register the service does not return, and the shadow set and IX, to junk;
+; the flags and the registers the caller loaded stay as they are.
+svc_scrub:
+	push hl
+	push af
+	ld hl,JUNK_AF2
+	push hl
+	pop af
+	ex af,af'
+	pop af
+	exx
+	ld bc,JUNK_BC2
+	ld de,JUNK_DE2
+	ld hl,JUNK_HL2
+	exx
+	pop hl
+	ld ix,JUNK_IX
+	ret
+
+; Ends the app the way an uncaught OS error does. A holds the error code.
+throw:
+	di
+fault_error:
+	halt
+	jr fault_error
+
+; In: HL = a size in bytes. Out: carry set if the heap and the symbol table cannot take that
+; many more bytes. Every other register is junk.
+enough_mem:
+	push hl
+	call vs_init
+	call vs_free
+	pop de
+	or a
+	sbc hl,de
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_HL
+	ld a,$5A
+	jp svc_scrub
+
+; In: OP1 = type and name. Out: carry set if absent; else carry reset, A = type, B = page
+; (0 in RAM), C = length of the name, DE = data pointer, HL = entry.
+chk_find_sym:
+	call vs_find
+	jr nc,cfs_found
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_HL
+	ld a,$5A
+	scf
+	jp svc_scrub
+cfs_found:
+	ld c,(ix-5)
+	ld a,(ix+0)
+	or a
+	jp svc_scrub
+
+; In: HL = size, OP1 = type and name. Out: BC = size, DE = data pointer, HL = entry. Throws
+; E_MEMORY when the data, its size word and the entry do not fit. The data is not cleared.
+create_app_var:
+	call vs_create
+	ld a,E_MEMORY
+	jp c,throw
+	ld bc,(vs_size)
+	xor a
+	jp svc_scrub
+
+; In: HL = the dimension, OP1 = type and name of a list. Out: DE = data pointer. A list is nine
+; bytes an element under its size word; throws E_MEMORY as create_app_var does.
+create_r_list:
+	ld d,h
+	ld e,l
+	add hl,hl
+	ld a,E_MEMORY
+	jp c,throw
+	add hl,hl
+	jp c,throw
+	add hl,hl
+	jp c,throw
+	add hl,de
+	jp c,throw
+	call vs_create
+	ld a,E_MEMORY
+	jp c,throw
+	ld bc,JUNK_BC
+	ld hl,JUNK_HL
+	xor a
+	jp svc_scrub
+
+; In: HL = entry, DE = data pointer, B = page, as chk_find_sym left them. A call with any
+; other value stops with E_BAD_CALL.
+del_var_arc:
+	ld (vs_ent),hl
+	push hl
+	pop ix
+	ld a,(ix-4)
+	cp b
+	jr nz,dva_bad
+	ld a,(ix-2)
+	cp e
+	jr nz,dva_bad
+	ld a,(ix-3)
+	cp d
+	jr nz,dva_bad
+	ld de,(VS_VAT_LOW)
+	or a
+	sbc hl,de
+	jr c,dva_bad
+	ld hl,VAT_TOP
+	ld de,(vs_ent)
+	or a
+	sbc hl,de
+	jr c,dva_bad
+	ld a,b
+	or a
+	jr nz,dva_entry
+	ld l,(ix-2)
+	ld h,(ix-3)
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	dec hl
+	inc de
+	inc de
+	call vs_close_gap
+dva_entry:
+	ld hl,(vs_ent)
+	call vs_remove_entry
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_HL
+	ld a,$5A
+	jp svc_scrub
+dva_bad:
+	ld a,E_BAD_CALL
+	jp throw
+
+; In: OP1 = type and name of a variable. Moves an archived variable into RAM, throwing
+; E_MEMORY when it does not fit. Archiving a RAM variable is not implemented.
+arc_unarc:
+	call vs_find
+	ld a,E_BAD_CALL
+	jp c,throw
+	ld a,b
+	or a
+	jr nz,au_arc
+	ld bc,_Arc_Unarc
+	jp bcall_missing
+au_arc:
+	ld (vs_ent),hl
+	ld a,b
+	ld (vs_page),a
+	ld a,(ix-5)
+	add a,10
+	ld c,a
+	ld b,0
+	ex de,hl
+	add hl,bc
+	ld (vs_src),hl
+	in a,(6)
+	ld (vs_port6),a
+	ld a,(vs_page)
+	out (6),a
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	ld a,(vs_port6)
+	out (6),a
+	ld (vs_size),de
+	ld hl,2
+	add hl,de
+	ld a,E_MEMORY
+	jp c,throw
+	push hl
+	call vs_free
+	pop de
+	or a
+	sbc hl,de
+	ld a,E_MEMORY
+	jp c,throw
+	call vs_place
+	ld (vs_dst),hl
+	ld de,(vs_size)
+	inc de
+	inc de
+	call vs_open_gap
+	ld bc,(vs_size)
+	inc bc
+	inc bc
+	ld hl,(vs_src)
+	ld de,(vs_dst)
+	ld a,(vs_page)
+	out (6),a
+	ldir
+	ld a,(vs_port6)
+	out (6),a
+	ld hl,(vs_ent)
+	push hl
+	pop ix
+	ld (ix-4),0
+	ld hl,(vs_dst)
+	ld (ix-2),l
+	ld (ix-3),h
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_HL
+	ld a,$5A
+	jp svc_scrub
+
+; In: B = page, HL = an address in 4000h-7FFFh. Out: DE = the word at HL on that page, HL = HL
+; + 1, B kept. A and C are junk.
+load_de_ind_paged:
+	in a,(6)
+	ld c,a
+	ld a,b
+	out (6),a
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	ld a,c
+	out (6),a
+	ld c,$0B
+	ld a,$5A
+	jp svc_scrub
+
+; The entries below are run by the host, not by apps. Each ends in a HALT with interrupts off.
+; OP1 is set the way an app sets it.
+host_init:
+	call vs_init
+	halt
+
+; Out: as vs_find.
+host_find:
+	call vs_find
+	halt
+
+; In: HL, DE and B as chk_find_sym returned them.
+host_delete:
+	call del_var_arc
+	halt
+
+; In: DE = data pointer in RAM, BC = bytes to add at the end of the data. Opens the gap, so
+; every variable above moves up, and grows the size word.
+host_grow:
+	ld (vs_len),bc
+	ex de,hl
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	dec hl
+	push hl
+	push de
+	inc hl
+	inc hl
+	add hl,de
+	ld de,(vs_len)
+	call vs_open_gap
+	pop de
+	ld hl,(vs_len)
+	add hl,de
+	ex de,hl
+	pop hl
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	halt
+
+; In: HL = size. Out: as vs_create.
+host_create:
+	call vs_create
+	halt
+
+; In: HL = entry, DE = data pointer in RAM, BC = the length of the record the host has already
+; written to flash at VS_ARC_NEXT. Turns the variable into an archived one.
+host_archive:
+	ld (vs_ent),hl
+	ld (vs_len),bc
+	ex de,hl
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	dec hl
+	inc de
+	inc de
+	call vs_close_gap
+	ld hl,(vs_ent)
+	push hl
+	pop ix
+	ld (ix-4),ARC_PAGE
+	ld hl,(VS_ARC_NEXT)
+	ld (ix-2),l
+	ld (ix-3),h
+	ld de,(vs_len)
+	add hl,de
+	ld (VS_ARC_NEXT),hl
+	halt

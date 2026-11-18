@@ -1,0 +1,44 @@
+#include "equates.inc"
+
+; Calls SERVICE with HL, DE and BC from IN and the 11 bytes of OP1 after them, then records
+; AF, BC, DE, HL, IX, IY and the shadow set.
+IN = RESULT + 100h
+
+.org ENTRY
+	ld hl, IN + 6
+	ld de, OP1
+	ld bc, 11
+	ldir
+	exx
+	ld bc, 1111h
+	ld de, 2222h
+	ld hl, 3333h
+	exx
+	ld bc, 0A5C3h
+	push bc
+	pop af
+	ex af, af'
+	ld hl, (IN)
+	ld de, (IN + 2)
+	ld bc, (IN + 4)
+	ld ix, 0DEF0h
+	ld iy, 0BEEFh
+	bcall(SERVICE)
+	ld (RESULT + 6), hl
+	push af
+	pop hl
+	ld (RESULT), hl
+	ld (RESULT + 2), bc
+	ld (RESULT + 4), de
+	ld (RESULT + 8), ix
+	ld (RESULT + 10), iy
+	exx
+	ld (RESULT + 14), bc
+	ld (RESULT + 16), de
+	ld (RESULT + 18), hl
+	exx
+	ex af, af'
+	push af
+	pop hl
+	ld (RESULT + 12), hl
+	halt

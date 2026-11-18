@@ -56,6 +56,41 @@ const OS_ROUTINES: &[(&str, &str, &[&str])] = &[
         &["ENTRY=$9000", "SERVICE=_ClrLCDFull"],
     ),
     (
+        "os_service.z80",
+        "os_chk_find_sym.bin",
+        &["ENTRY=$9000", "RESULT=$9100", "SERVICE=_ChkFindSym"],
+    ),
+    (
+        "os_service.z80",
+        "os_enough_mem.bin",
+        &["ENTRY=$9000", "RESULT=$9100", "SERVICE=_EnoughMem"],
+    ),
+    (
+        "os_service.z80",
+        "os_create_app_var.bin",
+        &["ENTRY=$9000", "RESULT=$9100", "SERVICE=_CreateAppVar"],
+    ),
+    (
+        "os_service.z80",
+        "os_del_var_arc.bin",
+        &["ENTRY=$9000", "RESULT=$9100", "SERVICE=_DelVarArc"],
+    ),
+    (
+        "os_service.z80",
+        "os_arc_unarc.bin",
+        &["ENTRY=$9000", "RESULT=$9100", "SERVICE=_Arc_Unarc"],
+    ),
+    (
+        "os_service.z80",
+        "os_create_r_list.bin",
+        &["ENTRY=$9000", "RESULT=$9100", "SERVICE=_CreateRList"],
+    ),
+    (
+        "os_service.z80",
+        "os_load_de_ind_paged.bin",
+        &["ENTRY=$9000", "RESULT=$9100", "SERVICE=_LoadDEIndPaged"],
+    ),
+    (
         "os_clobber.z80",
         "os_clobber_getcsc.bin",
         &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GetCSC"],
@@ -179,7 +214,10 @@ fn main() {
     let dir = Path::new("stub");
     let os = out.join("os.bin");
     let boot = out.join("boot.bin");
-    spasm(&dir.join("os.z80"), &os, &[], &["-L"]);
+    for part in ["os.z80", "vars.z80", "varsvc.z80"] {
+        println!("cargo:rerun-if-changed={}", dir.join(part).display());
+    }
+    spasm(&dir.join("os.z80"), &os, &[], &["-L", "-I", "stub"]);
     write_stub_labels(&out.join("os.lab"), &out.join("stub_labels.rs"));
     spasm(&dir.join("boot.z80"), &boot, &[], &[]);
     let mut rom = vec![0xFF; ROM_SIZE];
@@ -229,6 +267,21 @@ fn main() {
             ],
         );
     }
+    spasm(
+        Path::new("../../probe/storecheck.z80"),
+        &out.join("storecheck.8xk"),
+        &[],
+        &["-I", "../../app/src", "-I", "../../probe", "-L"],
+    );
+    for f in [
+        "../../probe/storecheck.z80",
+        "../../probe/storedraw.inc",
+        "../../app/src/store.inc",
+        "../../app/src/store_count.inc",
+        "../../app/src/store_open.inc",
+    ] {
+        println!("cargo:rerun-if-changed={f}");
+    }
     println!("cargo:rerun-if-changed=../../probe/sparecore.inc");
     println!("cargo:rerun-if-changed=../../probe/sparescreen.inc");
     println!("cargo:rerun-if-changed=../../probe/printnum.inc");
@@ -241,7 +294,24 @@ fn main() {
 
 /// The stub addresses the library needs, as constants named after their labels.
 fn write_stub_labels(labels: &Path, out: &Path) {
-    const WANTED: &[&str] = &["APP_EXIT", "FAULT_BCALL", "FAULT_BJUMP", "OS_INIT"];
+    const WANTED: &[&str] = &[
+        "APP_EXIT",
+        "FAULT_BCALL",
+        "FAULT_BJUMP",
+        "FAULT_ERROR",
+        "OS_INIT",
+        "HOST_INIT",
+        "HOST_FIND",
+        "HOST_CREATE",
+        "HOST_ARCHIVE",
+        "HOST_DELETE",
+        "HOST_GROW",
+        "VS_HEAP_END",
+        "VS_VAT_LOW",
+        "VS_RESERVE",
+        "VS_ARC_NEXT",
+        "ARC_PAGE",
+    ];
     let text = fs::read_to_string(labels).unwrap();
     let mut code = String::new();
     for name in WANTED {
