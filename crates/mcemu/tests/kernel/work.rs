@@ -17,8 +17,9 @@ fn the_kernel_stops_where_the_model_stops() {
         (two_terms(1, 1, 0, 0), 2, Ok(())),
         (two_terms(4, 4, 7, 9), 8, Ok(())),
         (two_terms(27, 8, 7, 77), 35, Ok(())),
-        (two_terms(27, 8, 8, 77), 35, Err(KernelError::WorkLimit)),
-        (two_terms(4, 38, 0, 0), 42, Err(KernelError::WorkLimit)),
+        (two_terms(31, 9, 36, 51), 40, Ok(())),
+        (two_terms(31, 9, 37, 51), 40, Err(KernelError::WorkLimit)),
+        (two_terms(4, 60, 0, 0), 64, Err(KernelError::WorkLimit)),
     ] {
         let (db, bytes) = disjoint_library(&terms, nv, true);
         let id = number(&db, "t");
@@ -34,10 +35,9 @@ fn constants_after(first: Tok, constants: usize) -> Vec<Tok> {
     term
 }
 
-/// T-states the device spends on the disjoint check, and the work the model charges for it.
-fn check_cost(terms: &[Vec<Tok>], nv: usize) -> (u32, u32) {
+/// T-states one verify call spends after the library is loaded, and the work the model charges.
+fn call_cost(terms: &[Vec<Tok>], nv: usize) -> (u32, u32) {
     let (db, bytes) = disjoint_library(terms, nv, true);
-    let (_, plain) = disjoint_library(terms, nv, false);
     let id = number(&db, "t");
     let mut kernel = Kernel::new(&bytes, clamped(ASKED_UNBOUNDED)).unwrap();
     let units = match kernel.verify(id) {
@@ -45,13 +45,12 @@ fn check_cost(terms: &[Vec<Tok>], nv: usize) -> (u32, u32) {
         Err(KernelError::WorkLimit) => WORK_LIMIT,
         Err(error) => panic!("{error:?}"),
     };
-    let with = Device::with_library(&bytes).verify(id, ASKED_UNBOUNDED);
-    let without = Device::with_library(&plain).verify(id, ASKED_UNBOUNDED);
-    (with.tstates - without.tstates, units)
+    let call = Device::with_library(&bytes).verify(id, ASKED_UNBOUNDED);
+    (call.tstates - init_tstates(&bytes), units)
 }
 
 #[test]
-fn the_worst_disjoint_check_stays_under_ten_seconds_at_6_mhz() {
+fn the_worst_call_per_unit_of_work_stays_under_ten_seconds_at_6_mhz() {
     let var = |i| Tok::Var(i);
     let many_pairs: Vec<Vec<Tok>> = (0..20).map(|i| constants_after(var(i), 10)).collect();
     let mut repeated = vec![var(0); 100];
@@ -81,7 +80,7 @@ fn the_worst_disjoint_check_stays_under_ten_seconds_at_6_mhz() {
     ];
     let mut worst = 0.0f64;
     for (name, terms, nv) in shapes {
-        let (tstates, work) = check_cost(&terms, nv);
+        let (tstates, work) = call_cost(&terms, nv);
         let per_unit = f64::from(tstates) / f64::from(work.max(1));
         println!("{name}: {work} units, {tstates} T-states, {per_unit:.1} T-states per unit");
         worst = worst.max(per_unit);
@@ -94,11 +93,11 @@ fn the_worst_disjoint_check_stays_under_ten_seconds_at_6_mhz() {
     assert!(total < 60.0e6, "{total} T-states at the limit");
 }
 
-const BUDGET_OVER_LIMIT: u32 = 12_000_000;
+const BUDGET_OVER_LIMIT: u32 = 17_800_000;
 
 #[test]
 fn a_check_over_the_limit_returns_within_budget() {
-    let (db, bytes) = disjoint_library(&two_terms(27, 8, 14, 77), 35, true);
+    let (db, bytes) = disjoint_library(&two_terms(31, 9, 37, 51), 40, true);
     let got = Device::with_library(&bytes).verify(number(&db, "t"), ASKED_UNBOUNDED);
     println!("over the limit: {} T-states", got.tstates);
     assert_eq!(got.verify, status(Err(KernelError::WorkLimit)));
@@ -344,7 +343,7 @@ fn pair(terms: Vec<Vec<Tok>>) -> (Vec<Tok>, Vec<Tok>) {
 }
 
 /// Proofs of `|- R k` that apply the disjoint axiom twice, the first with all but a little of the
-/// work the limit allows.
+/// work the limit allows; the second is refused for a variable outside the 35 listed.
 fn joined_cases() -> Vec<(&'static str, Applies, usize, usize, KernelError)> {
     let var = |i| (vec![Tok::Var(0)], vec![Tok::Var(i)]);
     vec![
@@ -356,15 +355,15 @@ fn joined_cases() -> Vec<(&'static str, Applies, usize, usize, KernelError)> {
             KernelError::WorkLimit,
         ),
         (
-            "a violation just inside the limit",
-            vec![pair(two_terms(27, 8, 0, 0)), var(35)],
+            "a violation whose comparison charge is the last the limit allows",
+            vec![pair(two_terms(20, 15, 61, 158)), var(35)],
             36,
             35,
             KernelError::DisjointViolation,
         ),
         (
             "a violation whose comparison charge crosses the limit",
-            vec![pair(two_terms(27, 8, 0, 60)), var(35)],
+            vec![pair(two_terms(12, 23, 114, 164)), var(35)],
             36,
             35,
             KernelError::WorkLimit,

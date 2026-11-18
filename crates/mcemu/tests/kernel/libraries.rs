@@ -2,9 +2,9 @@ use crate::support::*;
 
 // T-state ceilings per library, 5 percent above the measured cost; they fail a kernel change that slows verification.
 const CEILINGS: [(&str, u32); 3] = [
-    ("prop", 72_600_000),
-    ("pred", 136_900_000),
-    ("ring", 805_100_000),
+    ("prop", 74_400_000),
+    ("pred", 140_800_000),
+    ("ring", 827_600_000),
 ];
 
 // T-state ceilings of kernel_init alone, 5 percent above the measured cost.

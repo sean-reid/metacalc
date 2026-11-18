@@ -59,12 +59,13 @@ eb_done:
 
 ; in: HL = expression in the used record, C = length.
 ; out: the expression with the bound variables replaced, built at the stack top and ending at
-; kv_wr; refused if it would pass the stack symbol limit. Destroys AF BC DE HL.
+; kv_wr; refused if it would pass the stack symbol limit. Charges one unit per symbol of the
+; expression and one per symbol written. Destroys AF BC DE HL.
 substitute:
 	ld de,(kv_stack_top)
 	ld a,c
 	or a
-	jr z,sub_end
+	jr z,sub_empty
 	ld b,c
 sub_symbol:
 	ld a,(hl)
@@ -111,11 +112,21 @@ sub_next:
 	pop bc
 	pop hl
 	djnz sub_symbol
-sub_end:
+	ld (kv_wr),de
+	ld hl,(kv_stack_top)
+	ex de,hl
+	or a
+	sbc hl,de
+	ld e,c
+	ld d,0
+	add hl,de
+	ex de,hl
+	jp work_charge
+sub_empty:
 	ld (kv_wr),de
 	ret
 
-; Charges one unit of disjoint-variable work. Keeps BC. Destroys AF DE HL.
+; Charges one unit of work. Keeps BC. Destroys AF DE HL.
 work_one:
 	ld hl,(kv_work)
 	ld a,h
@@ -130,24 +141,16 @@ work_one:
 wo_borrow:
 	ld de,1
 
-; in: DE = units, 1 to $FFFF. Charges them to the 24-bit count of units left in this call and
+; in: DE = units, 0 to $FFFF. Charges them to the 24-bit count of units left in this call and
 ; refuses the call if fewer are left. The ON key is read whenever the second byte of the count
-; changes. Keeps BC. Destroys AF DE HL.
+; changes or the count borrows from the third. Keeps BC. Destroys AF DE HL.
 work_charge:
 	ld hl,(kv_work)
 	ld a,h
-	ld (kv_wold),a
 	or a
 	sbc hl,de
-	jr nc,wc_store
-	ld a,(kv_work+2)
-	or a
-	jp z,fail_work_limit
-	dec a
-	ld (kv_work+2),a
-wc_store:
+	jr c,wc_borrow
 	ld (kv_work),hl
-	ld a,(kv_wold)
 	cp h
 	ret z
 work_poll:
@@ -155,6 +158,14 @@ work_poll:
 	and 8
 	ret nz
 	jp fail_interrupted
+wc_borrow:
+	ld a,(kv_work+2)
+	or a
+	jp z,fail_work_limit
+	dec a
+	ld (kv_work+2),a
+	ld (kv_work),hl
+	jr work_poll
 
 ; in: B, C = two variables. out: returns if they are different and the theorem being checked
 ; lists them as a pair; the used record's page is mapped again.

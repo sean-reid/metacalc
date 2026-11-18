@@ -94,22 +94,29 @@
 ; A reference list longer than 511 entries cannot pass these checks within the work limit.
 ; The count is defined only after a call that returned ok: a list of up to 511 entries is charged
 ; in one step, so after a refusal the count may differ from the model's.
+; The proof steps charge the same count per kernel_verify call, in the order they run:
+;   1 per symbol of each entry pushed on the stack (a hypothesis, a dummy variable, a saved step
+;   named again) and of each entry saved, before it is copied;
+;   1 per symbol of an expression substituted into and 1 per symbol it writes, once it is built,
+;   which the stack symbol limit bounds;
+;   the disjoint-variable check below.
 ; The disjoint-variable check of a proof step takes the pairs of the applied
 ; assertion one at a time, with X and Y the expressions that replace its two variables, and
-; charges every loop iteration before it runs, to the same count per kernel_verify call:
+; charges every loop iteration before it runs:
 ;   1 per pair of the applied assertion;
 ;   1 per symbol of X, constant or variable;
 ;   for each variable of X, 1 per symbol of Y;
 ;   for each variable of X against each variable of Y, 1 + n more, n being the number of pairs
 ;   (both lists) of the theorem being checked, whether or not the scan finds its match early.
 ; A charge that would take the count past WORK_LIMIT (ram.inc, equal to WORK_LIMIT in the model)
-; ends the call with ST_WORK_LIMIT before that work is done; the assertion counts as refused.
+; ends the call with ST_WORK_LIMIT; the assertion counts as refused.
 ; The slowest charged unit measured is 288 T-states (a variable against a run of constants), so
-; one call spends at most 37.7 million T-states in the check, 6.3 s at 6 MHz.
+; one call spends at most 64.8 million T-states on charged work, 10.8 s at 6 MHz, besides the
+; proof steps themselves, which the size of the library bounds.
 ;
 ; Interruption. kernel_verify reads the ON key (port 4, bit 3, clear while pressed) once per proof
-; step and whenever the second byte of the work count changes. The read comes before the scan of
-; the pair list that a comparison charges for, and the scan itself is not interrupted. The longest
+; step and whenever a charge changes the second byte of the work count. The read comes before the
+; scan of the pair list that a comparison charges for, and the scan itself is not interrupted. The longest
 ; stretch without a read is one scan, 96 T-states per pair listed, plus up to 255 one-unit charges
 ; of 288 T-states before the second byte next changes. The reference list check on a list of up to
 ; 511 entries reads it before each row of at most 510 comparisons, 39 T-states each, after one
