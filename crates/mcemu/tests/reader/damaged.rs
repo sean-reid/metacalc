@@ -5,19 +5,19 @@ use mcpack::library::{
     ENTRY_LEN, GLYPHS, HEADER_LEN, TITLES, TRAILER_LEN, TREES, crc32, decode, pack_kernel,
 };
 
-fn reseal(bytes: &mut [u8]) {
+pub fn reseal(bytes: &mut [u8]) {
     let len = bytes.len() as u32;
     bytes[8..12].copy_from_slice(&len.to_le_bytes());
     let crc = crc32(&bytes[8..]);
     bytes[4..8].copy_from_slice(&crc.to_le_bytes());
 }
 
-fn rows(bytes: &[u8]) -> (usize, usize) {
+pub fn rows(bytes: &[u8]) -> (usize, usize) {
     let count = usize::from(bytes[bytes.len() - TRAILER_LEN]);
     (count, bytes.len() - TRAILER_LEN - count * ENTRY_LEN)
 }
 
-fn row_of(bytes: &[u8], id: u8) -> usize {
+pub fn row_of(bytes: &[u8], id: u8) -> usize {
     let (count, first) = rows(bytes);
     (0..count)
         .map(|i| first + i * ENTRY_LEN)
@@ -25,15 +25,15 @@ fn row_of(bytes: &[u8], id: u8) -> usize {
         .expect("the library has the row")
 }
 
-fn put32(bytes: &mut [u8], at: usize, value: u32) {
+pub fn put32(bytes: &mut [u8], at: usize, value: u32) {
     bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
 }
 
-fn get32(bytes: &[u8], at: usize) -> u32 {
+pub fn get32(bytes: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
 }
 
-fn with(bytes: &[u8], change: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
+pub fn with(bytes: &[u8], change: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
     let mut out = bytes.to_vec();
     change(&mut out);
     reseal(&mut out);
@@ -41,7 +41,7 @@ fn with(bytes: &[u8], change: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
 }
 
 /// What the reader says about `bytes` at open, and what the host decoder says.
-fn both(bytes: &[u8]) -> (Rig, u8, bool) {
+pub fn both(bytes: &[u8]) -> (Rig, u8, bool) {
     let mut rig = Rig::with_library(bytes);
     let status = rig.open();
     (rig, status, decode(bytes).is_ok())
@@ -51,7 +51,7 @@ fn base() -> Vec<u8> {
     headed(60, 2, 0)
 }
 
-fn offset_of(bytes: &[u8], id: u8) -> u32 {
+pub fn offset_of(bytes: &[u8], id: u8) -> u32 {
     get32(bytes, row_of(bytes, id) + 1)
 }
 
@@ -151,12 +151,20 @@ fn a_refusal_at_open_is_the_hosts_refusal_for_the_same_bytes() {
 
 #[test]
 fn a_section_that_starts_inside_the_last_record_is_refused_for_every_kind_of_record() {
-    for name in CORPUS {
-        let db = corpus(name);
-        let good = pack_all(&db);
-        let titles = row_of(&good, TITLES);
-        let offset = get32(&good, titles + 1);
-        let moved = with(&good, |b| {
+    let mut libraries: Vec<(String, Vec<u8>)> = CORPUS
+        .iter()
+        .map(|name| (name.to_string(), pack_all(&corpus(name))))
+        .collect();
+    libraries.push(("big_library".into(), big_library()));
+    libraries.push(("nested".into(), nested(20, &[1], &[(5, &[2])])));
+    let (mut axioms, mut theorems) = (0, 0);
+    for (name, good) in &libraries {
+        let last = decoded(good).assertions.last().map(|a| a.theorem);
+        axioms += usize::from(last == Some(false));
+        theorems += usize::from(last == Some(true));
+        let titles = row_of(good, TITLES);
+        let offset = get32(good, titles + 1);
+        let moved = with(good, |b| {
             put32(b, titles + 1, offset - 4);
             let l = get32(b, titles + 5) + 4;
             put32(b, titles + 5, l);
@@ -165,24 +173,19 @@ fn a_section_that_starts_inside_the_last_record_is_refused_for_every_kind_of_rec
         assert_eq!(
             (status, host),
             (ST_TABLE, false),
-            "{name}: four bytes early"
+            "{name}: four bytes early, last record {last:?}"
         );
-        let (_, status, host) = both(&good);
+        let (_, status, host) = both(good);
         assert_eq!(
             (status, host),
             (ST_OK, true),
             "{name}: where the packer put it"
         );
     }
-    let bytes = big_library();
-    let titles = row_of(&bytes, TITLES);
-    let offset = get32(&bytes, titles + 1);
-    let moved = with(&bytes, |b| {
-        put32(b, titles + 1, offset - 4);
-        let l = get32(b, titles + 5) + 4;
-        put32(b, titles + 5, l);
-    });
-    assert_eq!(both(&moved).1, ST_TABLE);
+    assert!(
+        axioms > 0 && theorems > 0,
+        "{axioms} axioms, {theorems} theorems last"
+    );
 }
 
 #[test]

@@ -4,6 +4,8 @@ mod damaged;
 mod differential;
 #[path = "reader/escapes.rs"]
 mod escapes;
+#[path = "reader/flags.rs"]
+mod flags;
 #[path = "reader/guards.rs"]
 mod guards;
 #[path = "reader/interleave.rs"]
@@ -34,5 +36,7 @@ mod speed;
 mod stackfree;
 #[path = "reader/support.rs"]
 mod support;
+#[path = "reader/unordered.rs"]
+mod unordered;
 #[path = "reader/windows.rs"]
 mod windows;

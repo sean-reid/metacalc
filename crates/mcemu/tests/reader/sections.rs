@@ -8,7 +8,7 @@ const GRAMMAR: &str = "$c wff |- ( ) -> & -. $.\n$v p q r s $.\n\
     wp $f wff p $.\nwq $f wff q $.\nwr $f wff r $.\nws $f wff s $.\n\
     wn $a wff -. p $.\nwi $a wff ( p -> q ) $.\nwa $a wff ( p & q ) $.\n";
 
-fn heading(depth: usize, title: &str) -> String {
+pub fn heading(depth: usize, title: &str) -> String {
     let pattern = ["##", "#*", "=-", "-."][depth - 1];
     let rule = pattern.repeat(80)[..79].to_string();
     format!("$(\n{rule}\n  {title}\n{rule}\n\n  Text.\n$)\n")
@@ -42,6 +42,31 @@ pub fn headed(count: usize, every: usize, pad: usize) -> Vec<u8> {
             expr(0),
             pad = "x".repeat(i % 23),
         );
+    }
+    pack_all(&parse(&src))
+}
+
+/// The assertions the grammar takes before the first axiom of `nested`.
+pub const SYNTAX: usize = 3;
+
+/// `count` axioms after the grammar, each a single variable, with the headings `top` above the
+/// first statement of the database and those of `plan` above the axiom each names: (axiom
+/// number, depths in source order).
+pub fn nested(count: usize, top: &[usize], plan: &[(usize, &[usize])]) -> Vec<u8> {
+    let mut src = String::new();
+    for &d in top {
+        src += &heading(d, &format!("Top at depth {d}"));
+    }
+    src += GRAMMAR;
+    for i in 0..count {
+        for (at, depths) in plan {
+            if *at == i {
+                for &d in *depths {
+                    src += &heading(d, &format!("Heading {at} at depth {d}"));
+                }
+            }
+        }
+        src += &format!("ax-{i} $a |- p $.\n");
     }
     pack_all(&parse(&src))
 }
@@ -122,7 +147,7 @@ fn check_titles(
     for k in order(assertions) {
         let after = titles.partition_point(|t| t.assertion <= k);
         let want = match after {
-            0 => (ST_NONE, rig.title_for(k as u16).1),
+            0 => (ST_NONE, 0),
             n => (ST_OK, (n - 1) as u16),
         };
         assert_eq!(rig.title_for(k as u16), want, "{what}: title for {k}");
@@ -374,4 +399,49 @@ fn a_library_packed_against_the_font_table_the_image_carries_is_usable_with_it()
             "{name}"
         );
     }
+}
+
+#[test]
+fn several_titles_on_one_assertion_and_none_below_the_first_title_are_found_as_the_host_finds_them()
+{
+    let runs: &[(usize, &[usize])] = &[
+        (3, &[2]),
+        (4, &[1, 2]),
+        (8, &[2, 3, 4]),
+        (9, &[1]),
+        (11, &[3, 4]),
+    ];
+    let bytes = nested(14, &[1, 2, 3], runs);
+    let titles = decoded(&bytes).sections.unwrap().titles.unwrap();
+    let on = |n: usize| titles.iter().filter(|t| t.assertion == n).count();
+    assert_eq!((on(0), on(SYNTAX + 4), on(SYNTAX + 8)), (3, 2, 3));
+    let mut rig = opened(&bytes);
+    check_sections(&mut rig, &bytes, "runs of titles", &ascending);
+    check_sections(&mut rig, &bytes, "runs of titles", &scrambled);
+    assert_eq!(
+        rig.title_for(0),
+        (ST_OK, 2),
+        "the last of three on assertion 0"
+    );
+    let last = titles
+        .iter()
+        .rposition(|t| t.assertion == SYNTAX + 8)
+        .unwrap();
+    assert_eq!(rig.title_for((SYNTAX + 8) as u16), (ST_OK, last as u16));
+
+    let late: &[(usize, &[usize])] = &[(5, &[1, 2]), (6, &[3]), (9, &[2])];
+    let bytes = nested(12, &[], late);
+    let titles = decoded(&bytes).sections.unwrap().titles.unwrap();
+    let first = titles[0].assertion;
+    assert_eq!(first, SYNTAX + 5, "the first title sits above assertion 0");
+    let mut rig = opened(&bytes);
+    check_sections(&mut rig, &bytes, "late first title", &ascending);
+    for k in 0..first {
+        assert_eq!(
+            rig.title_for(k as u16),
+            (ST_NONE, 0),
+            "assertion {k} is above every title"
+        );
+    }
+    assert_eq!(rig.title_for(first as u16), (ST_OK, 1));
 }

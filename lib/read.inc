@@ -2,12 +2,15 @@
 
 lr_bad_arg:
 	ld a,LIB_ERR_ARG
+	or a
 	ret
 lr_bad_range:
 	ld a,LIB_ERR_RANGE
+	or a
 	ret
 lr_not_open:
 	ld a,LIB_ERR_CLOSED
+	or a
 	ret
 
 ; The public entry: the reader is open and the destination stays clear of the state block.

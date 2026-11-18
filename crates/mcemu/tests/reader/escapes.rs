@@ -60,9 +60,11 @@ fn mixed() -> Vec<u8> {
 const LONG: [usize; 6] = [100, 126, 127, 128, 200, 253];
 
 /// 130 syntax axioms, so that the axiom for negation has an escaped index and costs two bytes a
-/// node, and statements of `LONG` negations, whose trees run from 201 to 507 bytes.
+/// node, and statements of `LONG` negations, whose trees run from 201 to 507 bytes. A second
+/// negation declared first costs one byte a node, which makes a tree of 254 bytes, an even length.
 fn long_trees() -> Vec<u8> {
-    let mut src = String::from("$c |- wff a b -. $.\n$v p $.\nwp $f wff p $.\n");
+    let mut src = String::from("$c |- wff a b -. -.. $.\n$v p $.\nwp $f wff p $.\n");
+    src += "wm $a wff -.. p $.\n";
     for (i, body) in strings(130).iter().enumerate() {
         src += &format!("w{i} $a wff {body} $.\nax-f{i} $a |- {body} $.\n");
     }
@@ -70,6 +72,7 @@ fn long_trees() -> Vec<u8> {
     for n in LONG {
         src += &format!("ax-long-{n} $a |- {}p $.\n", "-. ".repeat(n));
     }
+    src += &format!("ax-mixed $a |- -.. {}p $.\n", "-. ".repeat(126));
     src += "${\nh $e |- -. -. -. p $.\nax-with $a |- p $.\n$}\n";
     pack_with_sections(&src)
 }
@@ -182,20 +185,21 @@ fn a_tree_with_an_escaped_axiom_and_two_escaped_variables_reads_back() {
 fn trees_of_every_length_to_507_bytes_copy_255_and_give_the_offset_of_the_rest() {
     let bytes = long_trees();
     let mut rig = check_all(&bytes, "long trees");
-    for (n, len) in [
-        (100usize, 201u16),
-        (126, 253),
-        (127, 255),
-        (128, 257),
-        (200, 401),
-        (253, 507),
+    for (label, len) in [
+        ("ax-long-100", 201u16),
+        ("ax-long-126", 253),
+        ("ax-mixed", 254),
+        ("ax-long-127", 255),
+        ("ax-long-128", 257),
+        ("ax-long-200", 401),
+        ("ax-long-253", 507),
     ] {
-        let at = number(&bytes, &format!("ax-long-{n}"));
+        let at = number(&bytes, label);
         let got = rig.tree(at, 0xFF);
-        assert_eq!((got.status, got.len), (ST_OK, len), "{n} negations");
-        assert_eq!(got.bytes.len(), usize::from(len.min(255)), "{n} negations");
+        assert_eq!((got.status, got.len), (ST_OK, len), "{label}");
+        assert_eq!(got.bytes.len(), usize::from(len.min(255)), "{label}");
         let file = &bytes[got.offset as usize..got.offset as usize + usize::from(len)];
-        assert_eq!(got.bytes, file[..file.len().min(255)], "{n} negations");
+        assert_eq!(got.bytes, file[..file.len().min(255)], "{label}");
     }
     let with = number(&bytes, "ax-with");
     let hypothesis = rig.tree(with, 0);

@@ -6,7 +6,8 @@
 ;
 ; Code runs from flash in bank A and is position dependent. Assembling this file alone places it
 ; at $4000, with -I at the repository root so that "lib/ram.inc" is found; an including file
-; defines LIB_EMBEDDED first and places the code itself.
+; defines LIB_EMBEDDED first and places the code itself. Either way LIB_FONT_FINGERPRINT (or
+; UI_FONT_FINGERPRINT, already assembled from the font include) must be defined before this file.
 ;
 ; Memory. The app's RAM (page 81h) is in bank B, which is also where a library page has to be
 ; mapped to be read, so a library byte cannot be copied straight into an app buffer. lib_read
@@ -40,12 +41,11 @@
 ; registers, and the stack stays untouched in the caller's page. Everything else pushes and pops
 ; on the caller's stack, at most 16 bytes below the return address.
 ;
-; Font. The includer defines LIB_FONT_FINGERPRINT, or UI_FONT_FINGERPRINT from the font include
-; mcglyph z80 writes, before this file: the glyph map is usable only when the fingerprint the
-; library carries is that value.
+; Font. The glyph map is usable only when the fingerprint the library carries is
+; LIB_FONT_FINGERPRINT, which the font include mcglyph z80 writes gives as UI_FONT_FINGERPRINT.
 ;
-; Calling. Every routine returns its status in A, 0 meaning ok, and destroys all registers but
-; IX and IY. lib_read puts values in the shadow registers only after it has turned interrupts
+; Calling. Every routine returns its status in A, 0 meaning ok, with the zero flag set exactly
+; when A is 0, and destroys all registers but IX and IY. lib_read puts values in the shadow registers only after it has turned interrupts
 ; off, since an interrupt handler uses them, and leaves them destroyed. A call with interrupts on
 ; turns them off for the two hops of a read, and on again before it returns; ports 5 and 7 and
 ; the interrupt state are the caller's again on every exit, whatever the status. A read that is
@@ -76,10 +76,12 @@
 ;                          damaged, meaning more than 28 rows, rows that do not fit between the
 ;                          start of the file and the trailer, a row off a multiple of four, a row
 ;                          that starts before the end of the directory or of the last record, ends
-;                          past the table, overlaps another or repeats an id, or the last record
-;                          cannot be walked. Status 8: a known section is shorter than its header
-;                          or its index. Unknown ids are skipped. A glyph map for another font, or
-;                          for another number of symbols, does not fail the open.
+;                          past the table, overlaps another or repeats an id. Status 3: the last
+;                          record cannot be walked, which is only looked at when there is a table.
+;                          Status 8: a known section's index does not fit its row, or the trees
+;                          list more than 383 syntax axioms. Unknown ids are skipped. A glyph map
+;                          for another font, or for another number of symbols, does not fail the
+;                          open.
 ;   lib_assertion_count   out: HL = assertions
 ;   lib_symbol_counts     out: B = constants, C = variables
 ;   lib_symbol_name   in:  A = symbol id; DE = buffer of 255 bytes
@@ -114,7 +116,7 @@
 ;                          C = depth, 1 to 4; the text is in the buffer
 ;   lib_title_for     in:  HL = assertion number
 ;                     out: HL = the number of the last title whose assertion number is at or
-;                          before it, by binary search; 9 when none is
+;                          before it, by binary search; 9 with HL = 0 when none is
 ;   lib_glyph_map     out: A = 0 when the map is for this build's font, 9 without a glyph map, 10
 ;                          for another font's or another symbol count; HL = the fingerprint the
 ;                          library's map carries, 0 without one. lib_glyph gives the same 9 and
@@ -143,7 +145,7 @@
 ; Statuses (LIB_ERR_*): 1 offset or length past the library, 2 a count or destination that is
 ; not allowed, 3 bytes the format forbids, 4 lib_open has not succeeded, 5 an assertion,
 ; hypothesis, symbol, title or syntax number out of range, 6 and 7 and 8 a damaged trailer, table
-; or section at open, 9 nothing there (no such section, or no tree for a statement), 10 a glyph
+; or section index at open, 9 nothing there (no such section, or no tree for a statement), 10 a glyph
 ; map for another font. An accessor checks, in this order, that the reader is
 ; open (4), that its buffer is 255 bytes in bank B clear of the state block (2, whatever the
 ; string's length), that the section is there (9) and its glyph map usable (10), and its numbers
