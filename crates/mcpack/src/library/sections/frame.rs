@@ -1,4 +1,4 @@
-use super::{ENTRY_LEN, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION};
+use super::{CHUNK, ENTRY_LEN, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION};
 use crate::library::HEADER_LEN;
 
 /// One row of the section table: the section's id and the file range it occupies.
@@ -73,10 +73,12 @@ pub(crate) fn table(bytes: &[u8]) -> Result<Option<Vec<Entry>>, SectionError> {
     Ok(Some(entries))
 }
 
-/// Closes a packed library with its section table and trailer.
+/// Appends sections to a packed library's records: each starts at a multiple of four, and the
+/// table and trailer close the file.
 pub(crate) struct Writer {
     out: Vec<u8>,
     entries: Vec<Entry>,
+    open: Option<(u8, usize)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,7 +89,50 @@ impl Writer {
         Writer {
             out,
             entries: Vec::new(),
+            open: None,
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.out.len()
+    }
+
+    pub fn open(&mut self, id: u8) {
+        debug_assert!(self.open.is_none());
+        self.out.resize(self.out.len().next_multiple_of(4), 0);
+        self.open = Some((id, self.out.len()));
+    }
+
+    pub fn close(&mut self) {
+        let (id, offset) = self.open.take().expect("a section is open");
+        self.entries.push(Entry {
+            id,
+            offset,
+            length: self.out.len() - offset,
+        });
+    }
+
+    /// Appends bytes that may cross a boundary, such as an index of fixed-size entries.
+    pub fn put(&mut self, bytes: &[u8]) {
+        self.out.extend_from_slice(bytes);
+    }
+
+    pub fn patch(&mut self, at: usize, bytes: &[u8]) {
+        self.out[at..at + bytes.len()].copy_from_slice(bytes);
+    }
+
+    /// Appends an item that stays inside one 16 KB chunk of the file, padding first when it
+    /// would cross a boundary, and returns its offset.
+    pub fn item(&mut self, bytes: &[u8]) -> Result<u32, TooLarge> {
+        if bytes.len() > CHUNK {
+            return Err(TooLarge);
+        }
+        if self.out.len() % CHUNK + bytes.len() > CHUNK {
+            self.out.resize(self.out.len().next_multiple_of(CHUNK), 0);
+        }
+        let offset = u32::try_from(self.out.len()).map_err(|_| TooLarge)?;
+        self.out.extend_from_slice(bytes);
+        Ok(offset)
     }
 
     pub fn finish(mut self) -> Result<Vec<u8>, TooLarge> {

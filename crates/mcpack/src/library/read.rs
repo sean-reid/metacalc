@@ -230,7 +230,7 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
         }
         assertions.push(assertion);
     }
-    let sections = sections::read(bytes).map_err(|_| ReadError)?;
+    let sections = sections::read(bytes, assertions.len()).map_err(|_| ReadError)?;
     Ok(Library {
         constants: names[..constants].to_vec(),
         variables,

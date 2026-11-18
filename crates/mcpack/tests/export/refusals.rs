@@ -1,5 +1,5 @@
 use super::*;
-use mcpack::library::{Reference, read};
+use mcpack::library::{Reference, pack_kernel, read};
 use mcpack::manifest::{Manifest, Pin};
 use mcpack::page;
 
@@ -21,7 +21,7 @@ const REFS: &str = "$c R wff |- $. $v x y z $.
 
 fn packed(src: &str) -> Vec<u8> {
     let db = parse(src);
-    pack(&db, &all(&db)).expect("it packs")
+    pack_kernel(&db, &all(&db)).expect("it packs")
 }
 
 fn reseal(bytes: &mut [u8]) {

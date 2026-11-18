@@ -1,4 +1,4 @@
-use super::sections::Writer;
+use super::sections;
 use super::{CHUNK, DUMMY, HEADER_LEN, MAGIC, SAVE, WIDE, crc32};
 use crate::mm::{Database, Kind, ProofBody, Stmt, StmtId, Sym};
 use std::collections::HashMap;
@@ -15,6 +15,8 @@ pub enum PackError {
     BrokenProof(String),
     /// The sections do not fit the file: an item is larger than a 16 KB page or the file passes 4 GB.
     SectionTooLarge,
+    /// The title is longer than 255 bytes.
+    TitleTooLong(String),
 }
 
 /// A proof step before the reference list is ordered.
@@ -116,8 +118,8 @@ fn build(db: &Database, closure: &[StmtId], sections: bool) -> Result<Vec<u8>, P
     }
 
     if sections {
-        let writer = Writer::new(out);
-        out = writer.finish().map_err(|_| PackError::SectionTooLarge)?;
+        let ids: Vec<StmtId> = assertions.iter().map(|&(id, _)| id).collect();
+        out = sections::append(out, &sections::select_titles(db, &ids))?;
     }
 
     out[..4].copy_from_slice(MAGIC);

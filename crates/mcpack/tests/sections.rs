@@ -1,5 +1,6 @@
 use mcpack::library::{
-    self, ENTRY_LEN, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION, crc32, decode, pack, pack_kernel,
+    self, ENTRY_LEN, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION, Title, crc32, decode, pack,
+    pack_kernel,
 };
 use mcpack::mm::{self, Database, Grammar, StmtId};
 
@@ -27,19 +28,73 @@ ${
   a1i.1 $e |- ph $.
   a1i $p |- ( ps -> ph ) $= wph wps wph wi a1i.1 wph wps ax-1 ax-mp $.
 $}
-id $p |- ( ph -> ph ) $= wph wph wph wi wph wph wph ax-1 wph wph wph wi ax-1 mpd $.
 ";
 
+fn parse(src: &str) -> Database {
+    mm::parse(src.as_bytes().to_vec()).expect("the database parses")
+}
+
 fn db() -> Database {
-    mm::parse(LOGIC.as_bytes().to_vec()).expect("the logic parses")
+    parse(LOGIC)
+}
+
+/// Everything the database holds except the named assertions and what only they need.
+fn closure_without(db: &Database, skip: &[&str]) -> Vec<StmtId> {
+    let grammar = Grammar::new(db, &[("|-", "wff")]).expect("the logic has a grammar");
+    let roots: Vec<StmtId> = (0..db.stmts.len() as StmtId)
+        .filter(|&id| {
+            db.stmt(id).kind.is_assertion() && !skip.contains(&db.stmt(id).label.as_str())
+        })
+        .collect();
+    mm::closure(db, &grammar, &roots).expect("the logic closes")
 }
 
 fn closure(db: &Database) -> Vec<StmtId> {
-    let grammar = Grammar::new(db, &[("|-", "wff")]).expect("the logic has a grammar");
-    let roots: Vec<StmtId> = (0..db.stmts.len() as StmtId)
-        .filter(|&id| db.stmt(id).kind.is_assertion() && db.stmt(id).label != "id")
-        .collect();
-    mm::closure(db, &grammar, &roots).expect("the logic closes")
+    closure_without(db, &[])
+}
+
+fn number(db: &Database, kept: &[StmtId], label: &str) -> usize {
+    let id = db.find(label).expect("the label exists");
+    kept.iter()
+        .filter(|&&k| db.stmt(k).kind.is_assertion())
+        .position(|&k| k == id)
+        .expect("the library keeps it")
+}
+
+fn rule(pattern: &str) -> String {
+    pattern.repeat(80)[..79].to_string()
+}
+
+fn heading(pattern: &str, title: &str) -> String {
+    format!("$(\n{0}\n  {title}\n{0}\n\n  Text.\n$)\n", rule(pattern))
+}
+
+/// The logic with titles at all four levels: a title over nothing the library keeps, a title
+/// whose assertions are all in its subsections, and a theorem the library leaves out.
+fn headed() -> String {
+    let cut = |label: &str| LOGIC.find(label).unwrap();
+    let (syntax, axioms, mp, quant, theorems) = (
+        cut("wi $a"),
+        cut("ax-1 $a"),
+        cut("${\n  min"),
+        cut("${\n  $d x ph"),
+        cut("${\n  a1i.1"),
+    );
+    let mut out = heading("##", "Classical logic");
+    out += &LOGIC[..syntax];
+    out += &heading("=-", "Syntax");
+    out += &LOGIC[syntax..axioms];
+    out += &heading("#*", "Propositional calculus");
+    out += &heading("=-", "Axioms");
+    out += &LOGIC[axioms..mp];
+    out += &heading("-.", "Modus ponens");
+    out += &LOGIC[mp..quant];
+    out += &heading("=-", "Nothing here");
+    out += &heading("=-", "Quantifiers");
+    out += &LOGIC[quant..theorems];
+    out += &heading("=-", "Theorems");
+    out += &LOGIC[theorems..];
+    out
 }
 
 fn reseal(bytes: &mut [u8]) {
@@ -90,4 +145,132 @@ fn every_byte_of_the_trailer_and_table_decodes_or_errors() {
             let _ = decode(&hostile);
         }
     }
+}
+
+fn titles_of(bytes: &[u8]) -> Vec<(usize, u8, String)> {
+    let sections = decode(bytes).unwrap().sections.expect("a trailer");
+    let titles = sections.titles.expect("a titles section");
+    titles
+        .into_iter()
+        .map(
+            |Title {
+                 assertion,
+                 depth,
+                 text,
+             }| (assertion, depth, text),
+        )
+        .collect()
+}
+
+#[test]
+fn titles_keep_what_the_library_has_something_under() {
+    let db = parse(&headed());
+    let kept = closure_without(&db, &["a1i"]);
+    let bytes = pack(&db, &kept).unwrap();
+    let at = |label: &str| number(&db, &kept, label);
+    let want = [
+        (at("wi"), 1, "Classical logic"),
+        (at("wi"), 3, "Syntax"),
+        (at("ax-1"), 2, "Propositional calculus"),
+        (at("ax-1"), 3, "Axioms"),
+        (at("ax-mp"), 4, "Modus ponens"),
+        (at("ax-5"), 3, "Quantifiers"),
+    ];
+    let want: Vec<_> = want
+        .iter()
+        .map(|&(n, d, t)| (n, d, t.to_string()))
+        .collect();
+    assert_eq!(titles_of(&bytes), want);
+    library::check(&bytes).unwrap();
+}
+
+#[test]
+fn a_theorem_the_library_includes_brings_its_title_in() {
+    let db = parse(&headed());
+    let kept = closure(&db);
+    let titles = titles_of(&pack(&db, &kept).unwrap());
+    let last = titles.last().unwrap();
+    assert_eq!(
+        (last.0, last.1, last.2.as_str()),
+        (number(&db, &kept, "a1i"), 3, "Theorems")
+    );
+}
+
+#[test]
+fn a_database_with_no_titles_has_an_empty_titles_section() {
+    let db = db();
+    let bytes = pack(&db, &closure(&db)).unwrap();
+    assert!(titles_of(&bytes).is_empty());
+}
+
+#[test]
+fn titles_survive_a_hostile_byte_anywhere_in_the_section() {
+    let db = parse(&headed());
+    let bytes = pack(&db, &closure(&db)).unwrap();
+    let sections = decode(&bytes).unwrap().sections.unwrap();
+    let entry = sections
+        .table
+        .iter()
+        .find(|e| e.id == library::TITLES)
+        .unwrap();
+    for at in entry.offset..entry.offset + entry.length {
+        for flip in [0x01u8, 0x80, 0xFF] {
+            let mut hostile = bytes.clone();
+            hostile[at] ^= flip;
+            reseal(&mut hostile);
+            let _ = decode(&hostile);
+        }
+    }
+}
+
+#[test]
+fn a_library_whose_titles_run_backwards_fails_the_check() {
+    let db = parse(&headed());
+    let mut bytes = pack(&db, &closure(&db)).unwrap();
+    let sections = decode(&bytes).unwrap().sections.unwrap();
+    let entry = sections
+        .table
+        .iter()
+        .find(|e| e.id == library::TITLES)
+        .unwrap();
+    let first = u32::from_le_bytes(
+        bytes[entry.offset + 2..entry.offset + 6]
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    bytes[first..first + 2].copy_from_slice(&1000u16.to_le_bytes());
+    reseal(&mut bytes);
+    assert!(
+        decode(&bytes).is_err(),
+        "a number past the last assertion does not decode"
+    );
+    bytes[first..first + 2].copy_from_slice(&6u16.to_le_bytes());
+    reseal(&mut bytes);
+    assert!(matches!(
+        library::check(&bytes),
+        Err(library::CheckError::Sections(_))
+    ));
+}
+
+#[test]
+fn no_title_crosses_a_16_kb_boundary() {
+    let mut src = String::from("$c |- wff $.\n$v ph $.\nwph $f wff ph $.\n");
+    let titles: Vec<String> = (0..700)
+        .map(|i| format!("Section {i} {}", "x".repeat(40)))
+        .collect();
+    for (i, title) in titles.iter().enumerate() {
+        src += &heading("=-", title);
+        src += &format!("ax-{i} $a |- ph $.\n");
+    }
+    let db = parse(&src);
+    let bytes = pack(&db, &closure(&db)).unwrap();
+    let sections = decode(&bytes).unwrap().sections.unwrap();
+    let entry = sections
+        .table
+        .iter()
+        .find(|e| e.id == library::TITLES)
+        .unwrap();
+    assert!(entry.length > 2 * library::CHUNK);
+    let got: Vec<String> = titles_of(&bytes).into_iter().map(|t| t.2).collect();
+    assert_eq!(got, titles);
 }

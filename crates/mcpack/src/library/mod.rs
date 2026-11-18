@@ -58,7 +58,8 @@ pub use read::{
     Assertion, Hypothesis, Library, ReadError, Reference, Step, Variable, decode, read,
 };
 pub use sections::{
-    ENTRY_LEN, Entry, SectionError, Sections, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION,
+    ENTRY_LEN, Entry, SectionCheckError, SectionError, Sections, TITLES, TRAILER_LEN,
+    TRAILER_MAGIC, TRAILER_VERSION, Title, read as read_sections, verify_sections,
 };
 
 pub const MAGIC: &[u8; 4] = b"MCL1";
