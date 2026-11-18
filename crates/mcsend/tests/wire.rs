@@ -48,6 +48,8 @@ impl Transport for Script {
         Ok(())
     }
 
+    fn pause(&mut self, _time: Duration) {}
+
     fn send(&mut self, data: &[u8], _timeout: Duration) -> Result<(), Error> {
         match self.steps.borrow_mut().pop_front() {
             Some(Step::Expect(want)) => assert_eq!(data, want, "bytes written"),

@@ -83,6 +83,10 @@ impl Transport for UsbTransport {
         self.started = started;
         Ok(())
     }
+
+    fn pause(&mut self, time: Duration) {
+        std::thread::sleep(time);
+    }
 }
 
 /// What libusb is given for a wait. rusb passes `timeout.as_millis()` on (device_handle.rs, in

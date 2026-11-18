@@ -72,6 +72,10 @@ pub struct Calc {
     pub error_at_content_packet: Option<(usize, u16)>,
     pub disconnect_at_content_packet: Option<usize>,
     pub refuse_rts: Option<u16>,
+    /// The reconnect, counted from 1, that finds the calculator gone.
+    pub fail_reconnect: Option<usize>,
+    /// How many listings after the send still lack the app, as while it installs.
+    pub slow_install: usize,
 }
 
 /// The calculator keeps the sender waiting for the acknowledgement of content packet `at`:
@@ -114,6 +118,8 @@ impl Default for Calc {
             error_at_content_packet: None,
             disconnect_at_content_packet: None,
             refuse_rts: None,
+            fail_reconnect: None,
+            slow_install: 0,
         }
     }
 }
@@ -132,6 +138,8 @@ pub struct Peer {
     negotiated: bool,
     mode_set: bool,
     deaf: bool,
+    reconnects: usize,
+    listings_after_send: usize,
     vbuf: Vec<u8>,
     content_raw: usize,
     expect_size: Option<usize>,
@@ -158,6 +166,8 @@ impl Peer {
             negotiated: false,
             mode_set: false,
             deaf: false,
+            reconnects: 0,
+            listings_after_send: 0,
             vbuf: Vec::new(),
             content_raw: 0,
             expect_size: None,
@@ -237,7 +247,11 @@ impl Peer {
                     .into_iter()
                     .chain(self.cfg.apps.iter().map(|a| (a.clone(), 0x24)))
                     .collect();
-                if self.sent_done && self.cfg.after_send == After::Lists {
+                if self.sent_done {
+                    self.listings_after_send += 1;
+                }
+                let installed = self.listings_after_send > self.cfg.slow_install;
+                if self.sent_done && self.cfg.after_send == After::Lists && installed {
                     listing.push((self.rts_name.clone().unwrap(), 0x24));
                 }
                 for (name, kind) in listing {
@@ -425,14 +439,21 @@ impl Transport for Peer {
         self.clock
     }
 
+    fn pause(&mut self, time: Duration) {
+        self.clock += time;
+    }
+
     fn reconnect(&mut self) -> Result<(), Error> {
+        self.reconnects += 1;
+        if self.cfg.fail_reconnect == Some(self.reconnects) {
+            return Err(Error::Disconnected);
+        }
         self.events.push("reconnect");
         self.deaf = false;
         self.negotiated = false;
         self.mode_set = false;
         self.unacked = false;
         self.vbuf.clear();
-        self.out.clear();
         self.cur = None;
         Ok(())
     }

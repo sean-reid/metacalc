@@ -43,6 +43,8 @@ impl Transport for Timed {
         Ok(())
     }
 
+    fn pause(&mut self, _time: Duration) {}
+
     fn recv(&mut self, timeout: Duration) -> Result<Vec<u8>, Error> {
         self.reads += 1;
         self.asked.push(timeout);

@@ -17,6 +17,9 @@ pub trait Transport {
     /// Closes the link and opens it again. The calculator answers nothing more on a link once an
     /// operation has ended with its end of transmission.
     fn reconnect(&mut self) -> Result<(), Error>;
+
+    /// Lets `time` pass on this transport's clock.
+    fn pause(&mut self, time: Duration);
 }
 
 impl<T: Transport + ?Sized> Transport for &mut T {
@@ -34,5 +37,9 @@ impl<T: Transport + ?Sized> Transport for &mut T {
 
     fn reconnect(&mut self) -> Result<(), Error> {
         (**self).reconnect()
+    }
+
+    fn pause(&mut self, time: Duration) {
+        (**self).pause(time)
     }
 }

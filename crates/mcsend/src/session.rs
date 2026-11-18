@@ -31,7 +31,8 @@ struct Wait {
     empty: usize,
 }
 
-/// One connection to the calculator: raw packets, virtual packets, and the delay rule.
+/// The link to the calculator, which may be opened more than once: raw packets, virtual packets,
+/// and the delay rule.
 pub struct Session<T: Transport> {
     transport: T,
     timeout: Duration,
@@ -66,6 +67,10 @@ impl<T: Transport> Session<T> {
     pub fn reconnect(&mut self) -> Result<(), Error> {
         self.pending.clear();
         self.transport.reconnect()
+    }
+
+    pub fn pause(&mut self, time: Duration) {
+        self.transport.pause(time);
     }
 
     pub fn timeout(&self) -> Duration {

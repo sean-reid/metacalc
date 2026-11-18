@@ -18,6 +18,7 @@ pub enum Sent {
 /// How long the listing that confirms a send waits for each packet, and how often it is tried.
 const CONFIRM_TIMEOUT: Duration = Duration::from_secs(15);
 const CONFIRM_TRIES: usize = 4;
+const CONFIRM_PAUSE: Duration = Duration::from_secs(3);
 
 /// Checks the calculator and the app against each other, sends the app, and then asks the
 /// calculator for its app list, because it sends no confirmation of its own. A listing and a send
@@ -55,15 +56,20 @@ pub fn transfer<T: Transport, W: Write>(
     progress.finish();
     let _ = writeln!(out, "app sent, asking the calculator to confirm it");
     session.set_timeout(CONFIRM_TIMEOUT.min(session.timeout()));
-    let mut reason = String::new();
-    for _ in 0..CONFIRM_TRIES {
-        match confirm(session, &app.name) {
-            Ok(true) => return Ok(Sent::Confirmed),
-            Ok(false) => return Err(Error::Send(Box::new(Error::NotInstalled(app.name.clone())))),
-            Err(e) => reason = e.to_string(),
+    let mut last = Ok(false);
+    for attempt in 0..CONFIRM_TRIES {
+        if attempt > 0 {
+            session.pause(CONFIRM_PAUSE);
+        }
+        last = confirm(session, &app.name);
+        if matches!(last, Ok(true)) {
+            return Ok(Sent::Confirmed);
         }
     }
-    Ok(Sent::NotConfirmed(reason))
+    match last {
+        Ok(_) => Err(Error::Send(Box::new(Error::NotInstalled(app.name.clone())))),
+        Err(e) => Ok(Sent::NotConfirmed(e.to_string())),
+    }
 }
 
 fn confirm<T: Transport>(session: &mut Session<T>, name: &str) -> Result<bool, Error> {

@@ -23,7 +23,8 @@ struct Cli {
     /// List the apps installed on the calculator and send nothing
     #[arg(long, conflicts_with = "app")]
     apps: bool,
-    /// Seconds to wait for the calculator on each packet
+    /// Seconds to wait for the calculator on each packet; the listing that confirms a send waits
+    /// 15 at most
     #[arg(long, value_name = "SECONDS", default_value_t = 120, value_parser = clap::value_parser!(u64).range(1..=3600))]
     timeout: u64,
     /// Print every raw packet in hex on stderr, with the payload of parameter data masked

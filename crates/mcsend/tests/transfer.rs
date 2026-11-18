@@ -72,7 +72,7 @@ const SEQUENCE: [&str; 16] = [
 ];
 
 #[test]
-fn a_three_page_app_is_sent_on_one_connection_and_confirmed_by_the_listing() {
+fn a_three_page_app_is_sent_and_confirmed_by_a_listing_on_a_fresh_link() {
     let pages = sample_pages(3, 5000);
     let o = run(Calc::default(), 120, &pages);
     assert_eq!(o.result.unwrap(), Sent::Confirmed);
@@ -487,4 +487,37 @@ fn the_confirmation_line_starts_on_a_line_of_its_own_on_a_terminal() {
         text.contains("100% (1/1 pages)\napp sent, asking the calculator to confirm it\n"),
         "{text:?}"
     );
+}
+
+#[test]
+fn an_app_still_installing_is_asked_about_again_and_found() {
+    let slow = |tries: usize| {
+        run(
+            Calc {
+                slow_install: tries,
+                ..Calc::default()
+            },
+            120,
+            &sample_pages(1, 100),
+        )
+    };
+    let found = slow(3);
+    let listings = found.peer.events.iter().filter(|e| **e == "dir").count();
+    assert_eq!(found.result.unwrap(), Sent::Confirmed);
+    assert_eq!(listings, 5, "one before the send and four after");
+    let err = slow(4).result.unwrap_err();
+    assert!(matches!(err.root(), Error::NotInstalled(_)), "{err}");
+}
+
+#[test]
+fn a_calculator_gone_at_the_reconnect_before_the_send_gets_no_app_and_no_replug_advice() {
+    let cfg = Calc {
+        fail_reconnect: Some(1),
+        ..Calc::default()
+    };
+    let o = run(cfg, 120, &sample_pages(1, 100));
+    assert!(!o.peer.events.contains(&"rts"));
+    let err = o.result.unwrap_err();
+    assert!(matches!(err, Error::Disconnected), "{err}");
+    assert!(!err.to_string().contains("replug"));
 }
