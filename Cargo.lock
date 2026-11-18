@@ -225,7 +225,9 @@ name = "mcemu"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "mcglyph",
  "mcpack",
+ "mcui",
 ]
 
 [[package]]

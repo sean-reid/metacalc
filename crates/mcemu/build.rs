@@ -132,6 +132,7 @@ fn main() {
         );
     }
     assemble_kernel(&out);
+    assemble_ui(&out);
     for name in ["sparecheck_test", "sparescreen_test"] {
         spasm(
             &Path::new("tests/routines").join(format!("{name}.z80")),
@@ -182,6 +183,40 @@ fn assemble_kernel(out: &Path) {
             &out.join(format!("{name}.bin")),
             defines,
             &["-I", include, "-L"],
+        );
+    }
+}
+
+/// The canvas with the built-in font, and with its RAM block moved; each with the label file the
+/// tests read.
+fn assemble_ui(out: &Path) {
+    let dir = Path::new("../../ui");
+    for entry in fs::read_dir(dir).unwrap().flatten() {
+        println!("cargo:rerun-if-changed={}", entry.path().display());
+    }
+    let font_dir = out.join("ui_font");
+    fs::create_dir_all(&font_dir).unwrap();
+    let table = mcglyph::z80::Table::new(mcglyph::Font::builtin()).unwrap_or_else(|e| fail(&e));
+    fs::write(font_dir.join("font.inc"), table.include("ui_font")).unwrap();
+    let include = dir.to_str().unwrap();
+    let assemble = |defines: &[&str], output: &Path| {
+        spasm_ok(
+            &dir.join("ui.z80"),
+            output,
+            defines,
+            &["-I", include, "-I", font_dir.to_str().unwrap(), "-L"],
+        )
+    };
+    for (name, defines) in [("ui_test", &[][..]), ("ui_moved", &["UI_RAM=$A000"][..])] {
+        if !assemble(defines, &out.join(format!("{name}.bin"))) {
+            fail(&format!("spasm failed on the canvas image {name}"));
+        }
+    }
+    for base in ["$7F00", "$BF00"] {
+        let define = format!("UI_RAM={base}");
+        assert!(
+            !assemble(&[&define], &out.join("ui_probe.bin")),
+            "a canvas RAM base of {base} assembled"
         );
     }
 }
