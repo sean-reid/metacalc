@@ -454,4 +454,36 @@ fn the_command_refuses_a_library_that_fails_the_kernel() {
     assert!(!output.exists());
 }
 
+const COLLIDING_DUMMY: &str = "
+$c R wff |- $.
+$v x y z $.
+vx $f wff x $.
+vy $f wff y $.
+vz $f wff z $.
+${
+  $d x y $.
+  ax-d $a |- R x y $.
+$}
+${
+  m.1 $e |- R x y $.
+  ax-m $a |- R x x $.
+$}
+dummy.d1 $a |- R $.
+${
+  $d x z $.
+  dummy $p |- R x x $= vx vz vx vz ax-d ax-m $.
+$}
+";
+
+#[test]
+fn a_dummy_label_that_collides_is_suffixed_and_the_proof_still_verifies() {
+    let out = round_trip("colliding dummy", &parse(COLLIDING_DUMMY));
+    assert!(
+        out.text.contains("  dummy.d1_ $f wff z $.\n"),
+        "{}",
+        out.text
+    );
+    assert!(out.text.contains("( dummy.d1_ ax-d ax-m )"), "{}", out.text);
+}
+
 mod refusals;
