@@ -145,7 +145,7 @@ impl Session<'_> {
                         None => {
                             dummies.push(Dummy {
                                 var,
-                                typecode: self.vars.typecode(var),
+                                typecode: self.vars.typecode(var).ok_or(Error::Corrupt)?,
                                 label: String::new(),
                                 declared: false,
                             });

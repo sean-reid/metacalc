@@ -13,6 +13,7 @@ pub(crate) const GO: &str = "Go";
 
 /// The words on the five keys.
 pub(crate) const KEYS: [&str; 5] = ["Aply", "Hyp", "Auto", "Undo", "Tree"];
+pub(crate) const HYPS_KEYS: [&str; 5] = ["Use", "Hyp", "Auto", "Undo", "Tree"];
 
 /// Rows the current goal may take before it is folded.
 const GOAL_ROWS: usize = 2;
@@ -201,7 +202,7 @@ impl Proving {
             return Nav::Stay;
         };
         let id = hyp.id;
-        self.run("Hyp", |editor| {
+        self.run("Use", |editor| {
             editor.close(goal, id)?;
             Ok((None, Some(goal)))
         })
@@ -383,6 +384,7 @@ impl Proving {
         canvas.soft_keys(match (self.view, self.snap.goal) {
             (View::Tree, _) => [go, "", "", undo, tree],
             (_, None) => ["", "", "", undo, tree],
+            (View::Hyps, _) => HYPS_KEYS,
             _ => KEYS,
         });
     }

@@ -802,6 +802,7 @@ fn pack_command(database: &str, root: &str, output: &Path) -> Option<i32> {
 #[test]
 fn pack_command_writes_a_library_the_kernel_accepts() {
     let output = Path::new(env!("CARGO_TARGET_TMPDIR")).join("demo0.mclib");
+    let _ = std::fs::remove_file(&output);
     assert_eq!(pack_command("demo0.mm", "th1", &output), Some(0));
     let bytes = std::fs::read(&output).expect("the library was written");
     let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).expect("library loads");
@@ -813,6 +814,7 @@ fn pack_command_writes_a_library_the_kernel_accepts() {
 #[test]
 fn pack_command_writes_nothing_when_a_proof_fails() {
     let output = Path::new(env!("CARGO_TARGET_TMPDIR")).join("demo0-bad1.mclib");
+    let _ = std::fs::remove_file(&output);
     assert_eq!(pack_command("demo0-bad1.mm", "th1", &output), Some(1));
     assert!(!output.exists());
 }

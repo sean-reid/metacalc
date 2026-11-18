@@ -59,8 +59,9 @@ impl Vars {
         self.types.clone()
     }
 
-    pub fn typecode(&self, var: Sym) -> Sym {
-        self.types[&var]
+    /// The typecode of `var`, or `None` for a symbol with no floating hypothesis before the theorem.
+    pub fn typecode(&self, var: Sym) -> Option<Sym> {
+        self.types.get(&var).copied()
     }
 
     pub fn is_mandatory(&self, var: Sym) -> bool {

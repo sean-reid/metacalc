@@ -338,7 +338,7 @@ fn a_long_goal_folds_to_two_rows() {
 fn a_hypothesis_that_does_not_match_is_refused() {
     let mut ui = prove(&proving_bytes(), "a1i");
     press(&mut ui, &[F2, F1]);
-    assert_eq!(notice(&ui), "Hyp");
+    assert_eq!(notice(&ui), "Use");
     check(&ui, "proving-notice-no-match");
     ui.press(Clear);
     assert_eq!(at(&ui).steps, 0);
@@ -738,7 +738,7 @@ fn a_hypothesis_list_longer_than_the_screen_scrolls_and_pages() {
     assert_eq!(selected(&ui), at_rows(&ui));
     press(&mut ui, &[Down, Down, Down, Down, Down, Down]);
     ui.press(F1);
-    assert_eq!(notice(&ui), "Hyp");
+    assert_eq!(notice(&ui), "Use");
 }
 
 /// The rows a list under the goal has on the proving screen of the hypothesis test.
