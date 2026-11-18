@@ -151,6 +151,13 @@ fn a_section_that_lies_inside_the_records_does_not_decode() {
         "an empty titles section decodes where the packer put it"
     );
     assert!(decode(&moved(empty)).is_err());
+
+    let mut odd = emptied.clone();
+    odd[titles.offset..titles.offset + 4].fill(0);
+    odd[row + 1..row + 5].copy_from_slice(&(titles.offset as u32 + 2).to_le_bytes());
+    odd[row + 5..row + 9].copy_from_slice(&2u32.to_le_bytes());
+    reseal(&mut odd);
+    assert!(decode(&odd).is_err(), "a section off a multiple of four");
 }
 
 #[test]
