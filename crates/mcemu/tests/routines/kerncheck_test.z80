@@ -7,14 +7,17 @@ OUT_SPEED = 0A002h
 OUT_AFTER = 0A003h
 OUT_BUF   = 0A010h
 OUT_IFF   = 0A004h
+OUT_FLAGGED = 0A006h
 IY_TEST   = 0B800h
 
 .org 4000h
 	jp main
 
 main:
-	xor a
+	ld a, 01h
 	out (3), a
+	xor a
+	ld (OUT_FLAGGED), a
 	ld hl, OUT_BUF
 	ld (OUT_PTR), hl
 	ld iy, IY_TEST
@@ -27,7 +30,7 @@ main:
 	halt
 
 onbreak_entry:
-	xor a
+	ld a, 01h
 	out (3), a
 	di
 	ld iy, IY_TEST
@@ -41,8 +44,14 @@ onbreak_off:
 	di
 	halt
 
-; Contract: A is one character. Destroys every register.
+; Contract: A is one character. Destroys every register. Returns with interrupts off, as _PutC does,
+; and counts the calls made while the OS break flag is set.
 putchar:
+	bit onInterrupt, (iy + onFlags)
+	jr z, putchar_clear
+	ld hl, OUT_FLAGGED
+	inc (hl)
+putchar_clear:
 	ld hl, (OUT_PTR)
 	ld (hl), a
 	inc hl
@@ -58,6 +67,7 @@ putchar_done:
 	ld ix, 0FFFFh
 	ld a, 0FFh
 	or a
+	di
 	ret
 
 #define KERNEL_EMBEDDED

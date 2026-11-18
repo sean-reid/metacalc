@@ -5,12 +5,16 @@
 ; the kernel restores after every call; the parameter block for kernel_init is its first nine bytes.
 ; Checks the library whose first chunk is on the page below the app: kernel_init, the CRC-32 run
 ; chunk by chunk, then kernel_verify for assertion 0 to count - 1, with a progress line between
-; calls. Stops when a call returns 14 or ON is down between calls, then waits for ON to come up and clears the
-; OS break before printing, so the app stays running. IY must be the OS flags pointer. Runs at 15 MHz and restores the
-; speed on return. The result stays in scratch and is printed last.
+; calls. Stops when a call returns 14, or between calls when ON is down, was pressed since the
+; last interrupt acknowledge, or the OS has flagged it. It then waits for ON to come up and
+; clears the OS break before printing anything, so the app stays running. IY must be the OS flags
+; pointer. Runs at 15 MHz and restores the speed on return. The result stays in scratch and is
+; printed last.
 
 KD_PORT_SPEED = 20h
 KD_PORT_KEYS  = 04h
+KD_ON_LATCH   = 01h
+KD_ON_LEVEL   = 08h
 KD_MORE       = 0FFh
 KD_INTERRUPT  = 14
 
@@ -113,10 +117,15 @@ kd_header:
 	ld (K_CHUNKS), a
 	ret
 
-; Z if the ON key is down.
-kd_on_down:
+; NZ if ON is down, if its interrupt is latched on port 4, or if the OS has set its break flag.
+; Interrupts stay off for a whole kernel call, so a tap shorter than the gap between polls leaves
+; only the latch.
+kd_on_seen:
 	in a, (KD_PORT_KEYS)
-	bit 3, a
+	xor KD_ON_LEVEL
+	and KD_ON_LATCH | KD_ON_LEVEL
+	ret nz
+	bit onInterrupt, (iy + onFlags)
 	ret
 
 kd_crc:
@@ -128,8 +137,8 @@ kd_crc:
 	or a
 	jr nz, kd_crc_bad
 kd_crc_next:
-	call kd_on_down
-	jr z, kd_crc_stopped
+	call kd_on_seen
+	jr nz, kd_crc_stopped
 	call kernel_crc_chunk
 	cp KD_MORE
 	jr z, kd_crc_more
@@ -154,6 +163,7 @@ kd_crc_bad:
 	ld (K_CRC_STATE), a
 	ret
 kd_crc_stopped:
+	call on_release_and_clear
 	ld a, CRC_STOPPED
 	ld (K_CRC_STATE), a
 	ld a, STOP_CRC
@@ -172,8 +182,8 @@ kd_verify_next:
 	or a
 	sbc hl, de
 	jr nc, kd_verify_end
-	call kd_on_down
-	jr z, kd_verify_stopped
+	call kd_on_seen
+	jr nz, kd_verify_stopped
 	ld hl, (K_DONE)
 	call kernel_verify
 	cp KD_INTERRUPT
@@ -206,6 +216,7 @@ kd_advance:
 kd_verify_end:
 	jp kd_show_check
 kd_verify_stopped:
+	call on_release_and_clear
 	ld a, STOP_VERIFY
 	ld (K_STOPPED), a
 	ld hl, (K_DONE)
@@ -246,9 +257,6 @@ kd_show_check:
 	jp putdec
 
 kd_report:
-	ld a, (K_STOPPED)
-	or a
-	call nz, on_release_and_clear
 	ld a, 0Ch
 	call putchar
 	ld hl, s_title
