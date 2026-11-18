@@ -80,8 +80,6 @@ kd_limits:
 	xor a
 	ld (K_INIT), a
 	call on_release_and_clear
-	ld a, CRC_STOPPED
-	ld (K_CRC_STATE), a
 	ld a, STOP_INIT
 	ld (K_STOPPED), a
 	jr kd_done
@@ -284,6 +282,10 @@ kd_report:
 	ld h, 0
 	jp putdec
 kd_report_crc:
+	ld a, (K_STOPPED)
+	cp STOP_INIT
+	ld hl, s_init_stopped
+	jr z, kd_report_crc_text
 	ld hl, s_crc
 	call putstr
 	ld a, (K_CRC_STATE)
@@ -345,6 +347,8 @@ s_check:
 	.db "chk ", 0
 s_init:
 	.db "init st ", 0
+s_init_stopped:
+	.db "init stopped", 0
 s_bad:
 	.db "bad", 0
 s_stopped:

@@ -3,7 +3,7 @@
 #[path = "common/realos.rs"]
 mod realos;
 
-use mcemu::{Machine, STUB_ROM, Stop};
+use mcemu::{Machine, STUB_ROM, Speed, Stop};
 use realos::*;
 
 const STUB_BASE: u8 = 0x30;
@@ -268,19 +268,83 @@ fn rtc_seconds(os: &mut RealOs) -> u32 {
     u32::from_le_bytes([0x45, 0x46, 0x47, 0x48].map(|p| os.m.in_port(p)))
 }
 
+/// Seconds of emulated time `os` has run since `start`, as the OS would read them.
+fn since(os: &mut RealOs, start: u32) -> u32 {
+    rtc_seconds(os) - start
+}
+
+/// Runs `os` for `ms` in steps of `step` ms.
+fn run_in_steps(os: &mut RealOs, ms: u32, step: u32) {
+    for _ in 0..ms / step {
+        os.run_ms(step);
+    }
+}
+
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn the_emulated_clock_follows_the_time_run_and_not_how_it_is_sliced() {
+fn the_clock_reads_the_same_part_way_through_whatever_the_slicing() {
     let app = shell();
-    let mut whole = RealOs::boot(&app);
-    let mut sliced = RealOs::boot(&app);
-    let start = rtc_seconds(&mut whole);
-    assert_eq!(rtc_seconds(&mut sliced), start);
-    whole.run_ms(5000);
-    for _ in 0..5000 {
-        sliced.run_ms(1);
+    let mut coarse = RealOs::boot(&app);
+    let mut fine = RealOs::boot(&app);
+    let start = rtc_seconds(&mut coarse);
+    assert_eq!(rtc_seconds(&mut fine), start);
+    let mut total = 0;
+    for stage in [1300, 1300, 1500] {
+        total += stage;
+        coarse.run_ms(stage);
+        run_in_steps(&mut fine, stage, 1);
+        let (c, f) = (since(&mut coarse, start), since(&mut fine, start));
+        assert!(c.abs_diff(f) <= 1, "at {total} ms: {c} s against {f} s");
+        assert!(c.abs_diff(total / 1000) <= 1, "at {total} ms: {c} s");
     }
-    let (a, b) = (rtc_seconds(&mut whole), rtc_seconds(&mut sliced));
-    assert_eq!(a, b, "the clock depends on the slicing");
-    assert!((start + 4..=start + 5).contains(&a), "{a} after {start}");
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn two_machines_on_one_thread_each_keep_their_own_time() {
+    let app = shell();
+    let mut a = RealOs::boot(&app);
+    let mut b = RealOs::boot(&app);
+    let start = rtc_seconds(&mut a);
+    assert_eq!(rtc_seconds(&mut b), start);
+    for _ in 0..10 {
+        a.run_ms(300);
+        b.run_ms(100);
+    }
+    let (ta, tb) = (since(&mut a, start), since(&mut b, start));
+    assert!(ta.abs_diff(3) <= 1, "{ta} s after 3 s");
+    assert!(tb.abs_diff(1) <= 1, "{tb} s after 1 s");
+    assert!(ta >= tb + 1, "{ta} s and {tb} s");
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn the_clock_is_right_across_a_speed_change() {
+    let app = shell();
+    let mut os = RealOs::boot(&app);
+    let start = rtc_seconds(&mut os);
+    os.run_ms(3000);
+    os.m.set_speed(Speed::Mhz15);
+    os.run_ms(3000);
+    let took = since(&mut os, start);
+    assert!(
+        took.abs_diff(6) <= 1,
+        "{took} s after 3 s at 6 MHz and 3 s at 15 MHz"
+    );
+}
+
+#[test]
+fn the_clock_is_right_across_a_speed_change_when_nothing_reads_it_meanwhile() {
+    let mut m = Machine::new(STUB_ROM).unwrap();
+    m.load_ram(0x9000, &[0x18, 0xFE]);
+    m.out_port(0x40, 1);
+    let seconds =
+        |m: &mut Machine| u32::from_le_bytes([0x45, 0x46, 0x47, 0x48].map(|p| m.in_port(p)));
+    let start = seconds(&mut m);
+    m.set_speed(Speed::Mhz6);
+    assert_eq!(m.run(0x9000, 18_000_000).stop, Stop::Limit);
+    m.set_speed(Speed::Mhz15);
+    assert_eq!(m.run(0x9000, 45_000_000).stop, Stop::Limit);
+    let took = seconds(&mut m) - start;
+    assert_eq!(took, 6, "3 s at 6 MHz and 3 s at 15 MHz");
 }
