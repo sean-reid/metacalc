@@ -15,6 +15,7 @@
 ;     CMD_MAKE       letter, size (2)      log: 0 made, 1 refused for room
 ;     CMD_DELETE     letter                log: 0 deleted, 1 absent
 ;     CMD_LOCATE                           log: 0 in RAM, 1 absent, 2 archived; data pointer (2), size (2)
+;     CMD_LIST       dim (2)               creates the list named Q, which sorts below every AppVar; log: 0
 ;     CMD_FILL       size (2)              creates MCFILL with no room check; log: 0
 ;     CMD_ROOM       n (2)                 log: 0 if _EnoughMem accepts n bytes, 1 if not
 ;     CMD_NOP                              log: 0
@@ -39,6 +40,7 @@ CMD_REPEAT   = 12
 CMD_WAIT     = 13
 CMD_FILL     = 14
 CMD_ROOM     = 15
+CMD_LIST     = 16
 
 LOG         = appBackUpScreen
 LOG_LIMIT   = LOG + 700
@@ -56,6 +58,7 @@ S_TMP       = STATE + 24
 S_COUNTS    = STATE + 28
 S_DRAW      = STATE + 40
 
+; CMD_FILL, CMD_ROOM and CMD_WAIT are for the scripts of the local real-ROM runs; the tests never use them.
 #define APP_NAME "storechk"
 #include "header.inc"
 
@@ -214,6 +217,8 @@ dispatch:
 	jp z, do_delete
 	cp CMD_LOCATE
 	jp z, do_locate
+	cp CMD_LIST
+	jp z, do_list
 	cp CMD_FILL
 	jp z, do_fill
 	cp CMD_ROOM
@@ -326,6 +331,21 @@ delete_found:
 	xor a
 	jp result_a
 
+do_list:
+	call fetch_word
+	push hl
+	ld hl, list_name
+	ld de, OP1
+	ld bc, 4
+	ldir
+	pop hl
+	bcall(_CreateRList)
+	xor a
+	jp result_a
+
+list_name:
+	.db 1, 5Dh, 'Q', 0
+
 do_fill:
 	call fetch_word
 	push hl
@@ -405,134 +425,5 @@ log_result:
 	ld (LOG), de
 	ret
 
-; Draws the log as hex digits, 24 to a line, ten lines.
-LOG_SHOWN = 120
-
-draw_log:
-	ld hl, plotSScreen
-	ld de, plotSScreen + 1
-	ld bc, 767
-	ld (hl), 0
-	ldir
-	ld hl, LOG + 2
-	ld (S_DRAW), hl
-	ld hl, 0
-	ld (S_DRAW + 2), hl
-dl_next:
-	ld hl, (S_DRAW + 2)
-	ld de, LOG_SHOWN
-	or a
-	sbc hl, de
-	jr nc, dl_show
-	ld hl, (S_DRAW)
-	ld de, (LOG)
-	or a
-	sbc hl, de
-	jr nc, dl_show
-	ld hl, (S_DRAW)
-	ld a, (hl)
-	inc hl
-	ld (S_DRAW), hl
-	ld (S_DRAW + 4), a
-	ld a, (S_DRAW + 2)
-	ld d, 0
-dl_div:
-	cp 12
-	jr c, dl_have
-	sub 12
-	inc d
-	jr dl_div
-dl_have:
-	add a, a
-	ld (S_DRAW + 6), a
-	ld a, d
-	ld (S_DRAW + 5), a
-	ld a, (S_DRAW + 4)
-	rrca
-	rrca
-	rrca
-	rrca
-	and 0Fh
-	call draw_digit
-	ld hl, S_DRAW + 6
-	inc (hl)
-	ld a, (S_DRAW + 4)
-	and 0Fh
-	call draw_digit
-	ld hl, (S_DRAW + 2)
-	inc hl
-	ld (S_DRAW + 2), hl
-	jr dl_next
-dl_show:
-	bcall(_GrBufCpy)
-	ret
-
-; In: A = a digit, S_DRAW + 5 = the line, S_DRAW + 6 = the cell, four pixels wide, in the line.
-draw_digit:
-	ld l, a
-	ld h, 0
-	ld e, l
-	ld d, h
-	add hl, hl
-	add hl, hl
-	add hl, de
-	ld de, font
-	add hl, de
-	push hl
-	ld a, (S_DRAW + 5)
-	ld b, a
-	ld hl, plotSScreen
-	ld de, 72
-	inc b
-	jr dd_start
-dd_line:
-	add hl, de
-dd_start:
-	djnz dd_line
-	ld a, (S_DRAW + 6)
-	ld c, a
-	srl a
-	ld e, a
-	ld d, 0
-	add hl, de
-	pop de
-	ld b, 5
-dd_row:
-	ld a, (de)
-	inc de
-	bit 0, c
-	jr z, dd_put
-	srl a
-	srl a
-	srl a
-	srl a
-dd_put:
-	or (hl)
-	ld (hl), a
-	push de
-	ld de, 12
-	add hl, de
-	pop de
-	djnz dd_row
-	ret
-
-; 3 by 5 digits, one byte a row with the pixels in the top three bits.
-font:
-	.db 0E0h, 0A0h, 0A0h, 0A0h, 0E0h
-	.db 040h, 0C0h, 040h, 040h, 0E0h
-	.db 0E0h, 020h, 0E0h, 080h, 0E0h
-	.db 0E0h, 020h, 0E0h, 020h, 0E0h
-	.db 0A0h, 0A0h, 0E0h, 020h, 020h
-	.db 0E0h, 080h, 0E0h, 020h, 0E0h
-	.db 0E0h, 080h, 0E0h, 0A0h, 0E0h
-	.db 0E0h, 020h, 020h, 020h, 020h
-	.db 0E0h, 0A0h, 0E0h, 0A0h, 0E0h
-	.db 0E0h, 0A0h, 0E0h, 020h, 0E0h
-	.db 0E0h, 0A0h, 0E0h, 0A0h, 0A0h
-	.db 0C0h, 0A0h, 0C0h, 0A0h, 0C0h
-	.db 0E0h, 080h, 080h, 080h, 0E0h
-	.db 0C0h, 0A0h, 0A0h, 0A0h, 0C0h
-	.db 0E0h, 080h, 0E0h, 080h, 0E0h
-	.db 0E0h, 080h, 0E0h, 080h, 080h
-
+#include "storedraw.inc"
 #include "store.inc"

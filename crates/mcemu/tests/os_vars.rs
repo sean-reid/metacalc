@@ -10,11 +10,13 @@ const ENOUGH: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_enough_mem.bi
 const CREATE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_create_app_var.bin"));
 const DELETE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_del_var_arc.bin"));
 const UNARC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_arc_unarc.bin"));
+const CREATE_LIST: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_create_r_list.bin"));
 const LOAD_DE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_load_de_ind_paged.bin"));
 
 const ENTRY: u16 = 0x9000;
-const RESULT: u16 = 0xA000;
-const INPUT: u16 = 0xA100;
+// Below the stub's data heap, which starts at 9D95h.
+const RESULT: u16 = 0x9100;
+const INPUT: u16 = 0x9200;
 const LIMIT: u32 = 20_000_000;
 const ARC_PAGE: u8 = 0x50;
 const ARC_UNARC: u16 = 0x4FD8;
@@ -48,21 +50,25 @@ fn word(m: &mut Machine, addr: u16) -> u16 {
     u16::from_le_bytes([b[0], b[1]])
 }
 
-fn op1(name: &str) -> [u8; 11] {
+fn op1(ty: u8, name: &str) -> [u8; 11] {
     let mut op1 = [0u8; 11];
-    op1[0] = 0x15;
+    op1[0] = ty;
     op1[1..=name.len()].copy_from_slice(name.as_bytes());
     op1
 }
 
 /// Runs `code` with these registers and this name in OP1; the stop is the run's.
 fn run_call(m: &mut Machine, code: &[u8], regs: [u16; 3], name: &str) -> Stop {
+    run_call_typed(m, code, regs, 0x15, name)
+}
+
+fn run_call_typed(m: &mut Machine, code: &[u8], regs: [u16; 3], ty: u8, name: &str) -> Stop {
     m.load_ram(ENTRY, code);
     let mut input = Vec::new();
     for r in regs {
         input.extend_from_slice(&r.to_le_bytes());
     }
-    input.extend_from_slice(&op1(name));
+    input.extend_from_slice(&op1(ty, name));
     m.load_ram(INPUT, &input);
     m.run(ENTRY, LIMIT).stop
 }
@@ -153,29 +159,37 @@ fn a_later_appvar_goes_above_an_earlier_one_and_does_not_move_it() {
 }
 
 #[test]
-fn a_variable_of_an_earlier_type_goes_below_the_appvars_and_moves_them_up() {
+fn a_variable_of_any_type_goes_above_the_appvars_and_moves_nothing() {
     let mut m = machine();
+    m.create_var("MCSTAT", &[1; 8]).unwrap();
+    m.create_var("OTHER", &[3; 10]).unwrap();
+    let (a, b) = (find(&mut m, "MCSTAT").de, find(&mut m, "OTHER").de);
+    for ty in [1, 0x16, 4] {
+        m.create_typed(ty, "LATE", &[2; 8]).unwrap();
+    }
+    assert_eq!(
+        (find(&mut m, "MCSTAT").de, find(&mut m, "OTHER").de),
+        (a, b)
+    );
+    assert_eq!(m.read_var("MCSTAT").unwrap().data, [1; 8]);
+    assert_eq!(m.read_var("OTHER").unwrap().data, [3; 10]);
+}
+
+#[test]
+fn a_variable_that_grows_moves_the_ones_above_it_up() {
+    let mut m = machine();
+    m.create_typed(1, "L1", &[0; 12]).unwrap();
     let bytes: Vec<u8> = (0..40).map(|i| i ^ 0x55).collect();
     m.create_var("MCSTAT", &bytes).unwrap();
     m.create_var("OTHER", &[3; 10]).unwrap();
     let (a, b) = (find(&mut m, "MCSTAT").de, find(&mut m, "OTHER").de);
-    m.create_typed(1, "L1", &[9; 27]).unwrap();
-    assert_eq!(find(&mut m, "MCSTAT").de, a + 29);
-    assert_eq!(find(&mut m, "OTHER").de, b + 29);
+    let free = m.free_ram();
+    m.grow_var(1, "L1", 17);
+    assert_eq!(find(&mut m, "MCSTAT").de, a + 17);
+    assert_eq!(find(&mut m, "OTHER").de, b + 17);
     assert_eq!(m.read_var("MCSTAT").unwrap().data, bytes);
     assert_eq!(m.read_var("OTHER").unwrap().data, [3; 10]);
-    m.create_typed(1, "L2", &[8; 5]).unwrap();
-    assert_eq!(find(&mut m, "MCSTAT").de, a + 29 + 7);
-}
-
-#[test]
-fn a_variable_of_a_later_type_goes_above_the_appvars() {
-    let mut m = machine();
-    m.create_var("MCSTAT", &[1; 8]).unwrap();
-    let a = find(&mut m, "MCSTAT").de;
-    m.create_typed(0x16, "LATE", &[2; 8]).unwrap();
-    assert_eq!(find(&mut m, "MCSTAT").de, a);
-    assert_eq!(m.read_var("MCSTAT").unwrap().data, [1; 8]);
+    assert_eq!(m.free_ram(), free - 17);
 }
 
 #[test]
@@ -466,4 +480,41 @@ fn load_de_ind_paged_reads_the_size_word_of_an_archived_variable() {
     let o = call(&mut m, LOAD_DE, [f.de + 18, 0, page], "MCSTAT");
     assert_eq!(o.de, 0x0707, "the data follows the size word");
     assert_eq!(o.iy, 0xBEEF);
+}
+
+#[test]
+fn a_create_with_a_size_that_wraps_the_sixteen_bit_sum_is_refused() {
+    let mut m = machine();
+    m.create_var("KEEP", &[7; 20]).unwrap();
+    let free = m.free_ram();
+    for size in [0xFFF0, 0xFFF8, 0xFFFF, 0xFFFE - 6] {
+        let stop = run_call(&mut m, CREATE, [size, 0, 0], "MCSTAT");
+        assert_eq!(stop, Stop::OsError(E_MEMORY), "size {size:#x}");
+        assert!(m.read_var("MCSTAT").is_none());
+        assert_eq!(m.read_var("KEEP").unwrap().data, [7; 20]);
+        assert_eq!(m.free_ram(), free);
+    }
+}
+
+#[test]
+fn a_list_is_nine_bytes_an_element_and_goes_above_the_appvars() {
+    let mut m = machine();
+    m.create_var("MCSTAT", &[5; 30]).unwrap();
+    let before = find(&mut m, "MCSTAT").de;
+    let free = m.free_ram();
+    let stop = run_call_typed(&mut m, CREATE_LIST, [3, 0, 0], 1, "L1");
+    assert_eq!(stop, Stop::Halted);
+    assert_eq!(find(&mut m, "MCSTAT").de, before);
+    assert_eq!(m.free_ram(), free - 29 - 7 - 2);
+    assert_eq!(m.read_var("MCSTAT").unwrap().data, [5; 30]);
+}
+
+#[test]
+fn a_list_with_too_many_elements_is_refused() {
+    let mut m = machine();
+    for dim in [0x2000u16, 0x1C72, 0xFFFF] {
+        let stop = run_call_typed(&mut m, CREATE_LIST, [dim, 0, 0], 1, "L1");
+        assert_eq!(stop, Stop::OsError(E_MEMORY), "dim {dim:#x}");
+    }
+    assert_eq!(m.free_ram(), 0xFE67 - 0x9D95);
 }

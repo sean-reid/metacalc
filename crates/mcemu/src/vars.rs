@@ -66,8 +66,8 @@ impl Machine {
         self.create_typed(APPVAR, name, data)
     }
 
-    /// Creates a variable of type `ty`. Its data goes below that of every variable of a later
-    /// type, so creating a list (type 1) moves the AppVars up.
+    /// Creates a variable of type `ty`. Its data goes at the end of the heap, as on TI-OS, whatever
+    /// the type.
     pub fn create_typed(&mut self, ty: u8, name: &str, data: &[u8]) -> Result<(), NoRoom> {
         self.set_name(ty, name);
         let size = u16::try_from(data.len()).expect("a variable holds at most 65535 bytes");
@@ -144,6 +144,21 @@ impl Machine {
         true
     }
 
+    /// Adds `extra` bytes to the end of the variable `name` of type `ty`, as TI-OS does when a
+    /// list grows: every variable above it moves up.
+    pub fn grow_var(&mut self, ty: u8, name: &str, extra: u16) {
+        self.set_name(ty, name);
+        let f = self.call_stub(stub::HOST_FIND, 0, 0, 0);
+        assert_eq!(f.af & 1, 0, "{name} exists");
+        self.call_stub(stub::HOST_GROW, 0, f.de, extra);
+    }
+
+    /// Where the data heap ends: the first byte past the last RAM variable's data.
+    pub fn heap_end(&mut self) -> u16 {
+        self.call_stub(stub::HOST_INIT, 0, 0, 0);
+        self.word_at(stub::VS_HEAP_END)
+    }
+
     /// Bytes of RAM left for variables.
     pub fn free_ram(&mut self) -> usize {
         self.call_stub(stub::HOST_INIT, 0, 0, 0);
@@ -153,9 +168,14 @@ impl Machine {
         usize::from(low - end - reserve)
     }
 
+    /// Ends a `set_free_ram`: all the RAM the heap and the symbol table leave is free again.
+    pub fn reset_free_ram(&mut self) {
+        self.load_ram(stub::VS_RESERVE, &[0, 0]);
+    }
+
     /// Sets RAM aside so that exactly `bytes` are left for variables.
     pub fn set_free_ram(&mut self, bytes: usize) {
-        self.load_ram(stub::VS_RESERVE, &[0, 0]);
+        self.reset_free_ram();
         let free = self.free_ram();
         let reserve = free.checked_sub(bytes).expect("that much RAM is free");
         self.load_ram(stub::VS_RESERVE, &(reserve as u16).to_le_bytes());

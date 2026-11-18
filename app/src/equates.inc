@@ -5,6 +5,7 @@ _GetCSC          = 4018h
 _ChkFindSym      = 42F1h
 _EnoughMem       = 42FDh
 _CreateAppVar    = 4E6Ah
+_CreateRList     = 4315h
 _DelVarArc       = 4FC6h
 _Arc_Unarc       = 4FD8h
 _LoadDEIndPaged  = 501Ah

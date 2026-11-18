@@ -15,9 +15,9 @@ $(BUILD)/sparecheck.8xk: sparecheck.z80 sparecore.inc sparescreen.inc printnum.i
 	mkdir -p "$(BUILD)"
 	"$(SPASM)" -I ../app/src -I . sparecheck.z80 $@
 
-$(BUILD)/storecheck.8xk: storecheck.z80 ../app/src/store.inc ../app/src/header.inc ../app/src/equates.inc
+$(BUILD)/storecheck.8xk: storecheck.z80 storedraw.inc ../app/src/store.inc ../app/src/store_count.inc ../app/src/store_open.inc ../app/src/header.inc ../app/src/equates.inc
 	mkdir -p "$(BUILD)"
-	"$(SPASM)" -I ../app/src storecheck.z80 $@
+	"$(SPASM)" -I ../app/src -I . storecheck.z80 $@
 
 # A phony target, so a path with a space is never a make target, and the app is always assembled
 # because make cannot see LIBRARY change. It needs a library, so it is only built when one is given.
