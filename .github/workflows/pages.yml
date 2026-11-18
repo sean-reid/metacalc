@@ -27,7 +27,7 @@ jobs:
         with:
           tool: mdbook
       - run: mdbook build docs
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/book
       - id: deploy
