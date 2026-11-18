@@ -125,6 +125,25 @@ fn characters_map_to_codes_as_the_text_layout_picks_glyphs() {
 }
 
 #[test]
+fn braces_bar_backslash_and_caret_are_emitted_with_their_own_codes() {
+    let table = Table::builtin();
+    let include = table.include("ui_font");
+    let question = table.glyph("question").unwrap();
+    for (c, name) in [
+        ('{', "lbrace"),
+        ('}', "rbrace"),
+        ('|', "bar"),
+        ('\\', "backslash"),
+        ('^', "caret"),
+    ] {
+        let code = table.glyph(name).unwrap();
+        assert_ne!(code, question, "{c:?}");
+        let equ = format!("UI_FONT_CH_{:X}", c as u32);
+        assert_eq!(equate(&include, &equ), usize::from(code), "{c:?}");
+    }
+}
+
+#[test]
 fn a_font_that_is_not_seven_rows_high_is_refused() {
     let font = Font::parse("height 5\n\nglyph question\n##\n##\n##\n##\n##\n", "").unwrap();
     assert!(Table::new(&font).is_err());
