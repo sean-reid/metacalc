@@ -1,10 +1,12 @@
 //! Metamath database model, parser and reference verifier.
 
+mod closure;
 mod parse;
 mod verify;
 
+pub use closure::closure;
 pub use parse::{ParseError, parse};
-pub use verify::Verifier;
+pub use verify::{Usage, Verifier};
 
 pub type Sym = u32;
 pub type StmtId = u32;
