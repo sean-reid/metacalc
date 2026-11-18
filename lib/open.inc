@@ -292,6 +292,7 @@ lo_done:
 	ret
 lo_bad:
 	ld a,LIB_ERR_BAD
+	or a
 	ret
 
 ; in: A:HL = a, DE = address of a 24-bit value b. out: C if a < b. Destroys AF BC DE HL.

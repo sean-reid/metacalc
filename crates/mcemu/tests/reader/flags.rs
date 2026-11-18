@@ -184,3 +184,103 @@ fn every_status_of_every_section_routine_comes_with_matching_flags() {
     }
     assert!(watch.0.is_empty(), "flags disagree with A at {:?}", watch.0);
 }
+
+fn agree(out: Out, want: u8, what: &str) {
+    assert_eq!(out.status(), want, "{what}");
+    assert_eq!(out.af & ZERO != 0, want == 0, "{what}: the zero flag");
+}
+
+fn open_with(rig: &mut Rig, page: u8) -> Out {
+    let regs = Regs {
+        a: page,
+        de: SCRATCH,
+        ..Regs::default()
+    };
+    rig.call("LIB_OPEN", regs)
+}
+
+#[test]
+fn a_successful_open_and_read_with_interrupts_on_return_zero_with_interrupts_still_on() {
+    let mut rig = Rig::with_library(&headed(60, 2, 0));
+    rig.ei = true;
+    let page = rig.lib_page;
+    let out = open_with(&mut rig, page);
+    agree(out, ST_OK, "open");
+    assert_eq!(out.iff, 1, "open leaves interrupts on");
+    let out = rig.read_call(100, 8, BUF);
+    agree(out, ST_OK, "read");
+    assert_eq!(out.iff, 1, "read leaves interrupts on");
+    rig.ei = false;
+    let out = rig.read_call(100, 8, BUF);
+    agree(out, ST_OK, "read, interrupts off");
+    assert_eq!(out.iff, 0, "read leaves interrupts off");
+}
+
+/// The first variable's entry in the symbol table: its offset in the library bytes.
+fn first_variable(bytes: &[u8]) -> usize {
+    let mut at = 20;
+    for _ in 0..bytes[12] {
+        at += 2 + usize::from(bytes[at + 1]);
+    }
+    at
+}
+
+#[test]
+fn every_refusal_at_open_returns_status_3_with_the_zero_flag_clear() {
+    let good = headed(60, 2, 0);
+    let page = LIB_PAGE;
+    let cases: Vec<(&str, Vec<u8>, u8)> = vec![
+        ("a page of 80h", good.clone(), 0x80),
+        ("bad magic", with_byte(&good, 0, b'X'), page),
+        ("a length above 24 bits", with_byte(&good, 11, 1), page),
+        (
+            "more than 255 symbols",
+            {
+                let mut b = with_byte(&good, 12, 200);
+                b[13] = 100;
+                b
+            },
+            page,
+        ),
+        (
+            "a symbol name of 255 bytes",
+            with_byte(&good, 21, 255),
+            page,
+        ),
+        ("a constant with a typecode", with_byte(&good, 20, 0), page),
+        (
+            "a variable typecode that is not a constant",
+            with_byte(&good, first_variable(&good), 255),
+            page,
+        ),
+        (
+            "no bytes left before the directory",
+            with_dir(&good, 20),
+            page,
+        ),
+        (
+            "a directory inside the first entry",
+            with_dir(&good, 10),
+            page,
+        ),
+        ("no progress through the symbols", with_dir(&good, 21), page),
+    ];
+    for (name, bytes, page) in cases {
+        let mut rig = Rig::with_library(&bytes);
+        let out = open_with(&mut rig, page);
+        agree(out, ST_BAD, name);
+        assert_eq!(rig.read_call(0, 1, BUF).status(), ST_CLOSED, "{name}");
+    }
+}
+
+fn with_byte(bytes: &[u8], at: usize, value: u8) -> Vec<u8> {
+    let mut out = bytes.to_vec();
+    out[at] = value;
+    out
+}
+
+fn with_dir(bytes: &[u8], dir: u32) -> Vec<u8> {
+    let mut out = bytes.to_vec();
+    out[16..20].copy_from_slice(&dir.to_le_bytes());
+    out
+}

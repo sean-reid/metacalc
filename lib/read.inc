@@ -158,16 +158,21 @@ lr_hop2:
 	ex af,af'
 	out (7),a
 	ld a,(lr_iff)
-	or a
+	ex af,af'
 	ld a,(lr_old5)
 	ld de,(lr_dest)
 	ld hl,LIB_BOUNCE
 	ldir
 lr_window_end:
 	out (5),a
-	ld a,LIB_OK
-	ret z
+	ex af,af'
+	or a
+	jr z,lr_done
+	xor a
 	ei
+	ret
+lr_done:
+	xor a
 	ret
 
 ; in: DE = start, BC = length. out: Z, or NZ and A = LIB_ERR_ARG when [DE, DE + BC) touches the
