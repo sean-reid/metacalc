@@ -1,0 +1,40 @@
+; metacalc Z80 canvas for the TI-84 Plus SE. Draws into a 96 by 64 frame buffer in RAM that
+; matches crates/mcui/src/canvas.rs, and copies it to the LCD. Nothing else draws.
+;
+; Code runs from flash and is position dependent. Assembling this file alone places it at
+; $4000; an including file defines UI_EMBEDDED first and places the code itself. The glyph
+; table is generated: `mcglyph z80 font.inc`, found through the include path as "font.inc".
+;
+; RAM, two blocks that default to space TI-OS leaves to an app and can be moved with UI_FRAME
+; and UI_VARS: the frame, 768 bytes at UI_FRAME, default $9340 (plotSScreen), row-major, 12
+; bytes a row, the most significant bit leftmost; and UI_VARS_SIZE ($1A, 26) bytes of variables
+; at UI_VARS, default $9882 (appBackUpScreen + $10), laid out in ram.inc. The blocks must not
+; overlap. Call ui_set_font and ui_clear before the first draw. Registers not listed as
+; destroyed are preserved, and IX, IY and the shadow registers are never touched. The stack
+; needs 12 bytes.
+;
+; Fonts: every routine that draws or measures text reads the table given to ui_set_font. A
+; table is what mcglyph z80 writes: a slot of 8 bytes per glyph, the width then seven row
+; bytes; a glyph nine wide takes a second slot of its ninth pixels. Strings are glyph codes
+; ended by 0 and code 1 is the space. The soft key row sets the ui_key_font table itself and restores the font in use afterwards; its
+; label strings use that table's codes, which differ from the main font's.
+;
+; Text rows are 0 to 7 and eight scanlines each; a glyph's seven rows start one scanline
+; below the top. Pixels outside the frame are dropped as the model drops them. Truncating,
+; wrapping and folding are decided by the caller.
+;
+; Routines (details at each): ui_set_font, ui_clear, ui_text, ui_text_width, ui_text_right,
+; ui_text_centered, ui_invert, ui_invert_row, ui_marker, ui_title, ui_list_row, ui_soft_keys,
+; ui_blit. ui_blit waits on the busy flag, bit 7 of port 10h, before every LCD write
+; and leaves the controller in 8 bit mode with increment mode 5, as TI-OS expects it.
+
+#ifndef UI_EMBEDDED
+.org $4000
+#endif
+
+#include "ram.inc"
+#include "glyph.inc"
+#include "shapes.inc"
+#include "bars.inc"
+#include "blit.inc"
+#include "font.inc"

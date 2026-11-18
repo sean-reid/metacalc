@@ -92,6 +92,36 @@ fn a_statement_past_one_screen_is_written_as_numbered_files() {
 }
 
 #[test]
+fn z80_writes_the_glyph_table_include() {
+    let dir = temp("cli-z80");
+    let inc = dir.join("font.inc");
+    let out = run(&["z80", inc.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0));
+    let text = std::fs::read_to_string(&inc).unwrap();
+    assert_eq!(text, mcglyph::z80::fonts_include());
+    assert!(text.contains("\nui_font:\n"));
+    assert!(text.contains("\nui_key_font:\n"));
+    assert_eq!(run(&["z80"]).status.code(), Some(2));
+    assert_eq!(run(&["z80", "a", "b"]).status.code(), Some(2));
+}
+
+#[test]
+fn a_token_named_z80_is_still_a_token() {
+    let dir = temp("cli-z80-token");
+    let png = dir.join("a.png");
+    for args in [
+        vec!["-o", png.to_str().unwrap(), "z80"],
+        vec!["z80", "-o", png.to_str().unwrap()],
+        vec!["-o", png.to_str().unwrap(), "ph", "z80"],
+    ] {
+        let out = run(&args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.contains("no glyphs for token z80"), "{args:?}: {err}");
+    }
+}
+
+#[test]
 fn the_keys_font_draws_each_label_as_an_inverted_box() {
     let dir = temp("cli-keys");
     let png = dir.join("k.png");

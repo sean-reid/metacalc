@@ -9,6 +9,9 @@ publish = false
 
 [build-dependencies]
 cc = "1"
+mcglyph = { path = "../mcglyph" }
 
 [dev-dependencies]
+mcglyph = { path = "../mcglyph" }
 mcpack = { path = "../mcpack" }
+mcui = { path = "../mcui" }

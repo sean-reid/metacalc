@@ -1,5 +1,6 @@
 //! Renders a Metamath token sequence in the calculator font to PNG files.
 
+use mcglyph::z80::fonts_include;
 use mcglyph::{Bitmap, Font, png};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -10,7 +11,12 @@ const USAGE: &str = "usage: mcglyph [--scale N] [--font main|keys] -o OUT.png TO
 Draws the tokens in the calculator font on 96x64 screens. A statement that wraps past one screen
 is written to OUT-1.png, OUT-2.png and so on. Prints each file written.
 With --font keys each argument is a soft key label, drawn in the key font as an inverted box,
-one label per 8 pixel row, and the output is a single screen.";
+one label per 8 pixel row, and the output is a single screen.
+
+usage: mcglyph z80 OUT.inc
+Writes the font as an assembler include for the Z80 canvas: the glyph tables at the labels ui_font and
+ui_key_font, with UI_FONT_GLYPHS and UI_FONT_CH_<hex> (and UI_KEY_FONT_...) for the codes. The command takes exactly the
+output path; with -o anywhere, z80 is an ordinary token to draw.";
 
 fn main() -> ExitCode {
     match run(env::args().skip(1).collect()) {
@@ -23,6 +29,9 @@ fn main() -> ExitCode {
 }
 
 fn run(args: Vec<String>) -> Result<(), String> {
+    if args.first().is_some_and(|a| a == "z80") && !args.iter().any(|a| a == "-o") {
+        return z80(&args[1..]);
+    }
     let (mut scale, mut output, mut tokens, mut keys) = (4usize, None, Vec::new(), false);
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -73,6 +82,15 @@ fn numbered(path: &Path, n: usize) -> PathBuf {
         .file_stem()
         .map_or_else(String::new, |s| s.to_string_lossy().into_owned());
     path.with_file_name(format!("{stem}-{n}.png"))
+}
+
+fn z80(args: &[String]) -> Result<(), String> {
+    let [output] = args else {
+        return Err(USAGE.into());
+    };
+    fs::write(output, fonts_include()).map_err(|e| format!("{output}: {e}"))?;
+    println!("{output}");
+    Ok(())
 }
 
 fn key_labels(labels: &[&str]) -> Result<Bitmap, String> {

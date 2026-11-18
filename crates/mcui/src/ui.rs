@@ -1,4 +1,4 @@
-use crate::canvas::Canvas;
+use crate::canvas::{Call, Canvas};
 use crate::data::{Installed, Lib, LoadError, Statuses};
 use crate::edit::Editor;
 use crate::key::Key;
@@ -112,16 +112,25 @@ impl Ui {
 
     /// The screen as 96 by 64 pixels.
     pub fn frame(&self) -> Bitmap {
+        self.draw(Canvas::default()).into_bitmap()
+    }
+
+    /// The screen and the canvas calls that drew it; for the Z80 replay tests.
+    #[doc(hidden)]
+    pub fn frame_calls(&self) -> (Bitmap, Vec<Call>) {
+        self.draw(Canvas::recording()).into_parts()
+    }
+
+    fn draw(&self, mut canvas: Canvas) -> Canvas {
         let ctx = Ctx {
             libs: &self.libs,
             proofs: &self.proofs,
         };
-        let mut canvas = Canvas::default();
         self.stack
             .last()
             .expect("a screen is always open")
             .draw(&ctx, &mut canvas);
-        canvas.into_bitmap()
+        canvas
     }
 
     /// Where the open screen stands.

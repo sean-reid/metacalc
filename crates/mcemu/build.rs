@@ -136,17 +136,21 @@ fn compile_tilem() {
     println!("cargo:rerun-if-changed=csrc/harness.c");
 }
 
-fn spasm_ok(src: &Path, out: &Path, defines: &[&str], args: &[&str]) -> bool {
+/// Runs spasm; an error holds the assembler's own words.
+fn spasm_try(src: &Path, out: &Path, defines: &[&str], args: &[&str]) -> Result<(), String> {
     let mut cmd = Command::new(env::var_os("SPASM").unwrap_or_else(|| "spasm".into()));
     for d in defines {
         cmd.arg(format!("-D{d}"));
     }
-    cmd.args(args)
-        .arg("-N")
-        .arg(src)
-        .arg(out)
-        .output()
-        .is_ok_and(|o| o.status.success())
+    match cmd.args(args).arg("-N").arg(src).arg(out).output() {
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) => Err(String::from_utf8_lossy(&o.stdout).trim().replace('\n', " ")),
+        Err(e) => Err(format!("cannot run spasm (set SPASM to its path): {e}")),
+    }
+}
+
+fn spasm_ok(src: &Path, out: &Path, defines: &[&str], args: &[&str]) -> bool {
+    spasm_try(src, out, defines, args).is_ok()
 }
 
 fn spasm(src: &Path, out: &Path, defines: &[&str], args: &[&str]) {
@@ -202,6 +206,7 @@ fn main() {
         );
     }
     assemble_kernel(&out);
+    assemble_ui(&out);
     spasm(
         &Path::new("tests/routines").join("launch_state.z80"),
         &out.join("launch_state.8xk"),
@@ -276,5 +281,40 @@ fn assemble_kernel(out: &Path) {
             defines,
             &["-I", include, "-L"],
         );
+    }
+}
+
+/// The canvas with the built-in font, and with its RAM block moved; each with the label file the
+/// tests read.
+fn assemble_ui(out: &Path) {
+    let dir = Path::new("../../ui");
+    for entry in fs::read_dir(dir).unwrap().flatten() {
+        println!("cargo:rerun-if-changed={}", entry.path().display());
+    }
+    let font_dir = out.join("ui_font");
+    fs::create_dir_all(&font_dir).unwrap();
+    fs::write(font_dir.join("font.inc"), mcglyph::z80::fonts_include()).unwrap();
+    let include = dir.to_str().unwrap();
+    let assemble = |defines: &[&str], output: &Path| {
+        spasm_try(
+            &dir.join("ui.z80"),
+            output,
+            defines,
+            &["-I", include, "-I", font_dir.to_str().unwrap(), "-L"],
+        )
+    };
+    for (name, defines) in [
+        ("ui_test", &[][..]),
+        ("ui_moved", &["UI_FRAME=$A000", "UI_VARS=$A500"][..]),
+    ] {
+        if let Err(why) = assemble(defines, &out.join(format!("{name}.bin"))) {
+            fail(&format!("spasm failed on the canvas image {name}: {why}"));
+        }
+    }
+    match assemble(&["UI_VARS=$9400"], &out.join("ui_probe.bin")) {
+        Err(why) if why.contains("overlap") => {}
+        other => fail(&format!(
+            "overlapping canvas blocks gave {other:?}, not an overlap error"
+        )),
     }
 }

@@ -117,21 +117,96 @@ pub fn soft_key_room(i: usize) -> usize {
     to - from - 2
 }
 
+/// A drawing call as a Z80 canvas receives it: strings already cut to fit, nothing left to
+/// decide. The recording API exists for the Z80 replay tests.
+#[doc(hidden)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Call {
+    Text {
+        x: usize,
+        row: usize,
+        text: String,
+    },
+    TextRight {
+        row: usize,
+        text: String,
+    },
+    TextCentered {
+        row: usize,
+        text: String,
+    },
+    Invert {
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+    },
+    InvertRow(usize),
+    Title {
+        left: String,
+        right: String,
+    },
+    SoftKeys([String; 5]),
+    ListRow {
+        row: usize,
+        left: String,
+        right: String,
+        selected: bool,
+    },
+    Marker(usize),
+    /// Laid out tokens or a ready made bitmap, which only the host can draw: the pixels the
+    /// call set, as a layer the size of the screen.
+    Ink(Bitmap),
+}
+
 pub struct Canvas {
     bitmap: Bitmap,
+    calls: Option<Vec<Call>>,
+    depth: usize,
 }
 
 impl Default for Canvas {
     fn default() -> Self {
         Canvas {
             bitmap: Bitmap::new(WIDTH, HEIGHT),
+            calls: None,
+            depth: 0,
         }
     }
 }
 
 impl Canvas {
+    /// A canvas that also keeps the calls made on it, the ones a screen makes and not the ones
+    /// they make in turn.
+    #[doc(hidden)]
+    pub fn recording() -> Self {
+        Canvas {
+            calls: Some(Vec::new()),
+            ..Canvas::default()
+        }
+    }
+
     pub fn into_bitmap(self) -> Bitmap {
         self.bitmap
+    }
+
+    #[doc(hidden)]
+    pub fn into_parts(self) -> (Bitmap, Vec<Call>) {
+        (self.bitmap, self.calls.unwrap_or_default())
+    }
+
+    fn record(&mut self, call: impl FnOnce() -> Call) {
+        if self.depth == 0
+            && let Some(calls) = &mut self.calls
+        {
+            calls.push(call());
+        }
+    }
+
+    fn nested(&mut self, draw: impl FnOnce(&mut Self)) {
+        self.depth += 1;
+        draw(self);
+        self.depth -= 1;
     }
 
     /// Top of text row `row`, counting the title bar as row 0.
@@ -147,6 +222,11 @@ impl Canvas {
 
     /// Draws `text` with its first column at `x` on `row`; returns its width.
     pub fn text(&mut self, x: usize, row: usize, text: &str) -> usize {
+        self.record(|| Call::Text {
+            x,
+            row,
+            text: text.into(),
+        });
         let ink = font().text(text);
         self.bitmap.blit(&ink, x, Self::top(row) + 1);
         ink.width()
@@ -154,23 +234,54 @@ impl Canvas {
 
     /// Draws `ink` with its top left corner at `x` on `row`.
     pub fn blit(&mut self, ink: &Bitmap, x: usize, row: usize) {
-        self.bitmap.blit(ink, x, Self::top(row) + 1);
+        self.ink(|bitmap| bitmap.blit(ink, x, Self::top(row) + 1));
+    }
+
+    /// Runs `draw` on the screen; while recording, on a fresh layer that is then ORed onto the
+    /// screen and kept as one call.
+    fn ink(&mut self, draw: impl FnOnce(&mut Bitmap)) {
+        if self.calls.is_none() {
+            draw(&mut self.bitmap);
+            return;
+        }
+        let mut layer = Bitmap::new(WIDTH, HEIGHT);
+        draw(&mut layer);
+        self.bitmap.blit(&layer, 0, 0);
+        self.record(|| Call::Ink(layer));
     }
 
     /// Draws `text` so that it ends at the right margin.
     pub fn text_right(&mut self, row: usize, text: &str) -> usize {
         let width = text_width(text);
-        self.text(WIDTH.saturating_sub(MARGIN + width), row, text);
+        self.record(|| Call::TextRight {
+            row,
+            text: text.into(),
+        });
+        self.nested(|c| {
+            c.text(WIDTH.saturating_sub(MARGIN + width), row, text);
+        });
         width
     }
 
     pub fn text_centered(&mut self, row: usize, text: &str) {
         let width = text_width(text);
-        self.text(WIDTH.saturating_sub(width) / 2, row, text);
+        self.record(|| Call::TextCentered {
+            row,
+            text: text.into(),
+        });
+        self.nested(|c| {
+            c.text(WIDTH.saturating_sub(width) / 2, row, text);
+        });
     }
 
     /// Flips every pixel of the rectangle.
     pub fn invert(&mut self, x: usize, y: usize, width: usize, height: usize) {
+        self.record(|| Call::Invert {
+            x,
+            y,
+            width,
+            height,
+        });
         for yy in y..y + height {
             for xx in x..x + width {
                 let ink = self.bitmap.get(xx, yy);
@@ -180,7 +291,8 @@ impl Canvas {
     }
 
     pub fn invert_row(&mut self, row: usize) {
-        self.invert(0, Self::top(row), WIDTH, ROW);
+        self.record(|| Call::InvertRow(row));
+        self.nested(|c| c.invert(0, Self::top(row), WIDTH, ROW));
     }
 
     /// The title bar: `left` and `right` in white on a black row, the left side cut short with an
@@ -188,9 +300,16 @@ impl Canvas {
     pub fn title(&mut self, left: &str, right: &str) {
         let right_width = text_width(right);
         let room = Self::room(right_width, right);
-        self.text(MARGIN, 0, &truncate(left, room));
-        self.text_right(0, right);
-        self.invert_row(0);
+        let left = truncate(left, room);
+        self.record(|| Call::Title {
+            left: left.clone(),
+            right: right.into(),
+        });
+        self.nested(|c| {
+            c.text(MARGIN, 0, &left);
+            c.text_right(0, right);
+            c.invert_row(0);
+        });
     }
 
     /// A title bar whose left side is `name` then `tail`: when the two do not fit beside `right`,
@@ -205,19 +324,28 @@ impl Canvas {
     /// across its fifth of the width, one column short on the right so neighbours stay apart,
     /// with the label centred in it, set in the key font; a key without one stays blank.
     pub fn soft_keys(&mut self, labels: [&str; 5]) {
-        for (i, label) in labels.iter().enumerate() {
+        let cut: [&str; 5] = std::array::from_fn(|i| {
+            let label = labels[i];
             if label.is_empty() {
-                continue;
+                return "";
             }
-            let (from, to) = soft_key_box(i);
             let cut = key_cut(label, soft_key_room(i));
-            debug_assert_eq!(cut, *label, "label {label:?} does not fit key {i}");
-            let label = cut;
-            let ink = key_font().text(label);
-            let x = from + (to - from - ink.width()).div_ceil(2);
-            self.blit(&ink, x, CONTENT_ROWS + 1);
-            self.invert(from, Self::top(CONTENT_ROWS + 1), to - from, ROW);
-        }
+            debug_assert_eq!(cut, label, "label {label:?} does not fit key {i}");
+            cut
+        });
+        self.record(|| Call::SoftKeys(cut.map(String::from)));
+        self.nested(|c| {
+            for (i, label) in cut.iter().enumerate() {
+                if label.is_empty() {
+                    continue;
+                }
+                let (from, to) = soft_key_box(i);
+                let ink = key_font().text(label);
+                let x = from + (to - from - ink.width()).div_ceil(2);
+                c.bitmap.blit(&ink, x, Self::top(CONTENT_ROWS + 1) + 1);
+                c.invert(from, Self::top(CONTENT_ROWS + 1), to - from, ROW);
+            }
+        });
     }
 
     /// One list row: `left` cut to fit beside `right`, which ends at the right margin. A selected
@@ -225,11 +353,20 @@ impl Canvas {
     pub fn list_row(&mut self, row: usize, left: &str, right: &str, selected: bool) {
         let right_width = text_width(right);
         let room = Self::room(right_width, right);
-        self.text(MARGIN, row, &truncate(left, room));
-        self.text_right(row, right);
-        if selected {
-            self.invert_row(row);
-        }
+        let left = truncate(left, room);
+        self.record(|| Call::ListRow {
+            row,
+            left: left.clone(),
+            right: right.into(),
+            selected,
+        });
+        self.nested(|c| {
+            c.text(MARGIN, row, &left);
+            c.text_right(row, right);
+            if selected {
+                c.invert_row(row);
+            }
+        });
     }
 
     /// Draws a laid out statement with its first column at `x` and its first line on `row`,
@@ -241,17 +378,18 @@ impl Canvas {
         row: isize,
         window: std::ops::Range<isize>,
     ) {
-        for (r, line) in layout.lines.iter().enumerate() {
-            let at = row + r as isize;
-            if !window.contains(&at) {
-                continue;
+        self.ink(|bitmap| {
+            for (r, line) in layout.lines.iter().enumerate() {
+                let at = row + r as isize;
+                if !window.contains(&at) {
+                    continue;
+                }
+                for placed in &line.tokens {
+                    let ink = piece_bitmap(&layout.pieces[placed.index]);
+                    bitmap.blit(&ink, x + placed.x, Self::top(at as usize) + 1);
+                }
             }
-            for placed in &line.tokens {
-                let ink = piece_bitmap(&layout.pieces[placed.index]);
-                self.bitmap
-                    .blit(&ink, x + placed.x, Self::top(at as usize) + 1);
-            }
-        }
+        });
     }
 
     /// A progress bar across the text width on `row`, `done` of `total` filled; with nothing to
@@ -262,19 +400,22 @@ impl Canvas {
         let filled = (inner * done.min(total))
             .checked_div(total)
             .unwrap_or(inner);
-        for y in 0..height {
-            for x in 0..width {
-                let edge = y == 0 || y == height - 1 || x == 0 || x == width - 1;
-                let fill = (2..height - 2).contains(&y) && (2..2 + filled).contains(&x);
-                if edge || fill {
-                    self.bitmap.set(MARGIN + x, Self::top(row) + 1 + y, true);
+        self.ink(|bitmap| {
+            for y in 0..height {
+                for x in 0..width {
+                    let edge = y == 0 || y == height - 1 || x == 0 || x == width - 1;
+                    let fill = (2..height - 2).contains(&y) && (2..2 + filled).contains(&x);
+                    if edge || fill {
+                        bitmap.set(MARGIN + x, Self::top(row) + 1 + y, true);
+                    }
                 }
             }
-        }
+        });
     }
 
     /// A two column bar in the left margin of `row`, the cursor of a whole statement.
     pub fn marker(&mut self, row: usize) {
+        self.record(|| Call::Marker(row));
         for y in Self::top(row) + 1..Self::top(row) + ROW {
             self.bitmap.set(0, y, true);
             self.bitmap.set(1, y, true);
