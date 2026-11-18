@@ -13,3 +13,4 @@ _NewLine         = 452Eh
 plotSScreen      = 9340h
 appBackUpScreen  = 9872h
 libPage          = appBackUpScreen
+skClear          = 0Fh

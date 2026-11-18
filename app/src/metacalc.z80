@@ -8,23 +8,46 @@ start:
 	call app_find_library
 #endif
 	bcall(_ClrLCDFull)
-	xor a
-	ld (curRow), a
-	ld (curCol), a
+	ld hl, plotSScreen
+	ld de, plotSScreen + 1
+	ld bc, 767
+	ld (hl), 0
+	ldir
 	ld hl, title
-print:
-	ld a, (hl)
-	or a
-	jr z, done
-	bcall(_PutC)
-	inc hl
-	jr print
-done:
-	bcall(_GetKey)
+	ld de, plotSScreen + (TITLE_ROW * 12) + TITLE_COL
+	ld b, 8
+draw:
+	push bc
+	ld bc, 8
+	ldir
+	ld bc, 4
+	ex de, hl
+	add hl, bc
+	ex de, hl
+	pop bc
+	djnz draw
+	bcall(_GrBufCpy)
+	ei
+wait_for_clear:
+	halt
+	bcall(_GetCSC)
+	cp skClear
+	jr nz, wait_for_clear
 	bjump(_JForceCmdNoChar)
 
+TITLE_ROW = 28
+TITLE_COL = 2
+
+; "metacalc", eight rows of eight glyph bytes.
 title:
-	.db "metacalc", 0
+	.db 000h, 000h, 040h, 000h, 000h, 000h, 060h, 000h
+	.db 0D0h, 070h, 0F0h, 070h, 070h, 070h, 020h, 070h
+	.db 0A8h, 088h, 040h, 008h, 088h, 008h, 020h, 088h
+	.db 0A8h, 0F8h, 040h, 078h, 080h, 078h, 020h, 080h
+	.db 0A8h, 080h, 040h, 088h, 080h, 088h, 020h, 080h
+	.db 0A8h, 088h, 048h, 098h, 088h, 098h, 020h, 088h
+	.db 0A8h, 070h, 030h, 068h, 070h, 068h, 070h, 070h
+	.db 000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h
 
 #ifdef LIBRARY
 #include "libpage.inc"

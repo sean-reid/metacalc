@@ -4,6 +4,8 @@ mod app;
 mod crc;
 #[path = "kernel/edges.rs"]
 mod edges;
+#[path = "kernel/launch.rs"]
+mod launch;
 #[path = "kernel/libraries.rs"]
 mod libraries;
 #[path = "kernel/limits.rs"]
