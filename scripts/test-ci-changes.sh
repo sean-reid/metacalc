@@ -29,6 +29,7 @@ z80="emu app libraries site"
 expect nothing "" ""
 expect readme "" README.md
 expect gitignore "" .gitignore
+expect licence "installer" LICENSE
 expect favicon "docs site" docs/theme/favicon.svg
 expect book-config "docs site" docs/book.toml
 expect library-page "docs site" docs/src/libraries/prop.md
@@ -44,6 +45,7 @@ expect sender "rust audit app installer" crates/mcsend/src/tifile.rs
 expect sender-test "rust audit app installer" crates/mcsend/tests/transfer.rs
 expect install-script "site installer" scripts/install.sh
 expect package-script "site installer" scripts/package-mcsend.sh
+expect links-script "site installer" scripts/check-mcsend-links.sh
 expect install-test "installer" scripts/test-install.sh
 expect release-workflow "site installer" .github/workflows/release-please.yml
 expect new-crate "rust audit" crates/mcnew/src/main.rs

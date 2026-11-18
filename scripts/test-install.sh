@@ -45,7 +45,7 @@ sums() {
 cargo build --release --locked --manifest-path "$root/Cargo.toml" -p mcsend >&2 || { echo "test-install: cargo build failed" >&2; exit 1; }
 sh "$root/scripts/package-mcsend.sh" v1.0.0 "$os" "$arch" "$tmp/dist" >/dev/null || { echo "test-install: packaging failed" >&2; exit 1; }
 listing=$(tar -tzf "$tmp/dist/mcsend-v1.0.0-$os-$arch.tar.gz")
-for entry in mcsend LICENSE COPYING AUTHORS NOTICE; do
+for entry in mcsend LICENSE COPYING AUTHORS NOTICE THIRD-PARTY; do
 	if echo "$listing" | grep -qx "mcsend-v1.0.0-$os-$arch/$entry"; then pass "package holds $entry"; else fail "package is missing $entry"; fi
 done
 tar -xzf "$tmp/dist/mcsend-v1.0.0-$os-$arch.tar.gz" -C "$tmp"
@@ -58,6 +58,12 @@ if grep -q 'statically links libusb' "$pkg/NOTICE" && grep -q 'Lesser General Pu
 else
 	fail "NOTICE is incomplete"
 fi
+
+for crate in clap rusb libusb1-sys libc; do
+	section=$(awk -v c="$crate" '/^=+$/ { on = 0 } $1 == c && /, licence: / { on = 1 } on' "$pkg/THIRD-PARTY" | wc -c | tr -d ' ')
+	if [ "$section" -gt 500 ]; then pass "THIRD-PARTY has licence text for $crate"; else fail "THIRD-PARTY has $section bytes for $crate"; fi
+done
+if grep -q 'THIRD-PARTY' "$pkg/NOTICE"; then pass "NOTICE mentions THIRD-PARTY"; else fail "NOTICE does not mention THIRD-PARTY"; fi
 
 release v1.0.0
 sums v1.0.0
@@ -76,6 +82,10 @@ rm "$tmp/releases/v1.0.2/mcsend-v1.0.2-$os-$arch.tar.gz"
 release v1.0.3
 sums v1.0.3
 printf 'x' >>"$tmp/releases/v1.0.3/metacalc.8xk"
+
+# v1.0.4: SHA256SUMS holds only entries that look like the files.
+release v1.0.4
+printf '%s  metacalc.8xk.bak\n%s  mcsend-v1.0.4-%s-%s.tar.gz.sig\n' "$(digest "$app")" "$(digest "$app")" "$os" "$arch" >"$tmp/releases/v1.0.4/SHA256SUMS"
 
 base=file://$tmp/releases
 
@@ -137,6 +147,17 @@ for sh_name in $shells; do
 		clean "$name sent"
 	fi
 
+	if ! calculator_attached; then
+		cat "$root/scripts/install.sh" | env TMPDIR="$scratch" METACALC_BASE_URL="$base" METACALC_VERSION=v1.0.0 "$shell" >"$tmp/out" 2>&1
+		code=$?
+		if [ "$want_exit" -ne 0 ] && [ "$code" = "$want_exit" ] && grep -qxF "$nocalc" "$tmp/out"; then
+			pass "$name the script piped to the shell on stdin runs to the end"
+		else
+			fail "$name piped script: exit $code: $(cat "$tmp/out")"
+		fi
+		clean "$name piped script"
+	fi
+
 	install "$shell" v1.0.1
 	if [ "$code" -ne 0 ] && grep -q 'does not match its checksum' "$tmp/out" && grep -q "mcsend-v1.0.1-$os-$arch.tar.gz" "$tmp/out" && ! grep -q 'no TI-84 Plus' "$tmp/out"; then
 		pass "$name a corrupted package is refused"
@@ -152,6 +173,14 @@ for sh_name in $shells; do
 		fail "$name corrupted app: exit $code: $(cat "$tmp/out")"
 	fi
 	clean "$name corrupted app"
+
+	install "$shell" v1.0.4
+	if [ "$code" -ne 0 ] && grep -q 'SHA256SUMS has no entry for mcsend-v1.0.4' "$tmp/out"; then
+		pass "$name look-alike entries do not count"
+	else
+		fail "$name look-alike entries: exit $code: $(cat "$tmp/out")"
+	fi
+	clean "$name look-alike entries"
 
 	install "$shell" v1.0.2
 	if [ "$code" -ne 0 ] && grep -q "could not download .*mcsend-v1.0.2-$os-$arch.tar.gz" "$tmp/out"; then
@@ -198,6 +227,40 @@ for sh_name in $shells; do
 	install "$shell" v1.0.0 PATH="$tmp/bin-nosum"
 	if [ "$code" -ne 0 ] && grep -q 'sha256sum or shasum is required' "$tmp/out"; then pass "$name missing checksum tool is a plain message"; else fail "$name missing checksum tool: exit $code: $(cat "$tmp/out")"; fi
 	clean "$name missing tools"
+
+	mkdir -p "$tmp/bin-latest"
+	cat >"$tmp/bin-latest/curl" <<SHIM
+#!/bin/sh
+echo "\$*" >>"$tmp/curl.log"
+case "\$*" in
+*url_effective*) echo "\$MC_SHIM_URL"; exit 0 ;;
+*) exit 22 ;;
+esac
+SHIM
+	chmod +x "$tmp/bin-latest/curl"
+	for url in https://github.com/sean-reid/metacalc/releases https://github.com/sean-reid/metacalc/releases/tag/v1.0.0; do
+		rm -f "$tmp/curl.log"
+		env -u METACALC_BASE_URL -u METACALC_VERSION TMPDIR="$scratch" MC_SHIM_URL="$url" PATH="$tmp/bin-latest:$PATH" "$shell" "$root/scripts/install.sh" >"$tmp/out" 2>&1 </dev/null
+		code=$?
+		case $url in
+		*/tag/*)
+			if [ "$code" -ne 0 ] && grep -q 'installing metacalc v1.0.0' "$tmp/out" && grep -q 'release v1.0.0 has no files attached yet; try again in a few minutes' "$tmp/out"; then
+				pass "$name the latest tag is read from the redirect and an unfinished release is said plainly"
+			else
+				fail "$name latest tag: exit $code: $(cat "$tmp/out")"
+			fi
+			;;
+		*)
+			if [ "$code" -ne 0 ] && grep -q 'no release has been published yet' "$tmp/out"; then pass "$name no release is a plain message"; else fail "$name no release: exit $code: $(cat "$tmp/out")"; fi
+			;;
+		esac
+		if [ "$(grep -c -e '--proto =https --tlsv1.2' "$tmp/curl.log")" = "$(wc -l <"$tmp/curl.log" | tr -d ' ')" ]; then
+			pass "$name every curl call is limited to https"
+		else
+			fail "$name a curl call is not limited to https: $(cat "$tmp/curl.log")"
+		fi
+	done
+	clean "$name latest tag"
 
 	rm -rf "$tmp/bin-slow" "$tmp/started"
 	mkdir "$tmp/bin-slow"

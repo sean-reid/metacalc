@@ -13,7 +13,8 @@ all() { rust=true emu=true audit=true docs=true app=true libraries=true site=tru
 while IFS= read -r path; do
 	case $path in
 	'') ;;
-	README.md | LICENSE | .gitignore) ;;
+	README.md | .gitignore) ;;
+	LICENSE) installer=true ;;
 	docs/src/guide/*) docs=true libraries=true ;;
 	docs/*) docs=true site=true ;;
 	crates/mcsend/Cargo.toml) rust=true emu=true audit=true libraries=true installer=true ;;
@@ -26,7 +27,7 @@ while IFS= read -r path; do
 	kernel/* | lib/* | ui/* | app/* | probe/*) emu=true app=true libraries=true ;;
 	libraries/*) rust=true libraries=true ;;
 	release-please-config.json | .release-please-manifest.json) site=true ;;
-	scripts/install.sh | scripts/package-mcsend.sh | .github/workflows/release-please.yml) installer=true site=true ;;
+	scripts/install.sh | scripts/package-mcsend.sh | scripts/check-mcsend-links.sh | .github/workflows/release-please.yml) installer=true site=true ;;
 	scripts/test-install.sh) installer=true ;;
 	*) all ;;
 	esac
