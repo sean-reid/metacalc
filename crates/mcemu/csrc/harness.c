@@ -90,6 +90,32 @@ TilemCalc *mcemu_new(const uint8_t *rom, size_t len)
 	return calc;
 }
 
+/* A calculator that boots a real OS image from reset, with no stub entry and no HALT stop. */
+TilemCalc *mcemu_new_os(const uint8_t *rom, size_t len)
+{
+	TilemCalc *calc = tilem_calc_new(TILEM_CALC_TI84P_SE);
+	FILE *f = fmemopen((void *)rom, len, "rb");
+	int ok = calc && f && tilem_calc_load_state(calc, f, NULL) == 0;
+
+	if (f)
+		fclose(f);
+	if (!ok) {
+		if (calc)
+			tilem_calc_free(calc);
+		return NULL;
+	}
+	tilem_calc_reset(calc);
+	return calc;
+}
+
+/* Runs on from the current state for the given emulated time; returns the stop reason. */
+uint32_t mcemu_run_time(TilemCalc *calc, int microseconds)
+{
+	return tilem_z80_run_time(calc, microseconds, NULL);
+}
+
+uint8_t mcemu_in(TilemCalc *calc, uint8_t port) { return calc->hw.z80_in(calc, port); }
+
 void mcemu_free(TilemCalc *calc) { tilem_calc_free(calc); }
 uint8_t *mcemu_mem(TilemCalc *calc) { return calc->mem; }
 size_t mcemu_rom_size(const TilemCalc *calc) { return calc->hw.romsize; }
