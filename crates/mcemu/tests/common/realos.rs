@@ -1,6 +1,7 @@
 //! The reference TI-OS 2.43 image for tests that need the real OS. The image stays on the machine
-//! that has it, under `$HOME/ti84-rom`; where it is absent `RealOs::boot` returns `None` and the
-//! test skips.
+//! that has it, under `$HOME/ti84-rom`. Every test that boots it is `#[ignore]`d with
+//! `needs the reference ROM image`, and `RealOs::boot` fails with a message when the image is
+//! missing.
 
 #![allow(dead_code)]
 
@@ -31,10 +32,11 @@ pub struct RealOs {
 impl RealOs {
     /// Boots the reference OS with `app` installed on `BASE`, turns it on, and returns at the
     /// home screen.
-    pub fn boot(app: &[u8]) -> Option<RealOs> {
+    pub fn boot(app: &[u8]) -> RealOs {
         let Some(rom) = rom() else {
-            eprintln!("skipped: no reference ROM in $HOME/ti84-rom");
-            return None;
+            panic!(
+                "the reference ROM is not at $HOME/ti84-rom/84PSE_v243.rom, which this test needs"
+            );
         };
         let mut m = Machine::new_os(&rom).expect("the reference ROM boots");
         m.install_app(app, BASE).expect("the app installs");
@@ -42,7 +44,7 @@ impl RealOs {
         os.run_ms(2000);
         os.tap(Machine::KEY_ON, 150, 250);
         os.run_ms(3000);
-        Some(os)
+        os
     }
 
     pub fn run_ms(&mut self, ms: u32) {

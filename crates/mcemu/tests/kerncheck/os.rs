@@ -13,7 +13,7 @@ struct Check {
 }
 
 impl Check {
-    fn start(name: &str, library: &[u8]) -> Option<Check> {
+    fn start(name: &str, library: &[u8]) -> Check {
         let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
         std::fs::create_dir_all(&dir).unwrap();
         let lib = dir.join("library.mclib");
@@ -24,12 +24,12 @@ impl Check {
             &[format!("LIBRARY={}", lib.display()), "kernchk".into()],
         );
         let app = std::fs::read(build.join("kernchk.8xk")).unwrap();
-        let mut os = RealOs::boot(&app)?;
+        let mut os = RealOs::boot(&app);
         os.launch();
-        Some(Check {
+        Check {
             os,
             lab: build.join("kernchk.lab"),
-        })
+        }
     }
 
     fn byte(&mut self, name: &str) -> u8 {
@@ -92,6 +92,11 @@ fn until_stopped(c: &mut Check) -> (u32, u8) {
 /// the end without stopping.
 fn runs_again_to_the_end(c: &mut Check, count: u16) -> bool {
     c.os.tap(KEY_CLEAR, 150, 600);
+    reruns_to_the_end(c, count)
+}
+
+/// Starts the app again from the home screen.
+fn reruns_to_the_end(c: &mut Check, count: u16) -> bool {
     c.os.launch();
     until(c, "the end of the second run", |c| {
         c.word("K_DONE") == count
@@ -101,15 +106,14 @@ fn runs_again_to_the_end(c: &mut Check, count: u16) -> bool {
 }
 
 #[test]
+#[ignore = "needs the reference ROM image"]
 fn an_on_tap_of_any_length_stops_the_check_in_each_phase() {
     let lib = axioms(6000);
     let phases: [(&str, Reached, u8); 2] =
         [("the checksum", in_crc, 1), ("verification", in_verify, 2)];
     for (what, reached, stopped) in phases {
         for down_us in [20, 300, 3000, 30_000] {
-            let Some(mut c) = Check::start("kernchk-os-tap", &lib) else {
-                return;
-            };
+            let mut c = Check::start("kernchk-os-tap", &lib);
             until(&mut c, what, reached);
             c.os.m.press_key(Machine::KEY_ON);
             c.os.run_us(down_us);
@@ -134,12 +138,11 @@ fn an_on_tap_of_any_length_stops_the_check_in_each_phase() {
 }
 
 #[test]
+#[ignore = "needs the reference ROM image"]
 fn a_held_on_stops_the_check_and_the_report_waits_for_the_key_to_come_up() {
     let lib = axioms(6000);
     for lag_us in [0, 300, 700, 1300, 2900] {
-        let Some(mut c) = Check::start("kernchk-os-hold", &lib) else {
-            return;
-        };
+        let mut c = Check::start("kernchk-os-hold", &lib);
         until(&mut c, "verification", in_verify);
         c.os.run_us(lag_us);
         c.os.m.press_key(Machine::KEY_ON);
@@ -165,11 +168,11 @@ fn a_held_on_stops_the_check_and_the_report_waits_for_the_key_to_come_up() {
         while c.os.screen() == held {
             c.os.run_us(100);
             printed += 100;
-            assert!(printed < 70_000, "{msg}: nothing printed after the release");
+            assert!(
+                printed < 70_000,
+                "{msg}: nothing printed {printed} us after the release, the driver stopped at {freed} us"
+            );
         }
-        eprintln!(
-            "{msg}: {freed} us from release to the driver's stop, {printed} us to the first output"
-        );
         c.os.run_ms(600);
         assert_eq!(
             c.os.on_flags() & ON_INTERRUPT,
@@ -187,5 +190,6 @@ fn a_held_on_stops_the_check_and_the_report_waits_for_the_key_to_come_up() {
             0,
             "{msg}: the app left for the home screen"
         );
+        assert!(reruns_to_the_end(&mut c, 6000), "{msg}: the next run");
     }
 }

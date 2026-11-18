@@ -121,33 +121,32 @@ fn mask_the_two(h: &Home) -> Vec<u8> {
 
 /// Draws a graph, so that graphDraw is clear, then runs the app with ON held inside it, and
 /// returns the home screen before and after.
-fn visit_from_a_graph(app: &[u8], hold_on: u32) -> Option<(Home, Home)> {
-    let mut os = RealOs::boot(app)?;
+fn visit_from_a_graph(app: &[u8], hold_on: u32) -> (Home, Home) {
+    let mut os = RealOs::boot(app);
     os.tap(KEY_GRAPH, 150, 2500);
     os.tap(KEY_CLEAR, 150, 800);
     let pc = idle_pc(&mut os);
     let before = at_home(&mut os, pc);
     visit(&mut os, hold_on);
     let after = at_home(&mut os, pc);
-    Some((before, after))
+    (before, after)
 }
 
 #[test]
+#[ignore = "needs the reference ROM image"]
 fn the_os_is_in_the_state_it_was_in_before_the_shell_ran() {
     let app = shell();
     let control = assemble_routine("wait_app.z80");
     for hold_on in [0, 200] {
         let msg = format!("ON held {hold_on} ms");
-        let Some((before, after)) = visit_from_a_graph(&app, hold_on) else {
-            return;
-        };
+        let (before, after) = visit_from_a_graph(&app, hold_on);
         assert!(!graph_draw(&before), "{msg}: a valid graph to start from");
         assert_eq!(after.state, before.state, "{msg}");
         assert!(graph_draw(&after), "{msg}: the OS will redraw the graph");
         assert!(!on_interrupt(&after), "{msg}: no break left for the OS");
 
         // an app that only waits shows what the OS does to the two flags itself
-        let (_, plain) = visit_from_a_graph(&control, hold_on).unwrap();
+        let (_, plain) = visit_from_a_graph(&control, hold_on);
         assert!(
             !graph_draw(&plain),
             "{msg}: the OS leaves graphDraw as it was"
@@ -165,11 +164,10 @@ fn the_os_is_in_the_state_it_was_in_before_the_shell_ran() {
 }
 
 #[test]
+#[ignore = "needs the reference ROM image"]
 fn an_on_press_inside_the_app_is_cleared_before_the_app_hands_over() {
     let app = shell();
-    let Some(mut os) = RealOs::boot(&app) else {
-        return;
-    };
+    let mut os = RealOs::boot(&app);
     os.tap(KEY_GRAPH, 150, 2500);
     os.tap(KEY_CLEAR, 150, 800);
     assert_eq!(os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW, 0, "a valid graph");
@@ -193,11 +191,10 @@ fn an_on_press_inside_the_app_is_cleared_before_the_app_hands_over() {
 }
 
 #[test]
+#[ignore = "needs the reference ROM image"]
 fn the_graph_screen_after_the_app_is_the_graph_it_showed_before() {
     let app = shell();
-    let Some(mut os) = RealOs::boot(&app) else {
-        return;
-    };
+    let mut os = RealOs::boot(&app);
     os.tap(KEY_GRAPH, 150, 2500);
     let graph = os.screen();
     os.tap(KEY_CLEAR, 150, 800);
@@ -255,4 +252,35 @@ fn the_wait_loop_enables_interrupts_on_every_pass() {
     );
     m.press_key(KEY_CLEAR);
     assert_eq!(m.run_app(5_000_000).stop, Stop::Exited);
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+#[should_panic(expected = "the emulator faulted")]
+fn a_fault_in_a_real_os_run_fails_the_test() {
+    let app = assemble_routine("fault_app.z80");
+    let mut os = RealOs::boot(&app);
+    os.launch();
+    os.run_ms(300);
+}
+
+fn rtc_seconds(os: &mut RealOs) -> u32 {
+    u32::from_le_bytes([0x45, 0x46, 0x47, 0x48].map(|p| os.m.in_port(p)))
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn the_emulated_clock_follows_the_time_run_and_not_how_it_is_sliced() {
+    let app = shell();
+    let mut whole = RealOs::boot(&app);
+    let mut sliced = RealOs::boot(&app);
+    let start = rtc_seconds(&mut whole);
+    assert_eq!(rtc_seconds(&mut sliced), start);
+    whole.run_ms(5000);
+    for _ in 0..5000 {
+        sliced.run_ms(1);
+    }
+    let (a, b) = (rtc_seconds(&mut whole), rtc_seconds(&mut sliced));
+    assert_eq!(a, b, "the clock depends on the slicing");
+    assert!((start + 4..=start + 5).contains(&a), "{a} after {start}");
 }

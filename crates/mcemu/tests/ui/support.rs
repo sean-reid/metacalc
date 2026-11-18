@@ -97,7 +97,8 @@ pub enum Op {
     Command(u8),
     /// The LCD status byte, read from port 10h.
     Status,
-    /// `ei` or `di`; the timer interrupt source is on while the script runs.
+    /// `ei` or `di`. The timer interrupt source is on only in a run made with `run_code_on` and
+    /// its `timer` set.
     Interrupts(bool),
     /// The interrupt flip-flop as `ld a,i` reports it, in bit 2 of the result.
     Iff,
