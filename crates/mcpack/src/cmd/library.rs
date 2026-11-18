@@ -18,7 +18,44 @@ fn pack_checked(db: &Database, kept: &[StmtId], output: &Path) -> Result<ExitCod
         bytes.len().div_ceil(library::CHUNK),
         library::CHUNK
     );
+    if let Ok(decoded) = library::decode(&bytes) {
+        print_sections(&decoded);
+    }
     Ok(ExitCode::SUCCESS)
+}
+
+fn print_sections(library: &library::Library) {
+    let Some(sections) = &library.sections else {
+        return;
+    };
+    let size = |id| {
+        let entry = sections.table.iter().find(|e| e.id == id);
+        entry.map_or(0, |e| e.length)
+    };
+    if let Some(titles) = &sections.titles {
+        println!(
+            "titles: {} bytes, {} titles",
+            size(library::TITLES),
+            titles.len()
+        );
+    }
+    if let Some(map) = &sections.glyphs {
+        let symbols = map.symbols.len();
+        println!(
+            "glyph map: {} bytes, {symbols} symbols",
+            size(library::GLYPHS)
+        );
+    }
+    match &sections.trees {
+        Some(trees) => println!(
+            "parse trees: {} bytes, {} syntax axioms, largest tree {} nodes, {} statements without a tree",
+            size(library::TREES),
+            trees.syntax.len(),
+            trees.largest(),
+            trees.without_tree()
+        ),
+        None => println!("parse trees: none, the database has no grammar"),
+    }
 }
 
 pub fn pack(db: &Database, roots: &[String], output: &Path) -> Result<ExitCode, ExitCode> {

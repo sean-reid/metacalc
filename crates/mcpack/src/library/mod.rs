@@ -25,6 +25,40 @@
 //!            F0h..FEh carries eight more bits in the next byte, FFh saves the top of the stack
 //! ```
 //!
+//! Sections follow the last record. The kernel reads nothing after it, so a library without them
+//! is as valid as one with them, and the header's length and CRC cover them either way. A
+//! reader that knows the length from the header finds the trailer in the last bytes of the file.
+//!
+//! ```text
+//! section    starts at a multiple of four, after the symbol table, the directory and every
+//!            record; no item of it crosses a multiple of CHUNK, so every
+//!            item can be read through one mapped page; only an index of fixed-size entries
+//!            may cross, and the padding that keeps an item whole is zero bytes
+//! table      one row per section: id (u8), offset (u32), length (u32), the rows right
+//!            before the trailer, in section order; a reader skips an id it does not know
+//! trailer    section count (u8), format version (u8), "MCSX"
+//!
+//! titles     id 1: count (u16), one u32 file offset per title, then the titles: the number of
+//!            the first assertion of the library under the heading (u16), depth (u8, 1 to 4,
+//!            1 outermost), length (u8), ASCII text; in source order, assertion numbers never
+//!            falling, only headings with an assertion under them or under a heading inside them
+//! glyphs     id 2: fingerprint of the font table (u16), symbol count (u8), one u16 offset from
+//!            the section's start per symbol, then per symbol: spacing flags (u8: bit 0 gap
+//!            before, 1 gap after, 2 gap beside another var, 3 no gap after), glyph count (u8),
+//!            the glyph codes of the main display font
+//! trees      id 3: syntax axiom count (u16, at most 383), per axiom its assertion number (u16)
+//!            and its arity (u8), in rising assertion number; a syntax axiom has only float
+//!            hypotheses and its statement holds each of their variables once; then one u32
+//!            file offset per assertion, then per assertion a tree for each essential
+//!            hypothesis in record order and one for the conclusion; a tree is its
+//!            length in bytes (u8, FEh for no tree, FFh then a u16) and its nodes in preorder:
+//!            00h..7Eh is a syntax table index, 7Fh then n is index 127 + n, and the arity of
+//!            the axiom says how many subtrees follow; 80h..FEh is the variable with symbol id
+//!            constants + byte - 80h, FFh then n the one with 127 + n; a library whose
+//!            database has no grammar has no trees section; identical trees are stored once
+//!            per use, and storing them once would save about 17.6 KB in the ring library
+//! ```
+//!
 //! A record is only usable if its float hypotheses name distinct variables, each of its
 //! expressions starts with a constant and uses no variable without a float hypothesis, every
 //! pair in its first list names two different variables that both have one, and every pair in a
@@ -35,13 +69,19 @@ mod export;
 mod kernel;
 mod pack;
 mod read;
+mod sections;
 
 pub use check::{CheckError, check};
 pub use export::{ExportError, export};
 pub use kernel::{Kernel, KernelError, Limits, WORK_LIMIT};
-pub use pack::{PackError, pack};
+pub use pack::{PackError, pack, pack_kernel};
 pub use read::{
     Assertion, Hypothesis, Library, ReadError, Reference, Step, Variable, decode, read,
+};
+pub use sections::{
+    AXIOM_CAPACITY, ENTRY_LEN, Entry, GLYPHS, GlyphMap, Glyphs, Node, Part, SectionCheckError,
+    SectionError, Sections, SyntaxAxiom, TITLES, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION,
+    TREES, Title, Tree, Trees, VARIABLE_CAPACITY, locate as locate_sections, verify_sections,
 };
 
 pub const MAGIC: &[u8; 4] = b"MCL1";

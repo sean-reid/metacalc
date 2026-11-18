@@ -4,7 +4,7 @@
 use crate::expr::{Expr, Shape};
 use crate::status::{Mark, Status, marks, update};
 use mcedit::Catalog;
-use mcpack::library::{self, Assertion, Hypothesis, Kernel, Limits, ReadError};
+use mcpack::library::{self, Assertion, Hypothesis, Kernel, Limits, Part, ReadError, Title, Trees};
 use mcpack::mm::{self, Database, Grammar, Kind, Node, StmtId, Sym, Tree};
 use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
@@ -85,6 +85,11 @@ pub struct Lib {
     /// The kernel over `bytes`, built on first use; none inside when the bytes do not load.
     kernel: RefCell<Option<Option<Kernel<'static>>>>,
     assertions: Vec<Assertion>,
+    /// Every symbol's name by id, constants first.
+    names: Vec<String>,
+    titles: Vec<Title>,
+    /// The library's own parse trees, when it carries them.
+    trees: Option<Trees>,
     status: Vec<Status>,
     marks: Vec<Mark>,
     source: OnceCell<Option<Source>>,
@@ -95,8 +100,15 @@ impl Lib {
     /// A library's bytes, database and grammar live for the rest of the process, so load each
     /// library once.
     pub fn new(installed: Installed, status: Vec<Status>) -> Result<Lib, LoadError> {
-        let assertions = library::read(&installed.bytes)
+        let library = library::decode(&installed.bytes)
             .map_err(|e| LoadError::Library(installed.name.clone(), e))?;
+        let assertions = library.assertions;
+        let sections = library.sections.unwrap_or_default();
+        let names: Vec<String> = library
+            .constants
+            .into_iter()
+            .chain(library.variables.into_iter().map(|v| v.name))
+            .collect();
         if assertions.len() != status.len() {
             return Err(LoadError::Statuses(format!(
                 "{} has {} assertions and {} statuses",
@@ -111,6 +123,9 @@ impl Lib {
             kernel: RefCell::new(None),
             marks: marks(&assertions, &status),
             assertions,
+            names,
+            titles: sections.titles.unwrap_or_default(),
+            trees: sections.trees,
             status,
             source: OnceCell::new(),
             statements: RefCell::default(),
@@ -123,6 +138,12 @@ impl Lib {
 
     pub fn is_empty(&self) -> bool {
         self.assertions.is_empty()
+    }
+
+    /// The section titles of set.mm that have an assertion of this library under them, in order;
+    /// empty when the library carries none.
+    pub fn titles(&self) -> &[Title] {
+        &self.titles
     }
 
     pub fn label(&self, i: usize) -> &str {
@@ -233,10 +254,13 @@ impl Lib {
         self.source()?.ids.get(i).copied()
     }
 
-    /// Whether statements fall back to flat runs of tokens because the library does not export or
-    /// its grammar cannot be built. A library with no statements has nothing to show flat.
+    /// Whether statements fall back to flat runs of tokens because the library carries no parse
+    /// trees and does not export or its grammar cannot be built. A library with no statements has
+    /// nothing to show flat.
     pub fn degraded(&self) -> bool {
-        !self.is_empty() && self.source().is_none_or(|s| s.grammar.is_none())
+        self.trees.is_none()
+            && !self.is_empty()
+            && self.source().is_none_or(|s| s.grammar.is_none())
     }
 
     /// The statement of assertion `i`, with parse trees when the grammar reads it and one flat
@@ -272,7 +296,46 @@ impl Lib {
         }
     }
 
+    /// The statement from the library's own trees; none when one of its statements has no tree.
+    fn stored_statement(&self, trees: &Trees, i: usize) -> Option<Statement> {
+        let shapes = trees.items[i]
+            .iter()
+            .map(|tree| self.stored_shape(trees, tree.as_ref()?))
+            .collect::<Option<Vec<Shape>>>()?;
+        let (last, hyps) = shapes.split_last()?;
+        let build = |lead: &str, shape: &Shape| Expr::build(vec![lead.to_string()], shape);
+        let hyps = self
+            .essentials(i)
+            .zip(hyps)
+            .map(|(expr, shape)| build(&expr[0], shape))
+            .collect();
+        let conclusion = build(&self.assertions[i].conclusion[0], last);
+        Some(Statement { hyps, conclusion })
+    }
+
+    fn stored_shape(&self, trees: &Trees, tree: &library::Tree) -> Option<Shape> {
+        trees.fold(
+            tree,
+            |id| Shape::leaf(&self.names[id]),
+            |parts, mut children| {
+                let parts = parts
+                    .iter()
+                    .map(|part| match part {
+                        Part::Token(token) => Shape::tok(token),
+                        Part::Child(slot) => {
+                            std::mem::replace(&mut children[*slot], Shape::Node(Vec::new()))
+                        }
+                    })
+                    .collect();
+                Shape::node(parts)
+            },
+        )
+    }
+
     fn parse_statement(&self, i: usize) -> Option<Statement> {
+        if let Some(trees) = &self.trees {
+            return self.stored_statement(trees, i);
+        }
         let source = self.source()?;
         let parsed = source.grammar?.parse(source.ids[i]).ok()?;
         let build =

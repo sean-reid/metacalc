@@ -8,6 +8,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+mcglyph = { path = "../mcglyph" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.11"
