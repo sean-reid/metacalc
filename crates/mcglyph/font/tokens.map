@@ -1,0 +1,184 @@
+; token, spacing, glyphs. Spacing is tight, before, after or both.
+; Single characters come from the latexdef and althtmldef lines of set.mm.
+; Subscript g and r are small glyphs set on the baseline row, not full letters.
+; Symbol variables (.+ .0. .1. .x. .o.) carry a dotted underline.
+
+( tight lparen
+) tight rparen
+-> both rarr
+-. tight not
+wff after w f f
+|- after turnstile
+ph tight phi
+ps tight psi
+ch tight chi
+th tight theta
+ta tight tau
+et tight eta
+ze tight zeta
+<-> both harr
+/\ both and
+\/ both or
+, after comma
+A. tight forall
+setvar after s e t v a r
+x tight x
+class after c l a s s
+= both equals
+A tight A
+B tight B
+T. tight top
+y tight y
+F. tight bot
+z tight z
+w tight w
+v tight v
+u tight u
+t tight t
+E. tight exists
+F/ tight finv
+f tight f
+g tight g
+s tight s
+[ tight lbracket
+/ both slash
+] tight rbracket
+e. both in
+E* tight exists star
+E! tight exists exclam
+{ tight lbrace
+| both bar
+} tight rbrace
+.+ both svplus
+.0. tight svzero
+.1. tight svone
+.x. both svdot
+.o. both svcirc
+C tight C
+D tight D
+R tight R
+S tight S
+T tight T
+U tight U
+e tight e
+h tight h
+m tight m
+n tight n
+o tight o
+E tight E
+F tight F
+G tight G
+H tight H
+I tight I
+K tight K
+L tight L
+M tight M
+N tight N
+V tight V
+W tight W
+X tight X
+Y tight Y
+Z tight Z
+O tight O
+r tight r
+p tight p
+a tight a
+b tight b
+c tight c
+d tight d
+F/_ tight finvu
+=/= both ne
+e/ both notin
+_V tight cV
+[. tight lbrackb
+]. tight rbrackb
+[_ tight lbrackl
+]_ tight rbrackl
+C_ both subseteq
+C. both subsetneq
+\ both setminus
+i^i both cap
+u. both cup
+(/) tight emptyset
+if after i f
+~P after pset
+<. tight langle
+>. tight rangle
+U. after bigcup
+U_ after bigcupu
+|-> both mapsto
+Tr after T r
+_I tight cI
+_E tight cE
+Po both P o
+Or both O r
+Fr both F r
+We both W e
+X. both times
+`' tight converse
+dom after d o m
+ran after r a n
+|` both restrict
+" both ldquo
+o. both circ
+Rel after R e l
+Pred tight P r e d
+Ord after O r d
+On tight O n
+Lim after L i m
+suc after s u c
+iota tight iota
+: tight colon
+Fun after F u n
+Fn both F n
+--> both longrarr
+-1-1-> both inj
+-onto-> both surj
+-1-1-onto-> both bij
+` tight lsquo
+iota_ tight iotau
+_om tight omega
+2nd after 2 n d
+frecs tight f r e c s
+wrecs tight w r e c s
+recs tight r e c s
+rec tight r e c
+Er both E r
+~~ both approx
+~<_ both preceq
+~< both prec
+<RR both lt rr
+CC tight cc
+RR tight rr
+0 tight 0
+1 tight 1
+_i tight i
++ both plus
+x. both dot
+<_ both le
++oo tight plus infty
+-oo tight minus infty
+RR* tight rr star
+< both lt
+- both minus
+-u tight neg
+NN tight nn
+2 tight 2
+sSet both s S e t
+Slot after S l o t
+ndx tight n d x
+Base tight B a s e
++g tight plus subg
+.r tight period subr
+0g tight 0 subg
+Mgm tight M g m
+Smgrp tight S m g r p
+Mnd tight M n d
+Grp tight G r p
+invg tight i n v subg
+CMnd tight C M n d
+Abel tight A b e l
+mulGrp tight m u l G r p
+Rng tight R n g
+1r tight 1 subr
+Ring tight R i n g
