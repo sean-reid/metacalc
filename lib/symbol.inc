@@ -1,0 +1,74 @@
+; Symbol names from the index lib_open built.
+
+lib_symbol_name:
+	ld (lr_bufp),de
+	ld (lr_id),a
+	call lr_need
+	ret nz
+	ld a,(lr_nsyms)
+	ld hl,lr_id
+	cp (hl)
+	jr z,lr_bad_index
+	jr c,lr_bad_index
+	ld a,(hl)
+	ld l,a
+	ld h,0
+	add hl,hl
+	ld de,LIB_INDEX
+	add hl,de
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	ld c,(hl)
+	inc hl
+	ld b,(hl)
+	ld h,b
+	ld l,c
+	or a
+	sbc hl,de
+	dec hl
+	dec hl
+	ld a,l
+	ld (lr_len),a
+	ex de,hl
+	ld de,20
+	add hl,de
+	ld a,0
+	adc a,0
+	ld (lr_ent),hl
+	ld (lr_ent+2),a
+	ld a,(lr_id)
+	ld hl,lr_consts
+	cp (hl)
+	ld a,$FF
+	jr c,lsn_typecode
+	ld hl,(lr_ent)
+	ld a,(lr_ent+2)
+	ld de,lr_tc
+	ld bc,1
+	call lr_rd
+	ret nz
+	ld a,(lr_tc)
+lsn_typecode:
+	ld (lr_tc),a
+	ld a,(lr_len)
+	or a
+	jr z,lsn_done
+	ld c,a
+	ld b,0
+	ld hl,(lr_ent)
+	ld a,(lr_ent+2)
+	ld de,2
+	add hl,de
+	adc a,0
+	ld de,(lr_bufp)
+	call lr_rd
+	ret nz
+lsn_done:
+	ld a,(lr_len)
+	ld b,a
+	ld a,(lr_tc)
+	ld c,a
+	xor a
+	ret

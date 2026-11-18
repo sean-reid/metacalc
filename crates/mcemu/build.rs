@@ -245,6 +245,7 @@ fn main() {
     }
     assemble_kernel(&out);
     assemble_ui(&out);
+    assemble_reader(&out);
     spasm(
         &Path::new("tests/routines").join("launch_state.z80"),
         &out.join("launch_state.8xk"),
@@ -424,5 +425,41 @@ fn assemble_ui(out: &Path) {
         other => fail(&format!(
             "soft key boxes too wide for the flip gave {other:?}, not a box error"
         )),
+    }
+}
+
+/// The library reader with the test driver: as shipped, with the kernel beside it, with its
+/// state and bounce buffer moved, and with a bounce buffer that runs past the end of the kernel's
+/// region. Out-of-place addresses must not assemble.
+fn assemble_reader(out: &Path) {
+    let dir = Path::new("../../lib");
+    for entry in fs::read_dir(dir).unwrap().flatten() {
+        println!("cargo:rerun-if-changed={}", entry.path().display());
+    }
+    println!("cargo:rerun-if-changed=tests/routines/reader_test.z80");
+    let src = Path::new("tests/routines/reader_test.z80");
+    let args = ["-I", "../../kernel", "-I", "../..", "-L"];
+    for (name, defines) in [
+        ("reader_test", &[][..]),
+        ("reader_kernel_test", &["WITH_KERNEL"][..]),
+        (
+            "reader_moved",
+            &["LIB_STATE=$B000", "LIB_BOUNCE=$D100", "LIB_SPARE_PAGE=5"][..],
+        ),
+        ("reader_straddle", &["LIB_BOUNCE=$FE80"][..]),
+    ] {
+        spasm(src, &out.join(format!("{name}.bin")), defines, &args);
+    }
+    for defines in [
+        &["LIB_BOUNCE=$BF00"][..],
+        &["LIB_BOUNCE=$FF80"][..],
+        &["LIB_STATE=$7F00"][..],
+        &["LIB_STATE=$BE00"][..],
+        &["LIB_SPARE_PAGE=8"][..],
+    ] {
+        assert!(
+            !spasm_ok(src, &out.join("reader_probe.bin"), defines, &args),
+            "the reader assembled with {defines:?}"
+        );
     }
 }

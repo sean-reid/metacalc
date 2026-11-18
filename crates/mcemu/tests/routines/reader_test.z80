@@ -1,0 +1,78 @@
+#define LIB_EMBEDDED
+#ifdef WITH_KERNEL
+#define KERNEL_EMBEDDED
+#endif
+
+TEST_TARGET	.equ $A000
+TEST_SP		.equ $A002
+TEST_EI		.equ $A004
+IN_A		.equ $A005
+IN_BC		.equ $A006
+IN_DE		.equ $A008
+IN_HL		.equ $A00A
+IN_IX		.equ $A00C
+IN_IY		.equ $A00E
+OUT_AF		.equ $A010
+OUT_BC		.equ $A012
+OUT_DE		.equ $A014
+OUT_HL		.equ $A016
+OUT_IX		.equ $A018
+OUT_IY		.equ $A01A
+OUT_IFF		.equ $A01C
+OUT_P5		.equ $A01D
+OUT_P7		.equ $A01E
+TEST_BUF	.equ $A100
+
+.org $4000
+	jp call_entry
+
+call_entry:
+	xor a
+	out (3),a
+	ld sp,(TEST_SP)
+	ld hl,call_done
+	push hl
+	ld hl,(TEST_TARGET)
+	push hl
+	ld a,(TEST_EI)
+	or a
+	jr z,call_load
+	ei
+call_load:
+	ld ix,(IN_IX)
+	ld iy,(IN_IY)
+	ld hl,(IN_HL)
+	ld de,(IN_DE)
+	ld bc,(IN_BC)
+	ld a,(IN_A)
+	ret
+
+call_nop:
+	ret
+
+call_done:
+	ld (OUT_HL),hl
+	ld (OUT_DE),de
+	ld (OUT_BC),bc
+	ld (OUT_IX),ix
+	ld (OUT_IY),iy
+	push af
+	pop hl
+	ld (OUT_AF),hl
+	ld a,i
+	ld a,0
+	jp po,call_iff_off
+	inc a
+call_iff_off:
+	ld (OUT_IFF),a
+	in a,(5)
+	ld (OUT_P5),a
+	in a,(7)
+	ld (OUT_P7),a
+	di
+	halt
+
+#ifdef WITH_KERNEL
+#include "kernel.z80"
+#endif
+#include "lib/lib.z80"
