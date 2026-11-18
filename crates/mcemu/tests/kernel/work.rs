@@ -389,3 +389,73 @@ fn the_work_of_every_apply_in_a_call_counts_on_the_kernel_too() {
     }
     assert!(wrong.is_empty(), "the device disagrees on: {wrong:?}");
 }
+
+const DOUBLINGS: usize = 9;
+const COPY_STEPS: usize = 15_900;
+
+/// A theorem that doubles a term `DOUBLINGS` times and saves it, then `cycles` times pushes two
+/// copies, compares them with a rule and joins the result into the one entry kept. Every step
+/// is one byte; the copies and substitutions are most of the work and none of it is a disjoint
+/// check.
+fn copying_library(cycles: usize) -> (Database, Vec<u8>) {
+    let proof = format!(
+        "( a0 wd del join ) A{}ZEC{}",
+        "B".repeat(DOUBLINGS),
+        "EECD".repeat(cycles - 1)
+    );
+    let db = parse(&format!(
+        "$c T wff $. $v p $. wp $f wff p $. a0 $a wff T $. wd $a wff p p $.\n\
+         ${{ del.1 $e wff p $. del $a wff T $. $}}\n\
+         ${{ join.1 $e wff T $. join.2 $e wff T $. join $a wff T $. $}}\n\
+         big $p wff T $= {proof} $.\n"
+    ));
+    let bytes = pack_all(&db);
+    (db, bytes)
+}
+
+fn model_work(bytes: &[u8], id: usize) -> (Result<(), KernelError>, u32) {
+    let mut kernel = Kernel::new(bytes, clamped(ASKED_UNBOUNDED)).unwrap();
+    let result = kernel.verify(id);
+    (result, kernel.work())
+}
+
+const BUDGET_COPYING: u32 = 18_200_000;
+
+#[test]
+fn thousands_of_steps_that_copy_a_term_stop_at_the_work_limit_within_budget() {
+    let cycles = COPY_STEPS / 4;
+    let (db, bytes) = copying_library(cycles);
+    let id = number(&db, "big");
+    println!("{} bytes, {} proof steps", bytes.len(), 4 * cycles);
+    agree(&bytes, id, Err(KernelError::WorkLimit), "copying");
+    let got = Device::with_library(&bytes).verify(id, ASKED_UNBOUNDED);
+    println!("copying: {} T-states", got.tstates);
+    assert!(got.tstates < BUDGET_COPYING, "{} T-states", got.tstates);
+
+    let (mut fits, mut over) = (1, cycles);
+    while over - fits > 1 {
+        let mid = (fits + over) / 2;
+        let (db, bytes) = copying_library(mid);
+        match model_work(&bytes, number(&db, "big")).0 {
+            Ok(()) => fits = mid,
+            Err(KernelError::WorkLimit) => over = mid,
+            Err(error) => panic!("{error:?}"),
+        }
+    }
+    let (db, bytes) = copying_library(fits);
+    let id = number(&db, "big");
+    let (result, work) = model_work(&bytes, id);
+    assert_eq!(result, Ok(()));
+    assert!(work <= WORK_LIMIT && WORK_LIMIT - work < 2_000, "{work}");
+    agree(&bytes, id, Ok(()), "the last cycle that fits");
+    let mut device = Device::with_library(&bytes);
+    assert_eq!(device.verify(id, ASKED_UNBOUNDED).verify, status(Ok(())));
+    assert_eq!(device.work_charged(), work);
+    let (db, bytes) = copying_library(over);
+    agree(
+        &bytes,
+        number(&db, "big"),
+        Err(KernelError::WorkLimit),
+        "the first cycle that does not",
+    );
+}
