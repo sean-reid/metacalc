@@ -77,7 +77,8 @@
 ;                          start of the file and the trailer, a row off a multiple of four, a row
 ;                          that starts before the end of the directory or of the last record, ends
 ;                          past the table, overlaps another or repeats an id. Status 3: the last
-;                          record cannot be walked, which is only looked at when there is a table.
+;                          record cannot be walked or ends past the library, which is only looked
+;                          at when there is a table.
 ;                          Status 8: a known section's index does not fit its row, or the trees
 ;                          list more than 383 syntax axioms. Unknown ids are skipped. A glyph map
 ;                          for another font, or for another number of symbols, does not fail the

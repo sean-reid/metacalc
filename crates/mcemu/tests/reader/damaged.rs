@@ -332,7 +332,7 @@ fn a_foreign_font_image_reports_every_map_unusable() {
     assert_eq!(rig.syntax_count().0, ST_OK);
 }
 
-fn last_record(bytes: &[u8]) -> usize {
+pub fn last_record(bytes: &[u8]) -> usize {
     let count = usize::from(u16::from_le_bytes([bytes[14], bytes[15]]));
     let directory = get32(bytes, 16) as usize;
     get32(bytes, directory + 4 * (count - 1)) as usize

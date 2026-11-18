@@ -46,6 +46,13 @@ lsx_records_end:
 lsx_later:
 	ld (lr_ent),hl
 	ld (lr_ent+2),a
+	ld hl,(lr_length)
+	ld a,(lr_length+2)
+	ld de,lr_ent
+	call lr_cmp24
+	jp c,lr_bad
+	ld hl,(lr_ent)
+	ld a,(lr_ent+2)
 	ld de,lr_hdr
 	call lr_cmp24
 	jr c,lsx_later_done

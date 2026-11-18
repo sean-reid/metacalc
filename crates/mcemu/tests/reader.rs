@@ -18,6 +18,8 @@ mod interleave;
 mod interrupts;
 #[path = "reader/isolation.rs"]
 mod isolation;
+#[path = "reader/lastrecord.rs"]
+mod lastrecord;
 #[path = "reader/libraries.rs"]
 mod libraries;
 #[path = "reader/placements.rs"]
