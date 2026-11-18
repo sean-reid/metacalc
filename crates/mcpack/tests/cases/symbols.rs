@@ -22,6 +22,13 @@ fn symbol_names_are_checked_at_load() {
 }
 
 #[test]
+fn typecode_bytes_are_checked_at_load() {
+    for case in raw::typecode_cases() {
+        assert_eq!(model(&case), case.init, "{}", case.name);
+    }
+}
+
+#[test]
 fn check_refuses_the_library_whose_variables_shadow_its_constants() {
     let bytes = raw::library(&[b"T.", b"F."], &[b"F.", b"T."], &[b"ax-1"]);
     assert_eq!(check(&bytes), Err(CheckError::Load(KernelError::BadSymbol)));
