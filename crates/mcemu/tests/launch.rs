@@ -13,8 +13,8 @@ const PORTS: [u8; 27] = [
     0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x33, 0x34, 0x36, 0x37,
 ];
 
-/// The values TI-OS 2.55MP left when it entered this same app on the real ROM, as measured; the
-/// same numbers `launch` writes.
+/// The values TI-OS 2.43 and 2.55MP both left when they entered this same app on the real ROM, as
+/// measured; the same numbers `launch` writes.
 const REAL_PORTS: [u8; 27] = [
     0xE3,
     0x0B,
