@@ -1,6 +1,6 @@
 # Worked examples
 
-Eight proofs of the kind an intro-to-proofs course sets, taken from the set.mm libraries that ship with metacalc and printed as goal trees.
+Eight proofs of the kind an intro-to-proofs course sets, taken from the set.mm libraries metacalc builds and printed as goal trees.
 
 ## Reading a statement
 
