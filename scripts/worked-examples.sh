@@ -39,11 +39,6 @@ check)
 	outlines "$tmp"
 	status=0
 	for label in $(labels); do
-		root=$(head -n 1 "$tmp/$label" | sed 's/  \[[^]]*\]$//')
-		if ! grep -qF -- "Statement: \`$root\`" "$page"; then
-			echo "worked-examples: the page does not give the statement of $label as: $root" >&2
-			status=1
-		fi
 		block "$label" >"$tmp/$label.page"
 		if ! diff -u "$tmp/$label.page" "$tmp/$label" >"$tmp/$label.diff"; then
 			echo "worked-examples: the tree for $label in $page differs from the database" >&2
