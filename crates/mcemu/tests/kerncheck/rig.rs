@@ -14,6 +14,15 @@ pub const OUT_AFTER: u16 = 0xA003;
 pub const OUT_BUF: u16 = 0xA010;
 pub const ENTRY: u16 = 0x4000;
 pub const LIMIT: u32 = 2_000_000_000;
+/// T-states, about 13 ms at 15 MHz: longer than the interval between timer interrupts.
+pub const SLICE: u32 = 200_000;
+
+#[derive(Debug, PartialEq)]
+pub enum Step {
+    Done,
+    Waiting(u16),
+    Running(u16),
+}
 
 pub fn label(name: &str) -> u16 {
     LABELS
@@ -118,23 +127,51 @@ impl Rig {
         self.finish(ENTRY, 0)
     }
 
-    /// Runs from `pc` to the end of the test routine. Each time the driver halts in its wait for
-    /// ON to come up it counts one wait, and after `holds` of them the key is released. Returns
-    /// the waits.
+    /// True while the code is inside `on_release_and_clear`.
+    pub fn in_wait(&self) -> bool {
+        (label("ON_RELEASE_AND_CLEAR")..label("ON_RELEASE_END")).contains(&self.m.pc())
+    }
+
+    /// Runs one slice, long enough for a timer interrupt, from `pc` with interrupts off. A slice
+    /// that ends inside the wait for ON comes back as `Waiting(restart)`: the wait is a loop that
+    /// starts with `ei`, so starting it again is the same as going on, and the halt in it wakes on
+    /// the timer interrupt as it does on the calculator.
+    pub fn step(&mut self, pc: u16) -> Step {
+        match self.m.run(pc, SLICE).stop {
+            Stop::Halted => Step::Done,
+            Stop::Limit if self.in_wait() => Step::Waiting(label("ON_RELEASE_AND_CLEAR")),
+            Stop::Limit => Step::Running(self.m.pc()),
+            other => panic!("the run stopped with {other:?}"),
+        }
+    }
+
+    /// Runs slices from `pc` until one ends inside the wait; returns where to go on from.
+    pub fn until_waiting(&mut self, mut pc: u16) -> u16 {
+        loop {
+            match self.step(pc) {
+                Step::Waiting(restart) => return restart,
+                Step::Running(next) => pc = next,
+                Step::Done => panic!("the routine ended without waiting for ON"),
+            }
+        }
+    }
+
+    /// Runs from `pc` to the end of the test routine. Each slice that ends inside the wait for ON
+    /// to come up counts one wait, and after `holds` of them the key is released. Returns the
+    /// waits.
     pub fn finish(&mut self, mut pc: u16, holds: usize) -> usize {
-        let halted_in_wait = label("ON_WAIT_HALTED");
         let mut waits = 0;
         loop {
-            let run = self.m.run(pc, LIMIT);
-            assert_ne!(run.stop, Stop::Fault);
-            pc = self.m.pc();
-            if pc != halted_in_wait && pc + 1 != halted_in_wait {
-                return waits;
-            }
-            pc = halted_in_wait;
-            waits += 1;
-            if waits == holds {
-                self.m.release_key(Machine::KEY_ON);
+            match self.step(pc) {
+                Step::Done => return waits,
+                Step::Running(next) => pc = next,
+                Step::Waiting(restart) => {
+                    waits += 1;
+                    if waits == holds {
+                        self.m.release_key(Machine::KEY_ON);
+                    }
+                    pc = restart;
+                }
             }
         }
     }

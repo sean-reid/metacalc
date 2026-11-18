@@ -14,7 +14,7 @@ IY_TEST   = 0B800h
 	jp main
 
 main:
-	ld a, 01h
+	ld a, 0Bh
 	out (3), a
 	xor a
 	ld (OUT_FLAGGED), a
@@ -30,7 +30,7 @@ main:
 	halt
 
 onbreak_entry:
-	ld a, 01h
+	ld a, 0Bh
 	out (3), a
 	di
 	ld iy, IY_TEST

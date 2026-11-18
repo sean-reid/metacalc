@@ -214,11 +214,11 @@ fn press_in_proof(bytes: &[u8], nth: usize) -> (bool, Rig) {
     rig.m.press_key(Machine::KEY_ON);
     let mut driver_looked = false;
     loop {
-        let run = rig.m.run(pc, 40);
+        rig.m.run(pc, 40);
         pc = rig.m.pc();
         driver_looked |= pc == on_down;
-        if run.stop == Stop::Halted {
-            assert!(rig.finish(pc, 1) >= 1);
+        if rig.in_wait() {
+            assert!(rig.finish(label("ON_RELEASE_AND_CLEAR"), 1) >= 1);
             return (driver_looked, rig);
         }
     }
@@ -302,23 +302,15 @@ fn after_an_on_stop_the_report_waits_for_the_key_to_come_up() {
     let bytes = axioms(300);
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     rig.m.press_key(Machine::KEY_ON);
-    let halted_in_wait = label("ON_WAIT_HALTED");
     let mut pc = ENTRY;
-    for held in 1..=6 {
-        let run = rig.m.run(pc, LIMIT);
-        assert_ne!(run.stop, Stop::Fault);
-        pc = rig.m.pc();
-        assert!(
-            pc == halted_in_wait || pc + 1 == halted_in_wait,
-            "poll {held}"
-        );
+    for _ in 1..=6 {
+        pc = rig.until_waiting(pc);
         let trace = rig.trace();
         assert_eq!(
             count_of(&trace, "\u{c}"),
             1,
             "nothing is printed while ON is down"
         );
-        pc = halted_in_wait;
     }
     rig.m.release_key(Machine::KEY_ON);
     assert_eq!(rig.finish(pc, 0), 0);
@@ -365,26 +357,27 @@ fn the_wait_returns_with_interrupts_on_whether_or_not_on_was_down() {
         if holds > 0 {
             rig.m.press_key(Machine::KEY_ON);
         }
-        let halted_in_wait = label("ON_WAIT_HALTED");
         let mut waits = 0;
+        let mut tstates = 0u64;
         loop {
-            let run = rig.m.run(pc, LIMIT);
-            assert_ne!(run.stop, Stop::Fault);
-            let at = rig.m.pc();
-            if at != halted_in_wait && at + 1 != halted_in_wait {
-                break;
-            }
-            pc = halted_in_wait;
-            waits += 1;
-            if waits == holds {
-                rig.m.release_key(Machine::KEY_ON);
+            let run = rig.m.run(pc, if holds == 0 { LIMIT } else { SLICE });
+            tstates += u64::from(run.tstates);
+            match run.stop {
+                Stop::Halted => break,
+                Stop::Limit if holds == 0 => panic!("the wait never woke"),
+                Stop::Limit => {
+                    waits += 1;
+                    if waits == holds {
+                        rig.m.release_key(Machine::KEY_ON);
+                    }
+                    pc = entry;
+                }
+                other => panic!("{other:?}"),
             }
         }
-        assert_eq!(
-            waits,
-            holds.max(1),
-            "one halt takes a latched interrupt first"
-        );
+        assert_eq!(waits, holds, "polls that found ON down");
+        // the routine without its halt takes about 60 T-states; the halt waits for the timer
+        assert!(tstates > 1000, "the halt did not wait: {tstates} T-states");
         assert_eq!(
             rig.byte(0xA004),
             1,
@@ -446,19 +439,11 @@ fn nothing_is_printed_after_an_on_stop_until_the_flag_is_clear() {
     }
     rig.m.press_key(Machine::KEY_ON);
     rig.m.ram_page(1)[FLAGS] |= 0x10;
-    let halted_in_wait = label("ON_WAIT_HALTED");
     let mut printed = None;
-    for held in 1..=5 {
-        let run = rig.m.run(pc, LIMIT);
-        assert_ne!(run.stop, Stop::Fault);
-        let at = rig.m.pc();
-        assert!(
-            at == halted_in_wait || at + 1 == halted_in_wait,
-            "poll {held}"
-        );
+    for _ in 1..=5 {
+        pc = rig.until_waiting(pc);
         let len = rig.trace().len();
         assert_eq!(*printed.get_or_insert(len), len, "output while ON is down");
-        pc = halted_in_wait;
     }
     rig.m.release_key(Machine::KEY_ON);
     assert_eq!(rig.finish(pc, 0), 0);

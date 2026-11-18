@@ -12,3 +12,4 @@ on_wait_halted:
 	res onInterrupt, (iy + onFlags)
 	ei
 	ret
+on_release_end:
