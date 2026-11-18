@@ -136,6 +136,21 @@ ut_end:
 ut_last:
 	dec de
 	ret
+ut_odd:
+	or a
+	jr z,ut_end
+	push hl
+	ld hl,(ui_fontp)
+	ld bc,SLOT
+	add hl,bc
+	ld c,(hl)
+	pop hl
+	ld a,e
+	add a,c
+	inc a
+	cp UI_WIDTH
+	jr nc,ut_clip
+	jr ut_loop
 ; The loop runs with HL = the next glyph code, A = its x, below column 96. The string pointer
 ; and the x after the glyph wait on the stack while its rows are drawn.
 ut_after:
@@ -147,9 +162,8 @@ ut_loop:
 	ld e,a
 	ld a,(hl)
 	inc hl
-	or a
-	jr z,ut_end
-	ld d,a
+	cp SPACE_CODE+1
+	jr c,ut_odd
 	push hl
 	rlca
 	rlca
@@ -163,8 +177,6 @@ ut_loop:
 	add hl,bc
 	ld c,(hl)
 	inc hl
-	dec d
-	jr z,ut_space
 	bit 7,c
 	jr nz,ut_tall
 	ld a,e
@@ -239,14 +251,6 @@ ut_two_tall:
 	add a,a
 	add a,32
 	jr ut_go
-ut_space:
-	ld a,e
-	add a,c
-	inc a
-	pop hl
-	cp UI_WIDTH
-	jp c,ut_loop
-	jp ut_clip
 
 ; A row below the frame draws nothing and still returns the x after the string.
 ut_off:
