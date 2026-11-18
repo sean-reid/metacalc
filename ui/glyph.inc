@@ -106,93 +106,113 @@ ui_text:
 	ld (ui_rowbase),hl
 	pop de
 	pop hl
-	dec de
-ut_loop:
-	ld a,(hl)
+	ld a,d
 	or a
-	ret z
-	inc hl
-	inc de
-	cp SPACE_CODE
-	jr nz,ut_glyph
-	push hl
-	ld hl,(ui_fontp)
-	ld bc,SLOT
-	add hl,bc
-	ld a,(hl)
-	pop hl
-	add a,e
-	ld e,a
-	jr nc,ut_loop
-	inc d
+	jr nz,ut_tail
+	ld a,e
+	cp UI_WIDTH
+	jr nc,ut_tail
 	jr ut_loop
-ut_glyph:
+
+; The loop runs with HL = the next glyph code, A = its x, below column 96. The string pointer
+; and the x after the glyph wait on the stack while its rows are drawn.
+ut_after:
+	pop af
+	pop hl
+	cp UI_WIDTH
+	jr nc,ut_clip
+ut_loop:
+	ld e,a
+	ld a,(hl)
+	inc hl
+	or a
+	jr z,ut_end
+	ld d,a
 	push hl
+	rlca
+	rlca
+	rlca
 	ld l,a
-	ld h,0
-	add hl,hl
-	add hl,hl
-	add hl,hl
+	and 7
+	ld h,a
+	xor l
+	ld l,a
 	ld bc,(ui_fontp)
 	add hl,bc
 	ld c,(hl)
 	inc hl
-	push de
-	ex de,hl
-	ld b,0
-	add hl,bc
-	ex (sp),hl
-	ld a,h
-	or a
-	jr nz,ut_after
-	ld a,l
-	cp UI_WIDTH
-	jr nc,ut_after
-	ld a,c
-	cp 9
-	jr nc,ut_slow
-	ld a,l
+	dec d
+	jr z,ut_space
+	ld a,e
+	add a,c
+	inc a
+	push af
+	ld a,e
 	and 7
 	ld b,a
 	add a,c
 	cp 9
-	jr c,ut_one
-	ld a,l
-	cp 88
-	jr nc,ut_slow
-	ld a,b
-	add a,a
-	jr ut_go
-ut_one:
+	jr nc,ut_two
 	ld a,b
 	add a,a
 	add a,16
 ut_go:
+	ex de,hl
+	or ui_vtab&$FF
 	ld c,a
-	ld b,0
-	push hl
-	ld hl,ui_vtab
-	add hl,bc
-	ld c,(hl)
-	inc hl
-	ld b,(hl)
-	ld hl,ut_after
-	ex (sp),hl
-	push bc
 	ld a,l
 	rrca
 	rrca
 	rrca
 	and $1F
-	ld c,a
-	ld b,0
+	ld b,a
+	ld h,ui_vtab>>8
+	ld l,c
+	ld a,(hl)
+	inc hl
+	ld h,(hl)
+	ld l,a
+	push hl
 	ld hl,(ui_rowbase)
+	ld c,b
+	ld b,0
 	add hl,bc
 	ret
-ut_after:
-	pop de
+ut_two:
+	ld a,c
+	cp 9
+	jr nc,ut_slow
+	ld a,e
+	cp 88
+	jr nc,ut_slow
+	ld a,b
+	add a,a
+	jr ut_go
+ut_space:
+	ld a,e
+	add a,c
+	inc a
 	pop hl
-	jr ut_loop
+	cp UI_WIDTH
+	jr c,ut_loop
+ut_clip:
+	ld e,a
+	ld d,0
+ut_tail:
+	ld a,(hl)
+	or a
+	jr z,ut_last
+	push de
+	call ui_text_width
+	pop de
+	add hl,de
+	ex de,hl
+	ret
+ut_end:
+	ld d,0
+ut_last:
+	dec de
+	ret
 
 ; A row below the frame draws nothing and still returns the x after the string.
 ut_off:
@@ -203,17 +223,19 @@ ut_off:
 	ex de,hl
 	ret
 
-; A glyph that is nine wide or spills out of the last byte of a row: shifts each row as a 16 bit
-; value and leaves the second byte alone in the last column.
+; A glyph that is nine wide or spills out of the last byte of a row, HL = its rows, E = x,
+; C = width: shifts each row as a 16 bit value and leaves the second byte alone in the last
+; column.
 ut_slow:
+	ld (ui_src),hl
 	ld a,c
 	cp 9
 	sbc a,a
 	ld (ui_narrow),a
-	ld a,l
+	ld a,e
 	and 7
 	ld (ui_shift),a
-	ld a,l
+	ld a,e
 	rrca
 	rrca
 	rrca
@@ -224,7 +246,6 @@ ut_slow:
 	ld hl,(ui_rowbase)
 	add hl,bc
 	ld (ui_dst),hl
-	ld (ui_src),de
 	ld a,7
 	ld (ui_cnt),a
 us_row:
@@ -269,10 +290,10 @@ us_next:
 	ld hl,ui_cnt
 	dec (hl)
 	jr nz,us_row
-	jr ut_after
+	jp ut_after
 
 ; One glyph of up to eight columns shifted right by s bits, seven rows. DE = glyph rows,
-; HL = first byte in the frame, B = 0. Ends in RET with HL, DE and BC destroyed. The ONE
+; HL = first byte in the frame, B = 0. Ends in a jump to ut_after. The ONE
 ; forms are for a glyph that ends inside the first byte, whose rotated-out bits are blank.
 #macro ROW(s)
 #if s == 0
@@ -317,7 +338,7 @@ us_next:
 	ROW(s)
 	ROW(s)
 	ROW(s)
-	ret
+	jp ut_after
 #endmacro
 #macro VARIANT1(s)
 	ld c,UI_STRIDE
@@ -328,7 +349,7 @@ us_next:
 	ROW1(s)
 	ROW1(s)
 	ROW1(s)
-	ret
+	jp ut_after
 #endmacro
 ui_v0:	VARIANT(0)
 ui_v1:	VARIANT(1)
@@ -345,6 +366,7 @@ ui_w4:	VARIANT1(4)
 ui_w5:	VARIANT1(5)
 ui_w6:	VARIANT1(6)
 ui_w7:	VARIANT1(7)
+	.fill (32-($&31))&31,0
 ui_vtab:
 	.dw ui_v0,ui_v1,ui_v2,ui_v3,ui_v4,ui_v5,ui_v6,ui_v7
 	.dw ui_v0,ui_w1,ui_w2,ui_w3,ui_w4,ui_w5,ui_w6,ui_w7
