@@ -1,9 +1,10 @@
 #!/bin/sh
 # Usage: package-mcsend.sh tag os arch outdir
 # Packs the release build of mcsend (target/release/mcsend, or $MCSEND_BIN) as
-# outdir/mcsend-tag-os-arch.tar.gz with the repo's LICENSE, a NOTICE, and the COPYING and AUTHORS
+# outdir/mcsend-tag-os-arch.tar.gz with the repo's LICENSE, a NOTICE, the COPYING and AUTHORS
 # files of the libusb that libusb1-sys bundles at the locked version, which the binary links
-# statically under LGPL-2.1. os is macos or linux, arch is arm64 or x86_64.
+# statically under LGPL-2.1, and THIRD-PARTY, the licence expression and licence files of every
+# crate the binary is built from. os is macos or linux, arch is arm64 or x86_64.
 set -eu
 
 [ $# -eq 4 ] || { echo "usage: package-mcsend.sh tag os arch outdir" >&2; exit 2; }
@@ -29,7 +30,47 @@ done
 name=mcsend-$tag-$os-$arch
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
+host=$(rustc -vV | sed -n 's/^host: //p')
+cargo metadata --format-version 1 --locked --manifest-path "$manifest" --filter-platform "$host" >"$stage/metadata.json"
+sh "$root/scripts/check-mcsend-links.sh" "$bin" >&2 || exit 1
 mkdir "$stage/$name"
+python3 -I - "$stage/metadata.json" >"$stage/$name/THIRD-PARTY" <<'PY'
+import json, os, sys
+
+meta = json.load(open(sys.argv[1]))
+packages = {p["id"]: p for p in meta["packages"]}
+nodes = {n["id"]: n for n in meta["resolve"]["nodes"]}
+root = next(p["id"] for p in meta["packages"] if p["name"] == "mcsend")
+seen, todo = set(), [root]
+while todo:
+    for dep in nodes[todo.pop()]["deps"]:
+        if any(k["kind"] is None for k in dep["dep_kinds"]) and dep["pkg"] not in seen:
+            seen.add(dep["pkg"])
+            todo.append(dep["pkg"])
+
+out = ["Licences of the crates mcsend is built from.\n"]
+for pkg in sorted((packages[i] for i in seen), key=lambda p: (p["name"], p["version"])):
+    directory = os.path.dirname(pkg["manifest_path"])
+    files = sorted(
+        f for f in os.listdir(directory)
+        if f.upper().startswith(("LICENSE", "LICENCE", "COPYING", "NOTICE"))
+        and os.path.isfile(os.path.join(directory, f))
+    )
+    if not files:
+        sys.exit("THIRD-PARTY: %s %s has no licence file" % (pkg["name"], pkg["version"]))
+    out.append("=" * 72)
+    out.append("%s %s, licence: %s" % (pkg["name"], pkg["version"], pkg["license"] or "see the files below"))
+    for f in files:
+        text = open(os.path.join(directory, f), encoding="utf-8", errors="replace").read().strip()
+        if not text:
+            sys.exit("THIRD-PARTY: %s in %s %s is empty" % (f, pkg["name"], pkg["version"]))
+        out.append("-" * 72)
+        out.append(f)
+        out.append("")
+        out.append(text)
+    out.append("")
+print("\n".join(out))
+PY
 cp "$bin" "$stage/$name/mcsend"
 cp "$root/LICENSE" "$sys/libusb/COPYING" "$sys/libusb/AUTHORS" "$stage/$name/"
 cat >"$stage/$name/NOTICE" <<NOTICE
@@ -42,9 +83,11 @@ The source for both is the commit tagged $tag of https://github.com/sean-reid/me
 libusb1-sys $version crate from https://crates.io/crates/libusb1-sys/$version. Running
 "cargo build --release --locked -p mcsend" there rebuilds this binary, so you can change libusb and
 relink.
+
+THIRD-PARTY holds the licence expression and licence files of every other crate in the binary.
 NOTICE
 chmod 755 "$stage/$name/mcsend"
-chmod 644 "$stage/$name/LICENSE" "$stage/$name/COPYING" "$stage/$name/AUTHORS" "$stage/$name/NOTICE"
+chmod 644 "$stage/$name/THIRD-PARTY" "$stage/$name/LICENSE" "$stage/$name/COPYING" "$stage/$name/AUTHORS" "$stage/$name/NOTICE"
 
 mkdir -p "$outdir"
 tar -czf "$outdir/$name.tar.gz" -C "$stage" "$name"
