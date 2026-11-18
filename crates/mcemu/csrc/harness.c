@@ -9,10 +9,10 @@
 
 void *tilem_malloc(size_t s) { void *p = malloc(s); if (!p) abort(); return p; }
 void *tilem_malloc0(size_t s) { void *p = calloc(1, s); if (!p) abort(); return p; }
-void *tilem_malloc_atomic(size_t s) { return tilem_malloc(s); }
+void *tilem_malloc_atomic(size_t s) { return tilem_malloc0(s); }
 void *tilem_try_malloc(size_t s) { return malloc(s); }
 void *tilem_try_malloc0(size_t s) { return calloc(1, s); }
-void *tilem_try_malloc_atomic(size_t s) { return malloc(s); }
+void *tilem_try_malloc_atomic(size_t s) { return calloc(1, s); }
 void *tilem_realloc(void *p, size_t s) { return realloc(p, s); }
 void tilem_free(void *p) { free(p); }
 const char *tilem_gettext(const char *s) { return s; }
@@ -49,13 +49,14 @@ TilemCalc *mcemu_new(const uint8_t *rom, size_t len)
 {
 	TilemCalc *calc = tilem_calc_new(TILEM_CALC_TI84P_SE);
 	FILE *f = fmemopen((void *)rom, len, "rb");
-	int ok = f && tilem_calc_load_state(calc, f, NULL) == 0;
+	int ok = calc && f && tilem_calc_load_state(calc, f, NULL) == 0;
 	int bp;
 
 	if (f)
 		fclose(f);
 	if (!ok) {
-		tilem_calc_free(calc);
+		if (calc)
+			tilem_calc_free(calc);
 		return NULL;
 	}
 	tilem_calc_reset(calc);
@@ -99,7 +100,7 @@ uint32_t mcemu_run(TilemCalc *calc, uint16_t pc, int limit, uint32_t *elapsed)
 	return reason;
 }
 
-/* One byte per pixel, 1 when lit; returns 0 on success. */
+/* One byte per pixel, 1 when lit; the core leaves the frame untouched while the LCD is off, so it starts zeroed. Returns 0 on success. */
 int mcemu_lcd(TilemCalc *calc, uint8_t *out, int width, int height)
 {
 	TilemLCDBuffer *buf = tilem_lcd_buffer_new();

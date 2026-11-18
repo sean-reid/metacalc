@@ -5,6 +5,7 @@ const SUM_FLASH: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/sum_flash.bin
 const LCD_BUSY: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/lcd_busy.bin"));
 const LCD_WAIT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/lcd_wait.bin"));
 const KEYS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/keys.bin"));
+const COUNT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/count.bin"));
 
 const RAM_ENTRY: u16 = 0x9000;
 const RESULT: u16 = 0xA000;
@@ -78,9 +79,26 @@ fn assert_sum_lights_row_zero(sum: &[u8], lcd: &Lcd) {
     assert_eq!(lcd.lit(), 8);
 }
 
+// No memory write, port access or flash fetch, so the core's wait states cannot enter the count.
+const ADD_A_B: u32 = 4;
+const COUNT_TSTATES: u32 =
+    DI + LD_B_N + XOR_A + 256 * ADD_A_B + 255 * DJNZ_TAKEN + DJNZ_FALL + HALT;
+
 #[test]
-fn hand_count_is_7211() {
-    assert_eq!(SUM_TSTATES, 7211);
+fn a_routine_without_wait_states_takes_its_documented_time() {
+    assert_eq!((SUM_TSTATES, COUNT_TSTATES), (7211, 4366));
+    for speed in [Speed::Mhz6, Speed::Mhz15] {
+        let mut m = boot();
+        m.load_ram(RAM_ENTRY, COUNT);
+        m.set_speed(speed);
+        let run = m.run(RAM_ENTRY, LIMIT);
+        assert_eq!((run.stop, run.tstates), (Stop::Halted, COUNT_TSTATES));
+    }
+}
+
+#[test]
+fn the_lcd_reads_blank_while_it_is_off() {
+    assert_eq!(boot().lcd().lit(), 0);
 }
 
 #[test]

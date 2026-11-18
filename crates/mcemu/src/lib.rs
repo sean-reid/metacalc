@@ -89,6 +89,10 @@ impl Machine {
     }
 
     pub fn load_ram(&mut self, addr: u16, bytes: &[u8]) {
+        assert!(
+            usize::from(addr) + bytes.len() <= 0x1_0000,
+            "past the end of memory"
+        );
         for (a, &b) in (addr..=u16::MAX).zip(bytes) {
             let p = self.calc.logical_to_physical(a);
             self.calc.mem_mut()[p] = b;
@@ -96,6 +100,10 @@ impl Machine {
     }
 
     pub fn read_ram(&mut self, addr: u16, len: usize) -> Vec<u8> {
+        assert!(
+            usize::from(addr) + len <= 0x1_0000,
+            "past the end of memory"
+        );
         (addr..=u16::MAX)
             .take(len)
             .map(|a| {

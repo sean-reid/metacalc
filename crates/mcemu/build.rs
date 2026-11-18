@@ -14,6 +14,7 @@ const ROUTINES: &[(&str, &str, &[&str])] = &[
     ("lcd_busy.z80", "lcd_busy.bin", &[]),
     ("lcd_busy.z80", "lcd_wait.bin", &["WAIT"]),
     ("keys.z80", "keys.bin", &["RESULT=$A000"]),
+    ("count.z80", "count.bin", &["ENTRY=$9000"]),
 ];
 
 fn fail(msg: &str) -> ! {
@@ -33,6 +34,7 @@ fn tilem_sources() -> Vec<PathBuf> {
             Path::new(&root).display()
         ));
     }
+    println!("cargo:rerun-if-changed={}", emu.display());
     let mut files = Vec::new();
     let mut dirs = vec![emu.clone()];
     for entry in fs::read_dir(&emu).unwrap().flatten() {
