@@ -251,6 +251,7 @@ fn every_id_on_a_page_is_unique_and_a_label_cannot_take_a_heading_id() {
 
 fn temp(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -264,7 +265,6 @@ fn doc_can_require_a_unicode_spelling_of_every_symbol() {
     let library = dir.join("t.mclib");
     std::fs::write(&library, packed(MIXED)).unwrap();
     let page = dir.join("t.md");
-    let _ = std::fs::remove_file(&page);
     let run = |strict: bool| {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_mcpack"));
         cmd.arg("doc")
@@ -298,7 +298,6 @@ fn doc_can_require_a_meaning_for_every_symbol() {
     let library = dir.join("t.mclib");
     std::fs::write(&library, packed(MIXED)).unwrap();
     let page = dir.join("t.md");
-    let _ = std::fs::remove_file(&page);
     let run = |strict: bool| {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_mcpack"));
         cmd.arg("doc")
