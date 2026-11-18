@@ -56,7 +56,7 @@ jobs:
         id: spasm
         with:
           path: .spasm/spasm
-          key: spasm-ng-${{ env.SPASM_REV }}
+          key: spasm-ng-${{ runner.os }}-${{ runner.arch }}-${{ env.SPASM_REV }}
       - if: steps.spasm.outputs.cache-hit != 'true'
         run: |
           git clone https://github.com/alberthdev/spasm-ng "$RUNNER_TEMP/spasm-ng"

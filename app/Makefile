@@ -7,6 +7,7 @@ $(OUT): src/metacalc.z80 src/equates.inc
 
 check: $(OUT)
 	sh scripts/check-8xk.sh $(OUT)
+	sh scripts/test-check-8xk.sh $(OUT)
 
 clean:
 	rm -rf build
