@@ -163,9 +163,34 @@ fn the_reader_calls_the_theorem_list_makes_stay_inside_their_ceilings() {
     assert!(list < LIST_BUDGET, "{list} T-states");
 }
 
-/// Where lib_open's T-states go: the whole call, the same library without a trailer, the stage
-/// that reads the sections, and within that stage the walk of the last record and the three
-/// section headers. The rest of the stage is the trailer and table reads and the row checks.
+/// How far the parts of an open may stray from the whole call, in T-states: the two ways of
+/// reaching a stage differ only by the driver and a few state stores.
+const SPLIT_MARGIN: u32 = 50;
+
+/// Puts the reader's directory cache, window and descriptor back to what lib_open leaves them as
+/// before it reads the sections.
+fn go_cold(rig: &mut Rig) {
+    let none: &[u8] = &[0xFF, 0xFF];
+    for (name, bytes) in [
+        ("LR_DCBASE", none),
+        ("LR_DN", none),
+        ("LR_WLEN", &[0]),
+        ("LR_WP", &[0]),
+    ] {
+        let at = rig.label(name);
+        rig.poke(at, bytes);
+    }
+}
+
+fn cold_cost(rig: &mut Rig, target: &str) -> u32 {
+    go_cold(rig);
+    rig.cost(target, Regs::default())
+}
+
+/// Where lib_open's T-states go. The sections stage, the last-record walk inside it and the three
+/// section headers are each run cold. Header and symbols is the open of the same library without
+/// its trailer, less the one trailer read that open still makes. The two together must come to
+/// the whole call.
 fn open_split(bytes: &[u8], name: &str) {
     let regs = Regs {
         a: LIB_PAGE,
@@ -175,19 +200,29 @@ fn open_split(bytes: &[u8], name: &str) {
     let mut rig = Rig::with_library(bytes);
     let whole = rig.cost("LIB_OPEN", regs);
     rig.open_ok();
-    let stage = rig.cost("LSX_OPEN", Regs::default());
-    let walk = rig.cost("LSX_RECORDS_END", Regs::default());
-    let headers = rig.cost("LSX_HEADERS", Regs::default());
+    let stage = cold_cost(&mut rig, "LSX_OPEN");
+    let walk = cold_cost(&mut rig, "LSX_RECORDS_END");
+    let headers = cold_cost(&mut rig, "LSX_HEADERS");
+    let mut bare_bytes = bytes.to_vec();
+    *bare_bytes.last_mut().unwrap() ^= 1;
+    let mut bare = Rig::with_library(&bare_bytes);
+    let bare_whole = bare.cost("LIB_OPEN", regs);
+    bare.open_ok();
+    let bare_stage = cold_cost(&mut bare, "LSX_OPEN");
+    let head = bare_whole - bare_stage;
     let library = mcpack::library::decode(bytes).expect("it decodes");
-    let db_less = whole - stage;
     report(format!(
-        "{name}: lib_open {whole}: header and symbols {db_less}, sections {stage} of which \
+        "{name}: lib_open {whole}: header and symbols {head}, sections {stage} of which \
          last-record walk {walk}, section headers {headers}, trailer, table and rows {} ({} \
          assertions)",
         stage - walk - headers,
         library.assertions.len()
     ));
-    assert!(walk + headers < stage && stage < whole);
+    assert!(walk + headers <= stage && stage < whole, "{name}");
+    assert!(
+        (head + stage).abs_diff(whole) <= SPLIT_MARGIN,
+        "{name}: {head} + {stage} against {whole}, margin {SPLIT_MARGIN}"
+    );
 }
 
 #[test]
