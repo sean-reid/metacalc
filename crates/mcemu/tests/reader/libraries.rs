@@ -1,10 +1,18 @@
 use crate::support::*;
 
+/// T-state ceilings per library for every label, record and conclusion, 10 percent above the
+/// measured cost.
+const CEILINGS: [(&str, u64); 3] = [
+    ("prop", 12_800_000),
+    ("pred", 18_800_000),
+    ("ring", 52_300_000),
+];
+
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn the_shipped_libraries_read_back_as_the_decoder_decodes_them() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
-    for name in ["prop", "pred", "ring"] {
+    for (name, ceiling) in CEILINGS {
         let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
         let library = decoded(&bytes);
         let names = names(&library);
@@ -44,6 +52,10 @@ fn the_shipped_libraries_read_back_as_the_decoder_decodes_them() {
              {} per assertion, {worst} at worst",
             library.assertions.len(),
             total / calls.max(1)
+        );
+        assert!(
+            total <= ceiling,
+            "{name}: {total} T-states, ceiling {ceiling}"
         );
     }
 }
