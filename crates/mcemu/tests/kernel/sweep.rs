@@ -6,7 +6,7 @@ const REPLACEMENTS: [u8; 8] = [0x00, 0x01, 0x7F, 0x80, 0xEF, 0xF0, 0xFE, 0xFF];
 /// The model's view of a library the device reads from flash: the device trusts the length field,
 /// so the bytes the model sees are the ones that length covers, with erased flash past the end.
 /// None when the length is more than the flash pages left can hold.
-fn flash_view(bytes: &[u8]) -> Option<Vec<u8>> {
+pub fn flash_view(bytes: &[u8]) -> Option<Vec<u8>> {
     let length = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
     let room = (LIB_PAGE as usize + 1) * PAGE;
     if length > room {
@@ -22,7 +22,7 @@ fn flash_view(bytes: &[u8]) -> Option<Vec<u8>> {
 
 /// Runs the device and the model over one byte string and reports how they differ; each status
 /// the model gives is counted in `seen`.
-fn disagreement(
+pub fn disagreement(
     device: &mut Device,
     bytes: &[u8],
     limits: Limits,

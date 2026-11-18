@@ -24,7 +24,7 @@ pub const MOVED: Image = Image {
 /// The flash page of chunk 0; chunk c is at this page minus c.
 pub const LIB_PAGE: u8 = 0x6F;
 pub const PAGE: usize = 1 << 14;
-pub const RUN_LIMIT: u32 = 200_000_000;
+pub const RUN_LIMIT: u32 = 1_000_000_000;
 
 pub fn label(name: &str) -> u16 {
     label_in(DEFAULT, name)

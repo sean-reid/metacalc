@@ -1,3 +1,5 @@
+#[path = "kernel/edges.rs"]
+mod edges;
 #[path = "kernel/limits.rs"]
 mod limits;
 #[path = "kernel/state.rs"]

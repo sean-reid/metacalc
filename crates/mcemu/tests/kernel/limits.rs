@@ -102,7 +102,7 @@ fn the_kernel_needs_the_memory_the_reference_measures() {
 
 /// A theorem that pushes `copies` copies of an axiom's statement of `size` symbols and drops
 /// them pairwise, saving each copy first when `saving` is set.
-fn copies_src(size: usize, copies: usize, saving: bool) -> String {
+pub fn copies_src(size: usize, copies: usize, saving: bool) -> String {
     let body = "T ".repeat(size - 1);
     let proof = if saving {
         format!("( n0 drop ) A{}", "AZB".repeat(copies))
