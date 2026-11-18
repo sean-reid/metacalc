@@ -68,8 +68,10 @@ fn an_app_that_returns_from_its_entry_point_has_not_exited() {
     assert_eq!(run_app(&[0xC9]), Stop::Returned);
 }
 
+/// A pin on today's behaviour, not a proof of anything removed: it passes against the older stub
+/// too, whose extra `di` was never reached.
 #[test]
-fn an_app_that_returns_with_interrupts_on_stops_with_them_on() {
+fn pin_an_app_that_returns_with_interrupts_on_stops_with_them_on() {
     let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
     m.launch(BASE).expect("the app launches");
     m.load_flash(BASE, ENTRY, &[0xFB, 0xC9]);
