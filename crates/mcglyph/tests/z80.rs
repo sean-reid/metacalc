@@ -246,7 +246,7 @@ fn a_mapped_token_is_its_glyph_codes_and_its_spacing() {
 fn an_unmapped_token_is_drawn_as_interface_text_with_no_spacing() {
     let table = Table::builtin();
     let font = Font::builtin();
-    let token = "zz.a|";
+    let token = "zz.a@";
     assert!(font.token_glyphs(token).is_none());
     let (codes, pad) = table.token(token).unwrap();
     assert_eq!(pad.bits(), 0);
@@ -276,4 +276,25 @@ fn pad_bits_round_trip_and_refuse_a_fifth_flag() {
         assert_eq!(mcglyph::Pad::from_bits(bits).unwrap().bits(), bits);
     }
     assert_eq!(mcglyph::Pad::from_bits(16), None);
+}
+
+#[test]
+fn an_unmapped_token_with_a_braced_character_uses_that_characters_glyph() {
+    let table = Table::builtin();
+    let font = Font::builtin();
+    for (c, name) in [
+        ('{', "lbrace"),
+        ('|', "bar"),
+        ('}', "rbrace"),
+        ('\\', "backslash"),
+        ('^', "caret"),
+    ] {
+        let token = format!("x{c}x");
+        assert!(font.token_glyphs(&token).is_none());
+        let x = table.code('x');
+        assert_eq!(
+            table.token(&token).unwrap().0,
+            [x, table.glyph(name).unwrap(), x]
+        );
+    }
 }

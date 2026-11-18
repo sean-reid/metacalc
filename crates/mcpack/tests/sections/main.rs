@@ -322,7 +322,7 @@ fn the_glyph_map_has_one_entry_per_symbol_and_equals_what_mcglyph_gives() {
 
 #[test]
 fn a_symbol_the_font_does_not_map_is_stored_as_the_host_draws_it() {
-    let db = parse("$c |- wff foo a|b $.\n$v ph $.\nwph $f wff ph $.\nax $a |- foo a|b ph $.\n");
+    let db = parse("$c |- wff foo a@b $.\n$v ph $.\nwph $f wff ph $.\nax $a |- foo a@b ph $.\n");
     let everything: Vec<StmtId> = (0..db.stmts.len() as StmtId).collect();
     let bytes = pack(&db, &everything).unwrap();
     let map = glyphs_of(&bytes);
@@ -335,13 +335,13 @@ fn a_symbol_the_font_does_not_map_is_stored_as_the_host_draws_it() {
         [table.code('f'), table.code('o'), table.code('o')]
     );
     assert_eq!(foo.flags, 0);
-    let odd = &map.symbols[at("a|b")];
+    let odd = &map.symbols[at("a@b")];
     assert_eq!(odd.codes[1], table.glyph("question").unwrap());
     let font = mcglyph::Font::builtin();
     let slot_width =
         |c: u8| usize::from(table.slots()[usize::from(c) - 1][0] & !mcglyph::z80::TALL);
     let width = odd.codes.iter().map(|&c| slot_width(c)).sum::<usize>() + odd.codes.len() - 1;
-    assert_eq!(width, font.text_width("a|b"));
+    assert_eq!(width, font.text_width("a@b"));
 }
 
 #[test]
