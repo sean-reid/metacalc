@@ -104,6 +104,12 @@ jobs:
       - run: sh scripts/verify-exports.sh "$RUNNER_TEMP/libraries"
       - run: sh scripts/test-verify-exports.sh
       - run: sh scripts/replay-libraries.sh "$RUNNER_TEMP/libraries"
+      - uses: actions/cache@v6
+        with:
+          path: .tilem
+          key: tilem-${{ hashFiles('scripts/fetch-tilem.sh') }}
+      - run: sh scripts/fetch-tilem.sh
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" cargo test --locked -p mcemu --test kernel -- --ignored the_shipped_libraries
       - run: sh scripts/worked-examples.sh check "${{ steps.setmm.outputs.path }}"
       - run: SETMM="${{ steps.setmm.outputs.path }}" cargo test --locked -p mcpack --test unicode_pin -- --ignored
       - run: sh scripts/test-build-site.sh
