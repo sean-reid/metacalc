@@ -340,7 +340,25 @@ fn an_included_symlink_loop_and_fifo_are_refused() {
         .status()
         .unwrap();
     assert!(made.success());
-    assert!(refusal(&top, 1 << 20, 1 << 20).contains("pipe is not a regular file"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn an_included_fifo_is_refused_without_blocking() {
+    let (dir, top) = include_dir("fifo", "$[ pipe $]", &[]);
+    let made = Command::new("mkfifo")
+        .arg(dir.join("pipe"))
+        .status()
+        .unwrap();
+    assert!(made.success());
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let path = top.clone();
+    std::thread::spawn(move || sender.send(refusal(&path, 1 << 20, 1 << 20)));
+    let message = receiver
+        .recv_timeout(std::time::Duration::from_secs(20))
+        .expect("the read of a FIFO did not finish");
+    assert!(message.contains("pipe is not a regular file"), "{message}");
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -357,10 +375,117 @@ fn an_included_file_over_the_cap_is_refused_and_one_at_the_cap_is_read() {
 #[test]
 fn the_expanded_text_is_capped() {
     let (dir, top) = include_dir("total", "$[ inc.mm $]", &[("inc.mm", BASE.as_bytes())]);
-    let total = 1 + BASE.len() as u64;
-    assert!(refusal(&top, 1 << 20, total - 1).contains("the included files pass"));
+    let total = "$[ inc.mm $]".len() as u64 + BASE.len() as u64;
+    assert!(refusal(&top, 1 << 20, total - 1).contains("the files read pass"));
     let src = std::fs::read(&top).unwrap();
     assert!(parse_at_capped(&top, src, 1 << 20, total).is_ok());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A file that includes `next` first and then pads itself to `len` bytes with blanks.
+fn padded(next: Option<&str>, len: usize) -> String {
+    let head = next.map_or(String::new(), |n| format!("$[ {n} $]"));
+    format!("{head}{}", " ".repeat(len - head.len()))
+}
+
+#[test]
+fn every_file_read_counts_toward_the_total_while_it_is_still_open() {
+    let files = [
+        ("top.mm", padded(Some("a.mm"), 100)),
+        ("a.mm", padded(Some("b.mm"), 100)),
+        ("b.mm", padded(Some("c.mm"), 100)),
+        ("c.mm", padded(None, 100)),
+    ];
+    let bytes: Vec<(&str, &[u8])> = files.iter().map(|(n, t)| (*n, t.as_bytes())).collect();
+    let (dir, top) = include_dir("chain", &files[0].1, &bytes[1..]);
+    let message = refusal(&top, 1 << 20, 399);
+    assert!(
+        message.starts_with("b.mm: ") && message.contains("pass 399 bytes at c.mm"),
+        "{message}"
+    );
+    let src = std::fs::read(&top).unwrap();
+    assert!(parse_at_capped(&top, src, 1 << 20, 400).is_ok());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn the_top_level_file_counts_toward_the_total() {
+    let (dir, top) = include_dir("top-total", &padded(None, 300), &[]);
+    let message = refusal(&top, 1 << 20, 299);
+    assert!(
+        message.contains("the database passes 299 bytes"),
+        "{message}"
+    );
+    let src = std::fs::read(&top).unwrap();
+    assert!(parse_at_capped(&top, src, 1 << 20, 300).is_ok());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+fn chain(name: &str, length: usize) -> (PathBuf, PathBuf) {
+    let dir = scratch(name);
+    for i in 0..=length {
+        let next = (i < length).then(|| format!("f{}.mm", i + 1));
+        let text = next.map_or(BASE.to_string(), |n| format!("$[ {n} $]"));
+        let file = if i == 0 {
+            "top.mm".into()
+        } else {
+            format!("f{i}.mm")
+        };
+        std::fs::write(dir.join(file), text).unwrap();
+    }
+    let top = dir.join("top.mm");
+    (dir, top)
+}
+
+#[test]
+fn inclusions_nest_one_hundred_deep_and_no_deeper() {
+    let (dir, top) = chain("deepest", 100);
+    let src = std::fs::read(&top).unwrap();
+    assert!(parse_at(&top, src).is_ok(), "100 nested inclusions");
+    std::fs::remove_dir_all(&dir).unwrap();
+    let (dir, top) = chain("too-deep", 101);
+    let message = refusal(&top, 1 << 20, 1 << 20);
+    assert!(
+        message.starts_with("f100.mm: ") && message.contains("inclusions nest more than 100 deep"),
+        "{message}"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn text_from_the_database_is_cut_and_escaped_in_messages() {
+    let long = "n".repeat(300);
+    let (dir, top) = include_dir("long-name", &format!("$[ {long} $]"), &[]);
+    let message = refusal(&top, 1 << 20, 1 << 20);
+    assert!(
+        message.contains(&format!("cannot read {}...:", "n".repeat(64))),
+        "{message}"
+    );
+    assert!(message.len() < 200, "{message}");
+    std::fs::write(&top, b"$[ a\x1b[2Jb\xff $]").unwrap();
+    let message = refusal(&top, 1 << 20, 1 << 20);
+    assert!(message.contains("a\\u{1b}[2Jb\\xff"), "{message}");
+    assert!(!message.contains('\x1b'), "{message}");
+    std::fs::write(&top, b"$[ a\x1b\nb $]").unwrap();
+    let message = refusal(&top, 1 << 20, 1 << 20);
+    assert!(
+        !message.contains('\x1b') && !message.contains('\n'),
+        "{message}"
+    );
+    std::fs::write(&top, format!("$c {long} $. $c {long} $.")).unwrap();
+    let src = std::fs::read(&top).unwrap();
+    let message = parse_at(&top, src).err().unwrap().to_string();
+    assert!(
+        message.contains(&format!("{}...", "n".repeat(64))) && message.len() < 200,
+        "{message}"
+    );
+    std::fs::write(&top, b"$c a $. a\x1b $.").unwrap();
+    let src = std::fs::read(&top).unwrap();
+    let message = parse_at(&top, src).err().unwrap().to_string();
+    assert!(
+        message.contains("outside printable ASCII") && !message.contains('\x1b'),
+        "{message}"
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -425,4 +550,17 @@ fn pack_and_closure_refuse_inclusion_and_verify_reads_it() {
         .output()
         .unwrap();
     assert!(verified.status.success());
+}
+
+#[cfg(unix)]
+#[test]
+fn an_included_file_with_an_escape_in_its_name_is_named_escaped() {
+    let (dir, top) = include_dir(
+        "escape-name",
+        "$[ a\x1bb.mm $]",
+        &[("a\x1bb.mm", b"$c a $. $c a $.")],
+    );
+    let message = refusal(&top, 1 << 20, 1 << 20);
+    assert!(message.starts_with("a\\u{1b}b.mm: line 1:"), "{message}");
+    std::fs::remove_dir_all(&dir).unwrap();
 }

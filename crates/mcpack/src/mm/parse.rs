@@ -1,5 +1,6 @@
 use super::headings::heading;
 use super::include::{Expanded, MAX_FILE, MAX_TOTAL, expand};
+use super::shown::shown;
 use super::{
     Database, Frame, Heading, Kind, Proof, ProofBody, ProofError, Stmt, StmtId, Sym, Symbol,
     dv_pair,
@@ -194,7 +195,7 @@ impl<'a> Parser<'a> {
                 b"$d" => self.disjoint()?,
                 b"${" => self.scopes.push(Scope::default()),
                 b"$}" => self.close_scope()?,
-                _ if token[0] == b'$' => return Err(format!("unexpected {}", text(token))),
+                _ if token[0] == b'$' => return Err(format!("unexpected {}", shown(token))),
                 label => self.labelled(label)?,
             }
         }
@@ -206,10 +207,10 @@ impl<'a> Parser<'a> {
 
     fn check_symbol_token(&self, token: &[u8]) -> Res<()> {
         if token.contains(&b'$') {
-            return Err(format!("math symbol {} contains $", text(token)));
+            return Err(format!("math symbol {} contains $", shown(token)));
         }
         if self.labels.contains_key(token) {
-            return Err(format!("math symbol {} is also a label", text(token)));
+            return Err(format!("math symbol {} is also a label", shown(token)));
         }
         Ok(())
     }
@@ -226,7 +227,7 @@ impl<'a> Parser<'a> {
             }
             self.check_symbol_token(token)?;
             if self.sym_ids.contains_key(token) {
-                return Err(format!("symbol {} is already declared", text(token)));
+                return Err(format!("symbol {} is already declared", shown(token)));
             }
             self.new_symbol(token, false);
             count += 1;
@@ -261,10 +262,10 @@ impl<'a> Parser<'a> {
             let id = match self.sym_ids.get(token) {
                 Some(&id) => {
                     if !self.syms[id as usize].is_var {
-                        return Err(format!("{} is a constant", text(token)));
+                        return Err(format!("{} is a constant", shown(token)));
                     }
                     if self.var_active[id as usize] {
-                        return Err(format!("variable {} is already active", text(token)));
+                        return Err(format!("variable {} is already active", shown(token)));
                     }
                     self.var_active[id as usize] = true;
                     id
@@ -285,7 +286,7 @@ impl<'a> Parser<'a> {
     fn active_var(&self, token: &[u8]) -> Res<Sym> {
         match self.sym_ids.get(token) {
             Some(&id) if self.syms[id as usize].is_var && self.var_active[id as usize] => Ok(id),
-            _ => Err(format!("{} is not an active variable", text(token))),
+            _ => Err(format!("{} is not an active variable", shown(token))),
         }
     }
 
@@ -298,7 +299,7 @@ impl<'a> Parser<'a> {
             }
             let var = self.active_var(token)?;
             if vars.contains(&var) {
-                return Err(format!("{} repeated in $d", text(token)));
+                return Err(format!("{} repeated in $d", shown(token)));
             }
             vars.push(var);
         }
@@ -346,13 +347,13 @@ impl<'a> Parser<'a> {
             .iter()
             .all(|&b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'));
         if !valid {
-            return Err(format!("invalid label {}", text(label)));
+            return Err(format!("invalid label {}", shown(label)));
         }
         if self.labels.contains_key(label) {
-            return Err(format!("label {} is already used", text(label)));
+            return Err(format!("label {} is already used", shown(label)));
         }
         if self.sym_ids.contains_key(label) {
-            return Err(format!("label {} is also a math symbol", text(label)));
+            return Err(format!("label {} is also a math symbol", shown(label)));
         }
         let keyword = self.expect_token()?;
         let kind = match keyword {
@@ -363,7 +364,7 @@ impl<'a> Parser<'a> {
             _ => {
                 return Err(format!(
                     "expected a statement keyword after {}",
-                    text(label)
+                    shown(label)
                 ));
             }
         };
@@ -375,14 +376,14 @@ impl<'a> Parser<'a> {
                 break;
             }
             let Some(&id) = self.sym_ids.get(token) else {
-                return Err(format!("undeclared symbol {}", text(token)));
+                return Err(format!("undeclared symbol {}", shown(token)));
             };
             if self.syms[id as usize].is_var {
                 if !self.var_active[id as usize] {
-                    return Err(format!("variable {} is not active", text(token)));
+                    return Err(format!("variable {} is not active", shown(token)));
                 }
                 if kind != Kind::Float && self.float_of[id as usize].is_none() {
-                    return Err(format!("variable {} has no active $f", text(token)));
+                    return Err(format!("variable {} has no active $f", shown(token)));
                 }
             }
             expr.push(id);
@@ -402,7 +403,7 @@ impl<'a> Parser<'a> {
                 if self.float_of[expr[1] as usize].is_some() {
                     return Err(format!(
                         "variable {} already has an active $f",
-                        self.syms[expr[1] as usize].name
+                        shown(self.syms[expr[1] as usize].name.as_bytes())
                     ));
                 }
                 self.float_of[expr[1] as usize] = Some(id);

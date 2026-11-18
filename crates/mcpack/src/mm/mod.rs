@@ -6,6 +6,7 @@ mod headings;
 mod include;
 mod outline;
 mod parse;
+mod shown;
 mod verify;
 
 pub use closure::closure;

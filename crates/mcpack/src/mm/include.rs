@@ -1,9 +1,12 @@
 use super::ParseError;
+use super::shown::shown;
 use std::collections::HashSet;
+use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-const MAX_DEPTH: usize = 100;
+/// The number of inclusions that may be open at once below the top-level file.
+pub(super) const MAX_DEPTH: usize = 100;
 pub(super) const MAX_FILE: u64 = 64 << 20;
 pub(super) const MAX_TOTAL: u64 = 256 << 20;
 
@@ -44,14 +47,15 @@ struct Expander<'a> {
     out: Expanded,
     included: HashSet<PathBuf>,
     open: Vec<PathBuf>,
+    read: u64,
     max_file: u64,
     max_total: u64,
 }
 
 /// Replaces each inclusion command of `src` with the file it names, once per file. Names are
 /// relative to the directory of `top` and may leave it. Each included file must be a regular file
-/// of at most `max_file` bytes, and the expanded text at most `max_total`. Without `top`, an
-/// inclusion is refused.
+/// of at most `max_file` bytes, and all the files read, `src` included, at most `max_total`.
+/// Without `top`, an inclusion is refused.
 pub(super) fn expand(
     src: &[u8],
     top: Option<&Path>,
@@ -67,9 +71,17 @@ pub(super) fn expand(
         },
         included: HashSet::new(),
         open: top.map(canonical).into_iter().collect(),
+        read: src.len() as u64,
         max_file,
         max_total,
     };
+    if expander.read > max_total {
+        return Err(ParseError {
+            file: None,
+            line: 1,
+            message: format!("the database passes {max_total} bytes"),
+        });
+    }
     expander.file(None, src)?;
     Ok(expander.out)
 }
@@ -123,10 +135,9 @@ impl Expander<'_> {
                     if &src[close.0..close.1] != b"$]" {
                         return Err(fail(start, "$[ takes one file name and $]"));
                     }
-                    let target = String::from_utf8_lossy(&src[from..to]).into_owned();
                     self.chunk(file, src, copied, start);
                     self.out.text.push(b' ');
-                    self.include(&target).map_err(|e| match e {
+                    self.include(&src[from..to]).map_err(|e| match e {
                         Failure::Parse(e) => e,
                         Failure::Here(message) => fail(start, &message),
                     })?;
@@ -152,45 +163,47 @@ impl Expander<'_> {
         self.out.text.extend_from_slice(&src[from..to]);
     }
 
-    fn include(&mut self, name: &str) -> Result<(), Failure> {
+    fn include(&mut self, raw: &[u8]) -> Result<(), Failure> {
+        let name = shown(raw);
         let Some(base) = self.base else {
             return Err(Failure::Here("file inclusion is not supported here".into()));
         };
-        let path = base.join(name);
-        let target = std::fs::canonicalize(&path)
-            .map_err(|e| Failure::Here(format!("cannot read {name}: {e}")))?;
-        let meta = std::fs::metadata(&target)
-            .map_err(|e| Failure::Here(format!("cannot read {name}: {e}")))?;
-        if !meta.is_file() {
-            return Err(Failure::Here(format!("{name} is not a regular file")));
-        }
+        let unreadable = |e: std::io::Error| Failure::Here(format!("cannot read {name}: {e}"));
+        let path = base.join(String::from_utf8_lossy(raw).as_ref());
+        let target = std::fs::canonicalize(&path).map_err(unreadable)?;
         if self.open.contains(&target) {
             return Err(Failure::Here(format!("{name} includes itself")));
         }
         if self.included.contains(&target) {
             return Ok(());
         }
-        if self.open.len() >= MAX_DEPTH {
+        if self.open.len() > MAX_DEPTH {
             return Err(Failure::Here(format!(
                 "inclusions nest more than {MAX_DEPTH} deep"
             )));
         }
+        let file = open_regular(&target).map_err(unreadable)?;
+        if !file.metadata().map_err(unreadable)?.is_file() {
+            return Err(Failure::Here(format!("{name} is not a regular file")));
+        }
+        let room = self.max_total.saturating_sub(self.read);
         let mut src = Vec::new();
-        std::fs::File::open(&target)
-            .and_then(|f| f.take(self.max_file + 1).read_to_end(&mut src))
-            .map_err(|e| Failure::Here(format!("cannot read {name}: {e}")))?;
+        file.take(self.max_file.min(room) + 1)
+            .read_to_end(&mut src)
+            .map_err(unreadable)?;
         if src.len() as u64 > self.max_file {
             return Err(Failure::Here(format!(
                 "{name} is over {} bytes",
                 self.max_file
             )));
         }
-        if self.out.text.len() as u64 + src.len() as u64 > self.max_total {
+        if src.len() as u64 > room {
             return Err(Failure::Here(format!(
-                "the included files pass {} bytes at {name}",
+                "the files read pass {} bytes at {name}",
                 self.max_total
             )));
         }
+        self.read += src.len() as u64;
         let text = tokens(&src)
             .next()
             .is_none_or(|(a, b)| src[a..b].iter().all(u8::is_ascii_graphic));
@@ -199,10 +212,19 @@ impl Expander<'_> {
         }
         self.included.insert(target.clone());
         self.open.push(target);
-        let done = self.file(Some(name), &src).map_err(Failure::Parse);
+        let done = self.file(Some(&name), &src).map_err(Failure::Parse);
         self.open.pop();
         done
     }
+}
+
+/// Opens `path` without blocking, so that a pipe put in the place of a file cannot stall the read.
+fn open_regular(path: &Path) -> std::io::Result<File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NONBLOCK);
+    options.open(path)
 }
 
 enum Failure {
