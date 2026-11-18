@@ -16,21 +16,38 @@ fn chunks(bytes: &[u8]) -> usize {
     bytes.len().div_ceil(PAGE)
 }
 
-#[test]
-fn a_library_ending_at_page_zero_is_accepted_and_one_chunk_further_is_refused() {
-    let bytes = pack_all(&long_labels(700));
-    let last = chunks(&bytes) - 1;
-    assert!(last >= 1);
-    let mut device = Device::with_library_at(last as u8, &bytes);
-    let (want_init, want) = model_statuses(&bytes, ASKED_UNBOUNDED);
-    let (init, got, _) = device.verify_all(700, ASKED_UNBOUNDED);
-    assert_eq!((init, got), (want_init, want));
-    assert_eq!(init, 0);
+/// The small library padded or cut to exactly `length` bytes, with its length field and checksum.
+fn sized(length: usize) -> Vec<u8> {
+    let (_, mut bytes) = small_library();
+    bytes.resize(length, 0);
+    bytes[8..12].copy_from_slice(&(length as u32).to_le_bytes());
+    reseal(&mut bytes);
+    bytes
+}
 
-    device.lib_page = last as u8 - 1;
-    let got = device.verify(0, ASKED_UNBOUNDED);
-    assert_eq!(got.init, status(Err(KernelError::Malformed)));
-    assert_eq!(got.verify, status(Err(KernelError::Malformed)));
+#[test]
+fn a_library_may_fill_the_pages_down_to_page_zero_and_no_further() {
+    for page in [0u8, 1, 2, 3, 5] {
+        let fits = (page as usize + 1) * PAGE;
+        let exact = sized(fits);
+        let (want_init, want) = model_statuses(&exact, ASKED_UNBOUNDED);
+        let mut device = Device::with_library_at(page, &exact);
+        let (init, got, _) = device.verify_all(want.len(), ASKED_UNBOUNDED);
+        assert_eq!((init, &got), (want_init, &want), "first page {page}");
+        assert_eq!(init, 0);
+
+        for extra in [1, PAGE] {
+            let over = sized(fits + extra);
+            let mut device = Device::with_library_at(page, &over[..fits]);
+            let got = device.verify(0, ASKED_UNBOUNDED);
+            let malformed = status(Err(KernelError::Malformed));
+            assert_eq!(
+                (got.init, got.verify),
+                (malformed, malformed),
+                "page {page} +{extra}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -365,4 +382,98 @@ fn enough_applies_in_one_initialisation_wrap_the_serial() {
     assert!(applies > 2 * 0xFFFF);
     let serial = device.m.read_ram(device.label("KV_SERIAL"), 2);
     assert_eq!(serial, (((applies - 1) % 0xFFFF + 1) as u16).to_le_bytes());
+}
+
+fn xorshift(state: &mut u32) -> u8 {
+    *state ^= *state << 13;
+    *state ^= *state >> 17;
+    *state ^= *state << 5;
+    *state as u8
+}
+
+#[test]
+fn verify_without_a_successful_init_is_refused_whatever_the_ram_holds() {
+    let (db, bytes) = small_library();
+    let good = number(&db, "good");
+    let malformed = status(Err(KernelError::Malformed));
+    let start = label("KERNEL_RAM");
+    let len = usize::from(label("KERNEL_RAM_END") - start);
+    let mut seed = 0x2545_F491;
+    let random: Vec<u8> = (0..len).map(|_| xorshift(&mut seed)).collect();
+    for (name, fill) in [
+        ("$FF", vec![0xFF; len]),
+        ("$01", vec![1; len]),
+        ("random", random),
+    ] {
+        for page in [0x81u8, 0x50] {
+            let mut device = Device::with_library(&bytes);
+            device.m.load_flash(0x50, 0, b"flash page marker");
+            device.m.load_ram(0x8000, &[0xA5; 64]);
+            device.m.load_ram(start, &fill);
+            device.m.out_port(7, page);
+            device
+                .m
+                .load_ram(device.label("TEST_ASSERTION"), &(good as u16).to_le_bytes());
+            device.run("ENTRY_VERIFY");
+            assert_eq!(device.byte("TEST_VERIFY_STATUS"), malformed, "{name}");
+            let bank = device.m.read_ram(0x8000, 17);
+            let want = if page == 0x81 {
+                vec![0xA5; 17]
+            } else {
+                b"flash page marker".to_vec()
+            };
+            assert_eq!(bank, want, "{name}: bank B");
+        }
+    }
+}
+
+#[test]
+fn a_failed_init_leaves_nothing_to_verify_against() {
+    let (db, bytes) = small_library();
+    let good = number(&db, "good");
+    let ok = status(Ok(()));
+    let malformed = status(Err(KernelError::Malformed));
+    let mut device = Device::with_library(&bytes);
+    assert_eq!(device.verify(good, ASKED_UNBOUNDED).verify, ok);
+    device
+        .m
+        .load_ram(device.label("TEST_ASSERTION"), &(good as u16).to_le_bytes());
+    for (what, page, magic) in [("page", 0x80u8, b'M'), ("magic", device.lib_page, b'X')] {
+        device.m.load_flash(device.lib_page, 0, &[magic]);
+        device.params(ASKED_UNBOUNDED);
+        device.m.load_ram(device.label("KERNEL_LIB_PAGE"), &[page]);
+        device.run("ENTRY_TWO");
+        assert_eq!(device.byte("TEST_INIT_STATUS"), malformed, "{what}");
+        assert_eq!(device.byte("TEST_VERIFY_STATUS"), malformed, "{what}");
+        assert_eq!(device.byte("TEST_VERIFY2_STATUS"), malformed, "{what}");
+        device.run("ENTRY_VERIFY");
+        assert_eq!(device.byte("TEST_VERIFY_STATUS"), malformed, "{what}");
+    }
+}
+
+#[test]
+fn the_table_is_cleared_when_the_serial_wraps() {
+    let (db, bytes) = small_library();
+    let (both, good) = (number(&db, "both"), number(&db, "good"));
+    let mut device = Device::with_library(&bytes);
+    assert_eq!(device.verify(both, ASKED_UNBOUNDED).verify, status(Ok(())));
+    let table = device.label("SUBST");
+    let z = device.m.read_ram(table + 5 * 8, 8);
+    assert_ne!(z, [0; 8], "z is bound by the proof of both");
+    device
+        .m
+        .load_ram(device.label("KV_SERIAL"), &0xFFFFu16.to_le_bytes());
+    device
+        .m
+        .load_ram(device.label("TEST_ASSERTION"), &(good as u16).to_le_bytes());
+    device.run("ENTRY_VERIFY");
+    assert_eq!(device.byte("TEST_VERIFY_STATUS"), status(Ok(())));
+    assert_eq!(device.m.read_ram(device.label("KV_SERIAL"), 2), [1, 0]);
+    assert_eq!(
+        device.m.read_ram(table + 5 * 8, 8),
+        [0; 8],
+        "z was not rebound"
+    );
+    let x = device.m.read_ram(table + 3 * 8, 8);
+    assert_eq!(x[4..6], [1, 0], "x was rebound after the wrap");
 }

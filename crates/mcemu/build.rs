@@ -75,6 +75,19 @@ fn compile_tilem() {
     println!("cargo:rerun-if-changed=csrc/harness.c");
 }
 
+fn spasm_ok(src: &Path, out: &Path, defines: &[&str], args: &[&str]) -> bool {
+    let mut cmd = Command::new(env::var_os("SPASM").unwrap_or_else(|| "spasm".into()));
+    for d in defines {
+        cmd.arg(format!("-D{d}"));
+    }
+    cmd.args(args)
+        .arg("-N")
+        .arg(src)
+        .arg(out)
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
 fn spasm(src: &Path, out: &Path, defines: &[&str], args: &[&str]) {
     println!("cargo:rerun-if-changed={}", src.display());
     let mut cmd = Command::new(env::var_os("SPASM").unwrap_or_else(|| "spasm".into()));
@@ -134,6 +147,17 @@ fn assemble_kernel(out: &Path) {
         &[],
         &["-I", include],
     );
+    for base in ["$BF00", "$C080", "$F100"] {
+        assert!(
+            !spasm_ok(
+                Path::new("tests/routines/kernel_test.z80"),
+                &out.join("kernel_bad_base.bin"),
+                &[&format!("KERNEL_RAM={base}")],
+                &["-I", include],
+            ),
+            "a kernel RAM base of {base} assembled"
+        );
+    }
     for (name, defines) in [
         ("kernel_test", &[][..]),
         ("kernel_test_moved", &["KERNEL_RAM=$C400"][..]),
