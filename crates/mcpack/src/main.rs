@@ -66,6 +66,9 @@ enum Command {
         /// Fail, writing nothing, when a symbol of the library has no Unicode spelling
         #[arg(long)]
         require_unicode: bool,
+        /// Fail, writing nothing, when a symbol of the notation table has no meaning
+        #[arg(long)]
+        require_meaning: bool,
     },
     /// Print the index table of the library pages, one row per manifest in manifest order
     Summary {
@@ -110,7 +113,14 @@ fn main() -> ExitCode {
             library,
             output,
             require_unicode,
-        } => cmd::doc(&manifest, &library, &output, require_unicode),
+            require_meaning,
+        } => cmd::doc(
+            &manifest,
+            &library,
+            &output,
+            require_unicode,
+            require_meaning,
+        ),
         Command::Summary { libdir, manifests } => cmd::summary(&manifests, &libdir),
         Command::Export { library, output } => cmd::export(&library, &output),
     }

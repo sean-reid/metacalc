@@ -229,6 +229,18 @@ fn notation(out: &mut String, library: &Library) {
     out.push_str("</tbody></table></div>\n\n");
 }
 
+/// The symbols of the notation table of `library` that have no meaning.
+pub fn unexplained(library: &[u8]) -> Result<Vec<String>, ReadError> {
+    let library = library::decode(library)?;
+    Ok(library
+        .constants
+        .iter()
+        .chain(symbol_variables(&library))
+        .filter(|s| notation::meaning(s).is_none())
+        .cloned()
+        .collect())
+}
+
 /// The constants and variables of `library` that have no Unicode spelling.
 pub fn unmapped(library: &[u8]) -> Result<Vec<String>, ReadError> {
     let library = library::decode(library)?;

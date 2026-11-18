@@ -290,6 +290,40 @@ fn doc_can_require_a_unicode_spelling_of_every_symbol() {
 }
 
 #[test]
+fn doc_can_require_a_meaning_for_every_symbol() {
+    let dir = temp("meaning");
+    std::fs::write(dir.join("t.toml"), MANIFEST).unwrap();
+    let pin = "repository = \"https://example.org/r\"\ncommit = \"abc\"\npath = \"x.mm\"\nsha256 = \"0\"\n";
+    std::fs::write(dir.join("source.toml"), pin).unwrap();
+    let library = dir.join("t.mclib");
+    std::fs::write(&library, packed(MIXED)).unwrap();
+    let page = dir.join("t.md");
+    let _ = std::fs::remove_file(&page);
+    let run = |strict: bool| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_mcpack"));
+        cmd.arg("doc")
+            .arg(dir.join("t.toml"))
+            .arg("--library")
+            .arg(&library)
+            .arg("-o")
+            .arg(&page);
+        if strict {
+            cmd.arg("--require-meaning");
+        }
+        cmd.output().expect("mcpack runs")
+    };
+    let out = run(true);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(out.stderr).unwrap(),
+        format!("{}: no meaning for & foo\n", library.display())
+    );
+    assert!(!page.exists());
+    assert_eq!(run(false).status.code(), Some(0));
+    assert!(page.exists());
+}
+
+#[test]
 fn doc_refuses_a_library_that_loads_but_fails_the_kernel() {
     let dir = temp("kernel-fail");
     std::fs::write(dir.join("t.toml"), MANIFEST).unwrap();

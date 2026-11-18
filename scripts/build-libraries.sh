@@ -26,7 +26,7 @@ for manifest in "$root"/libraries/*.toml; do
 "
 	rm -f "$libdir/$name.mm" "$libdir/$name.proofs"
 	"$mcpack" build "$manifest" --database "$database" -o "$libdir/$name.mclib"
-	"$mcpack" doc "$manifest" --library "$libdir/$name.mclib" -o "$pagedir/$name.md" --require-unicode
+	"$mcpack" doc "$manifest" --library "$libdir/$name.mclib" -o "$pagedir/$name.md" --require-unicode --require-meaning
 	"$mcpack" export "$libdir/$name.mclib" -o "$libdir/$name.mm"
 	checked=$("$mcpack" verify "$libdir/$name.mm")
 	echo "$checked"
