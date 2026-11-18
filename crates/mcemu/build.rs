@@ -181,6 +181,7 @@ fn compile_tilem() {
         .define("HAVE_STRING_H", "1")
         .define("PACKAGE_VERSION", "\"pinned\"")
         .define("restrict", "__restrict")
+        .define("time", "mcemu_time")
         .define("_POSIX_C_SOURCE", "200809L")
         .warnings(false)
         .opt_level(2)

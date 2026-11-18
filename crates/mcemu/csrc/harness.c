@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "scancodes.h"
 #include "tilem.h"
@@ -90,6 +91,20 @@ TilemCalc *mcemu_new(const uint8_t *rom, size_t len)
 	return calc;
 }
 
+/* The core's clock ports read time(), renamed mcemu_time in the build. It answers with a fixed start
+   plus the emulated time run so far, so a run does not depend on the host's clock. */
+#define CLOCK_START 1700000000
+static _Thread_local double mcemu_us;
+
+time_t mcemu_time(time_t *t)
+{
+	time_t now = CLOCK_START + (time_t)(mcemu_us / 1e6);
+
+	if (t)
+		*t = now;
+	return now;
+}
+
 /* A calculator that boots a real OS image from reset, with no stub entry and no HALT stop. */
 TilemCalc *mcemu_new_os(const uint8_t *rom, size_t len)
 {
@@ -105,12 +120,14 @@ TilemCalc *mcemu_new_os(const uint8_t *rom, size_t len)
 		return NULL;
 	}
 	tilem_calc_reset(calc);
+	mcemu_us = 0;
 	return calc;
 }
 
 /* Runs on from the current state for the given emulated time; returns the stop reason. */
 uint32_t mcemu_run_time(TilemCalc *calc, int microseconds)
 {
+	mcemu_us += microseconds;
 	return tilem_z80_run_time(calc, microseconds, NULL);
 }
 
