@@ -737,9 +737,26 @@ fn a_saved_proof_that_is_cut_short_or_changed_is_refused_on_the_way_back_in() {
     for at in 0..saved.session.len() {
         let mut changed = saved.clone();
         changed.session[at] ^= 0x01;
-        assert!(same.restore_proof(changed).is_err(), "byte {at} changed");
+        assert_eq!(same.restore_proof(changed), damaged, "byte {at} changed");
     }
     assert_eq!(same.restore_proof(saved), Ok(()));
+}
+
+#[test]
+fn a_version_one_save_is_refused_as_damaged() {
+    let mut p = Prover::new(proving_bytes(), "a1i");
+    p.aply("ax-mp");
+    let mut saved = p.saved();
+    let length = saved.session[5] as usize;
+    assert!(length < 0x80);
+    let mut old = vec![1];
+    old.extend(&saved.session[6..6 + length]);
+    saved.session = old;
+    let mut same = ui_over(proving_bytes(), &[], &[]);
+    assert_eq!(
+        same.restore_proof(saved),
+        Err(mcui::RestoreError::Unreadable("the saved proof is damaged"))
+    );
 }
 
 #[test]
