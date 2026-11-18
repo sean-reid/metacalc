@@ -2,8 +2,10 @@
 # Usage: compare-frames.sh export database
 # Compares every assertion of an exported library with the same label in the database it was built
 # from, through metamath-exe (METAMATH, default .metamath/metamath at the repo root). The frame of
-# an assertion is its statement, its mandatory hypotheses in order with hypothesis labels left out,
-# and its mandatory disjoint variable pairs. Prints each difference and exits 1 if there is one.
+# an assertion is its statement, the number of its mandatory hypotheses, the hypotheses in order
+# with hypothesis labels left out, and its mandatory disjoint variable pairs. Prints each
+# difference and exits 1 if there is one. A line starting ?Error in the output of metamath-exe is a
+# failure.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -52,6 +54,7 @@ frames() {
 		label = text
 		sub(/ .*/, "", label)
 		print label "\tstatement\t" text
+		print label "\thypotheses\t" nhyp
 		for (i = 1; i <= nhyp; i++) {
 			text = squeeze(hyp[i])
 			if (text !~ /^[^ ]+ \$[fe] .* \$\.$/) {
@@ -72,6 +75,7 @@ frames() {
 			print label "\tdisjoint\t" (pair[1] < pair[2] ? pair[1] "," pair[2] : pair[2] "," pair[1])
 		}
 	}
+	/^\?Error/ { bad("metamath-exe reported: " $0); next }
 	/^Statement [0-9]+ is located/ {
 		if (headers > 0) flush()
 		headers++
@@ -97,6 +101,7 @@ frames() {
 	state == 2 && /^  \(None\)$/ { next }
 	state == 2 && /^  [^ ]/ { hyp[++nhyp] = substr($0, 3); next }
 	state == 2 && /^   / { hyp[nhyp] = hyp[nhyp] " " $0; next }
+	state == 2 && /[^ \t]/ { bad("a line among the hypotheses of statement " headers " was not understood: " $0); next }
 	state == 3 && /^ / { dv = dv " " $0; next }
 	END {
 		if (headers > 0) flush()

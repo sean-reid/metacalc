@@ -264,6 +264,9 @@ frames reordered-disjoint-pair '' 's/^  \$d ph x \$\.$/  $d x ph $./'
 frames dropped-disjoint-pair '> ax-g	disjoint	ph,x' '/^  \$d ph x \$\.$/d'
 frames changed-hypothesis '< keep	hypothesis 2	$e |- ps $.' '' '${ keep.1 $e |- ps $. keep $a |- ps $. $}' '${ keep.1 $e |- ph $. keep $a |- ps $. $}'
 frames changed-statement '< keep	statement	keep $a |- ph $.' '' 'keep $a |- ph $.' 'keep $a |- ps $.'
+frames dropped-hypothesis "< keep	hypotheses	4" '' '${ keep.1 $e |- ph $. keep.2 $e |- ps $. keep $a |- ps $. $}' '${ keep.1 $e |- ph $. keep $a |- ps $. $}'
+frames added-hypothesis "< keep	hypotheses	3" '' '${ keep.1 $e |- ph $. keep $a |- ps $. $}' '${ keep.1 $e |- ph $. keep.2 $e |- ps $. keep $a |- ps $. $}'
+frames error-line-in-the-database 'metamath-exe reported: ?Error' '' '' 'oops oops oops'
 frames extra-assertion 'assertions in the export and' '' 'extra $a |- ph $.'
 frames missing-from-the-database 'assertions in the export and' 's/^  th-g \$p/  th-x $p/' '' ''
 
@@ -292,6 +295,14 @@ compare_stub unparsed-statement 'did not parse' 'Statement 12 is located on line
 12 th-x $p |- ps'
 compare_stub fewer-statements-than-labels 'assertions in the export and' 'Statement 12 is located on line 3 of the file "x".
 12 wi $a wff ( ph -> ps ) $.'
+compare_stub error-line 'metamath-exe reported: ?Error: canned' '?Error: canned
+Statement 12 is located on line 3 of the file "x".
+12 wi $a wff ( ph -> ps ) $.'
+compare_stub unplaced-hypothesis-line 'among the hypotheses of statement 1 was not understood: stray' 'Statement 12 is located on line 3 of the file "x".
+12 wi $a wff ( ph -> ps ) $.
+Its mandatory hypotheses in RPN order are:
+  wph $f wff ph $.
+stray'
 
 for source in "" "$tmp/no-such-database.mm"; do
 	if sh "$root/scripts/verify-exports.sh" "$tmp/good" "$source" >"$tmp/out" 2>"$tmp/err"; then
