@@ -314,7 +314,7 @@ fn two_machines_on_one_thread_each_keep_their_own_time() {
     let (ta, tb) = (since(&mut a, start), since(&mut b, start));
     assert!(ta.abs_diff(3) <= 1, "{ta} s after 3 s");
     assert!(tb.abs_diff(1) <= 1, "{tb} s after 1 s");
-    assert!(ta >= tb + 1, "{ta} s and {tb} s");
+    assert!(ta > tb, "{ta} s and {tb} s");
 }
 
 #[test]
