@@ -213,16 +213,27 @@ fn main() {
         &[],
         &["-I", "../../app/src", "-L"],
     );
-    for name in ["sparecheck_test", "sparescreen_test"] {
+    for name in ["sparecheck_test", "sparescreen_test", "kerncheck_test"] {
         spasm(
             &Path::new("tests/routines").join(format!("{name}.z80")),
             &out.join(format!("{name}.bin")),
             &[],
-            &["-I", "../../app/src", "-I", "../../probe", "-L"],
+            &[
+                "-I",
+                "../../app/src",
+                "-I",
+                "../../probe",
+                "-I",
+                "../../kernel",
+                "-L",
+            ],
         );
     }
     println!("cargo:rerun-if-changed=../../probe/sparecore.inc");
     println!("cargo:rerun-if-changed=../../probe/sparescreen.inc");
+    println!("cargo:rerun-if-changed=../../probe/printnum.inc");
+    println!("cargo:rerun-if-changed=../../probe/kerndriver.inc");
+    println!("cargo:rerun-if-changed=../../app/src/libpage.inc");
     println!("cargo:rerun-if-changed=../../app/src/equates.inc");
     println!("cargo:rerun-if-changed=../../app/src/header.inc");
 }
