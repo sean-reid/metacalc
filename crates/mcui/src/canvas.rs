@@ -1,0 +1,182 @@
+//! Drawing helpers shared by the screens: the title bar, the soft key row, list rows and text.
+
+use crate::fold::{Layout, Piece, Rect};
+use mcglyph::{Bitmap, ELLIPSIS, Font};
+
+pub const WIDTH: usize = 96;
+pub const HEIGHT: usize = 64;
+/// Pixel height of a text row: a glyph and one blank row above it.
+pub const ROW: usize = 8;
+/// Rows of content between the title bar and the soft key row.
+pub const CONTENT_ROWS: usize = 6;
+/// Blank columns at each side of the text.
+pub const MARGIN: usize = 1;
+/// Pixels a statement may use.
+pub const TEXT_WIDTH: usize = WIDTH - 2 * MARGIN;
+
+fn font() -> &'static Font {
+    Font::builtin()
+}
+
+pub fn text_width(text: &str) -> usize {
+    font().text_width(text)
+}
+
+/// `text` cut after as many characters as fit in `limit` pixels together with an ellipsis, or
+/// whole when it fits.
+pub fn truncate(text: &str, limit: usize) -> String {
+    if text_width(text) <= limit {
+        return text.to_string();
+    }
+    let mut out = String::new();
+    for c in text.chars() {
+        let mut longer = out.clone();
+        longer.push(c);
+        longer.push(ELLIPSIS);
+        if text_width(&longer) > limit {
+            break;
+        }
+        out.push(c);
+    }
+    out.push(ELLIPSIS);
+    out
+}
+
+pub struct Canvas {
+    bitmap: Bitmap,
+}
+
+impl Default for Canvas {
+    fn default() -> Self {
+        Canvas {
+            bitmap: Bitmap::new(WIDTH, HEIGHT),
+        }
+    }
+}
+
+impl Canvas {
+    pub fn into_bitmap(self) -> Bitmap {
+        self.bitmap
+    }
+
+    /// Top of text row `row`, counting the title bar as row 0.
+    fn top(row: usize) -> usize {
+        row * ROW
+    }
+
+    /// Draws `text` with its first column at `x` on `row`; returns its width.
+    pub fn text(&mut self, x: usize, row: usize, text: &str) -> usize {
+        let ink = font().text(text);
+        self.bitmap.blit(&ink, x, Self::top(row) + 1);
+        ink.width()
+    }
+
+    /// Draws `ink` with its top left corner at `x` on `row`.
+    pub fn blit(&mut self, ink: &Bitmap, x: usize, row: usize) {
+        self.bitmap.blit(ink, x, Self::top(row) + 1);
+    }
+
+    /// Draws `text` so that it ends at the right margin.
+    pub fn text_right(&mut self, row: usize, text: &str) -> usize {
+        let width = text_width(text);
+        self.text(WIDTH - MARGIN - width, row, text);
+        width
+    }
+
+    pub fn text_centered(&mut self, row: usize, text: &str) {
+        let width = text_width(text);
+        self.text(WIDTH.saturating_sub(width) / 2, row, text);
+    }
+
+    /// Flips every pixel of the rectangle.
+    pub fn invert(&mut self, x: usize, y: usize, width: usize, height: usize) {
+        for yy in y..y + height {
+            for xx in x..x + width {
+                let ink = self.bitmap.get(xx, yy);
+                self.bitmap.set(xx, yy, !ink);
+            }
+        }
+    }
+
+    pub fn invert_row(&mut self, row: usize) {
+        self.invert(0, Self::top(row), WIDTH, ROW);
+    }
+
+    /// The title bar: `left` and `right` in white on a black row, the left side cut short with an
+    /// ellipsis when the two would meet.
+    pub fn title(&mut self, left: &str, right: &str) {
+        let right_width = text_width(right);
+        let room = WIDTH - 2 * MARGIN - right_width - if right.is_empty() { 0 } else { 3 };
+        self.text(MARGIN, 0, &truncate(left, room));
+        self.text_right(0, right);
+        self.invert_row(0);
+    }
+
+    /// The labels of the five keys under the screen, each centred in its fifth of the width.
+    pub fn soft_keys(&mut self, labels: [&str; 5]) {
+        for (i, label) in labels.iter().enumerate() {
+            let (from, to) = ((WIDTH * i + 2) / 5, (WIDTH * (i + 1) + 2) / 5);
+            let label = truncate(label, to - from);
+            let x = from + (to - from - text_width(&label)) / 2;
+            self.text(x, CONTENT_ROWS + 1, &label);
+        }
+    }
+
+    /// One list row: `left` cut to fit beside `right`, which ends at the right margin. A selected
+    /// row is inverted across the whole width.
+    pub fn list_row(&mut self, row: usize, left: &str, right: &str, selected: bool) {
+        let right_width = text_width(right);
+        let room = WIDTH - 2 * MARGIN - right_width - if right.is_empty() { 0 } else { 3 };
+        self.text(MARGIN, row, &truncate(left, room));
+        self.text_right(row, right);
+        if selected {
+            self.invert_row(row);
+        }
+    }
+
+    /// Draws a laid out statement with its first column at `x` and its first line on `row`,
+    /// showing only the rows from `window.start` to `window.end`.
+    pub fn layout(
+        &mut self,
+        layout: &Layout,
+        x: usize,
+        row: isize,
+        window: std::ops::Range<isize>,
+    ) {
+        for (r, line) in layout.lines.iter().enumerate() {
+            let at = row + r as isize;
+            if !window.contains(&at) {
+                continue;
+            }
+            for placed in &line.tokens {
+                let ink = piece_bitmap(&layout.pieces[placed.index]);
+                self.bitmap
+                    .blit(&ink, x + placed.x, Self::top(at as usize) + 1);
+            }
+        }
+    }
+
+    /// Inverts the runs of a cursor, padded by the blank column on each side of its tokens.
+    pub fn cursor(&mut self, rects: &[Rect], x: usize, row: isize, window: std::ops::Range<isize>) {
+        for rect in rects {
+            let at = row + rect.row as isize;
+            if window.contains(&at) {
+                self.invert(
+                    (x + rect.x).saturating_sub(1),
+                    Self::top(at as usize),
+                    rect.width + 2,
+                    ROW,
+                );
+            }
+        }
+    }
+}
+
+fn piece_bitmap(piece: &Piece) -> Bitmap {
+    match piece {
+        Piece::Tok(token) => font()
+            .token_bitmap(token)
+            .unwrap_or_else(|| font().text(token)),
+        Piece::Ellipsis => font().text(&ELLIPSIS.to_string()),
+    }
+}
