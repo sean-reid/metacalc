@@ -17,7 +17,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 status=0
-while read -r name; do
+while read -r name || [ -n "$name" ]; do
 	if [ ! -f "$spliced/$name.mm" ]; then
 		echo "FAIL $name: the replay wrote no $spliced/$name.mm" >&2
 		status=1

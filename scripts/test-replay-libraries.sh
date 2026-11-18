@@ -77,3 +77,7 @@ expect no-proofs 'unproved statements or warnings'
 case_dirs missing-database 's/^$//' 2
 rm "$tmp/missing-database/spliced/tiny.mm"
 expect missing-database 'the replay wrote no'
+
+case_dirs no-final-newline 's/wps vy ax-g/wph vy ax-g/' 2
+printf 'tiny' >"$tmp/no-final-newline/lib/libraries.list"
+expect no-final-newline 'FAIL metamath-exe tiny: the verifier reported problems'

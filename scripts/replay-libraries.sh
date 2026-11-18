@@ -12,5 +12,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 spliced=$(mktemp -d)
 trap 'rm -rf "$spliced"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 MCEDIT_SPLICED=$spliced MCEDIT_LIBRARIES=$1 sh scripts/require-tests.sh 1 cargo test --release --locked -p mcedit --test replay -- --ignored --nocapture --exact exported_libraries_replay
 sh scripts/check-replayed.sh "$1" "$spliced"
