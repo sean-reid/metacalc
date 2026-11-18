@@ -2,6 +2,7 @@ SPASM   ?= spasm
 BUILD   ?= build
 LIBRARY ?=
 OUT     := $(BUILD)/metacalc.8xk
+ASM     := SPASM="$(SPASM)" sh ../scripts/spasm.sh
 
 ifeq ($(LIBRARY),)
 FLAGS := -I src
@@ -20,7 +21,7 @@ app:
 ifneq ($(LIBRARY),)
 	sh scripts/library-include.sh "$(LIBRARY)" > "$(BUILD)/library.inc"
 endif
-	"$(SPASM)" -L $(FLAGS) src/metacalc.z80 "$(OUT)"
+	$(ASM) -L $(FLAGS) src/metacalc.z80 "$(OUT)"
 
 check: app
 	$(CHECK)
