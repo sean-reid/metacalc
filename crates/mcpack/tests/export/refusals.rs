@@ -15,9 +15,9 @@ const ESSENTIAL: &str = "$c |- wff R $. $v x y $. vx $f wff x $. vy $f wff y $.
 const REFS: &str = "$c R wff |- $. $v x y z $.
     vx $f wff x $. vy $f wff y $. vz $f wff z $.
     ${ $d x y $. ax-d $a |- R x y $. $}
-    ax-m $a |- R $.
-    ax-n $a |- R $.
-    ${ $d x y $. th $p |- R x y $= ( ax-d ax-m ax-n ) ABC $. $}";
+    ${ m.1 $e |- R x y $. ax-m $a |- R x y $. $}
+    ${ n.1 $e |- R x y $. ax-n $a |- R x y $. $}
+    ${ $d x y $. th $p |- R x y $= ( ax-d ax-m ax-n ) ABABABCDE $. $}";
 
 fn packed(src: &str) -> Vec<u8> {
     let db = parse(src);
@@ -178,7 +178,7 @@ fn swapped_essential(original: Vec<u8>) -> Vec<u8> {
 }
 
 #[test]
-fn a_proof_that_names_what_a_block_cannot_is_refused() {
+fn a_reference_list_a_block_cannot_write_is_refused_by_the_kernel() {
     let original = packed(REFS);
     let refs = record(&original, 3).refs;
     let (x, z) = (0x8000u16 + 3, 0x8000u16 + 5);
@@ -189,19 +189,17 @@ fn a_proof_that_names_what_a_block_cannot_is_refused() {
             }
         })
     };
-    for (slots, why) in [
-        (
-            [(1, x), (2, z)],
-            "a proof names a mandatory variable's float",
-        ),
-        ([(1, z), (2, z)], "a proof names a dummy variable twice"),
-        ([(1, 0), (2, z)], "a proof names an assertion twice"),
-        ([(1, 3), (2, z)], "a proof names a later assertion"),
-        ([(1, 4), (2, z)], "a proof names a later assertion"),
+    for (slots, error) in [
+        ([(1, x), (2, z)], KernelError::BadRecord),
+        ([(1, z), (2, z)], KernelError::BadRecord),
+        ([(1, 0), (2, z)], KernelError::BadRecord),
+        ([(1, 3), (2, z)], KernelError::ForwardReference),
+        ([(1, 4), (2, z)], KernelError::ForwardReference),
     ] {
-        assert_eq!(refused(&set(slots)), assertion_error("th", why));
+        let bytes = set(slots);
+        let failed = CheckError::Assertions(vec![("th".into(), error)]);
+        assert_eq!(export(&bytes), Err(ExportError::Check(failed)), "{slots:?}");
     }
-    assert!(export(&set([(1, z), (2, 2)])).is_ok());
 }
 
 #[test]
@@ -229,9 +227,9 @@ fn a_label_that_is_not_utf8_cannot_be_read() {
 fn a_proof_that_ends_inside_a_step_number_cannot_be_read() {
     let original = packed(REFS);
     let record = record(&original, 3);
-    let last = record.proof + 3 - 1;
+    let last = record.proof + 9 - 1;
     let mut bytes = original;
-    assert_eq!(bytes[last], 2, "the proof is three one-byte steps");
+    assert_eq!(bytes[last], 4, "the proof is nine one-byte steps");
     bytes[last] = 0xF0;
     assert_eq!(decode(&bytes), Err(ReadError));
     reseal(&mut bytes);
@@ -270,14 +268,20 @@ fn page_renders(bytes: &[u8]) -> bool {
 }
 
 #[test]
-fn an_unused_dummy_entry_that_names_no_variable_is_read_but_not_exported() {
+fn a_dummy_entry_that_names_no_variable_is_read_but_not_exported() {
     let original = packed(REFS);
     let refs = record(&original, 3).refs;
     for entry in [0x8000u16, 0x8000 + 300] {
         let bytes = patched(original.clone(), |b| {
             b[refs + 2..][..2].copy_from_slice(&entry.to_le_bytes());
         });
-        check(&bytes).expect("the kernel never looks at an unused entry");
+        assert_eq!(
+            check(&bytes),
+            Err(CheckError::Assertions(vec![(
+                "th".into(),
+                KernelError::Malformed
+            )]))
+        );
         assert!(read(&bytes).is_ok(), "{entry:x}");
         assert!(page_renders(&bytes), "{entry:x}");
         let library = decode(&bytes).unwrap();
@@ -285,32 +289,37 @@ fn an_unused_dummy_entry_that_names_no_variable_is_read_but_not_exported() {
             library.assertions[3].references[1],
             Reference::Invalid(entry)
         );
-        let why = "a proof names a dummy that is not a variable";
-        assert_eq!(refused(&bytes), assertion_error("th", why));
+        assert!(matches!(export(&bytes), Err(ExportError::Check(_))));
     }
 }
 
-const SPARE_PAIR: &str = "$c R wff |- $. $v x y z $.
-    vx $f wff x $. vy $f wff y $. vz $f wff z $.
+const SPARE_PAIR: &str = "$c R wff |- $. $v x y z w $.
+    vx $f wff x $. vy $f wff y $. vz $f wff z $. vw $f wff w $.
     ${ $d x y $. ax-d $a |- R x y $. $}
-    ax-n $a |- R $.
-    ${ $d x y $. $d x z $. t2 $p |- R x y $= ( ax-d vz ) ABC $. $}";
+    ${ ez.1 $e |- R x z $. ax-ez $a |- R x y $. $}
+    ax-w $a |- R w $.
+    ${ $d x y $. $d x z $. $d z w $. t2 $p |- R x y $=
+        ( ax-d ax-ez vz ) ABEAECD $. $}";
 
 #[test]
 fn a_pair_with_a_variable_the_block_has_no_float_for_is_written_and_verifies() {
     let original = packed(SPARE_PAIR);
-    let refs = record(&original, 2).refs;
-    let entry = 1u16;
-    let bytes = patched(original, |b| {
-        b[refs + 2..][..2].copy_from_slice(&entry.to_le_bytes());
-    });
-    check(&bytes).expect("the kernel accepts a pair with a variable the proof never uses");
-    let library = decode(&bytes).unwrap();
-    assert_eq!(library.assertions[2].extra_disjoint.len(), 1);
-    assert_eq!(library.assertions[2].references.len(), 2);
+    let t2 = record(&original, 3);
+    assert_eq!(
+        decode(&original).unwrap().assertions[3]
+            .extra_disjoint
+            .len(),
+        2
+    );
+    let (y, z) = (4u8, 5u8);
+    let pair = t2.refs - 4;
+    assert_eq!(original[pair], z);
+    let bytes = patched(original, |b| b[pair] = y);
+    check(&bytes).expect("the kernel accepts a pair with a variable the block has no float for");
     let text = export(&bytes).expect("a $d needs only an active variable");
-    assert!(text.contains("  $d x z $.\n"), "{text}");
-    assert!(!text.contains(" $f wff z $."), "{text}");
+    let block = text.rsplit("${").next().unwrap();
+    assert!(block.contains("  $d y w $.\n"), "{text}");
+    assert!(!block.contains(" $f wff w $."), "{text}");
     let db = mm::parse(text.clone().into_bytes()).unwrap_or_else(|e| panic!("{e}\n{text}"));
     let id = db.find("t2").unwrap();
     assert_eq!(Verifier::new(&db).verify(id), Ok(()));

@@ -17,13 +17,17 @@ pub enum KernelError {
     DisjointViolation,
     StackNotSingleton,
     WrongConclusion,
+    /// A theorem's proof names its references out of first-use order, or leaves one unused.
+    LooseReference,
     /// The disjoint-variable checks of one `verify` call would pass `WORK_LIMIT` units of work.
     WorkLimit,
 }
 
-/// The most work one `verify` call may spend in disjoint-variable checks. The check applies one
-/// pair of the applied assertion at a time, to the two substituted expressions `X` and `Y` that
-/// replace its variables, and every loop iteration is charged before it runs:
+/// The most work one `verify` call may spend. Before the proof runs, the duplicate check on the
+/// reference list charges 1 per comparison, `r * (r - 1) / 2` for `r` entries. The
+/// disjoint-variable check of each proof step applies one pair of the applied assertion at a time,
+/// to the two substituted expressions `X` and `Y` that replace its variables, and every loop
+/// iteration is charged before it runs:
 /// 1 per pair of the applied assertion; 1 per symbol of `X`, constant or variable; for each
 /// variable of `X`, 1 per symbol of `Y`; and for each variable of `X` against each variable of `Y`,
 /// `1 + n` more, `n` being the number of pairs in the theorem being checked (both lists), however
@@ -315,6 +319,13 @@ impl<'a> Kernel<'a> {
     }
 
     /// Checks one assertion: its record, and for a theorem its proof against earlier records.
+    ///
+    /// When several rules apply the first of these wins: a malformed record, a record that breaks
+    /// its rules, a dummy entry for a variable with a mandatory float, two equal reference
+    /// entries (or `WorkLimit` if the comparisons pass the limit first), then the steps in order,
+    /// where a step that names an entry past the first unused one is `LooseReference` before the
+    /// entry itself is looked at, and at the end of the proof an unused entry is `LooseReference`,
+    /// before `StackNotSingleton` and `WrongConclusion`.
     pub fn verify(&mut self, id: usize) -> Res<()> {
         self.work = 0;
         let record = self.record(id)?;
@@ -329,6 +340,8 @@ impl<'a> Kernel<'a> {
         self.scratch.clear();
         let hyps = record.hyps.len();
         let refs = record.refs.len() / 2;
+        self.check_references(&record)?;
+        let mut next = 0;
         let mut proof = Reader {
             bytes: record.proof,
             pos: 0,
@@ -358,7 +371,14 @@ impl<'a> Kernel<'a> {
                     Hyp::Essential(expr) => self.push(expr)?,
                 }
             } else if number - hyps < refs {
-                let at = 2 * (number - hyps);
+                let entry = number - hyps;
+                if entry > next {
+                    return Err(KernelError::LooseReference);
+                }
+                if entry == next {
+                    next += 1;
+                }
+                let at = 2 * entry;
                 let reference = u16::from_le_bytes([record.refs[at], record.refs[at + 1]]);
                 if reference & DUMMY != 0 {
                     let var =
@@ -388,11 +408,42 @@ impl<'a> Kernel<'a> {
                 self.push(&saved)?;
             }
         }
+        if next != refs {
+            return Err(KernelError::LooseReference);
+        }
         if self.starts.len() != 1 {
             return Err(KernelError::StackNotSingleton);
         }
         if self.stack != record.conclusion {
             return Err(KernelError::WrongConclusion);
+        }
+        Ok(())
+    }
+
+    /// The rules of a theorem's reference list that do not depend on its proof: no dummy entry for
+    /// a variable with a mandatory float, then no two equal entries, one unit of work per pair.
+    fn check_references(&mut self, record: &Record) -> Res<()> {
+        let entries: Vec<u16> = record
+            .refs
+            .chunks(2)
+            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            .collect();
+        let mandatory = |entry: u16| {
+            record
+                .hyps
+                .iter()
+                .any(|hyp| matches!(*hyp, Hyp::Float(var) if entry == DUMMY | var as u16))
+        };
+        if entries.iter().any(|&entry| mandatory(entry)) {
+            return Err(KernelError::BadRecord);
+        }
+        for (i, entry) in entries.iter().enumerate() {
+            for other in &entries[i + 1..] {
+                charge(&mut self.work, 1)?;
+                if entry == other {
+                    return Err(KernelError::BadRecord);
+                }
+            }
         }
         Ok(())
     }

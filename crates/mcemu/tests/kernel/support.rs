@@ -73,6 +73,7 @@ pub fn status(result: Result<(), KernelError>) -> u8 {
         Err(KernelError::StackNotSingleton) => "ST_NOT_SINGLETON",
         Err(KernelError::WrongConclusion) => "ST_WRONG_CONCLUSION",
         Err(KernelError::WorkLimit) => "ST_WORK_LIMIT",
+        Err(KernelError::LooseReference) => "ST_LOOSE_REF",
     };
     label(name) as u8
 }

@@ -41,6 +41,7 @@ pub fn code(error: KernelError) -> u8 {
         KernelError::StackNotSingleton => 11,
         KernelError::WrongConclusion => 12,
         KernelError::WorkLimit => 13,
+        KernelError::LooseReference => 15,
     }
 }
 
