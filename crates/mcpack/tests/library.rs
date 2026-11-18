@@ -875,3 +875,20 @@ fn the_packer_lists_references_in_first_use_order_and_drops_unused_ones() {
         Ok(())
     );
 }
+
+#[test]
+fn step_numbers_of_620_and_more_survive_packing_and_the_reference_verifier() {
+    let db = db(&references::saved_source());
+    Verifier::new(&db)
+        .verify(db.find("big").unwrap())
+        .expect("the proof is valid");
+    let bytes = pack(&db, &everything(&db)).unwrap();
+    assert_eq!(check(&bytes, number(&db, "big")), Ok(()));
+    let library = library::decode(&bytes).unwrap();
+    let steps = &library.assertions[number(&db, "big")].proof;
+    let largest = steps.iter().filter_map(|s| match s {
+        Step::Number(n) => Some(*n),
+        Step::Save => None,
+    });
+    assert!(largest.max().unwrap() >= 620);
+}

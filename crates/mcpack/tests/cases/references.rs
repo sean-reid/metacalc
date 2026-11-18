@@ -114,6 +114,40 @@ pub fn long_source(entries: usize) -> String {
     src + &format!("big $p wff T $= {proof} $.\n")
 }
 
+fn letters(mut number: usize) -> String {
+    let mut out = vec![b'A' + (number % 20) as u8];
+    number /= 20;
+    while number > 0 {
+        number -= 1;
+        out.push(b'U' + (number % 5) as u8);
+        number /= 5;
+    }
+    out.reverse();
+    String::from_utf8(out).unwrap()
+}
+
+pub const HYPOTHESES: usize = 130;
+pub const SAVES: usize = 500;
+
+/// A theorem `big` with `HYPOTHESES` hypotheses, two references and `SAVES` saved steps, the last
+/// of which it names at step number 631, a four-letter number in a compressed proof.
+pub fn saved_source() -> String {
+    let mut src = String::from(
+        "$c T wff $.\n${ d.1 $e wff T $. d.2 $e wff T $. drop $a wff T $. $}\na $a wff T $.\n${\n",
+    );
+    for i in 0..HYPOTHESES {
+        src += &format!("h{i} $e wff T $.\n");
+    }
+    let (a, drop) = (HYPOTHESES, HYPOTHESES + 1);
+    let mut proof = format!("{}Z", letters(a));
+    for _ in 1..SAVES {
+        proof += &format!("{}{}Z", letters(a), letters(drop));
+    }
+    proof += &letters(HYPOTHESES + 2 + SAVES - 1);
+    proof += &letters(drop);
+    src + &format!("big $p wff T $= ( a drop ) {proof} $.\n$}}\n")
+}
+
 /// The theorem `big` of `long_source(entries)`, with entry `j` made equal to entry `i` for a
 /// `repeat` of `(i, j)`.
 fn long(entries: usize, repeat: Option<(usize, usize)>) -> (Vec<u8>, usize) {
@@ -253,6 +287,12 @@ pub fn cases() -> Vec<Case> {
         let (bytes, id) = long(entries, repeat);
         cases.push(case(name, bytes, id, expected));
     }
+    cases.push(case(
+        "a saved step named at a four-letter step number",
+        pack_source(&saved_source()),
+        2,
+        ok,
+    ));
     let (bytes, id) = long(513, None);
     cases.push(case("513 entries pass the work limit", bytes, id, limit));
     cases
