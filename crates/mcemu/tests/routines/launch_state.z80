@@ -1,0 +1,100 @@
+#include "equates.inc"
+#define APP_NAME "launchst"
+#include "header.inc"
+
+; Records what an app can observe at entry into appBackUpScreen, then exits.
+S_REGS  = appBackUpScreen
+S_SP    = S_REGS
+S_HL    = S_REGS + 2
+S_DE    = S_REGS + 4
+S_BC    = S_REGS + 6
+S_IX    = S_REGS + 8
+S_IY    = S_REGS + 10
+S_AF    = S_REGS + 12
+S_AFX   = S_REGS + 14
+S_BCX   = S_REGS + 16
+S_DEX   = S_REGS + 18
+S_HLX   = S_REGS + 20
+S_AFI   = S_REGS + 22
+S_STACK = S_REGS + 24
+S_COUNT = S_REGS + 32
+S_DONE  = S_REGS + 34
+S_PORTS = S_REGS + 40
+
+start:
+	ld (S_SP), sp
+	ld (S_HL), hl
+	ld (S_DE), de
+	ld (S_BC), bc
+	ld (S_IX), ix
+	ld (S_IY), iy
+	push af
+	pop hl
+	ld (S_AF), hl
+	ex af, af'
+	push af
+	pop hl
+	ld (S_AFX), hl
+	exx
+	ld (S_BCX), bc
+	ld (S_DEX), de
+	ld (S_HLX), hl
+	ld a, i
+	push af
+	pop hl
+	ld (S_AFI), hl
+	ld hl, (S_SP)
+	ld de, S_STACK
+	ld bc, 8
+	ldir
+	di
+	ld hl, port_list
+	ld de, S_PORTS
+	ld b, port_list_end - port_list
+read_ports:
+	ld c, (hl)
+	inc hl
+	in a, (c)
+	ld (de), a
+	inc de
+	djnz read_ports
+	call measure_period
+	ld a, 1
+	ld (S_DONE), a
+	ei
+	bjump(_JForceCmdNoChar)
+
+; Counts loop passes between two timer 1 flags, with the interrupt mask put back after.
+measure_period:
+	in a, (3)
+	ld c, a
+	call acknowledge
+wait_first:
+	in a, (4)
+	and 2
+	jr z, wait_first
+	call acknowledge
+	ld hl, 0
+wait_next:
+	inc hl
+	ld a, h
+	or l
+	jr z, measured
+	in a, (4)
+	and 2
+	jr z, wait_next
+measured:
+	ld (S_COUNT), hl
+	ret
+
+acknowledge:
+	xor a
+	out (3), a
+	ld a, c
+	out (3), a
+	ret
+
+port_list:
+	.db 02h, 03h, 05h, 06h, 07h, 10h, 20h, 21h, 22h, 23h, 25h, 26h, 27h, 28h
+	.db 29h, 2Ah, 2Bh, 2Ch, 2Dh, 2Eh, 2Fh, 30h, 31h, 33h, 34h, 36h, 37h
+port_list_end:

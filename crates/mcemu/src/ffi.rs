@@ -15,10 +15,36 @@ unsafe extern "C" {
     fn mcemu_ram_size(calc: *const Raw) -> usize;
     fn mcemu_ltop(calc: *mut Raw, addr: u32) -> u32;
     fn mcemu_out(calc: *mut Raw, port: u8, value: u8);
+    fn mcemu_out_unlocked(calc: *mut Raw, port: u8, value: u8);
+    fn mcemu_get_regs(calc: *const Raw, out: *mut Regs);
+    fn mcemu_set_regs(calc: *mut Raw, regs: *const Regs);
+    fn mcemu_resume(calc: *mut Raw, limit: i32, elapsed: *mut u32) -> u32;
     fn mcemu_key(calc: *mut Raw, scancode: i32, down: i32);
     fn mcemu_run(calc: *mut Raw, pc: u16, limit: i32, elapsed: *mut u32) -> u32;
     fn mcemu_pc(calc: *const Raw) -> u16;
     fn mcemu_lcd(calc: *mut Raw, out: *mut u8, width: i32, height: i32) -> i32;
+}
+
+/// The Z80 registers the tests set and read.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Regs {
+    pub af: u16,
+    pub bc: u16,
+    pub de: u16,
+    pub hl: u16,
+    pub ix: u16,
+    pub iy: u16,
+    pub sp: u16,
+    pub pc: u16,
+    pub af2: u16,
+    pub bc2: u16,
+    pub de2: u16,
+    pub hl2: u16,
+    pub i: u8,
+    pub iff1: u8,
+    pub iff2: u8,
+    pub im: u8,
 }
 
 pub struct Calc(NonNull<Raw>);
@@ -51,6 +77,31 @@ impl Calc {
     pub fn out_port(&mut self, port: u8, value: u8) {
         // SAFETY: the handle is live.
         unsafe { mcemu_out(self.0.as_ptr(), port, value) }
+    }
+
+    pub fn out_port_unlocked(&mut self, port: u8, value: u8) {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_out_unlocked(self.0.as_ptr(), port, value) }
+    }
+
+    pub fn regs(&self) -> Regs {
+        let mut regs = Regs::default();
+        // SAFETY: the handle is live and `regs` has the layout the C side writes.
+        unsafe { mcemu_get_regs(self.0.as_ptr(), &mut regs) };
+        regs
+    }
+
+    pub fn set_regs(&mut self, regs: &Regs) {
+        // SAFETY: the handle is live and `regs` has the layout the C side reads.
+        unsafe { mcemu_set_regs(self.0.as_ptr(), regs) }
+    }
+
+    /// Runs on from the current state; returns the core's stop reason and the T-states elapsed.
+    pub fn resume(&mut self, limit: i32) -> (u32, u32) {
+        let mut elapsed = 0;
+        // SAFETY: the handle is live and `elapsed` outlives the call.
+        let reason = unsafe { mcemu_resume(self.0.as_ptr(), limit, &mut elapsed) };
+        (reason, elapsed)
     }
 
     pub fn key(&mut self, scancode: u8, down: bool) {

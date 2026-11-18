@@ -1,44 +1,53 @@
 #include "equates.inc"
 
-.org 4000h
-	.db 80h, 0Fh, 0, 0, 0, 0
-	.db 80h, 12h, 01h, 04h
-	.db 80h, 21h, 01h
-	.db 80h, 31h, 01h
-	.db 80h, 48h, "metacalc"
-	.db 80h, 81h, 01h
-	.db 80h, 90h
-	.db 03h, 26h, 09h, 04h, 04h, 6Fh, 1Bh, 80h
-	.db 02h, 0Dh, 40h
-	.db 0A1h, 6Bh, 99h, 0F6h, 59h, 0BCh, 67h, 0F5h, 85h, 9Ch, 09h, 6Ch, 0Fh, 0B4h, 03h, 9Bh
-	.db 0C9h, 03h, 32h, 2Ch, 0E0h, 03h, 20h, 0E3h, 2Ch, 0F4h, 2Dh, 73h, 0B4h, 27h, 0C4h, 0A0h
-	.db 72h, 54h, 0B9h, 0EAh, 7Ch, 3Bh, 0AAh, 16h, 0F6h, 77h, 83h, 7Ah, 0EEh, 1Ah, 0D4h, 42h
-	.db 4Ch, 6Bh, 8Bh, 13h, 1Fh, 0BBh, 93h, 8Bh, 0FCh, 19h, 1Ch, 3Ch, 0ECh, 4Dh, 0E5h, 75h
-	.db 80h, 7Fh, 0, 0, 0, 0
-	.fill 4080h - $, 0
+#define APP_NAME "metacalc"
+#include "header.inc"
 
 start:
 #ifdef LIBRARY
 	call app_find_library
 #endif
 	bcall(_ClrLCDFull)
-	xor a
-	ld (curRow), a
-	ld (curCol), a
+	ld hl, plotSScreen
+	ld de, plotSScreen + 1
+	ld bc, 767
+	ld (hl), 0
+	ldir
 	ld hl, title
-print:
-	ld a, (hl)
-	or a
-	jr z, done
-	bcall(_PutC)
-	inc hl
-	jr print
-done:
-	bcall(_GetKey)
+	ld de, plotSScreen + (TITLE_ROW * 12) + TITLE_COL
+	ld b, 8
+draw:
+	push bc
+	ld bc, 8
+	ldir
+	ld bc, 4
+	ex de, hl
+	add hl, bc
+	ex de, hl
+	pop bc
+	djnz draw
+	bcall(_GrBufCpy)
+	ei
+wait_for_clear:
+	halt
+	bcall(_GetCSC)
+	cp skClear
+	jr nz, wait_for_clear
 	bjump(_JForceCmdNoChar)
 
+TITLE_ROW = 28
+TITLE_COL = 2
+
+; "metacalc", eight rows of eight glyph bytes.
 title:
-	.db "metacalc", 0
+	.db 000h, 000h, 040h, 000h, 000h, 000h, 060h, 000h
+	.db 0D0h, 070h, 0F0h, 070h, 070h, 070h, 020h, 070h
+	.db 0A8h, 088h, 040h, 008h, 088h, 008h, 020h, 088h
+	.db 0A8h, 0F8h, 040h, 078h, 080h, 078h, 020h, 080h
+	.db 0A8h, 080h, 040h, 088h, 080h, 088h, 020h, 080h
+	.db 0A8h, 088h, 048h, 098h, 088h, 098h, 020h, 088h
+	.db 0A8h, 070h, 030h, 068h, 070h, 068h, 070h, 070h
+	.db 000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h
 
 #ifdef LIBRARY
 #include "libpage.inc"

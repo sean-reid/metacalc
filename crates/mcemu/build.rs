@@ -18,6 +18,66 @@ const ROUTINES: &[(&str, &str, &[&str])] = &[
     ("on_key.z80", "on_key.bin", &["RESULT=$A000"]),
 ];
 
+/// Routines that call the stub's OS services: source, output name, spasm defines.
+const OS_ROUTINES: &[(&str, &str, &[&str])] = &[
+    (
+        "os_call.z80",
+        "os_getcsc.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GetCSC"],
+    ),
+    (
+        "os_call.z80",
+        "os_exit.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_JForceCmdNoChar",
+            "JUMP",
+        ],
+    ),
+    (
+        "os_call.z80",
+        "os_bcall_missing.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=$4A4A"],
+    ),
+    (
+        "os_call.z80",
+        "os_bjump_missing.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=$4B4B", "JUMP"],
+    ),
+    (
+        "os_lcd.z80",
+        "os_gr_buf_cpy.bin",
+        &["ENTRY=$9000", "SERVICE=_GrBufCpy"],
+    ),
+    (
+        "os_lcd.z80",
+        "os_clr_lcd_full.bin",
+        &["ENTRY=$9000", "SERVICE=_ClrLCDFull"],
+    ),
+    (
+        "os_clobber.z80",
+        "os_clobber_getcsc.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GetCSC"],
+    ),
+    (
+        "os_clobber.z80",
+        "os_clobber_clr_lcd_full.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_ClrLCDFull"],
+    ),
+    (
+        "os_clobber.z80",
+        "os_clobber_gr_buf_cpy.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GrBufCpy"],
+    ),
+    (
+        "os_reliant.z80",
+        "os_reliant.bin",
+        &["ENTRY=$9000", "RESULT=$A000"],
+    ),
+    ("os_irq.z80", "os_irq.bin", &["ENTRY=$9000", "RESULT=$A000"]),
+];
+
 fn fail(msg: &str) -> ! {
     eprintln!("error: {msg}");
     exit(1);
@@ -115,7 +175,8 @@ fn main() {
     let dir = Path::new("stub");
     let os = out.join("os.bin");
     let boot = out.join("boot.bin");
-    spasm(&dir.join("os.z80"), &os, &[], &[]);
+    spasm(&dir.join("os.z80"), &os, &[], &["-L"]);
+    write_stub_labels(&out.join("os.lab"), &out.join("stub_labels.rs"));
     spasm(&dir.join("boot.z80"), &boot, &[], &[]);
     let mut rom = vec![0xFF; ROM_SIZE];
     for (bin, at) in [(os, 0), (boot, BOOT_PAGE * PAGE)] {
@@ -132,8 +193,22 @@ fn main() {
             &[],
         );
     }
+    for (src, name, defines) in OS_ROUTINES {
+        spasm(
+            &Path::new("tests/routines").join(src),
+            &out.join(name),
+            defines,
+            &["-I", "../../app/src"],
+        );
+    }
     assemble_kernel(&out);
     assemble_ui(&out);
+    spasm(
+        &Path::new("tests/routines").join("launch_state.z80"),
+        &out.join("launch_state.8xk"),
+        &[],
+        &["-I", "../../app/src", "-L"],
+    );
     for name in ["sparecheck_test", "sparescreen_test"] {
         spasm(
             &Path::new("tests/routines").join(format!("{name}.z80")),
@@ -145,6 +220,23 @@ fn main() {
     println!("cargo:rerun-if-changed=../../probe/sparecore.inc");
     println!("cargo:rerun-if-changed=../../probe/sparescreen.inc");
     println!("cargo:rerun-if-changed=../../app/src/equates.inc");
+    println!("cargo:rerun-if-changed=../../app/src/header.inc");
+}
+
+/// The stub addresses the library needs, as constants named after their labels.
+fn write_stub_labels(labels: &Path, out: &Path) {
+    const WANTED: &[&str] = &["APP_EXIT", "FAULT_BCALL", "FAULT_BJUMP", "OS_INIT"];
+    let text = fs::read_to_string(labels).unwrap();
+    let mut code = String::new();
+    for name in WANTED {
+        let value = text
+            .lines()
+            .find_map(|l| l.split_once(" = $").filter(|(k, _)| k == name))
+            .unwrap_or_else(|| fail(&format!("the stub has no label {name}")))
+            .1;
+        code.push_str(&format!("pub const {name}: u16 = 0x{value};\n"));
+    }
+    fs::write(out, code).unwrap();
 }
 
 /// The kernel on its own, and with the test entry points and a label file for the tests.

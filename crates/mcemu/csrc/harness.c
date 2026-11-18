@@ -46,6 +46,20 @@ void tilem_internal(TilemCalc *c, const char *m, ...)
 #define ENTRY 0x4000
 #define BOOT_LIMIT 1000000
 #define OP_HALT 0x76
+#define STUB_END 0x4000
+
+/* A HALT ends a run unless interrupts are on and it is not the stub's own: the app wakes from it. */
+static int halt_stops(TilemCalc *calc, dword op, void *data)
+{
+	(void)op;
+	(void)data;
+	return !calc->z80.r.iff1 || (uint16_t)(calc->z80.r.pc.w.l - 1) < STUB_END;
+}
+
+typedef struct {
+	uint16_t af, bc, de, hl, ix, iy, sp, pc, af2, bc2, de2, hl2;
+	uint8_t i, iff1, iff2, im;
+} McRegs;
 
 TilemCalc *mcemu_new(const uint8_t *rom, size_t len)
 {
@@ -69,7 +83,8 @@ TilemCalc *mcemu_new(const uint8_t *rom, size_t len)
 		tilem_calc_free(calc);
 		return NULL;
 	}
-	tilem_z80_add_breakpoint(calc, TILEM_BREAK_EXECUTE, OP_HALT, OP_HALT, 0xffff, NULL, NULL);
+	calc->z80.emuflags |= TILEM_Z80_BREAK_EXCEPTIONS;
+	tilem_z80_add_breakpoint(calc, TILEM_BREAK_EXECUTE, OP_HALT, OP_HALT, 0xffff, halt_stops, NULL);
 	return calc;
 }
 
@@ -79,6 +94,37 @@ size_t mcemu_rom_size(const TilemCalc *calc) { return calc->hw.romsize; }
 size_t mcemu_ram_size(const TilemCalc *calc) { return calc->hw.ramsize; }
 uint32_t mcemu_ltop(TilemCalc *calc, uint32_t addr) { return calc->hw.mem_ltop(calc, addr); }
 void mcemu_out(TilemCalc *calc, uint8_t port, uint8_t value) { calc->hw.z80_out(calc, port, value); }
+/* Writes a port with the flash protection open, as the OS does for the protected ones. */
+void mcemu_out_unlocked(TilemCalc *calc, uint8_t port, uint8_t value)
+{
+	byte was = calc->flash.unlock;
+
+	calc->flash.unlock = 1;
+	calc->hw.z80_out(calc, port, value);
+	calc->flash.unlock = was;
+}
+
+void mcemu_get_regs(const TilemCalc *calc, McRegs *out)
+{
+	const TilemZ80Regs *r = &calc->z80.r;
+
+	out->af = r->af.w.l; out->bc = r->bc.w.l; out->de = r->de.w.l; out->hl = r->hl.w.l;
+	out->ix = r->ix.w.l; out->iy = r->iy.w.l; out->sp = r->sp.w.l; out->pc = r->pc.w.l;
+	out->af2 = r->af2.w.l; out->bc2 = r->bc2.w.l; out->de2 = r->de2.w.l; out->hl2 = r->hl2.w.l;
+	out->i = r->ir.b.h; out->iff1 = r->iff1; out->iff2 = r->iff2; out->im = r->im;
+}
+
+void mcemu_set_regs(TilemCalc *calc, const McRegs *in)
+{
+	TilemZ80Regs *r = &calc->z80.r;
+
+	r->af.w.l = in->af; r->bc.w.l = in->bc; r->de.w.l = in->de; r->hl.w.l = in->hl;
+	r->ix.w.l = in->ix; r->iy.w.l = in->iy; r->sp.w.l = in->sp; r->pc.w.l = in->pc;
+	r->af2.w.l = in->af2; r->bc2.w.l = in->bc2; r->de2.w.l = in->de2; r->hl2.w.l = in->hl2;
+	r->ir.b.h = in->i; r->iff1 = in->iff1; r->iff2 = in->iff2; r->im = in->im;
+	calc->z80.halted = 0;
+}
+
 void mcemu_key(TilemCalc *calc, int scancode, int down)
 {
 	if (down)
@@ -105,6 +151,16 @@ uint32_t mcemu_run(TilemCalc *calc, uint16_t pc, int limit, uint32_t *elapsed)
 uint16_t mcemu_pc(const TilemCalc *calc)
 {
 	return calc->z80.r.pc.w.l;
+}
+
+/* Runs on from the current state, interrupts as the program left them. */
+uint32_t mcemu_resume(TilemCalc *calc, int limit, uint32_t *elapsed)
+{
+	uint32_t start = calc->z80.clock;
+	uint32_t reason = tilem_z80_run(calc, limit, NULL);
+
+	*elapsed = calc->z80.clock - start;
+	return reason;
 }
 
 /* One byte per pixel, 1 when lit; the core leaves the frame untouched while the LCD is off, so it starts zeroed. Returns 0 on success. */
