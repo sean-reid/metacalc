@@ -37,6 +37,7 @@ bl_on:
 	ld a,1
 bl_go:
 	ld (ui_iff),a
+bl_mask:
 	di
 	ld c,LCD_CMD
 	WAIT

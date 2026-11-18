@@ -177,18 +177,16 @@ fn a_handler_that_writes_the_lcd_cannot_tear_the_frame_during_a_blit() {
     script.extend([Op::Interrupts(true), Op::Blit, Op::Interrupts(false)]);
     let rom = lcd_writing_rom();
     for settings in SETTINGS {
-        let got = run_code_on(&rom, REAL, REAL.code, settings, &script, true);
+        let got = run_code_on(&rom, true, REAL, REAL.code, settings, &script, true);
         assert!(lcd_equals(&frame, &got.lcd), "{settings:?}");
     }
 
     // the same run with the blit's di removed tears it, so the handler does reach the LCD
     let mut code = REAL.code.to_vec();
-    let start = usize::from(label(REAL, "ui_blit")) - 0x4000;
-    let di = (start..start + 24)
-        .find(|&at| code[at] == 0xF3)
-        .expect("the di");
+    let di = usize::from(label(REAL, "bl_mask")) - 0x4000;
+    assert_eq!(code[di], 0xF3, "the di");
     code[di] = 0x00;
-    let got = run_code_on(&rom, REAL, &code, SETTINGS[0], &script, true);
+    let got = run_code_on(&rom, true, REAL, &code, SETTINGS[0], &script, true);
     assert!(
         !lcd_equals(&frame, &got.lcd),
         "the handler never wrote the LCD"

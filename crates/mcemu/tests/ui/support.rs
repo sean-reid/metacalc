@@ -345,12 +345,14 @@ pub fn run_code(
     ops: &[Op],
     call: bool,
 ) -> Outcome {
-    run_code_on(STUB_ROM, image, code, settings, ops, call)
+    run_code_on(STUB_ROM, false, image, code, settings, ops, call)
 }
 
-/// `run_code` on another OS image than the stub as it is built.
+/// `run_code` on another OS image than the stub as it is built, and with the timer interrupt
+/// source on when `timer` is set.
 pub fn run_code_on(
     rom: &[u8],
+    timer: bool,
     image: Image,
     code: &[u8],
     (speed, ports): (Speed, bool),
@@ -376,12 +378,14 @@ pub fn run_code_on(
         script.code.len() < 0x1700,
         "the script reaches the end of bank B"
     );
-    let mut m = Machine::new(rom).expect("stub ROM boots");
+    let mut m = Machine::new(rom).expect("the ROM boots");
     if ports {
         os_ports(&mut m);
     }
-    let mask = m.in_port(0x03);
-    m.out_port(0x03, mask | 0x02);
+    if timer {
+        let mask = m.in_port(0x03);
+        m.out_port(0x03, mask | 0x02);
+    }
     m.out_port(0x10, 0x03);
     m.load_flash(FLASH_TEST_PAGE, 0, code);
     let (lo, hi) = (
