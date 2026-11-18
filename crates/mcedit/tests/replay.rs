@@ -1,7 +1,8 @@
 use mcedit::Catalog;
-use mcedit::oracle::{Failure, replay, replay_as_new, replay_database, verify_spliced};
+use mcedit::oracle::{Failure, replay, replay_as_new, replay_database, splice, verify_spliced};
 use mcpack::library;
 use mcpack::mm::{self, Grammar, Verifier};
+use std::cell::RefCell;
 use std::path::Path;
 use std::time::Instant;
 
@@ -63,7 +64,29 @@ fn libraries(names: &[&str]) {
             .unwrap_or_else(|e| {
                 panic!("{counts} is written by scripts/build-libraries.sh and holds no count: {e}")
             });
-        let r = replay_database(&src, |_| true, |_, _| true, true).unwrap();
+        let db = mm::parse(src.clone().into_bytes()).unwrap();
+        let exports = RefCell::new(Vec::new());
+        let r = replay_database(
+            &src,
+            |_| true,
+            |_, done| {
+                let label = db.stmt(done.finished.theorem).label.clone();
+                exports
+                    .borrow_mut()
+                    .push((label, done.finished.statement(&db)));
+                true
+            },
+            true,
+        )
+        .unwrap();
+        if let Ok(out) = std::env::var("MCEDIT_SPLICED") {
+            let mut all = src.clone();
+            for (label, statement) in exports.into_inner() {
+                all = splice(&all, &label, &statement)
+                    .unwrap_or_else(|e| panic!("{name} {label}: {e:?}"));
+            }
+            std::fs::write(format!("{out}/{name}.mm"), all).unwrap();
+        }
         let median = |mut v: Vec<usize>| {
             v.sort_unstable();
             (v[v.len() / 2], v[v.len() * 99 / 100], v[v.len() - 1])
