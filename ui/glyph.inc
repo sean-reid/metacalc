@@ -17,26 +17,28 @@ ui_text_width:
 	ld de,0
 tw_loop:
 	ld a,(hl)
+	inc hl
 	or a
 	jr z,tw_done
-	inc hl
+	rlca
+	rlca
+	rlca
+	ld c,a
+	and 7
+	ld b,a
+	xor c
+	ld c,a
 	push hl
-	ld l,a
-	ld h,0
-	add hl,hl
-	add hl,hl
-	add hl,hl
-	ld bc,(ui_fontp)
+	ld hl,(ui_fontp)
 	add hl,bc
-	ld c,(hl)
+	ld a,(hl)
 	pop hl
-	ld a,e
-	add a,c
+	and $7F
+	inc a
+	add a,e
 	ld e,a
-	jr nc,tw_carry
+	jr nc,tw_loop
 	inc d
-tw_carry:
-	inc de
 	jr tw_loop
 tw_done:
 	ex de,hl
@@ -108,12 +110,30 @@ ui_text:
 	pop hl
 	ld a,d
 	or a
-	jr nz,ut_tail
+	jp nz,ut_tail
 	ld a,e
 	cp UI_WIDTH
-	jr nc,ut_tail
-	jr ut_loop
+	jp nc,ut_tail
+	jp ut_loop
 
+ut_clip:
+	ld e,a
+	ld d,0
+ut_tail:
+	ld a,(hl)
+	or a
+	jr z,ut_last
+	push de
+	call ui_text_width
+	pop de
+	add hl,de
+	ex de,hl
+	ret
+ut_end:
+	ld d,0
+ut_last:
+	dec de
+	ret
 ; The loop runs with HL = the next glyph code, A = its x, below column 96. The string pointer
 ; and the x after the glyph wait on the stack while its rows are drawn.
 ut_after:
@@ -143,6 +163,8 @@ ut_loop:
 	inc hl
 	dec d
 	jr z,ut_space
+	bit 7,c
+	jr nz,ut_tall
 	ld a,e
 	add a,c
 	inc a
@@ -188,31 +210,41 @@ ut_two:
 	ld a,b
 	add a,a
 	jr ut_go
+ut_tall:
+	res 7,c
+	ld a,e
+	add a,c
+	inc a
+	push af
+	ld a,e
+	and 7
+	ld b,a
+	add a,c
+	cp 9
+	jr nc,ut_two_tall
+	ld a,b
+	add a,a
+	add a,48
+	jr ut_go
+ut_two_tall:
+	ld a,c
+	cp 9
+	jr nc,ut_slow
+	ld a,e
+	cp 88
+	jr nc,ut_slow
+	ld a,b
+	add a,a
+	add a,32
+	jr ut_go
 ut_space:
 	ld a,e
 	add a,c
 	inc a
 	pop hl
 	cp UI_WIDTH
-	jr c,ut_loop
-ut_clip:
-	ld e,a
-	ld d,0
-ut_tail:
-	ld a,(hl)
-	or a
-	jr z,ut_last
-	push de
-	call ui_text_width
-	pop de
-	add hl,de
-	ex de,hl
-	ret
-ut_end:
-	ld d,0
-ut_last:
-	dec de
-	ret
+	jp c,ut_loop
+	jp ut_clip
 
 ; A row below the frame draws nothing and still returns the x after the string.
 ut_off:
@@ -292,9 +324,10 @@ us_next:
 	jr nz,us_row
 	jp ut_after
 
-; One glyph of up to eight columns shifted right by s bits, seven rows. DE = glyph rows,
-; HL = first byte in the frame, B = 0. Ends in a jump to ut_after. The ONE
-; forms are for a glyph that ends inside the first byte, whose rotated-out bits are blank.
+; One glyph of up to eight columns shifted right by s bits. DE = glyph rows, HL = first byte in
+; the frame, B = 0. The ui_v entries draw rows 0 to 4 and end in a jump to ut_after; the ui_tv
+; entries draw rows 5 and 6 first, for a glyph with a pixel there, then the same five rows. The
+; ONE forms are for a glyph that ends inside the first byte, whose rotated-out bits are blank.
 #macro ROW(s)
 #if s == 0
 	ld a,(de)
@@ -327,7 +360,24 @@ us_next:
 	ld (hl),a
 	add hl,bc
 #endmacro
-#macro VARIANT(s)
+#macro TALL_IN
+	ld c,5*UI_STRIDE
+	add hl,bc
+	ex de,hl
+	ld c,5
+	add hl,bc
+	ex de,hl
+#endmacro
+#macro TALL_OUT
+	ld bc,-7*UI_STRIDE
+	add hl,bc
+	ex de,hl
+	ld bc,-7
+	add hl,bc
+	ex de,hl
+	ld bc,UI_STRIDE
+#endmacro
+#macro TAIL(s)
 #if s == 0
 	ld c,UI_STRIDE
 #endif
@@ -336,37 +386,66 @@ us_next:
 	ROW(s)
 	ROW(s)
 	ROW(s)
-	ROW(s)
-	ROW(s)
 	jp ut_after
 #endmacro
-#macro VARIANT1(s)
+#macro TAIL1(s)
 	ld c,UI_STRIDE
 	ROW1(s)
 	ROW1(s)
 	ROW1(s)
 	ROW1(s)
 	ROW1(s)
-	ROW1(s)
-	ROW1(s)
 	jp ut_after
 #endmacro
-ui_v0:	VARIANT(0)
-ui_v1:	VARIANT(1)
-ui_v2:	VARIANT(2)
-ui_v3:	VARIANT(3)
-ui_v4:	VARIANT(4)
-ui_v5:	VARIANT(5)
-ui_v6:	VARIANT(6)
-ui_v7:	VARIANT(7)
-ui_w1:	VARIANT1(1)
-ui_w2:	VARIANT1(2)
-ui_w3:	VARIANT1(3)
-ui_w4:	VARIANT1(4)
-ui_w5:	VARIANT1(5)
-ui_w6:	VARIANT1(6)
-ui_w7:	VARIANT1(7)
-	.fill (32-($&31))&31,0
+#macro HEAD(s)
+	TALL_IN
+#if s == 0
+	ld c,UI_STRIDE
+#endif
+	ROW(s)
+	ROW(s)
+	TALL_OUT
+#endmacro
+#macro HEAD1(s)
+	TALL_IN
+	ld c,UI_STRIDE
+	ROW1(s)
+	ROW1(s)
+	TALL_OUT
+#endmacro
+ui_tv0:	HEAD(0)
+ui_v0:	TAIL(0)
+ui_tv1:	HEAD(1)
+ui_v1:	TAIL(1)
+ui_tv2:	HEAD(2)
+ui_v2:	TAIL(2)
+ui_tv3:	HEAD(3)
+ui_v3:	TAIL(3)
+ui_tv4:	HEAD(4)
+ui_v4:	TAIL(4)
+ui_tv5:	HEAD(5)
+ui_v5:	TAIL(5)
+ui_tv6:	HEAD(6)
+ui_v6:	TAIL(6)
+ui_tv7:	HEAD(7)
+ui_v7:	TAIL(7)
+ui_tw1:	HEAD1(1)
+ui_w1:	TAIL1(1)
+ui_tw2:	HEAD1(2)
+ui_w2:	TAIL1(2)
+ui_tw3:	HEAD1(3)
+ui_w3:	TAIL1(3)
+ui_tw4:	HEAD1(4)
+ui_w4:	TAIL1(4)
+ui_tw5:	HEAD1(5)
+ui_w5:	TAIL1(5)
+ui_tw6:	HEAD1(6)
+ui_w6:	TAIL1(6)
+ui_tw7:	HEAD1(7)
+ui_w7:	TAIL1(7)
+	.fill (64-($&63))&63,0
 ui_vtab:
 	.dw ui_v0,ui_v1,ui_v2,ui_v3,ui_v4,ui_v5,ui_v6,ui_v7
 	.dw ui_v0,ui_w1,ui_w2,ui_w3,ui_w4,ui_w5,ui_w6,ui_w7
+	.dw ui_tv0,ui_tv1,ui_tv2,ui_tv3,ui_tv4,ui_tv5,ui_tv6,ui_tv7
+	.dw ui_tv0,ui_tw1,ui_tw2,ui_tw3,ui_tw4,ui_tw5,ui_tw6,ui_tw7

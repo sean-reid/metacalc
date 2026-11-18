@@ -1,7 +1,8 @@
 //! The font as data for the Z80 canvas.
 //!
 //! A glyph is a slot of eight bytes: its width, then seven row bytes with the leftmost pixel in
-//! bit 7. A glyph nine pixels wide takes a second slot whose first byte is unused and whose
+//! bit 7. Bit 7 of the width byte is set when either of the last two rows has a pixel, so the
+//! Z80 skips those rows for the glyphs without one. A glyph nine pixels wide takes a second slot whose first byte is unused and whose
 //! other seven bytes hold the ninth pixel of each row in bit 7. A string is a run of glyph
 //! codes ended by 0: code 1 is the space, and a code is the number of the glyph's first slot
 //! plus one, in name order.
@@ -13,6 +14,8 @@ use std::collections::BTreeMap;
 pub const SLOT: usize = 8;
 pub const ROWS: usize = 7;
 pub const SPACE_CODE: u8 = 1;
+/// Set in a width byte when row 5 or 6 of the glyph has a pixel.
+pub const TALL: u8 = 0x80;
 
 /// The slots of a font and the code of each glyph.
 pub struct Table {
@@ -57,6 +60,9 @@ impl Table {
                         *target |= 0x80 >> (x % 8);
                     }
                 }
+            }
+            if rows[6..].iter().chain(&extra[6..]).any(|&b| b != 0) {
+                rows[0] |= TALL;
             }
             slots.push(rows);
             if width > 8 {

@@ -1,4 +1,4 @@
-use mcglyph::z80::{ROWS, SLOT, SPACE_CODE, Table};
+use mcglyph::z80::{ROWS, SLOT, SPACE_CODE, TALL, Table};
 use mcglyph::{Font, SPACE_WIDTH};
 
 const WIDE: &str = include_str!("fixtures/wide.font");
@@ -33,7 +33,9 @@ fn check(font: &Font) {
     for (name, code) in table.glyphs() {
         let glyph = font.glyph(name).unwrap();
         let slot = &bytes[(usize::from(code) - 1) * SLOT..];
-        assert_eq!(usize::from(slot[0]), glyph.width(), "{name}");
+        assert_eq!(usize::from(slot[0] & !TALL), glyph.width(), "{name}");
+        let tall = (5..ROWS).any(|y| (0..glyph.width()).any(|x| glyph.get(x, y)));
+        assert_eq!(slot[0] & TALL != 0, tall, "{name}");
         for y in 0..ROWS {
             for x in 0..glyph.width() + 7 {
                 let bit = match x {
@@ -92,7 +94,11 @@ fn characters_map_to_codes_as_the_text_layout_picks_glyphs() {
         if c != ' ' {
             let width = font.text_width(&c.to_string());
             let slot = usize::from(table.code(c)) - 1;
-            assert_eq!(usize::from(decode(&include)[slot * SLOT]), width, "{c:?}");
+            assert_eq!(
+                usize::from(decode(&include)[slot * SLOT] & !TALL),
+                width,
+                "{c:?}"
+            );
         }
     }
 }
