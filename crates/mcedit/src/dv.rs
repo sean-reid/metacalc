@@ -1,6 +1,7 @@
+use crate::export::Step;
 use crate::session::Session;
-use crate::term::TermId;
-use mcpack::mm::{StmtId, Sym};
+use crate::term::{Head, TermId};
+use mcpack::mm::{Kind, StmtId, Sym};
 
 /// A disjoint pair of an applied assertion with the terms substituted for its two variables.
 #[derive(Clone, Copy, Debug)]
@@ -36,11 +37,58 @@ pub(crate) struct Report {
     pub used: Vec<(Sym, Sym)>,
 }
 
+/// What was broken before an operation: stored conditions by position, built ones by violation.
+pub(crate) struct Broken {
+    stored: Vec<bool>,
+    built: Vec<Violation>,
+}
+
 pub(crate) fn pair(a: Sym, b: Sym) -> (Sym, Sym) {
     if a < b { (a, b) } else { (b, a) }
 }
 
 impl Session<'_> {
+    /// The disjoint pairs of every syntax axiom inside a term the exported proof builds.
+    fn built_conditions(&self) -> Vec<DvCond> {
+        let mut found = Vec::new();
+        let _ = self.walk_proof(0, &mut |step| {
+            if let Step::Value(term) = step {
+                self.syntax_conditions(term, &mut found);
+            }
+            Ok(())
+        });
+        found
+    }
+
+    fn syntax_conditions(&self, term: TermId, out: &mut Vec<DvCond>) {
+        let Some(Head::App(syntax)) = self.store.head(term) else {
+            return;
+        };
+        let db = self.db();
+        let frame = &db.stmt(syntax).frame;
+        let kids = self.store.children(term);
+        let kid_of = |v: Sym| {
+            let floats = frame
+                .hyps
+                .iter()
+                .filter(|&&h| db.stmt(h).kind == Kind::Float);
+            let at = floats.map(|&h| db.stmt(h).expr[1]).position(|x| x == v)?;
+            kids.get(at).copied()
+        };
+        for &(x, y) in &frame.dv {
+            if let (Some(a), Some(b)) = (kid_of(x), kid_of(y)) {
+                out.push(DvCond {
+                    assertion: syntax,
+                    a,
+                    b,
+                });
+            }
+        }
+        for &kid in kids {
+            self.syntax_conditions(kid, out);
+        }
+    }
+
     /// Checks every condition whose two terms are free of metavariables.
     pub(crate) fn dv_report(&self) -> Report {
         let mut report = Report {
@@ -48,7 +96,7 @@ impl Session<'_> {
             added: Vec::new(),
             used: Vec::new(),
         };
-        for cond in &self.dvs {
+        for cond in self.dvs.iter().chain(&self.built_conditions()) {
             self.check_condition(cond, &mut report);
         }
         for list in [&mut report.added, &mut report.used] {
@@ -58,33 +106,45 @@ impl Session<'_> {
         report
     }
 
-    /// Whether each condition is broken now, in condition order.
-    pub(crate) fn broken(&self) -> Vec<bool> {
-        self.dvs
-            .iter()
-            .map(|cond| {
-                let mut one = Report::default();
-                self.check_condition(cond, &mut one);
-                !one.violations.is_empty()
-            })
-            .collect()
+    /// Whether each condition is broken now.
+    pub(crate) fn broken(&self) -> Broken {
+        let one = |cond: &DvCond| {
+            let mut one = Report::default();
+            self.check_condition(cond, &mut one);
+            one.violations
+        };
+        Broken {
+            stored: self.dvs.iter().map(|c| !one(c).is_empty()).collect(),
+            built: self.built_conditions().iter().flat_map(one).collect(),
+        }
     }
 
     /// The violations of the conditions that are broken now and were not in `before`.
-    pub(crate) fn newly_broken(&self, before: &[bool]) -> Vec<Violation> {
+    pub(crate) fn newly_broken(&self, before: &Broken) -> Vec<Violation> {
         let mut found = Vec::new();
-        for (at, cond) in self.dvs.iter().enumerate() {
-            if before.get(at) == Some(&true) {
-                continue;
-            }
-            let mut one = Report::default();
-            self.check_condition(cond, &mut one);
-            for v in one.violations {
+        let mut add = |violations: Vec<Violation>| {
+            for v in violations {
                 if !found.contains(&v) {
                     found.push(v);
                 }
             }
+        };
+        for (at, cond) in self.dvs.iter().enumerate() {
+            if before.stored.get(at) != Some(&true) {
+                let mut one = Report::default();
+                self.check_condition(cond, &mut one);
+                add(one.violations);
+            }
         }
+        let mut now = Report::default();
+        for cond in &self.built_conditions() {
+            self.check_condition(cond, &mut now);
+        }
+        add(now
+            .violations
+            .into_iter()
+            .filter(|v| !before.built.contains(v))
+            .collect());
         found
     }
 

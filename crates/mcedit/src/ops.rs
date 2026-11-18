@@ -1,4 +1,4 @@
-use crate::dv::DvCond;
+use crate::dv::{Broken, DvCond};
 use crate::error::Error;
 use crate::session::{GoalId, GoalState, Op, Outcome, Session, Undo};
 use crate::term::{MetaId, TermId};
@@ -183,7 +183,6 @@ impl Session<'_> {
             self.rollback_to(undo);
             return Err(Error::Unify(e));
         }
-        self.push_conditions(syntax, &subst);
         self.commit(Op::Refine { meta, syntax }, undo, &before)
     }
 
@@ -197,7 +196,7 @@ impl Session<'_> {
         }
     }
 
-    fn commit(&mut self, op: Op, undo: Undo, before: &[bool]) -> Result<Outcome, Error> {
+    fn commit(&mut self, op: Op, undo: Undo, before: &Broken) -> Result<Outcome, Error> {
         if !self.in_bounds() {
             self.rollback_to(undo);
             return Err(Error::TooLarge);

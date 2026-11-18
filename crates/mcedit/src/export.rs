@@ -37,6 +37,18 @@ pub struct Finished {
     pub added_dv: Vec<(Sym, Sym)>,
 }
 
+/// One step of the walk that decides what the exported proof contains.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Step {
+    /// A goal closed by this hypothesis.
+    Hyp(StmtId),
+    /// The term the proof builds for a mandatory variable of the next assertion.
+    Value(TermId),
+    /// The assertion applied once its hypotheses are done.
+    Assertion(StmtId),
+    Open,
+}
+
 impl Session<'_> {
     /// The proof as an uncompressed label sequence, when nothing is open, unresolved or violated.
     pub fn export(&self) -> Result<Finished, Error> {
@@ -98,15 +110,15 @@ impl Session<'_> {
         }
     }
 
-    fn emit_goal(
+    /// Visits what the exported proof does for a goal and, in proof order, for the goals under it.
+    pub(crate) fn walk_proof(
         &self,
         goal: GoalId,
-        proof: &mut Vec<Label>,
-        dummies: &mut Vec<Dummy>,
+        visit: &mut impl FnMut(Step) -> Result<(), Error>,
     ) -> Result<(), Error> {
         let db = self.db();
         match self.goals.get(goal as usize).ok_or(Error::Corrupt)?.state {
-            GoalState::Closed { hyp } => proof.push(Label::Stmt(hyp)),
+            GoalState::Closed { hyp } => visit(Step::Hyp(hyp))?,
             GoalState::Applied {
                 assertion,
                 metas,
@@ -116,18 +128,34 @@ impl Session<'_> {
                 for &h in &db.stmt(assertion).frame.hyps {
                     if db.stmt(h).kind == Kind::Float {
                         let term = self.store.meta_term(metas + float).ok_or(Error::Corrupt)?;
-                        self.emit_term(term, proof, dummies)?;
+                        visit(Step::Value(term))?;
                         float += 1;
                     } else {
-                        self.emit_goal(first + essential, proof, dummies)?;
+                        self.walk_proof(first + essential, visit)?;
                         essential += 1;
                     }
                 }
-                proof.push(Label::Stmt(assertion));
+                visit(Step::Assertion(assertion))?;
             }
-            GoalState::Open => return Err(Error::Corrupt),
+            GoalState::Open => visit(Step::Open)?,
         }
         Ok(())
+    }
+
+    fn emit_goal(
+        &self,
+        goal: GoalId,
+        proof: &mut Vec<Label>,
+        dummies: &mut Vec<Dummy>,
+    ) -> Result<(), Error> {
+        self.walk_proof(goal, &mut |step| match step {
+            Step::Hyp(id) | Step::Assertion(id) => {
+                proof.push(Label::Stmt(id));
+                Ok(())
+            }
+            Step::Value(term) => self.emit_term(term, proof, dummies),
+            Step::Open => Err(Error::Corrupt),
+        })
     }
 
     fn emit_term(
