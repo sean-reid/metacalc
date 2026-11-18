@@ -22,141 +22,22 @@ VERSION = 1
 start:
 #include "sparecore.inc"
 
-; Contract: the stack and the OS are usable again; prints the results, then waits for a key. Digits go
-; to the OS one at a time, with the running value kept in scratch because a bcall may change registers.
-show:
 	bcall(_ClrLCDFull)
 	xor a
 	ld (curRow), a
 	ld (curCol), a
-	ld hl, title
-	call putstr
-	bcall(_NewLine)
-	ld hl, text_write
-	call putstr
-	ld hl, (S_WBAD)
-	ld a, h
-	or l
-	jr nz, write_bad
-	ld hl, text_ok
-	call putstr
-	jr write_done
-write_bad:
-	ld hl, text_bad
-	call putstr
-	ld hl, (S_WBAD)
-	call putdec
-write_done:
-	bcall(_NewLine)
-	ld a, (S_CHECKED)
-	or a
-	jr nz, checked
-	ld hl, text_first
-	call putstr
-	jr wait
-checked:
-	ld hl, (S_LOST)
-	ld a, h
-	or l
-	jr nz, lost
-	ld hl, text_kept
-	call putstr
-	jr wait
-lost:
-	ld hl, text_lost
-	call putstr
-	ld hl, (S_LOST)
-	call putdec
-	bcall(_NewLine)
-	ld hl, (S_FIRST)
-	call puthex
-	ld a, '-'
-	bcall(_PutC)
-	ld hl, (S_LAST)
-	call puthex
-wait:
+	call show_results
 	bcall(_GetKey)
 	bjump(_JForceCmdNoChar)
 
-; Contract: HL points at a zero-terminated string in the app page, which a bcall swaps out, so it
-; is read here and passed to the OS one character at a time.
-putstr:
-	ld a, (hl)
-	or a
-	ret z
-	bcall(_PutC)
-	inc hl
-	jr putstr
-
-; Prints HL as four decimal digits.
-putdec:
-	ld de, 1000
-	call digit
-	ld de, 100
-	call digit
-	ld de, 10
-	call digit
-	ld hl, (S_WFIRST)
-	ld a, l
-	add a, '0'
+; Contract: A is one character, or 0Ah for a new line.
+putchar:
+	cp 0Ah
+	jr z, newline
 	bcall(_PutC)
 	ret
-
-; Prints the quotient of HL by DE as one digit and leaves the remainder in scratch.
-digit:
-	ld b, 0
-digit_sub:
-	or a
-	sbc hl, de
-	jr c, digit_done
-	inc b
-	jr digit_sub
-digit_done:
-	add hl, de
-	ld (S_WFIRST), hl
-	ld a, '0'
-	add a, b
-	bcall(_PutC)
-	ld hl, (S_WFIRST)
+newline:
+	bcall(_NewLine)
 	ret
 
-; Prints HL as four hex digits.
-puthex:
-	ld (S_WFIRST), hl
-	ld a, (S_WFIRST + 1)
-	call hexbyte
-	ld a, (S_WFIRST)
-
-hexbyte:
-	ld (S_WLAST), a
-	rrca
-	rrca
-	rrca
-	rrca
-	call nibble
-	ld a, (S_WLAST)
-
-nibble:
-	and 0Fh
-	add a, '0'
-	cp '9' + 1
-	jr c, nibble_put
-	add a, 'A' - '9' - 1
-nibble_put:
-	bcall(_PutC)
-	ret
-
-title:
-	.db "sparechk v", '0' + VERSION, 0
-text_write:
-	.db "write ", 0
-text_ok:
-	.db "ok", 0
-text_bad:
-	.db "bad ", 0
-text_first:
-	.db "first run", 0
-text_kept:
-	.db "kept all", 0
-text_lost:
-	.db "lost ", 0
+#include "sparescreen.inc"

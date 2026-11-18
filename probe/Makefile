@@ -6,7 +6,7 @@ build/ramprobe.8xk: ramprobe.z80 ../app/src/equates.inc
 	mkdir -p build
 	$(SPASM) -I ../app/src ramprobe.z80 $@
 
-build/sparecheck.8xk: sparecheck.z80 sparecore.inc ../app/src/equates.inc
+build/sparecheck.8xk: sparecheck.z80 sparecore.inc sparescreen.inc ../app/src/equates.inc
 	mkdir -p build
 	$(SPASM) -I ../app/src -I . sparecheck.z80 $@
 

@@ -25,7 +25,7 @@ SIG_LEN        = 8
 ; RST, PUSH or POP, because the stack lives in bank C; IY and the shadow registers are untouched.
 ; Scratch is in bank B. The pattern byte at address a is low(a) xor high(a) xor the range seed.
 ; Steps, each a pass over the ranges: signature (range 0 only, stops the check when more than half
-; the bytes differ), check, write, verify.
+; the bytes differ), check, write, verify. More than 4 changed signature bytes reads as a first run.
 ; Results: S_CHECKED 0 for a first run, 1 when compared; S_LOST, S_FIRST, S_LAST from the check;
 ; S_WBAD the verify mismatches; S_AFTER port 5 read back after the restore.
 	jr spare_core
@@ -175,3 +175,4 @@ spare_finish:
 	in a, (SPARE_PORT)
 	ld (S_AFTER), a
 	ei
+spare_end:
