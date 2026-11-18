@@ -25,6 +25,19 @@
 //!            F0h..FEh carries eight more bits in the next byte, FFh saves the top of the stack
 //! ```
 //!
+//! Sections follow the last record. The kernel reads nothing after it, so a library without them
+//! is as valid as one with them, and the header's length and CRC cover them either way. A
+//! reader that knows the length from the header finds the trailer in the last bytes of the file.
+//!
+//! ```text
+//! section    starts at a multiple of four; no item of it crosses a multiple of CHUNK, so every
+//!            item can be read through one mapped page; only an index of fixed-size entries
+//!            may cross, and the padding that keeps an item whole is zero bytes
+//! table      one row per section: id (u8), offset (u32), length (u32), the rows right
+//!            before the trailer, in section order; a reader skips an id it does not know
+//! trailer    section count (u8), format version (u8), "MCSX"
+//! ```
+//!
 //! A record is only usable if its float hypotheses name distinct variables, each of its
 //! expressions starts with a constant and uses no variable without a float hypothesis, every
 //! pair in its first list names two different variables that both have one, and every pair in a
@@ -35,13 +48,17 @@ mod export;
 mod kernel;
 mod pack;
 mod read;
+mod sections;
 
 pub use check::{CheckError, check};
 pub use export::{ExportError, export};
 pub use kernel::{Kernel, KernelError, Limits, WORK_LIMIT};
-pub use pack::{PackError, pack};
+pub use pack::{PackError, pack, pack_kernel};
 pub use read::{
     Assertion, Hypothesis, Library, ReadError, Reference, Step, Variable, decode, read,
+};
+pub use sections::{
+    ENTRY_LEN, Entry, SectionError, Sections, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION,
 };
 
 pub const MAGIC: &[u8; 4] = b"MCL1";

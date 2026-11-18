@@ -1,3 +1,4 @@
+use super::sections::Writer;
 use super::{CHUNK, DUMMY, HEADER_LEN, MAGIC, SAVE, WIDE, crc32};
 use crate::mm::{Database, Kind, ProofBody, Stmt, StmtId, Sym};
 use std::collections::HashMap;
@@ -12,6 +13,8 @@ pub enum PackError {
     TooLarge(String),
     /// The labelled theorem's proof did not parse or names a statement outside the closure.
     BrokenProof(String),
+    /// The sections do not fit the file: an item is larger than a 16 KB page or the file passes 4 GB.
+    SectionTooLarge,
 }
 
 /// A proof step before the reference list is ordered.
@@ -28,8 +31,19 @@ struct Packer<'a> {
     local_stmt: HashMap<StmtId, u16>,
 }
 
-/// Packs `closure`, a dependency-closed list of statements in database order, into a library.
+/// Packs `closure`, a dependency-closed list of statements in database order, into a library
+/// with its sections.
 pub fn pack(db: &Database, closure: &[StmtId]) -> Result<Vec<u8>, PackError> {
+    build(db, closure, true)
+}
+
+/// [`pack`] without sections: the header, symbols, directory and records alone, which is all the
+/// kernel reads.
+pub fn pack_kernel(db: &Database, closure: &[StmtId]) -> Result<Vec<u8>, PackError> {
+    build(db, closure, false)
+}
+
+fn build(db: &Database, closure: &[StmtId], sections: bool) -> Result<Vec<u8>, PackError> {
     let stmts = || closure.iter().map(|&id| (id, db.stmt(id)));
     let mut typecode_of: HashMap<Sym, Sym> = HashMap::new();
     for (_, stmt) in stmts().filter(|(_, s)| s.kind == Kind::Float) {
@@ -99,6 +113,11 @@ pub fn pack(db: &Database, closure: &[StmtId]) -> Result<Vec<u8>, PackError> {
         let offset = out.len() as u32;
         out[directory + 4 * i..][..4].copy_from_slice(&offset.to_le_bytes());
         out.extend_from_slice(&record);
+    }
+
+    if sections {
+        let writer = Writer::new(out);
+        out = writer.finish().map_err(|_| PackError::SectionTooLarge)?;
     }
 
     out[..4].copy_from_slice(MAGIC);
