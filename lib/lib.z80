@@ -163,6 +163,7 @@
 #include "lib/window.inc"
 #include "lib/record.inc"
 #include "lib/sections.inc"
+#include "lib/secshared.inc"
 #include "lib/titles.inc"
 #include "lib/glyphs.inc"
 #include "lib/trees.inc"
