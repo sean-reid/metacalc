@@ -186,40 +186,46 @@ iv_wide:
 	dec a
 iv_set:
 	ld (ui_mid),a
-iv_row:
 	ld hl,(ui_dst)
 	ld a,(ui_mid)
 	inc a
-	jr z,iv_single
+	jr z,iv_one
 	ld a,(ui_lm)
-	xor (hl)
-	ld (hl),a
-	inc hl
+	ld c,a
+	call iv_col
 	ld a,(ui_mid)
 	or a
 	jr z,iv_last
-	ld b,a
-iv_mid:
-	ld a,(hl)
-	cpl
-	ld (hl),a
-	inc hl
-	djnz iv_mid
+	ld c,$FF
+iv_mids:
+	push af
+	call iv_col
+	pop af
+	dec a
+	jr nz,iv_mids
 iv_last:
 	ld a,(ui_rm)
-	jr iv_flip
-iv_single:
+	ld c,a
+	jr iv_col
+iv_one:
 	ld a,(ui_lm)
-iv_flip:
-	xor (hl)
-	ld (hl),a
-	ld hl,(ui_dst)
+	ld c,a
+
+; Flips one byte column of ui_rows scanlines with mask C; HL = its first byte in, the first
+; byte of the next column out. Destroys AF B DE.
+iv_col:
+	push hl
+	ld a,(ui_rows)
+	ld b,a
 	ld de,UI_STRIDE
+iv_cl:
+	ld a,(hl)
+	xor c
+	ld (hl),a
 	add hl,de
-	ld (ui_dst),hl
-	ld hl,ui_rows
-	dec (hl)
-	jr nz,iv_row
+	djnz iv_cl
+	pop hl
+	inc hl
 	ret
 
 ; HL = HL + A
