@@ -187,7 +187,12 @@ fn a_proof_that_names_a_later_assertion_shows_as_failed_and_what_rests_on_it_res
     let sound = logic_bytes();
     let reader = lib_from(sound.clone());
     let (a1i, alid) = (index(&reader, "a1i"), index(&reader, "alid"));
-    let patched = lib_from(support::patch_reference(&sound, "a1i", 0, alid as u16));
+    let patched = lib_from(support::refreshed(support::patch_reference(
+        &sound,
+        "a1i",
+        0,
+        alid as u16,
+    )));
     assert_eq!(patched.mark(a1i), Mark::Failed);
     assert_eq!(patched.mark(index(&patched, "syl")), Mark::Resting);
     assert_eq!(patched.mark(index(&patched, "ax-1")), Mark::Checked);
@@ -201,7 +206,9 @@ fn a_proof_that_names_itself_shows_as_failed() {
     let sound = logic_bytes();
     let reader = lib_from(sound.clone());
     let a1i = index(&reader, "a1i");
-    let patched = lib_from(support::patch_reference(&sound, "a1i", 0, a1i as u16));
+    let patched = lib_from(support::refreshed(support::patch_reference(
+        &sound, "a1i", 0, a1i as u16,
+    )));
     assert_eq!(patched.mark(a1i), Mark::Failed);
 }
 
@@ -253,7 +260,7 @@ fn marks_updated_one_status_at_a_time_equal_a_full_recompute() {
             .unwrap() as u16
     };
     let patched = support::patch_reference(&sound, "a1i", 0, at("alid"));
-    let patched = support::patch_reference(&patched, "mpd", 1, at("ax-many"));
+    let patched = support::refreshed(support::patch_reference(&patched, "mpd", 1, at("ax-many")));
     let first = statuses(&patched, &[], &[]);
     let mut live = Lib::new(
         Installed {

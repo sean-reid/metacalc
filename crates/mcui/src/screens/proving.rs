@@ -91,7 +91,6 @@ impl Proving {
         );
         let saved = SavedProof {
             library,
-            crc: lib.crc(),
             theorem: index,
             session: editor.save(),
             goal: snap.goal,

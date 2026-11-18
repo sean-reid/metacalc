@@ -100,6 +100,21 @@ fn a_finished_check_says_so_and_stays_finished() {
 }
 
 #[test]
+fn the_first_key_of_a_check_reads_stop_while_it_runs_and_done_when_it_is_finished_and_leaves() {
+    let mut ui = unchecked_ui(logic_bytes());
+    press(&mut ui, &[F2]);
+    steps(&mut ui, 3);
+    assert!(support::key_label_is(&ui.frame(), 0, "Stop"));
+    run_all(&mut ui);
+    let frame = ui.frame();
+    assert!(support::key_label_is(&frame, 0, "Done"));
+    assert!(!support::key_label_is(&frame, 0, "Stop"));
+    ui.press(F1);
+    assert_eq!(ui.depth(), 1);
+    assert!(matches!(ui.state(), State::Libraries { .. }));
+}
+
+#[test]
 fn a_bad_proof_fails_and_the_marks_follow() {
     let mut ui = unchecked_ui(bad_proof());
     press(&mut ui, &[F2]);
@@ -166,12 +181,50 @@ fn an_empty_library_is_finished_at_once() {
 }
 
 #[test]
-fn a_library_whose_checksum_is_wrong_fails_every_assertion() {
+fn a_library_whose_checksum_is_wrong_says_so_before_it_is_opened_and_does_not_run() {
     let mut bytes = logic_bytes();
     bytes[4] ^= 0xFF;
     let mut ui = unchecked_ui(bytes);
-    press(&mut ui, &[F2]);
-    assert_eq!(run_all(&mut ui), (0, 13));
+    let frame = ui.frame();
+    let width = mcglyph::Font::builtin().text_width("damaged");
+    assert!(support::text_at(&frame, 1, 1, "logic", true));
+    assert!(support::text_at(&frame, 95 - width, 1, "damaged", true));
+    check(&ui, "libraries-damaged");
+    ui.press(F2);
+    assert!(matches!(ui.state(), State::Notice { ref title } if title == "Verify"));
+    let frame = ui.frame();
+    assert!(support::key_label_is(&frame, 0, "Back"));
+    assert!(support::text_at(&frame, 1, 0, "Verify", true));
+    check(&ui, "checking-damaged");
+    ui.press(Clear);
+    assert_eq!(ui.depth(), 1);
+    assert_eq!(ui.step_check(), CheckStep::Idle);
+    press(&mut ui, &[Enter, F3, F3, F3]);
+    assert!(matches!(ui.state(), State::List { len: 13, .. }));
+}
+
+#[test]
+fn nothing_of_a_damaged_library_is_trusted_but_its_installed_table_is_kept() {
+    let mut bytes = logic_bytes();
+    bytes[4] ^= 0xFF;
+    let table = vec![mcui::Status::Checked; 13];
+    let lib = mcui::data::Lib::new(
+        mcui::Installed {
+            name: "logic".into(),
+            bytes: bytes.clone(),
+        },
+        table.clone(),
+    )
+    .unwrap();
+    assert!(lib.damaged());
+    assert_eq!((lib.checked(), lib.failed(), lib.settled()), (0, 0, 0));
+    assert!((0..13).all(|i| lib.mark(i) == mcui::Mark::Unchecked));
+    assert!((0..13).all(|i| lib.status(i) == mcui::Status::Checked));
+    let mut ui = support::ui_over(bytes, &[], &[]);
+    press(&mut ui, &[Enter]);
+    assert!(support::title_is(&ui.frame(), "logic", "0/13"));
+    press(&mut ui, &[F3, F3, F3]);
+    assert!(matches!(ui.state(), State::List { len: 13, .. }));
 }
 
 #[test]

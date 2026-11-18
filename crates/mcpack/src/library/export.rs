@@ -1,6 +1,7 @@
-use super::read::{Assertion, Hypothesis, Library, Reference, Step, Variable, decode};
+use super::read::{Assertion, Hypothesis, Library, Reference, Step, decode};
 use super::{CheckError, ReadError, check};
-use std::collections::HashSet;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fmt;
 
 const WIDTH: usize = 79;
@@ -17,6 +18,8 @@ pub enum ExportError {
     Label(String),
     /// The labelled assertion cannot be written as a Metamath assertion, and why.
     Assertion(String, &'static str),
+    /// The assertions on a cycle of float orders: each puts a variable before one that the next puts before it, so no sequence of `$f` statements gives all of them.
+    FloatOrder(Vec<String>),
 }
 
 impl fmt::Display for ExportError {
@@ -27,6 +30,11 @@ impl fmt::Display for ExportError {
             ExportError::Symbol(name) => write!(f, "{name:?} cannot be a math symbol"),
             ExportError::Label(label) => write!(f, "{label:?} cannot be a unique label"),
             ExportError::Assertion(label, why) => write!(f, "{label}: {why}"),
+            ExportError::FloatOrder(labels) => write!(
+                f,
+                "the floating hypotheses of {} order the variables in a cycle",
+                labels.join(", ")
+            ),
         }
     }
 }
@@ -46,6 +54,9 @@ impl From<ReadError> for ExportError {
 }
 
 /// Writes a packed library the kernel accepts as a Metamath database, using nothing but its bytes.
+///
+/// Every variable's float is declared once after `$v`, in an order that gives each record its
+/// floats in the order it stores them, and each assertion gets a block for its `$d` and `$e`.
 pub fn export(bytes: &[u8]) -> Result<String, ExportError> {
     check(bytes)?;
     let library = decode(bytes)?;
@@ -70,6 +81,18 @@ pub fn export(bytes: &[u8]) -> Result<String, ExportError> {
         }
     }
 
+    let index: HashMap<&str, usize> = library
+        .variables
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (v.name.as_str(), i))
+        .collect();
+    let mut records = Vec::with_capacity(library.assertions.len());
+    for assertion in &library.assertions {
+        records.push(record_floats(assertion, &index)?);
+    }
+    let order = float_order(&library, &records)?;
+
     let mut out = String::new();
     let count = library.assertions.len();
     out += &format!("$( Exported from a metacalc library of {count} assertions. $)\n");
@@ -79,12 +102,130 @@ pub fn export(bytes: &[u8]) -> Result<String, ExportError> {
     let mut writer = Writer {
         library: &library,
         reserved,
+        floats: vec![String::new(); variables.len()],
         out,
     };
-    for index in 0..count {
-        writer.block(index)?;
+    for &var in &order {
+        writer.float(var);
+    }
+    for (at, floats) in records.iter().enumerate() {
+        writer.block(at, floats, &index)?;
     }
     Ok(writer.out)
+}
+
+/// The variables of an assertion's floating hypotheses in record order, for a record a frame can
+/// have: its floats first, one per variable of the statement.
+fn record_floats(
+    assertion: &Assertion,
+    index: &HashMap<&str, usize>,
+) -> Result<Vec<usize>, ExportError> {
+    let refuse = |why| ExportError::Assertion(assertion.label.clone(), why);
+    let mut floats: Vec<usize> = Vec::new();
+    let mut essential = false;
+    for hyp in &assertion.hypotheses {
+        match hyp {
+            Hypothesis::Float { variable, .. } => {
+                if essential {
+                    return Err(refuse(
+                        "an essential hypothesis comes before a floating hypothesis",
+                    ));
+                }
+                let Some(&var) = index.get(&**variable) else {
+                    return Err(refuse(
+                        "a floating hypothesis names a symbol that is not a variable",
+                    ));
+                };
+                floats.push(var);
+            }
+            Hypothesis::Essential(_) => essential = true,
+        }
+    }
+    let essentials = assertion.hypotheses.iter().filter_map(|h| match h {
+        Hypothesis::Essential(expr) => Some(expr),
+        Hypothesis::Float { .. } => None,
+    });
+    let used: HashSet<usize> = essentials
+        .flatten()
+        .chain(&assertion.conclusion)
+        .filter_map(|token| index.get(&**token).copied())
+        .collect();
+    if floats.iter().any(|v| !used.contains(v)) {
+        return Err(refuse(
+            "a floating hypothesis names a variable the assertion does not use",
+        ));
+    }
+    Ok(floats)
+}
+
+/// A total order of the variables in which every record's floats keep their order, the lowest
+/// variable first wherever the records leave the choice open.
+fn float_order(library: &Library, records: &[Vec<usize>]) -> Result<Vec<usize>, ExportError> {
+    let count = library.variables.len();
+    let mut after: Vec<Vec<usize>> = vec![Vec::new(); count];
+    let mut waiting = vec![0usize; count];
+    let mut witness: HashMap<(usize, usize), usize> = HashMap::new();
+    for (at, floats) in records.iter().enumerate() {
+        for pair in floats.windows(2) {
+            if witness.insert((pair[0], pair[1]), at).is_none() {
+                after[pair[0]].push(pair[1]);
+                waiting[pair[1]] += 1;
+            }
+        }
+    }
+    let mut ready: BinaryHeap<Reverse<usize>> = (0..count)
+        .filter(|&v| waiting[v] == 0)
+        .map(Reverse)
+        .collect();
+    let mut order = Vec::with_capacity(count);
+    while let Some(Reverse(var)) = ready.pop() {
+        order.push(var);
+        for &next in &after[var] {
+            waiting[next] -= 1;
+            if waiting[next] == 0 {
+                ready.push(Reverse(next));
+            }
+        }
+    }
+    if order.len() == count {
+        return Ok(order);
+    }
+    Err(float_conflict(library, &witness, &waiting))
+}
+
+/// The error for a set of constraints with a cycle: the records of the edges on one.
+/// `waiting` is nonzero exactly for the variables the order could not place.
+fn float_conflict(
+    library: &Library,
+    witness: &HashMap<(usize, usize), usize>,
+    waiting: &[usize],
+) -> ExportError {
+    let stuck = |v: usize| waiting[v] > 0;
+    let mut earlier: HashMap<usize, usize> = HashMap::new();
+    let mut edges: Vec<_> = witness.keys().collect();
+    edges.sort_unstable();
+    for &&(a, b) in &edges {
+        if stuck(a) && stuck(b) {
+            earlier.entry(b).or_insert(a);
+        }
+    }
+    let mut at = edges.iter().map(|e| e.1).find(|&v| stuck(v)).unwrap_or(0);
+    let mut seen: Vec<usize> = Vec::new();
+    while !seen.contains(&at) {
+        seen.push(at);
+        at = earlier.get(&at).copied().unwrap_or(at);
+    }
+    let cycle = &seen[seen.iter().position(|&v| v == at).unwrap_or(0)..];
+    let mut labels: Vec<&String> = Vec::new();
+    for (i, &var) in cycle.iter().enumerate() {
+        let next = cycle[(i + 1) % cycle.len()];
+        let record = witness.get(&(next, var)).copied().unwrap_or(0);
+        let label = &library.assertions[record].label;
+        if !labels.contains(&label) {
+            labels.push(label);
+        }
+    }
+    ExportError::FloatOrder(labels.into_iter().cloned().collect())
 }
 
 fn declaration(out: &mut String, keyword: &str, names: &[String]) {
@@ -101,6 +242,8 @@ fn declaration(out: &mut String, keyword: &str, names: &[String]) {
 struct Writer<'a> {
     library: &'a Library,
     reserved: HashSet<String>,
+    /// The label of each variable's float, by position in the variable table.
+    floats: Vec<String>,
     out: String,
 }
 
@@ -113,70 +256,63 @@ impl Writer<'_> {
         label
     }
 
-    fn is_variable(&self, name: &str) -> bool {
-        self.library.variables.iter().any(|v| v.name == name)
+    fn float(&mut self, var: usize) {
+        let variable = &self.library.variables[var];
+        let label = self.fresh(format!("f.{var}"));
+        let mut lines = Lines::new(&mut self.out, 0);
+        [
+            label.as_str(),
+            "$f",
+            &variable.typecode,
+            &variable.name,
+            "$.",
+        ]
+        .iter()
+        .for_each(|t| lines.token(t));
+        lines.finish();
+        self.floats[var] = label;
     }
 
-    fn block(&mut self, index: usize) -> Result<(), ExportError> {
+    fn block(
+        &mut self,
+        position: usize,
+        floats: &[usize],
+        index: &HashMap<&str, usize>,
+    ) -> Result<(), ExportError> {
         let library = self.library;
-        let assertion = &library.assertions[index];
+        let assertion = &library.assertions[position];
         let label = &assertion.label;
         let refuse = |why| ExportError::Assertion(label.clone(), why);
 
-        let mut floats: HashSet<&str> = HashSet::new();
-        let mut hyps: Vec<(String, &Hypothesis)> = Vec::new();
-        let (mut f, mut e) = (0, 0);
+        let mut essentials: Vec<(String, &Vec<String>)> = Vec::new();
         for hyp in &assertion.hypotheses {
-            let name = match hyp {
-                Hypothesis::Float { variable, .. } => {
-                    f += 1;
-                    floats.insert(variable);
-                    self.fresh(format!("{label}.f{f}"))
-                }
-                Hypothesis::Essential(expr) => {
-                    e += 1;
-                    let active = |s: &String| !self.is_variable(s) || floats.contains(&**s);
-                    if !expr.iter().all(active) {
-                        return Err(refuse(
-                            "an essential hypothesis uses a variable before its float",
-                        ));
-                    }
-                    self.fresh(format!("{label}.e{e}"))
-                }
-            };
-            hyps.push((name, hyp));
-        }
-        let mut used: HashSet<&str> = assertion.conclusion.iter().map(String::as_str).collect();
-        for (_, hyp) in &hyps {
             if let Hypothesis::Essential(expr) = hyp {
-                used.extend(expr.iter().map(String::as_str));
+                let name = self.fresh(format!("{label}.e{}", essentials.len() + 1));
+                essentials.push((name, expr));
             }
         }
-        if floats.iter().any(|v| !used.contains(v)) {
-            return Err(refuse(
-                "a floating hypothesis names a variable the assertion does not use",
-            ));
-        }
 
-        let mut dummies: Vec<(&Variable, String)> = Vec::new();
+        let mut dummies: Vec<usize> = Vec::new();
         let mut proof_labels: Vec<String> = Vec::new();
         for reference in &assertion.references {
             let name = match reference {
                 Reference::Dummy(var) => {
-                    if floats.contains(&*var.name) {
+                    let at = *index
+                        .get(&*var.name)
+                        .ok_or_else(|| refuse("a proof names a dummy that is not a variable"))?;
+                    if floats.contains(&at) {
                         return Err(refuse("a proof names a mandatory variable's float"));
                     }
-                    if dummies.iter().any(|(v, _)| v.name == var.name) {
+                    if dummies.contains(&at) {
                         return Err(refuse("a proof names a dummy variable twice"));
                     }
-                    let name = self.fresh(format!("{label}.d{}", dummies.len() + 1));
-                    dummies.push((var, name.clone()));
-                    name
+                    dummies.push(at);
+                    self.floats[at].clone()
                 }
                 Reference::Invalid(_) => {
                     return Err(refuse("a proof names a dummy that is not a variable"));
                 }
-                Reference::Assertion(target) if *target < index => {
+                Reference::Assertion(target) if *target < position => {
                     library.assertions[*target].label.clone()
                 }
                 Reference::Assertion(_) => return Err(refuse("a proof names a later assertion")),
@@ -194,28 +330,12 @@ impl Writer<'_> {
             ["$d", a, b, "$."].iter().for_each(|t| lines.token(t));
             lines.finish();
         }
-        for (name, hyp) in &hyps {
+        for (name, expr) in &essentials {
             let mut lines = Lines::new(&mut self.out, 2);
             lines.token(name);
-            match hyp {
-                Hypothesis::Float { typecode, variable } => {
-                    ["$f", typecode, variable]
-                        .iter()
-                        .for_each(|t| lines.token(t));
-                }
-                Hypothesis::Essential(expr) => {
-                    lines.token("$e");
-                    expr.iter().for_each(|t| lines.token(t));
-                }
-            }
+            lines.token("$e");
+            expr.iter().for_each(|t| lines.token(t));
             lines.token("$.");
-            lines.finish();
-        }
-        for (var, name) in &dummies {
-            let mut lines = Lines::new(&mut self.out, 2);
-            [name, "$f", &var.typecode, &var.name, "$."]
-                .iter()
-                .for_each(|t| lines.token(t));
             lines.finish();
         }
         self.assertion(assertion, &proof_labels);

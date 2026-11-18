@@ -22,6 +22,8 @@ pub struct Proof {
     selected: usize,
     /// Whether the cursor is on the goal itself rather than a subgoal.
     on_goal: bool,
+    /// The first display row shown: the goal, the line saying how it was proved, then the subgoals.
+    scroll: usize,
     full: bool,
     by: By,
     goal: Layout,
@@ -41,6 +43,7 @@ impl Proof {
             path: Vec::new(),
             selected: 0,
             on_goal: false,
+            scroll: 0,
             full: false,
             by: By::Hypothesis(0),
             goal: Layout::empty(),
@@ -59,6 +62,22 @@ impl Proof {
         self.rebuild(ctx);
         self.selected = self.selected.min(self.subgoals.len().saturating_sub(1));
         self.on_goal = self.subgoals.is_empty();
+        self.scroll = 0;
+        self.follow();
+    }
+
+    /// Rows of the goal, the line saying how it was proved, and the subgoals.
+    fn rows(&self) -> usize {
+        self.goal.rows() + 1 + self.subgoals.len()
+    }
+
+    /// Moves the view to the highlighted subgoal; a view on the goal stays where it is.
+    fn follow(&mut self) {
+        if !self.on_goal {
+            let highlighted = self.goal.rows() + 1 + self.selected;
+            self.scroll = reveal(self.scroll, highlighted, CONTENT_ROWS);
+        }
+        self.scroll = self.scroll.min(self.rows().saturating_sub(CONTENT_ROWS));
     }
 
     /// Lays out the node again, leaving the cursor where it is.
@@ -87,15 +106,22 @@ impl Proof {
 
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
         match key {
-            Key::Up | Key::Down if self.subgoals.is_empty() => {}
             Key::Up | Key::Down => {
                 if self.on_goal {
-                    self.on_goal = key == Key::Up;
+                    let by_shown = self.scroll + CONTENT_ROWS > self.goal.rows();
+                    if key == Key::Up {
+                        self.scroll = self.scroll.saturating_sub(1);
+                    } else if !by_shown {
+                        self.scroll += 1;
+                    } else if !self.subgoals.is_empty() {
+                        self.on_goal = false;
+                    }
                 } else if key == Key::Up && self.selected == 0 {
                     self.on_goal = true;
                 } else {
                     self.selected = step(self.selected, self.subgoals.len(), key, 1);
                 }
+                self.follow();
             }
             Key::Enter | Key::Right => {
                 if !self.on_goal && self.selected < self.subgoals.len() {
@@ -109,11 +135,14 @@ impl Proof {
                     self.refresh(ctx);
                     self.selected = came_from.min(self.subgoals.len().saturating_sub(1));
                     self.on_goal = self.subgoals.is_empty();
+                    self.follow();
                 }
             }
             Key::F1 => {
                 self.full = !self.full;
                 self.rebuild(ctx);
+                self.scroll = 0;
+                self.follow();
             }
             Key::F3 => {
                 if let By::Assertion(i) = self.by {
@@ -126,16 +155,6 @@ impl Proof {
         Nav::Stay
     }
 
-    /// The first display row shown: the view starts at the goal unless the highlight is below it.
-    fn top(&self) -> usize {
-        let highlighted = self.goal.rows() + 1 + self.selected;
-        if self.on_goal {
-            0
-        } else {
-            reveal(0, highlighted, CONTENT_ROWS)
-        }
-    }
-
     pub fn draw(&self, ctx: &Ctx, canvas: &mut Canvas) {
         let lib = self.lib(ctx);
         let theorem = lib.label(self.goals.theorem);
@@ -145,7 +164,7 @@ impl Proof {
             capped(self.goals.total())
         );
         canvas.title(theorem, &place);
-        let top = self.top() as isize;
+        let top = self.scroll as isize;
         let window = 1..1 + CONTENT_ROWS as isize;
         let at = |display: usize| 1 + display as isize - top;
         canvas.layout(&self.goal, GUTTER, at(0), window.clone());
@@ -181,6 +200,7 @@ impl Proof {
             path: self.path.clone(),
             selected: self.selected,
             on_goal: self.on_goal,
+            scroll: self.scroll,
         }
     }
 }

@@ -4,13 +4,11 @@
 ///
 /// Restoring it reproduces the proof, with the operations of each key press kept together so
 /// Undo still takes back a press at a time, and the goal that was on screen. It does not
-/// reproduce the cursor or scroll of any list, nor which list was open. A library with another
-/// checksum than the one it was saved against refuses it.
+/// reproduce the cursor or scroll of any list, nor which list was open. A library other than the
+/// one it was saved against refuses it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SavedProof {
     pub library: usize,
-    /// The checksum of the library it was made against.
-    pub crc: u32,
     /// The theorem's number in its library.
     pub theorem: usize,
     /// The versioned encoding `mcedit::Session::save` writes.

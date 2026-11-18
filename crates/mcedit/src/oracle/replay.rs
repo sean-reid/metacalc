@@ -1,5 +1,5 @@
 use super::prooftree::{ProofNode, proof_tree};
-use super::splice::{close_scopes, splice_at};
+use super::splice::{close_scopes, splice, splice_at};
 use crate::catalog::Catalog;
 use crate::error::Error;
 use crate::export::Finished;
@@ -62,11 +62,21 @@ fn drive(
 /// Rebuilds a theorem's verified proof top down with the public operations, then exports it.
 /// With `refine` off, a metavariable no variable can resolve is a failure.
 pub fn replay(catalog: &Rc<Catalog>, theorem: StmtId, refine: bool) -> Result<Replayed, Failure> {
+    let root = proof_tree(catalog.db, theorem).map_err(Failure::Original)?;
+    replay_proof(catalog, theorem, &root, refine)
+}
+
+/// Rebuilds `theorem` from the proof tree `root`, whose labels are statements of the catalog's database.
+pub fn replay_proof(
+    catalog: &Rc<Catalog>,
+    theorem: StmtId,
+    root: &ProofNode,
+    refine: bool,
+) -> Result<Replayed, Failure> {
     let db = catalog.db;
-    let root = proof_tree(db, theorem).map_err(Failure::Original)?;
     let mut session = Session::start_in(catalog.clone(), theorem).map_err(Failure::Session)?;
     let mut expected = Expected::new();
-    drive(&mut session, 0, &root, &mut expected)?;
+    drive(&mut session, 0, root, &mut expected)?;
     let (mut assigns, mut refines) = (0, 0);
     while let Some(&meta) = session.status().metas.first() {
         let tree = expected.get(&meta).ok_or(Failure::NeedsRefine)?.clone();
@@ -98,20 +108,61 @@ pub fn replay(catalog: &Rc<Catalog>, theorem: StmtId, refine: bool) -> Result<Re
     })
 }
 
-/// Writes the exported proof into the database text in place of the original and verifies it.
+/// Writes the exported proof into the database text in place of the original and parses the result.
 /// The text after the theorem is dropped; nothing there can affect its proof.
-pub fn verify_spliced(src: &str, db: &Database, finished: &Finished) -> Result<(), Failure> {
+pub fn spliced_database(
+    src: &str,
+    db: &Database,
+    finished: &Finished,
+) -> Result<Database, Failure> {
     let label = &db.stmt(finished.theorem).label;
     let (text, cut) = splice_at(src, label, &finished.statement(db))
         .map_err(|e| Failure::Splice(format!("{e:?}")))?;
-    let spliced = mcpack::mm::parse(close_scopes(&text, cut).into_bytes())
-        .map_err(|e| Failure::Parse(e.to_string()))?;
+    mcpack::mm::parse(close_scopes(&text, cut).into_bytes())
+        .map_err(|e| Failure::Parse(e.to_string()))
+}
+
+/// Writes the exported proof into the database text in place of the original and verifies it.
+pub fn verify_spliced(src: &str, db: &Database, finished: &Finished) -> Result<(), Failure> {
+    let spliced = spliced_database(src, db, finished)?;
+    let label = &db.stmt(finished.theorem).label;
     let id = spliced
         .find(label)
         .ok_or_else(|| Failure::Splice("label vanished".into()))?;
     Verifier::new(&spliced)
         .verify(id)
         .map_err(Failure::Rejected)
+}
+
+/// Rebuilds `label` as a new proof, the way a session does for a theorem whose proof is `?`, from
+/// the proof it has in `src`, and returns the database with the new proof in its place.
+pub fn replay_as_new(
+    src: &str,
+    label: &str,
+    refine: bool,
+) -> Result<(Replayed, Database), Failure> {
+    let parse = |text: &str| {
+        mcpack::mm::parse(text.as_bytes().to_vec()).map_err(|e| Failure::Parse(e.to_string()))
+    };
+    let db = parse(src)?;
+    let theorem = db
+        .find(label)
+        .ok_or_else(|| Failure::Splice("no such label".into()))?;
+    let root = proof_tree(&db, theorem).map_err(Failure::Original)?;
+    let mut open = format!("{label} $p");
+    for &sym in &db.stmt(theorem).expr {
+        open.push(' ');
+        open.push_str(&db.syms[sym as usize].name);
+    }
+    open.push_str(" $= ? $.\n");
+    let blank = splice(src, label, &open).map_err(|e| Failure::Splice(format!("{e:?}")))?;
+    let unproved = parse(&blank)?;
+    let grammar =
+        Grammar::new(&unproved, &[("|-", "wff")]).map_err(|e| Failure::Parse(format!("{e:?}")))?;
+    let catalog = Catalog::new(&unproved, &grammar, 0);
+    let done = replay_proof(&catalog, theorem, &root, refine)?;
+    let spliced = spliced_database(&blank, &unproved, &done.finished)?;
+    Ok((done, spliced))
 }
 
 #[derive(Default)]
@@ -148,7 +199,7 @@ pub fn replay_database(
 ) -> Result<Report, String> {
     let db = mcpack::mm::parse(src.as_bytes().to_vec()).map_err(|e| e.to_string())?;
     let grammar = Grammar::new(&db, &[("|-", "wff")]).map_err(|e| format!("{e:?}"))?;
-    let catalog = Catalog::new(&db, &grammar);
+    let catalog = Catalog::new(&db, &grammar, mcpack::library::crc32(src.as_bytes()));
     let mut report = Report::default();
     for (n, theorem) in db.theorems().enumerate() {
         if !select(n) {

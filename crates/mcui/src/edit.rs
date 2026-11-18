@@ -102,11 +102,10 @@ impl Editor {
         let id = lib.stmt_of(theorem).ok_or("the library does not export")?;
         let (session, groups) = match saved {
             Some(saved) => {
-                if saved.crc != lib.crc() {
-                    return Err("the library has changed");
-                }
-                let session = Session::restore(catalog, &saved.session)
-                    .map_err(|_| "the saved proof is damaged")?;
+                let session = Session::restore(catalog, &saved.session).map_err(|e| match e {
+                    Error::WrongLibrary => "the library has changed",
+                    _ => "the saved proof is damaged",
+                })?;
                 let total = saved.groups.iter().try_fold(0usize, |sum, &g| {
                     (g > 0).then(|| sum.checked_add(g)).flatten()
                 });
@@ -116,7 +115,10 @@ impl Editor {
                 (session, saved.groups.clone())
             }
             None => (
-                Session::start_in(catalog, id).map_err(|_| "it proves a syntax statement")?,
+                Session::start_in(catalog, id).map_err(|e| match e {
+                    Error::TooLarge => "its statement is too large",
+                    _ => "it proves a syntax statement",
+                })?,
                 Vec::new(),
             ),
         };

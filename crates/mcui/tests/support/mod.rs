@@ -287,8 +287,14 @@ pub fn open(ui: &mut Ui, label: &str) {
 
 /// Compares `frame` with the checked-in text art. With MCUI_BLESS set the art is rewritten first
 /// and compared as usual, so a blessing run cannot pass without a comparison; a CI run cannot bless.
+/// With MCUI_PNG naming a directory the frame is also written there as a PNG at six times its size.
 pub fn check_frame(frame: &mcglyph::Bitmap, name: &str) {
     assert_eq!((frame.width(), frame.height()), (96, 64), "{name}");
+    if let Some(dir) = std::env::var_os("MCUI_PNG") {
+        std::fs::create_dir_all(&dir).expect("create png directory");
+        let path = PathBuf::from(dir).join(format!("{name}.png"));
+        std::fs::write(path, mcglyph::png::encode(frame, 6)).expect("write png");
+    }
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/frames")
         .join(format!("{name}.txt"));
@@ -421,4 +427,140 @@ $}}
     let bytes = pack_all(&db(&src)).expect("the chain library packs");
     library::check(&bytes).expect("the kernel accepts the chain library");
     bytes
+}
+
+/// `( ph -> ( ps -> ( ch -> ... ph ) ) )` with `depth` implications.
+pub fn nested(depth: usize) -> String {
+    let names = ["ph", "ps", "ch"];
+    let mut statement = "ph".to_string();
+    for i in 0..depth {
+        statement = format!("( {} -> {statement} )", names[i % 3]);
+    }
+    statement
+}
+
+/// The logic plus a rule with seven hypotheses and a conclusion that each take several rows.
+pub fn long_bytes() -> Vec<u8> {
+    let long = nested(9);
+    let hyps: String = (1..=7)
+        .map(|n| format!("  axlong.{n} $e |- {long} $.\n"))
+        .collect();
+    let src = format!("{LOGIC}\n${{\n{hyps}  axlong $a |- {long} $.\n$}}\n");
+    let bytes = pack_all(&db(&src)).expect("the long library packs");
+    library::check(&bytes).expect("the kernel accepts the long library");
+    bytes
+}
+
+/// The logic, without trees and with a bad checksum, plus an axiom of `depth` implications: its
+/// statements are flat runs of tokens.
+pub fn flat_bytes(depth: usize) -> Vec<u8> {
+    let src = format!("{LOGIC}\naxflat $a |- {} $.\n", nested(depth));
+    let mut bytes = pack_all_kernel(&db(&src)).expect("the flat library packs");
+    bytes[4] ^= 0xFF;
+    bytes
+}
+
+/// The logic plus two theorems whose goal takes eight rows once unfolded: `tl`, proved by
+/// `ax-mp` from two hypotheses, and `lh`, proved by its own hypothesis.
+pub fn tall_goal_bytes() -> Vec<u8> {
+    let depth = 30;
+    let names = ["ph", "ps", "ch"];
+    let mut syntax = "wph".to_string();
+    for i in 0..depth {
+        syntax = format!("w{} {syntax} wi", names[i % 3]);
+    }
+    let long = nested(depth);
+    let src = format!(
+        "{LOGIC}
+${{
+  tl.1 $e |- ph $.
+  tl.2 $e |- ( ph -> {long} ) $.
+  tl $p |- {long} $= wph {syntax} tl.1 tl.2 ax-mp $.
+$}}
+${{
+  lh.1 $e |- {long} $.
+  lh $p |- {long} $= lh.1 $.
+$}}
+"
+    );
+    let bytes = pack_all(&db(&src)).expect("the tall goal library packs");
+    library::check(&bytes).expect("the kernel accepts the tall goal library");
+    bytes
+}
+
+/// The logic plus `t1` to `t12`, each proved by the one before it.
+pub fn hops_bytes() -> Vec<u8> {
+    let mut src = format!("{LOGIC}\nt1 $p |- ( ph -> ph ) $= wph id $.\n");
+    for n in 2..=12 {
+        src.push_str(&format!("t{n} $p |- ( ph -> ph ) $= wph t{} $.\n", n - 1));
+    }
+    let bytes = pack_all(&db(&src)).expect("the hops library packs");
+    library::check(&bytes).expect("the kernel accepts the hops library");
+    bytes
+}
+
+/// Whether `frame` shows `text` in the main font with its first column at `x` on text row `row`
+/// (the title bar being row 0), white on black when `inverted`.
+pub fn text_at(frame: &mcglyph::Bitmap, x: usize, row: usize, text: &str, inverted: bool) -> bool {
+    let ink = mcglyph::Font::builtin().text(text);
+    ink_matches(frame, &ink, x, 8 * row + 1, inverted)
+}
+
+/// Whether `frame` shows `tokens`, laid out as a statement, with its first column at `x` on text
+/// row `row`.
+pub fn tokens_at(frame: &mcglyph::Bitmap, x: usize, row: usize, tokens: &[&str]) -> bool {
+    let font = mcglyph::Font::builtin();
+    let ink = font.render(tokens, 94).expect("the tokens render");
+    let width = font.layout(tokens, 94).expect("the tokens lay out")[0].width;
+    let mut cut = mcglyph::Bitmap::new(width, ink.height());
+    cut.blit(&ink, 0, 0);
+    ink_matches(frame, &cut, x, 8 * row + 1, false)
+}
+
+fn ink_matches(
+    frame: &mcglyph::Bitmap,
+    ink: &mcglyph::Bitmap,
+    x: usize,
+    y: usize,
+    inverted: bool,
+) -> bool {
+    (0..ink.height()).all(|dy| {
+        (0..ink.width()).all(|dx| frame.get(x + dx, y + dy) == (ink.get(dx, dy) != inverted))
+    })
+}
+
+/// Whether the label of soft key `key` (from 0) reads `label`, in the key font on its black box.
+pub fn key_label_is(frame: &mcglyph::Bitmap, key: usize, label: &str) -> bool {
+    let ink = mcglyph::Font::keys().text(label);
+    let (from, to) = ((96 * key + 2) / 5, (96 * (key + 1) + 2) / 5 - 1);
+    let x = from + (to - from - ink.width()).div_ceil(2);
+    ink_matches(frame, &ink, x, 57, true)
+}
+
+/// Whether the last ink on text row `row` of `frame` is an ellipsis.
+pub fn ends_in_ellipsis(frame: &mcglyph::Bitmap, row: usize) -> bool {
+    let ellipsis = mcglyph::Font::builtin().text(&mcglyph::ELLIPSIS.to_string());
+    let last = (0..96)
+        .rev()
+        .find(|&x| (8 * row..8 * row + 8).any(|y| frame.get(x, y)));
+    last.is_some_and(|last| {
+        (last + 1)
+            .checked_sub(ellipsis.width())
+            .is_some_and(|x| ink_matches(frame, &ellipsis, x, 8 * row + 1, false))
+    })
+}
+
+/// The tokens of a statement laid out in `width` pixels by the font alone, one list per line.
+pub fn font_lines(tokens: &[&str], width: usize) -> Vec<Vec<String>> {
+    mcglyph::Font::builtin()
+        .layout(tokens, width)
+        .expect("the tokens lay out")
+        .iter()
+        .map(|line| {
+            line.tokens
+                .iter()
+                .map(|p| tokens[p.index].to_string())
+                .collect()
+        })
+        .collect()
 }

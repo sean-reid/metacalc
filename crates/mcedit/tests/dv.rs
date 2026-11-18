@@ -213,3 +213,150 @@ fn a_dummy_without_an_active_hypothesis_gets_a_new_one() {
         "${\n  $d ps w $.\n  wps $f wff ps $.\n  tnew.1 $e |- ps $.\n  tnew.d1 $f setvar w $.\n  tnew $p |- ps $= wps tnew.d1 wps tnew.d1 tnew.1 ax-gen axfree $.\n$}\n"
     );
 }
+
+fn repeated(db: &mcpack::mm::Database) -> Violation {
+    violation(db, "axq", "y", "ps", ViolationKind::Undeclared)
+}
+
+#[test]
+fn a_step_that_repeats_a_violation_reports_it_and_the_verifier_agrees() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "tdup");
+    s.apply(0, id(&db, "axpair")).unwrap();
+    let first = s.apply(1, id(&db, "axq")).unwrap();
+    assert_eq!(first.violations, [repeated(&db)]);
+    let second = s.apply(2, id(&db, "axq")).unwrap();
+    assert_eq!(second.violations, [repeated(&db)]);
+    assert!(s.export().is_err());
+    assert_eq!(
+        mcpack::mm::Verifier::new(&db).verify(id(&db, "tdup")),
+        Err(mcpack::mm::ProofError::DisjointViolation)
+    );
+}
+
+#[test]
+fn the_same_steps_are_clean_when_the_theorem_declares_the_pair() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "tdup-ok");
+    s.apply(0, id(&db, "axpair")).unwrap();
+    assert_eq!(s.apply(1, id(&db, "axq")).unwrap().violations, []);
+    assert_eq!(s.apply(2, id(&db, "axq")).unwrap().violations, []);
+    let done = s.export().unwrap();
+    assert_eq!(verified(&db, &done), Ok(()));
+    assert_eq!(
+        mcpack::mm::Verifier::new(&db).verify(id(&db, "tdup-ok")),
+        Ok(())
+    );
+}
+
+#[test]
+fn auto_does_not_return_a_step_that_repeats_a_standing_violation() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "tdup");
+    s.apply(0, id(&db, "axpair")).unwrap();
+    s.apply(1, id(&db, "axq")).unwrap();
+    assert_eq!(s.auto(2, 1, 500), None);
+
+    let mut ok = session(&cat, "tdup-ok");
+    ok.apply(0, id(&db, "axpair")).unwrap();
+    ok.apply(1, id(&db, "axq")).unwrap();
+    let ops = ok.auto(2, 1, 500).unwrap();
+    ok.play(&ops).unwrap();
+    assert_eq!(verified(&db, &ok.export().unwrap()), Ok(()));
+}
+
+#[test]
+fn a_refined_syntax_axiom_records_its_disjoint_pair() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "tq");
+    let meta = s.apply(0, id(&db, "ax-mp")).unwrap().metas.start;
+    let out = s.refine(meta, id(&db, "wq")).unwrap();
+    assert_eq!(out.violations, []);
+    let out = s.close(1, id(&db, "tq.2")).unwrap();
+    assert_eq!(
+        out.violations,
+        [violation(&db, "wq", "y", "ch", ViolationKind::Undeclared)]
+    );
+    s.close(2, id(&db, "tq.1")).unwrap();
+    assert_eq!(s.status().violations, out.violations);
+    assert!(s.export().is_err());
+    assert_eq!(
+        mcpack::mm::Verifier::new(&db).verify(id(&db, "tq")),
+        Err(mcpack::mm::ProofError::DisjointViolation)
+    );
+}
+
+#[test]
+fn a_refined_syntax_axiom_is_clean_when_the_theorem_declares_the_pair() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "tq-ok");
+    let meta = s.apply(0, id(&db, "ax-mp")).unwrap().metas.start;
+    s.refine(meta, id(&db, "wq")).unwrap();
+    assert_eq!(s.close(1, id(&db, "tq-ok.2")).unwrap().violations, []);
+    s.close(2, id(&db, "tq-ok.1")).unwrap();
+    let done = s.export().unwrap();
+    assert_eq!(labels(&db, &done), "wch vy wq wps tq-ok.2 tq-ok.1 ax-mp");
+    assert_eq!(verified(&db, &done), Ok(()));
+    assert_eq!(
+        mcpack::mm::Verifier::new(&db).verify(id(&db, "tq-ok")),
+        Ok(())
+    );
+}
+
+fn scope_session<'a>(cat: &std::rc::Rc<mcedit::Catalog<'a>>, dummy: &str) -> mcedit::Session<'a> {
+    let db = cat.db;
+    let mut s = session(cat, "tscope");
+    s.apply(0, id(db, "axfree")).unwrap();
+    s.apply(1, id(db, "ax-gen")).unwrap();
+    s.close(2, id(db, "tscope.1")).unwrap();
+    let meta = s.status().metas[0];
+    s.assign(meta, sym(db, dummy)).unwrap();
+    s
+}
+
+#[test]
+fn a_pair_a_question_mark_theorem_declares_is_in_scope_for_a_new_proof() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = scope_session(&cat, "w");
+    s.allow_new_disjoint(false);
+    assert_eq!(s.status().violations, []);
+    let done = s.export().unwrap();
+    assert_eq!(done.added_dv, []);
+    assert_eq!(verified(&db, &done), Ok(()));
+}
+
+#[test]
+fn a_pair_a_question_mark_theorem_does_not_declare_is_refused_and_the_verifier_agrees() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = scope_session(&cat, "z");
+    s.allow_new_disjoint(false);
+    let wrong = violation(&db, "axfree", "ps", "z", ViolationKind::Undeclared);
+    assert_eq!(s.status().violations, [wrong]);
+    assert!(s.export().is_err());
+
+    s.allow_new_disjoint(true);
+    let mut done = s.export().unwrap();
+    assert_eq!(done.added_dv, [(sym(&db, "ps"), sym(&db, "z"))]);
+    assert_eq!(verified(&db, &done), Ok(()));
+    done.added_dv.clear();
+    assert_eq!(
+        verified(&db, &done),
+        Err(mcedit::oracle::Failure::Rejected(
+            mcpack::mm::ProofError::DisjointViolation
+        ))
+    );
+}

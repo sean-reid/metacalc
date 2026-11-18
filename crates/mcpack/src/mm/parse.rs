@@ -355,6 +355,7 @@ impl<'a> Parser<'a> {
         let id = self.stmts.len() as StmtId;
         let mut frame = Frame::default();
         let mut proof = None;
+        let mut scope_dv = Vec::new();
         match kind {
             Kind::Float => {
                 if expr.len() != 2 || !self.syms[expr[1] as usize].is_var {
@@ -373,6 +374,7 @@ impl<'a> Parser<'a> {
             Kind::Axiom => frame = self.frame(&expr),
             Kind::Theorem => {
                 frame = self.frame(&expr);
+                scope_dv = self.scope_dv();
                 proof = Some(self.proof(&frame)?);
             }
         }
@@ -385,6 +387,7 @@ impl<'a> Parser<'a> {
             expr,
             frame,
             proof,
+            scope_dv,
             scope_end: StmtId::MAX,
         });
         Ok(())
@@ -428,7 +431,7 @@ impl<'a> Parser<'a> {
         frame
     }
 
-    fn proof(&mut self, frame: &Frame) -> Res<Result<Proof, ProofError>> {
+    fn scope_dv(&self) -> Vec<(Sym, Sym)> {
         let mut scope_dv: Vec<(Sym, Sym)> = self
             .scopes
             .iter()
@@ -436,7 +439,10 @@ impl<'a> Parser<'a> {
             .collect();
         scope_dv.sort_unstable();
         scope_dv.dedup();
+        scope_dv
+    }
 
+    fn proof(&mut self, frame: &Frame) -> Res<Result<Proof, ProofError>> {
         let mut error = None;
         let mut first = self.expect_token()?;
         let body = if first == b"(" {
@@ -490,7 +496,7 @@ impl<'a> Parser<'a> {
         };
         Ok(match error {
             Some(e) => Err(e),
-            None => Ok(Proof { body, scope_dv }),
+            None => Ok(Proof { body }),
         })
     }
 

@@ -1,4 +1,4 @@
-use crate::dv::{DvCond, Violation};
+use crate::dv::DvCond;
 use crate::error::Error;
 use crate::session::{GoalId, GoalState, Op, Outcome, Session, Undo};
 use crate::term::{MetaId, TermId};
@@ -50,13 +50,13 @@ impl Session<'_> {
     pub fn apply(&mut self, goal: GoalId, assertion: StmtId) -> Result<Outcome, Error> {
         self.open_goal(goal)?;
         let parsed = self.usable(assertion)?;
-        let before = self.dv_report().violations;
+        let before = self.broken();
         let undo = self.checkpoint(Some(goal));
         if let Err(e) = self.apply_unchecked(goal, assertion, &parsed) {
             self.rollback_to(undo);
             return Err(e);
         }
-        Ok(self.commit(Op::Apply { goal, assertion }, undo, &before))
+        self.commit(Op::Apply { goal, assertion }, undo, &before)
     }
 
     /// One fresh metavariable per mandatory floating hypothesis, in frame order.
@@ -78,8 +78,6 @@ impl Session<'_> {
         assertion: StmtId,
         parsed: &Parsed,
     ) -> Result<(), Error> {
-        let db = self.db();
-        let stmt = db.stmt(assertion);
         let base = self.store.meta_count() as MetaId;
         let subst = self.rename(assertion);
         let conclusion = self.build(&parsed.conclusion, &subst);
@@ -93,18 +91,23 @@ impl Session<'_> {
                 state: GoalState::Open,
             });
         }
-        for &(x, y) in &stmt.frame.dv {
-            let term_of = |v: Sym| subst.iter().find(|p| p.0 == v).map(|p| p.1);
-            if let (Some(a), Some(b)) = (term_of(x), term_of(y)) {
-                self.dvs.push(DvCond { assertion, a, b });
-            }
-        }
+        self.push_conditions(assertion, &subst);
         self.goals[goal as usize].state = GoalState::Applied {
             assertion,
             metas: base,
             first,
         };
         Ok(())
+    }
+
+    /// Records the disjoint pairs of `assertion` against the terms substituted for its variables.
+    fn push_conditions(&mut self, assertion: StmtId, subst: &[(Sym, TermId)]) {
+        let term_of = |v: Sym| subst.iter().find(|p| p.0 == v).map(|p| p.1);
+        for &(x, y) in &self.db().stmt(assertion).frame.dv {
+            if let (Some(a), Some(b)) = (term_of(x), term_of(y)) {
+                self.dvs.push(DvCond { assertion, a, b });
+            }
+        }
     }
 
     /// Closes a goal with one of the theorem's essential hypotheses.
@@ -115,7 +118,7 @@ impl Session<'_> {
             .iter()
             .find(|h| h.0 == hyp)
             .ok_or(Error::NotAHypothesis)?;
-        let before = self.dv_report().violations;
+        let before = self.broken();
         let undo = self.checkpoint(Some(goal));
         let target = self.goals[goal as usize].term;
         if let Err(e) = self.store.unify(target, term) {
@@ -123,7 +126,7 @@ impl Session<'_> {
             return Err(Error::Unify(e));
         }
         self.goals[goal as usize].state = GoalState::Closed { hyp };
-        Ok(self.commit(Op::Close { goal, hyp }, undo, &before))
+        self.commit(Op::Close { goal, hyp }, undo, &before)
     }
 
     fn unbound(&self, meta: MetaId) -> Result<(), Error> {
@@ -143,14 +146,14 @@ impl Session<'_> {
         if !self.vars.of_typecode(typecode).any(|v| v == var) {
             return Err(Error::NotAVariable);
         }
-        let before = self.dv_report().violations;
+        let before = self.broken();
         let undo = self.checkpoint(None);
         let term = self.store.var(var);
         if let Err(e) = self.store.bind(meta, term) {
             self.rollback_to(undo);
             return Err(Error::Unify(e));
         }
-        Ok(self.commit(Op::Assign { meta, var }, undo, &before))
+        self.commit(Op::Assign { meta, var }, undo, &before)
     }
 
     /// Instantiates a metavariable with a syntax axiom applied to new metavariables.
@@ -165,21 +168,23 @@ impl Session<'_> {
         if syntax >= self.theorem {
             return Err(Error::Forward);
         }
-        let before = self.dv_report().violations;
+        let before = self.broken();
         let undo = self.checkpoint(None);
-        let kids: Vec<u32> = stmt
+        let subst: Vec<(Sym, TermId)> = stmt
             .frame
             .hyps
             .iter()
-            .map(|&h| self.store.new_meta(db.stmt(h).expr[0]))
+            .map(|&h| (db.stmt(h).expr[1], self.store.new_meta(db.stmt(h).expr[0])))
             .collect();
+        let kids: Vec<TermId> = subst.iter().map(|p| p.1).collect();
         let term = self.store.app(syntax, &kids);
         let target = self.store.meta_term(meta).ok_or(Error::NoSuchMeta)?;
         if let Err(e) = self.store.unify(target, term) {
             self.rollback_to(undo);
             return Err(Error::Unify(e));
         }
-        Ok(self.commit(Op::Refine { meta, syntax }, undo, &before))
+        self.push_conditions(syntax, &subst);
+        self.commit(Op::Refine { meta, syntax }, undo, &before)
     }
 
     fn checkpoint(&self, reopened: Option<GoalId>) -> Undo {
@@ -192,20 +197,19 @@ impl Session<'_> {
         }
     }
 
-    fn commit(&mut self, op: Op, undo: Undo, before: &[Violation]) -> Outcome {
+    fn commit(&mut self, op: Op, undo: Undo, before: &[bool]) -> Result<Outcome, Error> {
+        if !self.in_bounds() {
+            self.rollback_to(undo);
+            return Err(Error::TooLarge);
+        }
         let outcome = Outcome {
             goals: undo.goals..self.goals.len() as GoalId,
             metas: undo.metas..self.store.meta_count() as MetaId,
-            violations: self
-                .dv_report()
-                .violations
-                .into_iter()
-                .filter(|v| !before.contains(v))
-                .collect(),
+            violations: self.newly_broken(before),
         };
         self.ops.push(op);
         self.undo.push(undo);
         self.note_peak();
-        outcome
+        Ok(outcome)
     }
 }

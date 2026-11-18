@@ -10,6 +10,11 @@ use mcui::Key::{self, *};
 use mcui::{SavedProof, State, Ui, View};
 use support::{bare_bytes, check_frame, index_of, open, press, proving_bytes, ui_over};
 
+/// The checksum in a library's header.
+fn library_crc(bytes: &[u8]) -> u32 {
+    u32::from_le_bytes(bytes[4..8].try_into().unwrap())
+}
+
 fn check(ui: &Ui, name: &str) {
     check_frame(&ui.frame(), name);
 }
@@ -173,8 +178,9 @@ impl Prover {
         let text = library::export(&self.bytes).expect("the library exports");
         let db = mm::parse(text.clone().into_bytes()).expect("the export parses");
         let grammar = Grammar::new(&db, &[("|-", "wff")]).expect("the grammar builds");
-        let session = Session::restore(Catalog::new(&db, &grammar), &self.saved().session)
-            .expect("the saved form restores");
+        let catalog = Catalog::new(&db, &grammar, library_crc(&self.bytes));
+        let session =
+            Session::restore(catalog, &self.saved().session).expect("the saved form restores");
         let finished = session.export().expect("the session exports");
         assert_eq!(finished.theorem, db.find(&self.label).unwrap());
         assert_eq!(
@@ -215,6 +221,28 @@ fn an_axiom_and_a_syntax_theorem_cannot_be_proved() {
     ui.press(F4);
     assert_eq!(notice(&ui), "Prove");
     check(&ui, "proving-notice-syntax");
+}
+
+/// A theorem that negates `ph` 130 times, one level past the depth the editor accepts.
+fn deep_bytes() -> Vec<u8> {
+    let statement = format!("{}ph", "-. ".repeat(130));
+    let proof = format!("wph {}axn", "wn ".repeat(129));
+    let src = format!(
+        "$c -. wff |- $. $v ph $. wph $f wff ph $. wn $a wff -. ph $. axn $a |- -. ph $.
+         deep $p |- {statement} $= {proof} $."
+    );
+    let bytes = support::pack_all(&support::db(&src)).expect("the deep library packs");
+    library::check(&bytes).expect("the kernel accepts the deep library");
+    bytes
+}
+
+#[test]
+fn a_theorem_whose_statement_is_past_the_term_bound_says_so() {
+    let mut ui = ui_over(deep_bytes(), &[], &[]);
+    open(&mut ui, "deep");
+    ui.press(F4);
+    assert_eq!(notice(&ui), "Prove");
+    check(&ui, "proving-notice-too-large");
 }
 
 #[test]
@@ -407,6 +435,15 @@ fn a_goal_that_is_still_unknown_waits_and_cannot_be_applied_to() {
 }
 
 #[test]
+fn unknowns_of_a_goal_are_spaced_like_variables() {
+    let mut ui = prove(&proving_bytes(), "tdv2");
+    select(&mut ui, "axu");
+    ui.press(F1);
+    assert_eq!(at(&ui).open, 1);
+    check(&ui, "proving-unknowns-spaced");
+}
+
+#[test]
 fn the_tree_marks_open_and_closed_goals() {
     let mut p = Prover::new(proving_bytes(), "syl");
     p.aply("mpd");
@@ -585,7 +622,8 @@ fn a_variable_a_distinct_variable_rule_refuses_is_passed_over() {
     let text = library::export(&p.bytes).unwrap();
     let db = mm::parse(text.into_bytes()).unwrap();
     let grammar = Grammar::new(&db, &[("|-", "wff")]).unwrap();
-    let session = Session::restore(Catalog::new(&db, &grammar), &saved.session).unwrap();
+    let catalog = Catalog::new(&db, &grammar, library_crc(&p.bytes));
+    let session = Session::restore(catalog, &saved.session).unwrap();
     let bound = session.ops().iter().find_map(|op| match op {
         mcedit::Op::Assign { var, .. } => Some(db.syms[*var as usize].name.clone()),
         _ => None,
@@ -627,14 +665,13 @@ fn crafted(bytes: &[u8], label: &str, apply: &[&str], groups: Vec<usize>) -> Sav
     let text = library::export(bytes).unwrap();
     let db = mm::parse(text.into_bytes()).unwrap();
     let grammar = Grammar::new(&db, &[("|-", "wff")]).unwrap();
-    let mut session =
-        Session::start_in(Catalog::new(&db, &grammar), db.find(label).unwrap()).unwrap();
+    let catalog = Catalog::new(&db, &grammar, library_crc(bytes));
+    let mut session = Session::start_in(catalog, db.find(label).unwrap()).unwrap();
     for (goal, name) in apply.iter().enumerate() {
         session.apply(goal as u32, db.find(name).unwrap()).unwrap();
     }
     SavedProof {
         library: 0,
-        crc: u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
         theorem: index_of(bytes, label),
         session: session.save(),
         goal: Some(0),
@@ -714,6 +751,43 @@ fn a_saved_proof_from_another_version_of_the_library_is_refused() {
         same.restore_proof(damaged),
         Err(mcui::RestoreError::Unreadable(_))
     ));
+}
+
+#[test]
+fn a_saved_proof_that_is_cut_short_or_changed_is_refused_on_the_way_back_in() {
+    let mut p = Prover::new(proving_bytes(), "a1i");
+    p.aply("ax-mp");
+    let saved = p.saved();
+    let mut same = ui_over(proving_bytes(), &[], &[]);
+    let damaged = Err(mcui::RestoreError::Unreadable("the saved proof is damaged"));
+    for cut in 0..saved.session.len() {
+        let mut short = saved.clone();
+        short.session.truncate(cut);
+        assert_eq!(same.restore_proof(short), damaged, "cut at {cut}");
+    }
+    for at in 0..saved.session.len() {
+        let mut changed = saved.clone();
+        changed.session[at] ^= 0x01;
+        assert_eq!(same.restore_proof(changed), damaged, "byte {at} changed");
+    }
+    assert_eq!(same.restore_proof(saved), Ok(()));
+}
+
+#[test]
+fn a_version_one_save_is_refused_as_damaged() {
+    let mut p = Prover::new(proving_bytes(), "a1i");
+    p.aply("ax-mp");
+    let mut saved = p.saved();
+    let length = saved.session[5] as usize;
+    assert!(length < 0x80);
+    let mut old = vec![1];
+    old.extend(&saved.session[6..6 + length]);
+    saved.session = old;
+    let mut same = ui_over(proving_bytes(), &[], &[]);
+    assert_eq!(
+        same.restore_proof(saved),
+        Err(mcui::RestoreError::Unreadable("the saved proof is damaged"))
+    );
 }
 
 #[test]

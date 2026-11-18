@@ -3,7 +3,7 @@ use crate::dv::{DvCond, Violation};
 use crate::error::Error;
 use crate::term::{Mark, MetaId, Peak, Store, TermId};
 use crate::vars::Vars;
-use mcpack::mm::{Database, Grammar, Kind, Proof, ProofError, StmtId, Sym, Tree};
+use mcpack::mm::{Database, Kind, ProofError, StmtId, Sym, Tree};
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -44,7 +44,7 @@ pub enum Op {
 pub struct Outcome {
     pub goals: Range<GoalId>,
     pub metas: Range<MetaId>,
-    /// Conditions this operation completed and found broken.
+    /// The violations of the conditions this operation left broken that were not broken before it.
     pub violations: Vec<Violation>,
 }
 
@@ -93,18 +93,10 @@ pub struct Session<'a> {
 }
 
 impl<'a> Session<'a> {
-    pub fn start(
-        db: &'a Database,
-        grammar: &'a Grammar<'a>,
-        theorem: StmtId,
-    ) -> Result<Self, Error> {
-        Self::start_in(Catalog::new(db, grammar), theorem)
-    }
-
     /// Starts a session that shares the parsed assertions of `catalog` with others.
     ///
-    /// A theorem without a usable proof has no scope to read disjoint pairs from, so the session may
-    /// add the pairs a dummy variable needs; any other theorem keeps to the pairs it declares.
+    /// A theorem without a usable proof may get the pairs a dummy variable needs added; any other
+    /// theorem keeps to the pairs it declares.
     pub fn start_in(catalog: Rc<Catalog<'a>>, theorem: StmtId) -> Result<Self, Error> {
         let db = catalog.db;
         let stmt = db.stmts.get(theorem as usize).ok_or(Error::NotATheorem)?;
@@ -112,10 +104,10 @@ impl<'a> Session<'a> {
             return Err(Error::NotATheorem);
         }
         let parsed = catalog.parsed(theorem).map_err(Error::Syntax)?;
-        let (scope_dv, open_dv) = match &stmt.proof {
-            Some(Ok(Proof { scope_dv, .. })) => (scope_dv.clone(), false),
+        let open_dv = match &stmt.proof {
+            Some(Ok(_)) => false,
             Some(Err(ProofError::NotATheorem)) | None => return Err(Error::NotATheorem),
-            Some(Err(_)) => (stmt.frame.dv.clone(), true),
+            Some(Err(_)) => true,
         };
         let vars = Vars::new(db, theorem);
         let store = Store::new(db, vars.types());
@@ -129,7 +121,7 @@ impl<'a> Session<'a> {
             hyps: Vec::new(),
             goals: Vec::new(),
             dvs: Vec::new(),
-            scope_dv,
+            scope_dv: stmt.scope_dv.clone(),
             ops: Vec::new(),
             undo: Vec::new(),
             peak: Sizes::default(),
@@ -149,6 +141,9 @@ impl<'a> Session<'a> {
             term,
             state: GoalState::Open,
         });
+        if !session.in_bounds() || !session.hyps.iter().all(|h| session.store.in_bounds(h.1)) {
+            return Err(Error::TooLarge);
+        }
         session.note_peak();
         Ok(session)
     }
@@ -265,6 +260,11 @@ impl<'a> Session<'a> {
         }
         let kids: Vec<TermId> = tree.children.iter().map(|c| self.build(c, subst)).collect();
         self.store.app(tree.stmt, &kids)
+    }
+
+    /// Whether every goal is within the term bounds.
+    pub(crate) fn in_bounds(&self) -> bool {
+        self.goals.iter().all(|g| self.store.in_bounds(g.term))
     }
 
     pub(crate) fn note_peak(&mut self) {

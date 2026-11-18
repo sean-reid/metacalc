@@ -160,10 +160,10 @@ fn a_float_for_a_variable_the_assertion_does_not_use_is_refused() {
 }
 
 #[test]
-fn an_essential_hypothesis_that_uses_a_variable_before_its_float_is_refused() {
+fn an_essential_hypothesis_before_a_float_is_refused() {
     let original = packed(ESSENTIAL);
     let bytes = swapped_essential(original);
-    let why = "an essential hypothesis uses a variable before its float";
+    let why = "an essential hypothesis comes before a floating hypothesis";
     assert_eq!(refused(&bytes), assertion_error("ax-m", why));
 }
 
@@ -175,6 +175,54 @@ fn swapped_essential(original: Vec<u8>) -> Vec<u8> {
         b[hyps..hyps + 6].copy_from_slice(&essential);
         b[hyps + 6..hyps + 10].copy_from_slice(&floats);
     })
+}
+
+const TWO_WAYS: &str = "$c |- wff R $. $v x y $.
+    ${ vx $f wff x $. vy $f wff y $. ax-a $a |- R x y $. $}
+    ${ wy $f wff y $. wx $f wff x $. ax-b $a |- R x y $. $}";
+
+const THREE_WAYS: &str = "$c |- wff R $. $v x y z $.
+    ${ vx $f wff x $. vy $f wff y $. ax-a $a |- R x y $. $}
+    ${ wy $f wff y $. wz $f wff z $. ax-b $a |- R y z $. $}
+    ${ xz $f wff z $. xx $f wff x $. ax-c $a |- R z x $. $}";
+
+fn cycle(bytes: &[u8]) -> Vec<String> {
+    let ExportError::FloatOrder(mut labels) = refused(bytes) else {
+        panic!("not a float order refusal");
+    };
+    labels.sort();
+    labels
+}
+
+#[test]
+fn records_whose_float_orders_conflict_are_refused_naming_them() {
+    assert_eq!(cycle(&packed(TWO_WAYS)), ["ax-a", "ax-b"]);
+    let message = refused(&packed(TWO_WAYS)).to_string();
+    assert!(message.contains("ax-a, ax-b") || message.contains("ax-b, ax-a"));
+}
+
+#[test]
+fn a_cycle_through_three_records_names_all_three() {
+    assert_eq!(cycle(&packed(THREE_WAYS)), ["ax-a", "ax-b", "ax-c"]);
+}
+
+#[test]
+fn a_record_off_the_cycle_is_not_named() {
+    let src = THREE_WAYS.replace("$v x y z $.", "$v x y z w $.");
+    let src = format!("{src} ${{ dz $f wff z $. dw $f wff w $. ax-d $a |- R z w $. $}}");
+    assert_eq!(cycle(&packed(&src)), ["ax-a", "ax-b", "ax-c"]);
+}
+
+#[test]
+fn the_variable_order_settles_what_the_records_leave_open() {
+    let src = "$c |- wff R $. $v x y z $.
+        ${ vz $f wff z $. vx $f wff x $. ax-a $a |- R z x $. $}
+        ${ wy $f wff y $. ax-b $a |- R y $. $}";
+    let text = export(&packed(src)).unwrap();
+    assert!(
+        text.contains("$v x y z $.\nf.1 $f wff y $.\nf.2 $f wff z $.\nf.0 $f wff x $.\n"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -249,7 +297,7 @@ fn the_command_names_the_assertion_the_exporter_refuses() {
     assert_eq!(
         stderr,
         format!(
-            "{}: ax-m: an essential hypothesis uses a variable before its float\n",
+            "{}: ax-m: an essential hypothesis comes before a floating hypothesis\n",
             library.display()
         )
     );

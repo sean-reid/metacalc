@@ -4,6 +4,8 @@ use crate::key::Key;
 
 /// The labels of the five keys.
 pub(crate) const KEYS: [&str; 5] = ["Stop", "", "", "", ""];
+/// The labels once nothing is left to check.
+pub(crate) const DONE: [&str; 5] = ["Done", "", "", "", ""];
 
 /// A library being checked. Progress lives in the library's status table, so closing the screen
 /// loses nothing and opening it again carries on.
@@ -48,7 +50,7 @@ impl Checking {
         if next.is_some() {
             canvas.text_centered(6, "ON pauses");
         }
-        canvas.soft_keys(KEYS);
+        canvas.soft_keys(if next.is_some() { KEYS } else { DONE });
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {

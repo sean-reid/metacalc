@@ -7,5 +7,8 @@ mod replay;
 mod splice;
 
 pub use prooftree::{ProofNode, proof_tree};
-pub use replay::{Failure, Replayed, Report, replay, replay_database, verify_spliced};
+pub use replay::{
+    Failure, Replayed, Report, replay, replay_as_new, replay_database, replay_proof,
+    spliced_database, verify_spliced,
+};
 pub use splice::{SpliceError, close_scopes, splice, splice_at};
