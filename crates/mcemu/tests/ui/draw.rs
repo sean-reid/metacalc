@@ -138,6 +138,32 @@ fn text_returns_the_x_after_it() {
 }
 
 #[test]
+fn a_long_mixed_string_at_every_x_on_every_row() {
+    let text = "Wgj, (pqy) MW 0123 [i|l] {a~b} \u{2713}\u{2717}\u{2026} Quick brown fox; jumps!";
+    let codes = table().encode(text);
+    for row in 0..=8usize {
+        for x in 0..=100usize {
+            let mut canvas = Canvas::default();
+            let want = x + canvas.text(x, row, text);
+            let got = run(
+                REAL,
+                &[Op::Text {
+                    x,
+                    row,
+                    codes: codes.clone(),
+                }],
+            );
+            same_frame(
+                &format!("row {row} at {x}"),
+                &got.frame,
+                &pack(&canvas.into_bitmap()),
+            );
+            assert_eq!(usize::from(got.results[0]), want, "row {row} at {x}");
+        }
+    }
+}
+
+#[test]
 fn drawing_text_does_not_touch_other_rows_or_the_ram_around_the_frame() {
     let mut script = vec![Op::Text {
         x: 0,
