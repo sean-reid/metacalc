@@ -77,6 +77,7 @@ kd_limits:
 	jr z, kd_inited
 	cp KD_INTERRUPT
 	jr nz, kd_done
+kd_init_stopped:
 	xor a
 	ld (K_INIT), a
 	call on_release_and_clear
@@ -85,6 +86,8 @@ kd_limits:
 	jr kd_done
 kd_inited:
 	call kd_header
+	call kd_on_seen
+	jr nz, kd_init_stopped
 	call kd_crc
 	ld a, (K_CRC_STATE)
 	cp CRC_OK
@@ -95,7 +98,7 @@ kd_done:
 	jp kd_report
 
 ; Reads the assertion count and the number of 16 KB chunks from the header of the library, which
-; maps over bank B and its scratch for the length of the read.
+; maps over bank B and its scratch for the length of the read. Returns with interrupts on.
 kd_header:
 	di
 	ld a, (libPage)

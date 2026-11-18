@@ -134,22 +134,13 @@ fn the_cpu_runs_at_15_mhz_and_returns_to_the_speed_it_had() {
 }
 
 #[test]
-fn on_held_before_the_run_stops_it_in_the_checksum() {
+fn on_held_before_the_run_stops_it_before_the_checksum_starts() {
     let bytes = single_symbol_axioms(300);
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     rig.m.press_key(Machine::KEY_ON);
     assert_eq!(rig.finish(ENTRY, 3), 3);
     let (_, result) = screens(&rig.trace());
-    assert_eq!(
-        result,
-        [
-            "kernchk v1",
-            "crc stopped",
-            "checked 00000",
-            "accepted 00000",
-            "stopped 00000"
-        ]
-    );
+    assert_eq!(result, INIT_STOPPED);
 }
 
 #[test]
@@ -327,16 +318,7 @@ fn after_an_on_stop_the_report_waits_for_the_key_to_come_up() {
     rig.m.release_key(Machine::KEY_ON);
     assert_eq!(rig.finish(pc, 0), 0);
     let (_, result) = screens(&rig.trace());
-    assert_eq!(
-        result,
-        [
-            "kernchk v1",
-            "crc stopped",
-            "checked 00000",
-            "accepted 00000",
-            "stopped 00000"
-        ]
-    );
+    assert_eq!(result, INIT_STOPPED);
 }
 
 #[test]
@@ -544,4 +526,59 @@ fn on_down_before_the_run_stops_the_real_init_and_the_next_run_checks_the_librar
     assert_eq!(result, report(&bytes));
     assert_eq!(rig.word("K_DONE"), model(&bytes).count as u16);
     assert_eq!(rig.byte(label("K_STOPPED")), 0);
+}
+
+/// ON goes down and up between the leading clear and the kernel's own poll in kernel_init, which
+/// reads only the key's level, so the kernel misses the tap and the latch on port 4 stays up. The
+/// interrupt is taken where the driver turns interrupts on after init.
+#[test]
+fn an_on_tap_the_init_missed_stops_the_run_before_any_text_is_printed() {
+    let bytes = axioms(300);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    let mut pc = ENTRY;
+    while pc != label("KERNEL_INIT") {
+        assert_eq!(rig.m.run(pc, 1).stop, Stop::Limit);
+        pc = rig.m.pc();
+    }
+    rig.m.press_key(Machine::KEY_ON);
+    rig.m.release_key(Machine::KEY_ON);
+    rig.finish(pc, 0);
+    let (_, result) = screens(&rig.trace());
+    assert_eq!(result, INIT_STOPPED);
+    assert_eq!(rig.byte(label("K_INIT")), 0);
+    assert_eq!(rig.byte(label("K_STOPPED")), 3);
+    assert_eq!(
+        rig.byte(OUT_FLAGGED),
+        0,
+        "a text call ran with the flag set"
+    );
+    assert_eq!(
+        rig.m.ram_page(1)[FLAGS] & 0x10,
+        0,
+        "the break flag is clear"
+    );
+}
+
+/// The driver prints after a kernel call and before its next poll, which is safe only while
+/// interrupts stay off from the call to the print. Taps at offsets through both phases leave the
+/// latch for the poll, and no text call sees the flag.
+#[test]
+fn taps_through_the_checksum_and_verification_never_reach_a_text_call() {
+    let bytes = axioms(2000);
+    for (marker, step, stopped) in [("\rcrc 00002/", 100_000, 1), ("\rchk 00064/", 5_000, 2)] {
+        for offset in (0..40_000).step_by(331) {
+            let mut rig = Rig::new(&bytes, Speed::Mhz15);
+            let mut pc = rig.run_until_trace_has(marker, step);
+            if offset > 0 {
+                assert_eq!(rig.m.run(pc, offset).stop, Stop::Limit);
+                pc = rig.m.pc();
+            }
+            rig.m.press_key(Machine::KEY_ON);
+            rig.m.release_key(Machine::KEY_ON);
+            rig.finish(pc, 0);
+            let msg = format!("{marker:?} +{offset}");
+            assert_eq!(rig.byte(label("K_STOPPED")), stopped, "{msg}");
+            assert_eq!(rig.byte(OUT_FLAGGED), 0, "{msg}: flagged text call");
+        }
+    }
 }
