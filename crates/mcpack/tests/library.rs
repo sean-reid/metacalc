@@ -550,6 +550,101 @@ fn the_work_count_starts_again_with_each_call() {
     assert_eq!(kernel.work(), 0);
 }
 
+/// A theorem `t` that applies an axiom with the pair x y disjoint once for each `(x, y)` term
+/// pair and joins the results; w0.. `listed` of them declared pairwise disjoint, `nv` available.
+fn joined_source(applies: &[(Vec<Tok>, Vec<Tok>)], nv: usize, listed: usize) -> String {
+    let ws: Vec<String> = (0..nv).map(|i| format!("w{i}")).collect();
+    let mut src = format!(
+        "$c wff |- R k $. $v p q x y {} $.\n\
+         fp $f wff p $. fq $f wff q $. fx $f wff x $. fy $f wff y $.\n\
+         wk $a wff k $. wc $a wff p q $. ax-gen $a |- R x y $.\n\
+         ${{ $d x y $. ax-e.1 $e |- R x y $. ax-e $a |- R k $. $}}\n\
+         ${{ j.1 $e |- R k $. j.2 $e |- R k $. ax-j $a |- R k $. $}}\n",
+        ws.join(" ")
+    );
+    for var in &ws {
+        src += &format!("f{var} $f wff {var} $.\n");
+    }
+    let term = |tokens: &[Tok]| {
+        let mut proof = Vec::new();
+        for (i, tok) in tokens.iter().enumerate() {
+            proof.push(match tok {
+                Tok::Var(v) => format!("fw{v}"),
+                Tok::Const => "wk".to_string(),
+            });
+            if i > 0 {
+                proof.push("wc".into());
+            }
+        }
+        proof.join(" ")
+    };
+    let mut proof: Vec<String> = Vec::new();
+    for (i, (x, y)) in applies.iter().enumerate() {
+        let (x, y) = (term(x), term(y));
+        proof.push(format!("{x} {y} {x} {y} ax-gen ax-e"));
+        if i > 0 {
+            proof.push("ax-j".into());
+        }
+    }
+    let dv = if listed > 1 {
+        format!("$d {} $.", ws[..listed].join(" "))
+    } else {
+        String::new()
+    };
+    src += &format!("${{ {dv} t $p |- R k $= {} $. $}}\n", proof.join(" "));
+    src
+}
+
+type Applies = Vec<(Vec<Tok>, Vec<Tok>)>;
+
+fn pair(terms: Vec<Vec<Tok>>) -> (Vec<Tok>, Vec<Tok>) {
+    let mut terms = terms.into_iter();
+    (terms.next().unwrap(), terms.next().unwrap())
+}
+
+/// Three proofs of `|- R k` that apply the disjoint axiom twice, the first by `big` units.
+fn joined_cases() -> Vec<(&'static str, Applies, usize, usize, KernelError)> {
+    let var = |i| (vec![Tok::Var(0)], vec![Tok::Var(i)]);
+    vec![
+        (
+            "each apply alone is under the limit",
+            vec![pair(two_terms(27, 8, 0, 0)), pair(two_terms(27, 8, 0, 0))],
+            35,
+            35,
+            KernelError::WorkLimit,
+        ),
+        (
+            "a violation just inside the limit",
+            vec![pair(two_terms(27, 8, 0, 0)), var(35)],
+            36,
+            35,
+            KernelError::DisjointViolation,
+        ),
+        (
+            "a violation whose comparison charge crosses the limit",
+            vec![pair(two_terms(27, 8, 0, 60)), var(35)],
+            36,
+            35,
+            KernelError::WorkLimit,
+        ),
+    ]
+}
+
+#[test]
+fn the_work_of_all_the_applies_of_a_call_is_added_up() {
+    let alone = db(&joined_source(&[pair(two_terms(27, 8, 0, 0))], 35, 35));
+    let bytes = pack(&alone, &everything(&alone)).unwrap();
+    let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).unwrap();
+    assert_eq!(kernel.verify(number(&alone, "t")), Ok(()));
+    assert!(kernel.work() < library::WORK_LIMIT && 2 * kernel.work() > library::WORK_LIMIT);
+    for (name, applies, nv, listed, expected) in joined_cases() {
+        let db = db(&joined_source(&applies, nv, listed));
+        let bytes = pack(&db, &everything(&db)).unwrap();
+        let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).unwrap();
+        assert_eq!(kernel.verify(number(&db, "t")), Err(expected), "{name}");
+    }
+}
+
 #[test]
 fn a_record_that_crosses_a_page_is_refused() {
     let mut src = String::from("$c T wff |- $.\n");

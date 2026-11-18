@@ -58,11 +58,15 @@
 ; one call spends at most 37.7 million T-states in the check, 6.3 s at 6 MHz.
 ;
 ; Interruption. kernel_verify reads the ON key (port 4, bit 3, clear while pressed) once per proof
-; step and whenever the second byte of the work count changes, at most 256 units apart. With ON
-; down it returns ST_INTERRUPTED, restoring the stack, port 7 and the interrupt state as for any
-; other exit and leaving the ready mark valid. The assertion has no verdict; call it again. The
-; model never produces this status. ON seen mid-proof or mid-check is answered within 25,000
-; T-states or 74,000 at most.
+; step and whenever the second byte of the work count changes. The read comes before the scan of
+; the pair list that a comparison charges for, and the scan itself is not interrupted. The longest
+; stretch without a read is one scan, 96 T-states per pair listed, plus up to 255 one-unit charges
+; of 288 T-states before the second byte next changes. A record holds at most 7,750 pairs in this
+; shape (about 8,000 fit a 16 KB page), so ON waits at most 0.83 million T-states, 0.14 s at
+; 6 MHz; with 600 pairs, 130,000 T-states, 22 ms. With ON down kernel_verify returns
+; ST_INTERRUPTED, restoring the stack, port 7 and the interrupt state as for any other exit and
+; leaving the ready mark valid. The assertion has no verdict; call it again. The model never
+; produces this status.
 ;
 ; Status (ST_* in ram.inc)
 ;           0 ok               1 Malformed        2 BadRecord

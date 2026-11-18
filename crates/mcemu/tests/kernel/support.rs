@@ -427,6 +427,61 @@ pub fn disjoint_source(terms: &[Vec<Tok>], nv: usize, checked: bool) -> String {
     src
 }
 
+/// A theorem `t` that applies an axiom with the pair x y disjoint once for each `(x, y)` term
+/// pair and joins the results; w0.. `listed` of them declared pairwise disjoint, `nv` available.
+pub fn joined_source(applies: &[(Vec<Tok>, Vec<Tok>)], nv: usize, listed: usize) -> String {
+    let ws: Vec<String> = (0..nv).map(|i| format!("w{i}")).collect();
+    let mut src = format!(
+        "$c wff |- R k $. $v p q x y {} $.\n\
+         fp $f wff p $. fq $f wff q $. fx $f wff x $. fy $f wff y $.\n\
+         wk $a wff k $. wc $a wff p q $. ax-gen $a |- R x y $.\n\
+         ${{ $d x y $. ax-e.1 $e |- R x y $. ax-e $a |- R k $. $}}\n\
+         ${{ j.1 $e |- R k $. j.2 $e |- R k $. ax-j $a |- R k $. $}}\n",
+        ws.join(" ")
+    );
+    for var in &ws {
+        src += &format!("f{var} $f wff {var} $.\n");
+    }
+    let term = |tokens: &[Tok]| {
+        let mut proof = Vec::new();
+        for (i, tok) in tokens.iter().enumerate() {
+            proof.push(match tok {
+                Tok::Var(v) => format!("fw{v}"),
+                Tok::Const => "wk".to_string(),
+            });
+            if i > 0 {
+                proof.push("wc".into());
+            }
+        }
+        proof.join(" ")
+    };
+    let mut proof: Vec<String> = Vec::new();
+    for (i, (x, y)) in applies.iter().enumerate() {
+        let (x, y) = (term(x), term(y));
+        proof.push(format!("{x} {y} {x} {y} ax-gen ax-e"));
+        if i > 0 {
+            proof.push("ax-j".into());
+        }
+    }
+    let dv = if listed > 1 {
+        format!("$d {} $.", ws[..listed].join(" "))
+    } else {
+        String::new()
+    };
+    src += &format!("${{ {dv} t $p |- R k $= {} $. $}}\n", proof.join(" "));
+    src
+}
+
+pub fn joined_library(
+    applies: &[(Vec<Tok>, Vec<Tok>)],
+    nv: usize,
+    listed: usize,
+) -> (Database, Vec<u8>) {
+    let db = parse(&joined_source(applies, nv, listed));
+    let bytes = pack_all(&db);
+    (db, bytes)
+}
+
 /// `x` variables then `xk` constants, and `y` other variables then `yk` constants.
 pub fn two_terms(x: usize, y: usize, xk: usize, yk: usize) -> Vec<Vec<Tok>> {
     let mut left: Vec<Tok> = (0..x).map(Tok::Var).collect();
