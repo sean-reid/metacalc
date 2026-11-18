@@ -68,11 +68,11 @@ fn a_chain_of_refines_stops_at_the_depth_bound() {
     let mut refines = 0;
     let wn = id(&db, "wn");
     let refused = loop {
-        let saved = s.save();
+        let (sizes, saved) = (s.sizes(), s.save());
         match s.refine(meta, wn) {
             Ok(out) => meta = out.metas.start,
             Err(e) => {
-                assert_eq!(s.save(), saved);
+                assert_eq!((s.sizes(), s.save()), (sizes, saved));
                 break e;
             }
         }
@@ -116,4 +116,75 @@ fn a_statement_at_the_node_bound_starts_and_one_node_more_does_not() {
     assert_eq!(MAX_TERM_NODES, 4096);
     assert_eq!(starts(&format!("-. {}", tree(11))), Ok(()));
     assert_eq!(starts(&format!("-. -. {}", tree(11))), Err(Error::TooLarge));
+}
+
+fn sized(n: usize) -> String {
+    match n {
+        1 => "ph".into(),
+        2 => "-. ph".into(),
+        _ => {
+            let left = (n - 1) / 2;
+            format!("( {} -> {} )", sized(left), sized(n - 1 - left))
+        }
+    }
+}
+
+/// A theorem whose conclusion has `size` nodes, with hypotheses of 5 nodes and of 1 node.
+fn edge(size: usize) -> mm::Database {
+    let src = format!(
+        "$c ( ) -> -. wff |- setvar Q $.\n$v ph ps x $.\nwph $f wff ph $.\nwps $f wff ps $.\n\
+         vx $f setvar x $.\nwi $a wff ( ph -> ps ) $.\nwn $a wff -. ph $.\n\
+         ${{ $d x ph $. wq $a wff Q x ph $. $}}\n\
+         ${{ min $e |- ph $. maj $e |- ( ph -> ps ) $. ax-mp $a |- ps $. $}}\n\
+         ${{ t.1 $e |- {} $. t.2 $e |- ph $. t $p |- {} $= ? $. $}}\n",
+        sized(5),
+        sized(size)
+    );
+    mm::parse(src.into_bytes()).unwrap()
+}
+
+#[test]
+fn refused_steps_at_the_node_bound_leave_the_session_exactly_as_it_was() {
+    let db = edge(MAX_TERM_NODES - 3);
+    let g = Grammar::new(&db, &[("|-", "wff")]).unwrap();
+    let mut s = Session::start_in(catalog(&db, &g), db.find("t").unwrap()).unwrap();
+    let meta = s.apply(0, db.find("ax-mp").unwrap()).unwrap().metas.start;
+    assert_eq!(largest(&s), MAX_TERM_NODES - 1);
+    s.refine(meta, db.find("wn").unwrap()).unwrap();
+    assert_eq!(largest(&s), MAX_TERM_NODES);
+    s.undo().unwrap();
+
+    let snapshot = |s: &Session| (s.sizes(), s.status(), s.save());
+    let before = snapshot(&s);
+    assert_eq!(s.refine(meta, db.find("wq").unwrap()), Err(Error::TooLarge));
+    assert_eq!(snapshot(&s), before);
+    assert_eq!(s.close(1, db.find("t.1").unwrap()), Err(Error::TooLarge));
+    assert_eq!(snapshot(&s), before);
+
+    assert!(s.close(1, db.find("t.2").unwrap()).is_ok());
+    assert_eq!(largest(&s), MAX_TERM_NODES - 1);
+}
+
+#[test]
+fn a_wide_refine_reaches_the_node_bound_and_stops_there() {
+    let db = edge(1);
+    let g = Grammar::new(&db, &[("|-", "wff")]).unwrap();
+    let mut s = Session::start_in(catalog(&db, &g), db.find("t").unwrap()).unwrap();
+    let meta = s.apply(0, db.find("ax-mp").unwrap()).unwrap().metas.start;
+    let wi = db.find("wi").unwrap();
+    let mut queue = std::collections::VecDeque::from([meta]);
+    let refused = loop {
+        let at = queue.pop_front().unwrap();
+        let (sizes, saved) = (s.sizes(), s.save());
+        match s.refine(at, wi) {
+            Ok(out) => queue.extend(out.metas),
+            Err(e) => {
+                assert_eq!((s.sizes(), s.save()), (sizes, saved));
+                break e;
+            }
+        }
+        assert!(largest(&s) <= MAX_TERM_NODES);
+    };
+    assert_eq!(refused, Error::TooLarge);
+    assert_eq!(largest(&s), MAX_TERM_NODES - 1);
 }
