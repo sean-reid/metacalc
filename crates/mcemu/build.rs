@@ -240,6 +240,7 @@ fn main() {
     }
     assemble_kernel(&out);
     assemble_ui(&out);
+    assemble_reader(&out);
     spasm(
         &Path::new("tests/routines").join("launch_state.z80"),
         &out.join("launch_state.8xk"),
@@ -462,5 +463,83 @@ fn assemble_ui(out: &Path) {
         other => fail(&format!(
             "soft key boxes too wide for the flip gave {other:?}, not a box error"
         )),
+    }
+}
+
+/// The library reader with the test driver: as shipped, with the kernel beside it, with its
+/// state and bounce buffer moved, and with a bounce buffer that runs past the end of the kernel's
+/// region. Out-of-place addresses must not assemble, each with its own error.
+fn assemble_reader(out: &Path) {
+    let dir = Path::new("../../lib");
+    for entry in fs::read_dir(dir).unwrap().flatten() {
+        println!("cargo:rerun-if-changed={}", entry.path().display());
+    }
+    println!("cargo:rerun-if-changed=tests/routines/reader_test.z80");
+    println!("cargo:rerun-if-changed=tests/routines/ramplan.z80");
+    let src = Path::new("tests/routines/reader_test.z80");
+    let args = ["-I", "../../kernel", "-I", "../..", "-L"];
+    for (name, defines) in [
+        ("reader_test", &[][..]),
+        ("reader_kernel_test", &["WITH_KERNEL"][..]),
+        (
+            "reader_moved",
+            &["LIB_STATE=$B000", "LIB_BOUNCE=$D100", "LIB_SPARE_PAGE=5"][..],
+        ),
+        (
+            "reader_straddle",
+            &["LIB_BOUNCE=$FE80", "LIB_BOUNCE_ANYWHERE"][..],
+        ),
+    ] {
+        spasm(src, &out.join(format!("{name}.bin")), defines, &args);
+    }
+    spasm(
+        Path::new("tests/routines/ramplan.z80"),
+        &out.join("ramplan.bin"),
+        &[],
+        &["-I", "../../app/src", "-I", "../..", "-L"],
+    );
+    let regions = "LIB_BOUNCE must lie inside the kernel regions";
+    for (defines, refusal) in [
+        (&["LIB_BOUNCE=$C500"][..], None),
+        (&["LIB_BOUNCE=$D600"][..], None),
+        (&["LIB_BOUNCE=$DF00"][..], None),
+        (&["LIB_BOUNCE=$FE80", "LIB_BOUNCE_ANYWHERE"][..], None),
+        (
+            &["LIB_BOUNCE=$BF00"][..],
+            Some("LIB_BOUNCE must be in bank C"),
+        ),
+        (
+            &["LIB_BOUNCE=$FF80"][..],
+            Some("LIB_BOUNCE must leave 256 bytes below $10000"),
+        ),
+        (&["LIB_BOUNCE=$C400"][..], Some(regions)),
+        (&["LIB_BOUNCE=$D601"][..], Some(regions)),
+        (&["LIB_BOUNCE=$D700"][..], Some(regions)),
+        (&["LIB_BOUNCE=$DE80"][..], Some(regions)),
+        (&["LIB_BOUNCE=$FE80"][..], Some(regions)),
+        (
+            &["LIB_STATE=$7F00"][..],
+            Some("LIB_STATE must be in bank B"),
+        ),
+        (
+            &["LIB_STATE=$BE00"][..],
+            Some("LIB_STATE and its index must end below $C000"),
+        ),
+        (
+            &["LIB_SPARE_PAGE=8"][..],
+            Some("LIB_SPARE_PAGE must be a RAM page"),
+        ),
+    ] {
+        match (
+            spasm_try(src, &out.join("reader_probe.bin"), defines, &args),
+            refusal,
+        ) {
+            (Ok(()), None) => {}
+            (Err(why), Some(want)) if why.contains(want) => {}
+            (got, _) => fail(&format!(
+                "assembling the reader with {defines:?} gave {got:?}, wanted {}",
+                refusal.map_or("success", |want| want)
+            )),
+        }
     }
 }

@@ -93,7 +93,12 @@ impl Machine {
 
     /// Runs the launched app on from where it is, interrupts as it left them, until it exits,
     /// halts with interrupts off, makes an unsupported OS call, or `limit` T-states pass.
+    /// A `limit` of 0 returns `Stop::Limit` with 0 T-states and runs nothing. After
+    /// `Stop::Fault` the core has reset the machine: see `Stop::Fault`.
     pub fn run_app(&mut self, limit: u32) -> Run {
+        if limit == 0 {
+            return Run::NO_TIME;
+        }
         let limit = i32::try_from(limit).expect("limit fits in i32");
         let (reason, tstates) = self.calc.resume(limit);
         self.stopped(reason, tstates)

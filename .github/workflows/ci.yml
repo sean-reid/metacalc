@@ -111,6 +111,7 @@ jobs:
           key: tilem-${{ hashFiles('scripts/fetch-tilem.sh') }}
       - run: sh scripts/fetch-tilem.sh
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test kernel -- --ignored --exact libraries::the_shipped_libraries_verify_on_the_device_as_the_model_does --nocapture
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test reader -- --ignored --exact libraries::the_shipped_libraries_read_back_as_the_decoder_decodes_them --nocapture
       - run: sh scripts/worked-examples.sh check "${{ steps.setmm.outputs.path }}"
       - run: SETMM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test unicode_pin -- --ignored --exact the_spellings_match_the_althtmldef_entries_of_the_pinned_set_mm
       - run: SETMM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test notation_meanings -- --ignored --exact every_symbol_in_a_shipped_notation_table_has_a_meaning
