@@ -1,5 +1,6 @@
-use mcedit::Catalog;
+use mcedit::oracle::Report;
 use mcedit::oracle::{Failure, replay, replay_as_new, replay_database, splice, verify_spliced};
+use mcedit::{Catalog, Label};
 use mcpack::library;
 use mcpack::mm::{self, Grammar, Verifier};
 use std::cell::RefCell;
@@ -50,6 +51,111 @@ fn a_damaged_export_is_rejected_by_the_verifier() {
     ));
 }
 
+struct Export {
+    label: String,
+    statement: String,
+    proof: Vec<String>,
+}
+
+/// Replays the theorems of `src` that `keep` selects, with the editor's exports of those that rebuild.
+fn rebuild_exports(src: &str, keep: impl Fn(usize) -> bool) -> (Report, Vec<Export>) {
+    let db = mm::parse(src.as_bytes().to_vec()).unwrap();
+    let exports = RefCell::new(Vec::new());
+    let report = replay_database(
+        src,
+        |_| true,
+        |n, done| {
+            if keep(n) {
+                let finished = &done.finished;
+                let name = |l: &Label| match *l {
+                    Label::Stmt(id) => db.stmt(id).label.clone(),
+                    Label::Dummy(i) => finished.dummies[i].label.clone(),
+                };
+                exports.borrow_mut().push(Export {
+                    label: db.stmt(finished.theorem).label.clone(),
+                    statement: finished.statement(&db),
+                    proof: finished.proof.iter().map(name).collect(),
+                });
+            }
+            true
+        },
+        true,
+    )
+    .unwrap();
+    (report, exports.into_inner())
+}
+
+/// `src` with every export spliced in place of its theorem's proof, and how many were spliced.
+fn splice_all(src: &str, exports: &[Export]) -> (String, usize) {
+    let mut all = src.to_string();
+    for e in exports {
+        all = splice(&all, &e.label, &e.statement)
+            .unwrap_or_else(|err| panic!("{}: {err:?}", e.label));
+    }
+    (all, exports.len())
+}
+
+/// The number of exports whose statement is in `text` and whose label has exactly the exported proof there.
+fn rebuilt_in(text: &str, exports: &[Export]) -> usize {
+    let db = mm::parse(text.as_bytes().to_vec()).unwrap();
+    exports
+        .iter()
+        .filter(|e| {
+            text.contains(&e.statement) && proof_labels(&db, &e.label).is_some_and(|p| p == e.proof)
+        })
+        .count()
+}
+
+/// The labels of the uncompressed proof of `label`, if it has one.
+fn proof_labels(db: &mm::Database, label: &str) -> Option<Vec<String>> {
+    match &db.stmt(db.find(label)?).proof {
+        Some(Ok(mm::Proof {
+            body: mm::ProofBody::Normal(ids),
+        })) => Some(ids.iter().map(|&id| db.stmt(id).label.clone()).collect()),
+        _ => None,
+    }
+}
+
+/// The directory the combined databases go to, named by MCEDIT_SPLICED when it is set.
+fn spliced_dir() -> Option<String> {
+    match std::env::var("MCEDIT_SPLICED") {
+        Ok(dir) if dir.is_empty() => panic!("MCEDIT_SPLICED is set but empty"),
+        Ok(dir) => Some(dir),
+        Err(_) => None,
+    }
+}
+
+#[test]
+fn spliced_corpus_holds_the_rebuilt_proofs_and_keeps_the_rest() {
+    let src = corpus("big-unifier.mm");
+    let (_, exports) = rebuild_exports(&src, |n| n == 1);
+    assert_eq!(exports.len(), 1);
+    let (all, spliced) = splice_all(&src, &exports);
+    assert_eq!(spliced, 1);
+    assert_eq!(rebuilt_in(&all, &exports), 1);
+    assert!(!src.contains(&exports[0].statement));
+    let (_, both) = rebuild_exports(&src, |_| true);
+    let left_out = &both[0];
+    assert_ne!(left_out.label, exports[0].label);
+    assert!(
+        all.contains(
+            src[src.find(&left_out.label).unwrap()..]
+                .split(" $.")
+                .next()
+                .unwrap()
+        )
+    );
+    let (original, spliced_db) = (
+        mm::parse(src.into_bytes()).unwrap(),
+        mm::parse(all.into_bytes()).unwrap(),
+    );
+    assert_eq!(
+        proof_labels(&spliced_db, &left_out.label),
+        proof_labels(&original, &left_out.label)
+    );
+    assert_eq!(both.len() - spliced, 1);
+}
+
 fn libraries(names: &[&str]) {
     let dir =
         std::env::var("MCEDIT_LIBRARIES").expect("MCEDIT_LIBRARIES names the exported libraries");
@@ -64,27 +170,18 @@ fn libraries(names: &[&str]) {
             .unwrap_or_else(|e| {
                 panic!("{counts} is written by scripts/build-libraries.sh and holds no count: {e}")
             });
-        let db = mm::parse(src.clone().into_bytes()).unwrap();
-        let exports = RefCell::new(Vec::new());
-        let r = replay_database(
-            &src,
-            |_| true,
-            |_, done| {
-                let label = db.stmt(done.finished.theorem).label.clone();
-                exports
-                    .borrow_mut()
-                    .push((label, done.finished.statement(&db)));
-                true
-            },
-            true,
-        )
-        .unwrap();
-        if let Ok(out) = std::env::var("MCEDIT_SPLICED") {
-            let mut all = src.clone();
-            for (label, statement) in exports.into_inner() {
-                all = splice(&all, &label, &statement)
-                    .unwrap_or_else(|e| panic!("{name} {label}: {e:?}"));
-            }
+        let (r, exports) = rebuild_exports(&src, |_| true);
+        let spliced_at = Instant::now();
+        let (all, spliced) = splice_all(&src, &exports);
+        println!(
+            "{name}: spliced {spliced} exports in {:?}",
+            spliced_at.elapsed()
+        );
+        let checked_at = Instant::now();
+        assert_eq!(rebuilt_in(&all, &exports), spliced, "{name}");
+        println!("{name}: checked the splice in {:?}", checked_at.elapsed());
+        assert_eq!(spliced, want, "{name}");
+        if let Some(out) = spliced_dir() {
             std::fs::write(format!("{out}/{name}.mm"), all).unwrap();
         }
         let median = |mut v: Vec<usize>| {
