@@ -54,11 +54,14 @@ fn libraries(names: &[&str]) {
     for &name in names {
         let src = std::fs::read_to_string(format!("{dir}/{name}.mm")).unwrap();
         let started = Instant::now();
-        let want: usize = std::fs::read_to_string(format!("{dir}/{name}.proofs"))
-            .unwrap()
+        let counts = format!("{dir}/{name}.proofs");
+        let want: usize = std::fs::read_to_string(&counts)
+            .unwrap_or_else(|e| panic!("{counts} is written by scripts/build-libraries.sh: {e}"))
             .trim()
             .parse()
-            .unwrap();
+            .unwrap_or_else(|e| {
+                panic!("{counts} is written by scripts/build-libraries.sh and holds no count: {e}")
+            });
         let r = replay_database(&src, |_| true, |_, _| true, true).unwrap();
         let median = |mut v: Vec<usize>| {
             v.sort_unstable();
