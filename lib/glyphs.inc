@@ -71,7 +71,7 @@ lib_glyph:
 	ld hl,(lr_tr)
 	ld a,(lr_tr+2)
 	ld de,ls_gl
-	call lsx_within
+	call lsx_item
 	ret nz
 	ld a,(lr_hdr+1)
 	or a

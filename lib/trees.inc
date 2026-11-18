@@ -111,6 +111,32 @@ ltr_in_range:
 	ld hl,(lr_tr)
 	ld a,(lr_tr+2)
 	call lw_seek
+	ld a,(lr_len)
+	ld (lr_want),a
+ltr_all:
+	call ltr_head
+	ret nz
+	ld bc,(lr_hdr)
+	call lw_skip
+	ld a,(lr_want)
+	or a
+	jr z,ltr_whole
+	dec a
+	ld (lr_want),a
+	jr ltr_all
+ltr_whole:
+	call lw_pos
+	ld (ls_te),hl
+	ld (ls_te+2),a
+	ld hl,(lr_tr)
+	ld a,(lr_tr+2)
+	ld (ls_ts),hl
+	ld (ls_ts+2),a
+	call lsx_chunk
+	ret nz
+	ld hl,(lr_tr)
+	ld a,(lr_tr+2)
+	call lw_seek
 	ld a,(lr_k)
 	ld (lr_want),a
 ltr_skip:

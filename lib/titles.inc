@@ -32,7 +32,7 @@ ltl_head:
 	ld hl,(lr_tr)
 	ld a,(lr_tr+2)
 	ld de,ls_ti
-	jp lsx_within
+	jp lsx_item
 
 lib_title_count:
 	call lr_need

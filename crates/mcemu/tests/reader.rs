@@ -1,5 +1,7 @@
 #[path = "reader/branches.rs"]
 mod branches;
+#[path = "reader/crossing.rs"]
+mod crossing;
 #[path = "reader/damaged.rs"]
 mod damaged;
 #[path = "reader/differential.rs"]

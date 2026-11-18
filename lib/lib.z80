@@ -153,7 +153,9 @@
 ; (5). The section routines use no shadow register and no port: every library byte comes through
 ; lr_read, so the interrupt rules above hold for them as they do for lib_read. A lib_record that
 ; fails for any reason leaves lr_dn at FFFFh, describing no assertion, and so does lib_open.
-; Strings are at most 255 symbols by the format.
+; A title, glyph entry or tree item that crosses a 16 KB chunk is refused with status 3 when it is
+; read, as the host decoder refuses it for the whole library. Strings are at most 255 symbols by
+; the format.
 
 #ifndef LIB_EMBEDDED
 .org $4000

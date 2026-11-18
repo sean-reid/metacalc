@@ -274,6 +274,32 @@ lsx_within:
 	xor a
 	ret
 
+; in: as lsx_within, BC at least 1. out: Z when the item also sits inside one 16 KB chunk, else NZ
+; and A = LIB_ERR_BAD. Destroys all but IX, IY.
+lsx_item:
+	call lsx_within
+	ret nz
+
+; in: ls_ts = the start of an item, ls_te = its end, past at least one byte. out: Z when its bytes
+; sit inside one 16 KB chunk, else NZ and A = LIB_ERR_BAD. Destroys AF BC HL.
+lsx_chunk:
+	ld hl,(ls_te)
+	ld a,(ls_te+2)
+	ld bc,1
+	or a
+	sbc hl,bc
+	sbc a,0
+	ld b,a
+	ld a,(ls_ts+2)
+	cp b
+	jp nz,lr_bad
+	ld a,(ls_ts+1)
+	xor h
+	and $C0
+	jp nz,lr_bad
+	xor a
+	ret
+
 ; out: NZ and A = LIB_ERR_NONE, for a library without the section asked for.
 lsx_nothing:
 	ld a,LIB_ERR_NONE
