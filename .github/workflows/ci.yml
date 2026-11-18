@@ -43,3 +43,25 @@ jobs:
         with:
           tool: mdbook
       - run: mdbook build docs
+
+  app:
+    runs-on: ubuntu-latest
+    env:
+      SPASM_REV: 5f0786d38f064835be674d4b7df42969967bb73c
+      SPASM: ${{ github.workspace }}/.spasm/spasm
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y libgmp-dev libssl-dev
+      - uses: actions/cache@v6
+        id: spasm
+        with:
+          path: .spasm/spasm
+          key: spasm-ng-${{ env.SPASM_REV }}
+      - if: steps.spasm.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/alberthdev/spasm-ng "$RUNNER_TEMP/spasm-ng"
+          git -C "$RUNNER_TEMP/spasm-ng" checkout "$SPASM_REV"
+          make -C "$RUNNER_TEMP/spasm-ng"
+          mkdir -p .spasm
+          cp "$RUNNER_TEMP/spasm-ng/spasm" "$SPASM"
+      - run: make -C app check
