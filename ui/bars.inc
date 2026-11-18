@@ -167,6 +167,12 @@ sk_flip4:
 ; box is inverted up to the column before its last.
 SK_RECORD               .equ 7
 #macro BOX(a,b)
+#if (((b-1)>>3)-(a>>3)-1) < 1
+ .error "a soft key box must span one or two whole bytes between its edge bytes"
+#endif
+#if (((b-1)>>3)-(a>>3)-1) > 2
+ .error "a soft key box must span one or two whole bytes between its edge bytes"
+#endif
 	.db a,b
 	.dw UI_FRAME+(UI_SOFT_ROW*UI_ROW*UI_STRIDE)+(a>>3)
 	.db $FF>>(a&7),((b-1)>>3)-(a>>3)-1,($FF<<(7-((b-1)&7)))&$FF

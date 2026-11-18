@@ -102,7 +102,7 @@ ui_text:
 	cp UI_TEXT_ROWS
 	jp nc,ut_off
 	add a,a
-	or ut_rows&$FF
+	or ut_rows&$FF ; ut_rows is 16 byte aligned, so the offset only sets low bits
 	ld c,a
 	ld b,ut_rows>>8
 	ld a,(bc)
@@ -194,7 +194,7 @@ ut_loop:
 	add a,16
 ut_go:
 	ex de,hl
-	or ui_vtab&$FF
+	or ui_vtab&$FF ; ui_vtab is 64 byte aligned, so the offset only sets low bits
 	ld c,a
 	ld a,l
 	rrca
@@ -455,12 +455,18 @@ ui_tw7:	HEAD1(7)
 ui_w7:	TAIL1(7)
 	.fill (64-($&63))&63,0
 ui_vtab:
+#if (ui_vtab&63) != 0
+ .error "ui_vtab must be 64 byte aligned"
+#endif
 	.dw ui_v0,ui_v1,ui_v2,ui_v3,ui_v4,ui_v5,ui_v6,ui_v7
 	.dw ui_v0,ui_w1,ui_w2,ui_w3,ui_w4,ui_w5,ui_w6,ui_w7
 	.dw ui_tv0,ui_tv1,ui_tv2,ui_tv3,ui_tv4,ui_tv5,ui_tv6,ui_tv7
 	.dw ui_tv0,ui_tw1,ui_tw2,ui_tw3,ui_tw4,ui_tw5,ui_tw6,ui_tw7
 	.fill (16-($&15))&15,0
 ut_rows:
+#if (ut_rows&15) != 0
+ .error "ut_rows must be 16 byte aligned"
+#endif
 	.dw UI_FRAME+UI_STRIDE+(0*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(1*UI_ROW*UI_STRIDE)
 	.dw UI_FRAME+UI_STRIDE+(2*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(3*UI_ROW*UI_STRIDE)
 	.dw UI_FRAME+UI_STRIDE+(4*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(5*UI_ROW*UI_STRIDE)

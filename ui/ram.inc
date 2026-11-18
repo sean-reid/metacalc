@@ -1,4 +1,6 @@
+#ifndef UI_WIDTH
 UI_WIDTH                .equ 96
+#endif
 UI_HEIGHT               .equ 64
 UI_ROW                  .equ 8
 UI_TEXT_ROWS            .equ 8
