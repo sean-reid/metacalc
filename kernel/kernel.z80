@@ -15,10 +15,12 @@
 ;   kernel_verify   in:  HL = assertion number, kernel_init returned 0
 ;                   out: A = status, 0 meaning accepted
 ;
-; Limits above a buffer's capacity are clamped to it when kernel_init runs.
-; The library must lie in flash pages KERNEL_LIB_PAGE..$7F; a longer one is refused.
+; kernel_verify may be called any number of times after one kernel_init. Limits above a
+; buffer's capacity (CAP_* in ram.inc) are clamped to it when kernel_init runs. The library
+; occupies consecutive flash pages from KERNEL_LIB_PAGE to at most $7F; a longer one is refused.
 ;
-; Status    0 ok               1 Malformed        2 BadRecord
+; Status (ST_* in ram.inc)
+;           0 ok               1 Malformed        2 BadRecord
 ;           3 NotATheorem (never returned)        4 ForwardReference
 ;           5 OutOfMemory      6 StackUnderflow   7 BadBackReference
 ;           8 TypecodeMismatch 9 HypothesisMismatch

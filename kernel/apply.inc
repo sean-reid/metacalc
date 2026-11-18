@@ -57,36 +57,14 @@ eb_done:
 	pop de
 	ret
 
-; in: HL = source, BC = length. out: copied to kv_wr, which advances; refused if that passes
-; the stack symbol limit. Destroys AF BC DE HL.
-put_bytes:
-	ld de,(kv_wr)
-	push hl
-	ld h,d
-	ld l,e
-	add hl,bc
-	jp c,fail_oom
-	push de
-	ex de,hl
-	ld hl,(kv_sym_limit_ptr)
-	or a
-	sbc hl,de
-	pop de
-	jp c,fail_oom
-	pop hl
-	call copy_bc
-	ld (kv_wr),de
-	ret
-
 ; in: HL = expression in the used record, C = length.
 ; out: the expression with the bound variables replaced, built at the stack top and ending at
-; kv_wr. Destroys AF BC DE HL.
+; kv_wr; refused if it would pass the stack symbol limit. Destroys AF BC DE HL.
 substitute:
 	ld de,(kv_stack_top)
-	ld (kv_wr),de
 	ld a,c
 	or a
-	ret z
+	jr z,sub_end
 	ld b,c
 sub_symbol:
 	ld a,(hl)
@@ -98,8 +76,19 @@ sub_symbol:
 	ld l,a
 	ld a,(hl)
 	inc a
-	jr z,sub_constant
+	jr nz,sub_variable
+	ld hl,(kv_sym_limit_ptr)
+	or a
+	sbc hl,de
+	jp c,fail_oom
+	jp z,fail_oom
 	ld a,c
+	ld (de),a
+	inc de
+	jr sub_next
+sub_variable:
+	ld a,c
+	push de
 	call subst_get
 	ex de,hl
 	or a
@@ -107,18 +96,23 @@ sub_symbol:
 	ld b,h
 	ld c,l
 	ex de,hl
-	call put_bytes
-	jr sub_next
-sub_constant:
-	ld a,c
-	ld (kv_tmp8),a
-	ld hl,kv_tmp8
-	ld bc,1
-	call put_bytes
+	pop de
+	push hl
+	ld hl,(kv_sym_limit_ptr)
+	or a
+	sbc hl,de
+	jp c,fail_oom
+	or a
+	sbc hl,bc
+	jp c,fail_oom
+	pop hl
+	call copy_bc
 sub_next:
 	pop bc
 	pop hl
 	djnz sub_symbol
+sub_end:
+	ld (kv_wr),de
 	ret
 
 ; in: B, C = two variables. out: returns if they are different and the theorem being checked
