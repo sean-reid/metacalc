@@ -24,6 +24,8 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+      - run: cargo clippy -p mcsend --all-targets --locked -- -D warnings
+      - run: cargo test -p mcsend --locked
       - run: cargo build --release --locked
 
   emu:
