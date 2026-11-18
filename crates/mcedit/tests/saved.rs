@@ -175,3 +175,19 @@ fn an_overlong_number_is_refused_even_with_a_correct_checksum() {
         Some(Error::Corrupt)
     );
 }
+
+#[test]
+fn another_format_byte_is_refused_even_with_a_correct_checksum() {
+    let (db, bytes) = saved();
+    let g = grammar(&db);
+    for format in [0u8, 1, 3, 255] {
+        let mut other = bytes[..bytes.len() - 4].to_vec();
+        other[0] = format;
+        other.extend(mcpack::library::crc32(&other).to_le_bytes());
+        assert_eq!(
+            Session::restore(catalog(&db, &g), &other).err(),
+            Some(Error::Corrupt),
+            "format {format}"
+        );
+    }
+}
