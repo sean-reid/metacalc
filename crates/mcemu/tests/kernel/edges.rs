@@ -223,17 +223,47 @@ fn a_record_ending_at_the_last_byte_of_a_page_is_accepted_and_one_byte_more_is_r
 
 #[test]
 fn a_library_that_ends_inside_a_record_is_judged_as_the_model_would() {
-    let bytes = pack_all(&long_labels(700));
+    let db = long_labels(700);
+    let bytes = library::pack_kernel(&db, &everything(&db)).expect("it packs");
     let directory = u32_at(&bytes, 16);
     let last = u32_at(&bytes, directory + 4 * 699);
+    assert!(bytes.len() - last < 64, "the last record is short");
     let mut device = Device::new();
     for length in last.saturating_sub(2)..=bytes.len() {
-        let mut cut = bytes.clone();
-        cut[8..12].copy_from_slice(&(length as u32).to_le_bytes());
-        reseal(&mut cut);
-        if let Some(difference) = disagreement(&mut device, &cut, ASKED_UNBOUNDED, &mut [0; 16]) {
-            panic!("length {length}: {difference}");
-        }
+        cut_agrees(&mut device, &bytes, length);
+    }
+}
+
+#[test]
+fn a_library_that_ends_inside_its_sections_is_judged_as_the_model_would() {
+    let kernel = {
+        let db = long_labels(700);
+        library::pack_kernel(&db, &everything(&db)).expect("it packs")
+    };
+    let bytes = pack_all(&long_labels(700));
+    assert!(
+        bytes.len() > kernel.len() + 64,
+        "sections follow the records"
+    );
+    let mut device = Device::new();
+    let middle = (kernel.len() + bytes.len()) / 2;
+    for length in [
+        kernel.len(),
+        kernel.len() + 1,
+        middle,
+        bytes.len() - 1,
+        bytes.len(),
+    ] {
+        cut_agrees(&mut device, &bytes, length);
+    }
+}
+
+fn cut_agrees(device: &mut Device, bytes: &[u8], length: usize) {
+    let mut cut = bytes.to_vec();
+    cut[8..12].copy_from_slice(&(length as u32).to_le_bytes());
+    reseal(&mut cut);
+    if let Some(difference) = disagreement(device, &cut, ASKED_UNBOUNDED, &mut [0; 16]) {
+        panic!("length {length}: {difference}");
     }
 }
 
