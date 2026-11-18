@@ -37,8 +37,20 @@ esac
 last=$(printf '%s' "$body" | cut -c1-256 | grep -oE '807F(00)*$' || true)
 [ "${#last}" -eq $((44 + 2 * (8 - ${#want}))) ] || fail "app header is not 128 bytes"
 
-# The signer appends 02 2D 40, 64 signature bytes, a 00 or 01 xx trailer, then FF padding.
-sig=$(printf '%s' "$body" | grep -oE '022D40[0-9A-F]{128}(00|01[0-9A-F]{2})F*$' | cut -c7-134 || true)
+# The signer writes 02 2D n, then the n bytes of a number below its 512-bit modulus with the leading
+# zero bytes dropped, so n is 1 to 64. A trailer follows, 00 or 01 xx, and FF fills the field to 96
+# bytes. The field's own length byte has to match the bytes before the trailer.
+tail=$(printf '%s' "$body" | tail -c 40000)
+sig=
+siglen=64
+while [ "$siglen" -ge 1 ]; do
+	found=$(printf '%s' "$tail" | grep -oE "022D$(printf %02X "$siglen")[0-9A-F]{$((2 * siglen))}(00F{$((2 * (92 - siglen)))}|01[0-9A-F]{2}F{$((2 * (91 - siglen)))})F*\$" || true)
+	if [ -n "$found" ]; then
+		sig=$(printf '%s' "$found" | cut -c7-$((6 + 2 * siglen)))
+		break
+	fi
+	siglen=$((siglen - 1))
+done
 [ -n "$sig" ] || fail "no signature field"
 [ -n "$(printf '%s' "$sig" | tr -d '0')" ] || fail "signature is all zero"
 
@@ -110,4 +122,4 @@ if [ -n "$library" ]; then
 		fail "bytes after the library are not zero padding then the signature"
 fi
 
-echo "check-8xk: ok: $f ($(wc -c < "$f" | tr -d ' ') bytes, $pages pages, name $name, 64-byte signature)"
+echo "check-8xk: ok: $f ($(wc -c < "$f" | tr -d ' ') bytes, $pages pages, name $name, $siglen-byte signature)"

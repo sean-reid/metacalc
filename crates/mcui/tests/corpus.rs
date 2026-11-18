@@ -235,3 +235,50 @@ fn every_screen_opens_for_every_assertion_of_the_packable_databases() {
     assert!(exercised >= 3, "{exercised} databases walked");
     assert!(sound >= 2, "{sound} databases the kernel accepts");
 }
+
+/// The packable corpus databases and the support logics, with a name each.
+fn databases() -> Vec<(String, mm::Database)> {
+    let mut all: Vec<(String, mm::Database)> = corpus()
+        .into_iter()
+        .filter_map(|(name, bytes)| Some((name, mm::parse(bytes).ok()?)))
+        .collect();
+    all.push(("logic".into(), support::db(support::LOGIC)));
+    all.push((
+        "extra".into(),
+        support::db(&format!("{}{}", support::LOGIC, support::EXTRA)),
+    ));
+    all
+}
+
+#[test]
+fn the_stored_trees_give_every_statement_the_tree_the_export_and_parse_path_gives() {
+    let mut compared = 0;
+    for (name, db) in databases() {
+        let (Some(with), Some(without)) = (support::pack_all(&db), support::pack_all_kernel(&db))
+        else {
+            continue;
+        };
+        if library::check(&with).is_err() {
+            continue;
+        }
+        let load = |bytes: Vec<u8>| {
+            let table = vec![Status::Checked; library::read(&bytes).unwrap().len()];
+            Lib::new(
+                Installed {
+                    name: name.clone(),
+                    bytes,
+                },
+                table,
+            )
+            .unwrap()
+        };
+        let (stored, parsed) = (load(with), load(without));
+        assert_eq!(stored.len(), parsed.len());
+        for i in 0..stored.len() {
+            let (a, b) = (stored.statement(i), parsed.statement(i));
+            assert_eq!(a.all(), b.all(), "{name} {}", stored.label(i));
+            compared += a.all().len();
+        }
+    }
+    assert!(compared > 50, "{compared} statements compared");
+}

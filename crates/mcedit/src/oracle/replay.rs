@@ -148,7 +148,7 @@ pub fn replay_database(
 ) -> Result<Report, String> {
     let db = mcpack::mm::parse(src.as_bytes().to_vec()).map_err(|e| e.to_string())?;
     let grammar = Grammar::new(&db, &[("|-", "wff")]).map_err(|e| format!("{e:?}"))?;
-    let catalog = Catalog::new(&db, &grammar);
+    let catalog = Catalog::new(&db, &grammar, mcpack::library::crc32(src.as_bytes()));
     let mut report = Report::default();
     for (n, theorem) in db.theorems().enumerate() {
         if !select(n) {

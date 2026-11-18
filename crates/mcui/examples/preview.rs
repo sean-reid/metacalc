@@ -1,6 +1,6 @@
 //! Writes PNG previews of the glyph chart and real statements to a directory.
 //!
-//! Usage: cargo run -p mcglyph --example preview -- <set.mm> [out-dir]
+//! Usage: cargo run -p mcui --example preview -- <set.mm> [out-dir]
 
 use mcglyph::{Bitmap, Font, png};
 use mcpack::mm;

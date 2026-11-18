@@ -127,7 +127,7 @@ fn proof_with_the_cursor_on_the_goal() {
 fn the_library_list_says_when_statements_are_flat() {
     let mut ui = support::ui_over(
         {
-            let mut bytes = support::logic_bytes();
+            let mut bytes = support::kernel_only_bytes();
             bytes[4] ^= 0xFF;
             bytes
         },
@@ -140,7 +140,7 @@ fn the_library_list_says_when_statements_are_flat() {
 
 #[test]
 fn a_notice_wraps_at_word_boundaries() {
-    let mut broken = support::logic_bytes();
+    let mut broken = support::kernel_only_bytes();
     broken[4] ^= 0xFF;
     let mut ui = support::ui_over(broken, &[], &[]);
     open(&mut ui, "syl");
@@ -256,7 +256,7 @@ fn distinct_variables_of_an_assertion_with_none() {
 
 #[test]
 fn a_long_name_gives_way_to_a_kind_suffix_and_wide_counts() {
-    let mut bytes = support::big_bytes();
+    let mut bytes = support::big_kernel_bytes();
     bytes[4] ^= 0xFF;
     let table = support::statuses(&bytes, &["ax7"], &[]);
     let mut ui = Ui::new(

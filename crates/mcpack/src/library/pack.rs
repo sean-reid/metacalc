@@ -1,3 +1,4 @@
+use super::sections::{self, GlyphMap};
 use super::{CHUNK, DUMMY, HEADER_LEN, MAGIC, SAVE, WIDE, crc32};
 use crate::mm::{Database, Kind, ProofBody, Stmt, StmtId, Sym};
 use std::collections::HashMap;
@@ -12,6 +13,14 @@ pub enum PackError {
     TooLarge(String),
     /// The labelled theorem's proof did not parse or names a statement outside the closure.
     BrokenProof(String),
+    /// The sections do not fit the file: an item is larger than a 16 KB page or the file passes 4 GB.
+    SectionTooLarge,
+    /// The title is longer than 255 bytes.
+    TitleTooLong(String),
+    /// The trees use more of the named kind than a byte can number.
+    TreeCapacity(&'static str, usize),
+    /// The display font cannot draw a character of the symbol.
+    NoGlyphs(String),
 }
 
 /// A proof step before the reference list is ordered.
@@ -28,8 +37,19 @@ struct Packer<'a> {
     local_stmt: HashMap<StmtId, u16>,
 }
 
-/// Packs `closure`, a dependency-closed list of statements in database order, into a library.
+/// Packs `closure`, a dependency-closed list of statements in database order, into a library
+/// with its sections.
 pub fn pack(db: &Database, closure: &[StmtId]) -> Result<Vec<u8>, PackError> {
+    build(db, closure, true)
+}
+
+/// [`pack`] without sections: the header, symbols, directory and records alone, which is all the
+/// kernel reads.
+pub fn pack_kernel(db: &Database, closure: &[StmtId]) -> Result<Vec<u8>, PackError> {
+    build(db, closure, false)
+}
+
+fn build(db: &Database, closure: &[StmtId], sections: bool) -> Result<Vec<u8>, PackError> {
     let stmts = || closure.iter().map(|&id| (id, db.stmt(id)));
     let mut typecode_of: HashMap<Sym, Sym> = HashMap::new();
     for (_, stmt) in stmts().filter(|(_, s)| s.kind == Kind::Float) {
@@ -99,6 +119,23 @@ pub fn pack(db: &Database, closure: &[StmtId]) -> Result<Vec<u8>, PackError> {
         let offset = out.len() as u32;
         out[directory + 4 * i..][..4].copy_from_slice(&offset.to_le_bytes());
         out.extend_from_slice(&record);
+    }
+
+    if sections {
+        let ids: Vec<StmtId> = assertions.iter().map(|&(id, _)| id).collect();
+        let titles = sections::select_titles(db, &ids);
+        let names: Vec<&str> = order
+            .iter()
+            .map(|&s| db.syms[s as usize].name.as_str())
+            .collect();
+        let input = sections::TreeInput {
+            db,
+            assertions: &ids,
+            local_sym: &packer.local_sym,
+            local_stmt: &packer.local_stmt,
+            constants,
+        };
+        out = sections::append(out, &titles, &GlyphMap::of(&names)?, &input)?;
     }
 
     out[..4].copy_from_slice(MAGIC);

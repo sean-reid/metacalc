@@ -37,7 +37,7 @@ fn a_damaged_export_is_rejected_by_the_verifier() {
     let src = corpus("demo0.mm");
     let db = mm::parse(src.clone().into_bytes()).unwrap();
     let grammar = Grammar::new(&db, &[("|-", "wff")]).unwrap();
-    let catalog = Catalog::new(&db, &grammar);
+    let catalog = Catalog::new(&db, &grammar, 0);
     let theorem = db.find("th1").unwrap();
     let mut done = replay(&catalog, theorem, false).unwrap();
     assert_eq!(verify_spliced(&src, &db, &done.finished), Ok(()));

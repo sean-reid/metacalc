@@ -2,6 +2,7 @@
 
 mod closure;
 mod grammar;
+mod headings;
 mod outline;
 mod parse;
 mod verify;
@@ -82,11 +83,23 @@ pub struct Stmt {
     pub scope_end: StmtId,
 }
 
+/// A section title of the source: a comment between two rules of one of the four kinds set.mm uses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Heading {
+    /// 1 for the `####` rule, 2 for `#*#*`, 3 for `=-=-` and 4 for `-.-.`.
+    pub depth: u8,
+    pub title: String,
+    /// The number of statements before the comment, which is the id of the first statement under it.
+    pub before: StmtId,
+}
+
 pub struct Database {
     pub syms: Vec<Symbol>,
     pub stmts: Vec<Stmt>,
     /// Each `$v` activation of a variable: the variable, the number of statements before it and the number when its block closed (`StmtId::MAX` while open).
     pub var_scopes: Vec<(Sym, StmtId, StmtId)>,
+    /// The section titles in source order.
+    pub headings: Vec<Heading>,
 }
 
 impl Database {

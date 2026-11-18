@@ -1,3 +1,4 @@
+use super::sections::{self, Ctx, Sections};
 use super::{DUMMY, HEADER_LEN, MAGIC, SAVE, WIDE};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +57,8 @@ pub struct Library {
     pub constants: Vec<String>,
     pub variables: Vec<Variable>,
     pub assertions: Vec<Assertion>,
+    /// What follows the records, or `None` when the library has no trailer.
+    pub sections: Option<Sections>,
 }
 
 struct Cursor<'a> {
@@ -121,6 +124,7 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
         let len = cur.u8()?;
         names.push(cur.text(len)?);
     }
+    let mut records_end = cur.pos;
     let name = |id: usize| names.get(id).cloned().ok_or(ReadError);
     let variable = |id: usize| {
         if id < constants {
@@ -225,11 +229,24 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
                 });
             }
         }
+        records_end = records_end.max(cur.pos);
         assertions.push(assertion);
     }
+    let records_end = records_end.max(table.pos);
+    let sections = sections::read(
+        bytes,
+        &Ctx {
+            assertions: &assertions,
+            names: &names,
+            constants,
+            records_end,
+        },
+    )
+    .map_err(|_| ReadError)?;
     Ok(Library {
         constants: names[..constants].to_vec(),
         variables,
         assertions,
+        sections,
     })
 }
