@@ -18,12 +18,18 @@ uc_go:
 	ld (ui_sp),sp
 	ld sp,UI_FRAME+UI_FRAME_SIZE
 	ld hl,0
-	ld b,UI_FRAME_SIZE/8
+	ld b,UI_FRAME_SIZE/32
 uc_loop:
+#macro PUSH4
 	push hl
 	push hl
 	push hl
 	push hl
+#endmacro
+	PUSH4
+	PUSH4
+	PUSH4
+	PUSH4
 	djnz uc_loop
 	ld sp,(ui_sp)
 	ld a,(ui_iff)
