@@ -1,3 +1,5 @@
+#[path = "kernel/app.rs"]
+mod app;
 #[path = "kernel/crc.rs"]
 mod crc;
 #[path = "kernel/edges.rs"]

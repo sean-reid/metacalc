@@ -31,8 +31,12 @@ pub fn label(name: &str) -> u16 {
 }
 
 pub fn label_in(image: Image, name: &str) -> u16 {
-    image
-        .labels
+    label_of(image.labels, name)
+}
+
+/// A label from an assembler label file.
+pub fn label_of(labels: &str, name: &str) -> u16 {
+    labels
         .lines()
         .find_map(|line| {
             let (key, value) = line.split_once(" = ")?;

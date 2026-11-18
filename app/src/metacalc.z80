@@ -18,6 +18,9 @@
 	.fill 4080h - $, 0
 
 start:
+#ifdef LIBRARY
+	call app_find_library
+#endif
 	bcall(_ClrLCDFull)
 	xor a
 	ld (curRow), a
@@ -36,3 +39,9 @@ done:
 
 title:
 	.db "metacalc", 0
+
+#ifdef LIBRARY
+#include "libpage.inc"
+.fill 8000h - $, 0
+#include "library.inc"
+#endif

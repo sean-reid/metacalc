@@ -9,3 +9,4 @@ curRow           = 844Bh
 curCol           = 844Ch
 _NewLine         = 452Eh
 appBackUpScreen  = 9872h
+libPage          = appBackUpScreen
