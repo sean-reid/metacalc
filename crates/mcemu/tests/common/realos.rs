@@ -4,7 +4,7 @@
 
 #![allow(dead_code)]
 
-use mcemu::Machine;
+use mcemu::{Machine, Stop};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -46,7 +46,12 @@ impl RealOs {
     }
 
     pub fn run_ms(&mut self, ms: u32) {
-        self.m.run_time(ms * 1000);
+        self.run_us(ms * 1000);
+    }
+
+    pub fn run_us(&mut self, us: u32) {
+        let run = self.m.run_time(us);
+        assert_eq!(run.stop, Stop::Limit, "the emulator faulted");
     }
 
     pub fn tap(&mut self, key: u8, down_ms: u32, up_ms: u32) {
@@ -59,7 +64,19 @@ impl RealOs {
     /// Starts the app from the APPS menu, where it is the second entry after Finance.
     pub fn launch(&mut self) {
         self.tap(KEY_APPS, 150, 600);
+        let menu = self.screen();
+        let lit =
+            |rows: std::ops::Range<usize>| menu[rows.start * 96..rows.end * 96].iter().any(|&p| p);
+        assert!(
+            lit(0..8) && lit(8..16) && lit(16..24) && !lit(24..64),
+            "expected the APPS menu with two entries, Finance and the app"
+        );
         self.tap(KEY_2, 150, 300);
+        let page = self.m.in_port(0x06);
+        assert_eq!(
+            page, BASE,
+            "expected the app to run on flash page {BASE:02X}"
+        );
     }
 
     pub fn ram(&mut self, offset: usize, len: usize) -> Vec<u8> {
