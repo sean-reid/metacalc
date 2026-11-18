@@ -171,6 +171,7 @@ jobs:
       - run: sh scripts/fetch-tilem.sh
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test kernel -- --ignored --exact libraries::the_shipped_libraries_verify_on_the_device_as_the_model_does --nocapture
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test kernel -- --ignored --exact libraries::no_honest_proof_in_a_shipped_library_charges_over_an_eighth_of_the_work_limit --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test reader -- --ignored --exact libraries::the_shipped_libraries_read_back_as_the_decoder_decodes_them --nocapture
 
   library-exports:
