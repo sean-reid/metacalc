@@ -6,6 +6,3 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-
-[dev-dependencies]
-mcpack = { path = "../mcpack" }

@@ -324,28 +324,3 @@ fn no_tokens_lay_out_to_nothing() {
     let bitmap = font().render(&[], 96).unwrap();
     assert_eq!((bitmap.width(), bitmap.height()), (96, 0));
 }
-
-#[test]
-#[ignore = "needs SET_MM pointing at set.mm"]
-fn fixture_matches_the_ring_closure_of_set_mm() {
-    use mcpack::mm;
-    let path = std::env::var("SET_MM").expect("SET_MM is set");
-    let db = mm::parse(std::fs::read(path).unwrap()).unwrap();
-    let grammar = mm::Grammar::new(&db, &[("|-", "wff")]).unwrap();
-    let roots: Vec<_> = ["ringlz", "ringnegl", "ringcom"]
-        .iter()
-        .map(|l| db.find(l).unwrap())
-        .collect();
-    let closure = mm::closure(&db, &grammar, &roots).unwrap();
-    let mut used = BTreeSet::new();
-    for id in closure {
-        used.extend(
-            db.stmt(id)
-                .expr
-                .iter()
-                .map(|&s| db.syms[s as usize].name.as_str()),
-        );
-    }
-    let want: BTreeSet<&str> = symbols().into_iter().collect();
-    assert_eq!(used, want);
-}

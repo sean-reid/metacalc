@@ -2,8 +2,8 @@
 # Usage: build-site.sh pagedir sitedir [docsdir]
 # Copies docs/ (or docsdir) into sitedir, which must not exist, fills in every library page and the
 # index table that build-libraries.sh wrote into pagedir, draws the worked example images, and
-# builds the book into sitedir/book. Refuses to run when the table or a marker line of the index is
-# missing, and fails when a page repeats an id.
+# builds the book into sitedir/book. Refuses to run when the table, a marker line of the index or
+# the generated page for a library page in docs is missing, and fails when a page repeats an id.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -23,6 +23,11 @@ die() {
 for marker in '<!-- libraries-table -->' '<!-- /libraries-table -->'; do
 	[ "$(grep -cx -e "$marker" "$docs/src/libraries/index.md")" = 1 ] ||
 		die "the index must have exactly one line $marker"
+done
+
+for tracked in "$docs"/src/libraries/*.md; do
+	name=$(basename "$tracked")
+	[ "$name" = index.md ] || [ -s "$pagedir/$name" ] || die "no generated page $name in $pagedir for docs/src/libraries/$name"
 done
 
 cp -r "$docs" "$sitedir"

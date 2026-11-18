@@ -65,6 +65,24 @@ pub struct Pad {
 }
 
 impl Pad {
+    /// The flags in one byte: `before` is bit 0, `after` bit 1, `var` bit 2 and `open` bit 3.
+    pub fn bits(self) -> u8 {
+        u8::from(self.before)
+            | u8::from(self.after) << 1
+            | u8::from(self.var) << 2
+            | u8::from(self.open) << 3
+    }
+
+    /// The flags of [`Pad::bits`], or `None` when a bit above the fourth is set.
+    pub fn from_bits(bits: u8) -> Option<Pad> {
+        (bits < 16).then_some(Pad {
+            before: bits & 1 != 0,
+            after: bits & 2 != 0,
+            var: bits & 4 != 0,
+            open: bits & 8 != 0,
+        })
+    }
+
     /// Whether a gap separates `self` from the token that follows it.
     pub fn gap_before(self, next: Pad) -> bool {
         !self.open && (self.after || next.before || (self.var && next.var))

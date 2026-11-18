@@ -201,10 +201,11 @@ fn the_reader_agrees_with_the_host_decoder_across_many_chunks() {
             u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize / CHUNK
         })
         .collect();
-    assert_eq!(
-        starts.len(),
-        bytes.len().div_ceil(CHUNK) - 1,
-        "records start in every chunk but the first"
+    let last = *starts.last().unwrap();
+    assert!(last >= 8, "records reach chunk {last}");
+    assert!(
+        starts.iter().copied().eq(1..=last),
+        "records start in every chunk from the second to the last they reach"
     );
     agree(&bytes, "big");
 }

@@ -17,6 +17,7 @@ mod ui;
 
 pub use data::{Installed, LoadError, Statuses};
 pub use key::Key;
+pub use mcpack::library::Title;
 pub use proofs::{RestoreError, SavedProof};
 pub use screens::{Kind, State, View};
 pub use status::{Mark, Status};

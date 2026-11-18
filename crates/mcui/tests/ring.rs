@@ -3,7 +3,7 @@
 
 use mcglyph::Font;
 use mcpack::build;
-use mcpack::library::{self, pack};
+use mcpack::library::{self, pack, pack_kernel};
 use mcpack::manifest::Manifest;
 use mcpack::mm;
 use mcui::canvas::{STATEMENT_WIDTH, WIDTH, text_width};
@@ -112,4 +112,31 @@ fn measurements_of_the_ring_library() {
         longest.1, longest.0
     );
     assert_eq!((flat, unknown), (0, 0));
+}
+
+#[test]
+#[ignore = "needs SET_MM pointing at set.mm"]
+fn every_shipped_library_folds_from_its_stored_trees_as_it_does_from_the_export() {
+    let path = std::env::var("SET_MM").expect("SET_MM is set");
+    let db = mm::parse(std::fs::read(path).unwrap()).unwrap();
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../libraries");
+    for name in ["prop", "pred", "ring"] {
+        let manifest = Manifest::load(&dir.join(format!("{name}.toml"))).unwrap();
+        let kept = build::closure(&db, &manifest).unwrap();
+        let load = |bytes: Vec<u8>| {
+            let count = library::read(&bytes).unwrap().len();
+            let installed = Installed {
+                name: name.into(),
+                bytes,
+            };
+            Lib::new(installed, vec![Status::Checked; count]).unwrap()
+        };
+        let stored = load(pack(&db, &kept).unwrap());
+        let parsed = load(pack_kernel(&db, &kept).unwrap());
+        assert!(!stored.degraded() && !parsed.degraded());
+        for i in 0..stored.len() {
+            let (a, b) = (stored.statement(i), parsed.statement(i));
+            assert_eq!(a.all(), b.all(), "{name} {}", stored.label(i));
+        }
+    }
 }

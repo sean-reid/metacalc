@@ -1,5 +1,7 @@
+use super::headings::heading;
 use super::{
-    Database, Frame, Kind, Proof, ProofBody, ProofError, Stmt, StmtId, Sym, Symbol, dv_pair,
+    Database, Frame, Heading, Kind, Proof, ProofBody, ProofError, Stmt, StmtId, Sym, Symbol,
+    dv_pair,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -27,6 +29,7 @@ pub fn parse(src: Vec<u8>) -> Result<Database, ParseError> {
                 syms,
                 stmts,
                 var_scopes: parser.var_scopes,
+                headings: parser.headings,
             })
         }
         Err(message) => Err(ParseError {
@@ -59,6 +62,7 @@ struct Parser<'a> {
     hyp_active: Vec<bool>,
     scopes: Vec<Scope>,
     var_scopes: Vec<(Sym, StmtId, StmtId)>,
+    headings: Vec<Heading>,
     mark: Vec<u32>,
     generation: u32,
 }
@@ -84,6 +88,7 @@ impl<'a> Parser<'a> {
             hyp_active: Vec::new(),
             scopes: vec![Scope::default()],
             var_scopes: Vec::new(),
+            headings: Vec::new(),
             mark: Vec::new(),
             generation: 0,
         }
@@ -113,14 +118,25 @@ impl<'a> Parser<'a> {
     fn token(&mut self) -> Res<Option<&'a [u8]>> {
         loop {
             match self.raw_token()? {
-                Some(b"$(") => loop {
-                    match self.raw_token()? {
-                        Some(b"$)") => break,
-                        Some(b"$(") => return Err("$( inside a comment".into()),
-                        Some(_) => {}
-                        None => return Err("unterminated comment".into()),
+                Some(b"$(") => {
+                    let open = self.token_start + 2;
+                    loop {
+                        match self.raw_token()? {
+                            Some(b"$)") => break,
+                            Some(b"$(") => return Err("$( inside a comment".into()),
+                            Some(_) => {}
+                            None => return Err("unterminated comment".into()),
+                        }
                     }
-                },
+                    if let Some((depth, title)) = heading(&self.src[open..self.token_start]) {
+                        let before = self.stmts.len() as StmtId;
+                        self.headings.push(Heading {
+                            depth,
+                            title,
+                            before,
+                        });
+                    }
+                }
                 Some(b"$[") => return Err("file inclusion is not supported".into()),
                 other => return Ok(other),
             }

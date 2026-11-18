@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use mcpack::library::{self, pack};
+use mcpack::library::{self, pack, pack_kernel};
 use mcpack::mm::{self, Database, Grammar, StmtId};
 use mcui::{Installed, Key, Status, Statuses, Ui};
 use std::path::PathBuf;
@@ -126,11 +126,19 @@ pub fn ui_over(bytes: Vec<u8>, unchecked: &[&str], failed: &[&str]) -> Ui {
 
 /// A library of 1200 axioms, enough for four-digit counts.
 pub fn big_bytes() -> Vec<u8> {
+    pack_all(&db(&big_source())).expect("the big library packs")
+}
+
+pub fn big_kernel_bytes() -> Vec<u8> {
+    pack_all_kernel(&db(&big_source())).expect("the big library packs")
+}
+
+fn big_source() -> String {
     let mut src = String::from("$c wff |- $.\n$v ph $.\nwph $f wff ph $.\n");
     for n in 1..=1200 {
         src.push_str(&format!("ax{n} $a |- ph $.\n"));
     }
-    pack_all(&db(&src)).expect("the big library packs")
+    src
 }
 
 pub fn extra_ui() -> Ui {
@@ -193,12 +201,27 @@ pub fn db(src: &str) -> Database {
 
 /// Every assertion of `db` packed into a library, or `None` when it cannot be packed.
 pub fn pack_all(db: &Database) -> Option<Vec<u8>> {
+    pack_with(db, pack)
+}
+
+/// [`pack_all`] with no sections, the way a library from before them is.
+pub fn pack_all_kernel(db: &Database) -> Option<Vec<u8>> {
+    pack_with(db, pack_kernel)
+}
+
+type Packer = fn(&Database, &[StmtId]) -> Result<Vec<u8>, library::PackError>;
+
+fn pack_with(db: &Database, packer: Packer) -> Option<Vec<u8>> {
     let grammar = Grammar::new(db, &[("|-", "wff")]).ok()?;
     let roots: Vec<StmtId> = (0..db.stmts.len() as StmtId)
         .filter(|&id| db.stmt(id).kind.is_assertion())
         .collect();
     let kept = mm::closure(db, &grammar, &roots).ok()?;
-    pack(db, &kept).ok()
+    packer(db, &kept).ok()
+}
+
+pub fn kernel_only_bytes() -> Vec<u8> {
+    pack_all_kernel(&db(LOGIC)).expect("the logic packs")
 }
 
 pub fn logic_bytes() -> Vec<u8> {
