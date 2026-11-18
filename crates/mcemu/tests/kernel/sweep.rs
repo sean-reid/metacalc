@@ -128,8 +128,9 @@ fn a_library_page_beyond_flash_is_refused() {
     let bytes = pack_all(&db);
     let mut device = Device::with_library(&bytes);
     for page in [0x80u8, 0x81, 0xFF] {
-        device.params(ASKED_UNBOUNDED);
-        device.m.load_ram(label("KERNEL_LIB_PAGE"), &[page]);
+        let mut block = device.param_block(ASKED_UNBOUNDED);
+        block[0] = page;
+        device.write_params(&block);
         device.run("ENTRY_ONE");
         assert_eq!(
             device.byte("TEST_INIT_STATUS"),

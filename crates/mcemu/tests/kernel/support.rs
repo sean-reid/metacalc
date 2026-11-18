@@ -15,7 +15,7 @@ pub const DEFAULT: Image = Image {
     labels: include_str!(concat!(env!("OUT_DIR"), "/kernel_test.lab")),
 };
 
-/// The same kernel with its RAM block moved to $C400.
+/// The same kernel with its two RAM regions moved to $C100 and $E000.
 pub const MOVED: Image = Image {
     code: include_bytes!(concat!(env!("OUT_DIR"), "/kernel_test_moved.bin")),
     labels: include_str!(concat!(env!("OUT_DIR"), "/kernel_test_moved.lab")),
@@ -94,6 +94,45 @@ pub const ASKED_UNBOUNDED: Limits = Limits {
     saved_entries: 0xFFFF,
 };
 
+/// The two regions of the kernel's page that the image writes, as (start, length).
+pub fn regions(image: Image) -> [(u16, usize); 2] {
+    let at = |name: &str| label_in(image, name);
+    let size = |name: &str| usize::from(at(name));
+    [
+        (at("KERNEL_RAM_LOW"), size("LOW_SIZE")),
+        (at("KERNEL_RAM_HIGH"), size("HIGH_SIZE")),
+    ]
+}
+
+pub fn in_regions(image: Image, addr: u16) -> bool {
+    regions(image).iter().any(|&(start, len)| {
+        (usize::from(start)..usize::from(start) + len).contains(&usize::from(addr))
+    })
+}
+
+/// Fills every byte of the kernel's page that the image does not write.
+pub fn fill_outside(page: &mut [u8], image: Image, value: u8) {
+    let [(low, low_len), (high, high_len)] = regions(image);
+    for (at, byte) in page.iter_mut().enumerate() {
+        let addr = 0xC000 + at;
+        let inside =
+            |start: u16, len: usize| (usize::from(start)..usize::from(start) + len).contains(&addr);
+        if !inside(low, low_len) && !inside(high, high_len) {
+            *byte = value;
+        }
+    }
+}
+
+/// The address of the first byte outside the image's regions that is not `value`.
+pub fn first_outside_not(page: &[u8], image: Image, value: u8) -> Option<u16> {
+    let mut expected = page.to_vec();
+    fill_outside(&mut expected, image, value);
+    page.iter()
+        .zip(&expected)
+        .position(|(a, b)| a != b)
+        .map(|at| 0xC000 + at as u16)
+}
+
 pub struct Device {
     pub m: Machine,
     pub image: Image,
@@ -149,7 +188,8 @@ impl Device {
         }
     }
 
-    pub fn params(&mut self, limits: Limits) {
+    /// The nine-byte parameter block the kernel's init takes.
+    pub fn param_block(&self, limits: Limits) -> Vec<u8> {
         let word = |value: usize| (value as u16).to_le_bytes();
         let mut block = vec![self.lib_page];
         for value in [
@@ -160,7 +200,44 @@ impl Device {
         ] {
             block.extend(word(value));
         }
-        self.m.load_ram(self.label("KERNEL_LIB_PAGE"), &block);
+        block
+    }
+
+    /// Writes the block where the test code reads it by default, in the test's flash page, so
+    /// that it survives whatever the test does to bank B.
+    pub fn params(&mut self, limits: Limits) {
+        let block = self.param_block(limits);
+        self.write_params(&block);
+    }
+
+    pub fn write_params(&mut self, block: &[u8]) {
+        let at = usize::from(self.label("TEST_PARAMS") - 0x4000);
+        self.m.load_flash(FLASH_TEST_PAGE, at, block);
+        let ptr = self.label("TEST_PARAMS").to_le_bytes();
+        self.m.load_ram(self.label("TEST_PARAM_PTR"), &ptr);
+    }
+
+    /// Writes the block into bank B, where an app keeps its own data, and points init at it.
+    pub fn params_in_bank_b(&mut self, limits: Limits, at: u16) {
+        let block = self.param_block(limits);
+        self.m.load_ram(at, &block);
+        self.m
+            .load_ram(self.label("TEST_PARAM_PTR"), &at.to_le_bytes());
+    }
+
+    /// Bytes of the kernel's page, which only the kernel sees while it runs.
+    pub fn kram(&mut self, addr: u16, len: usize) -> Vec<u8> {
+        let at = usize::from(addr - 0xC000);
+        self.m.ram_page(SPARE_PAGE)[at..at + len].to_vec()
+    }
+
+    pub fn kram_write(&mut self, addr: u16, bytes: &[u8]) {
+        let at = usize::from(addr - 0xC000);
+        self.m.ram_page(SPARE_PAGE)[at..at + bytes.len()].copy_from_slice(bytes);
+    }
+
+    pub fn kram_label(&mut self, name: &str, len: usize) -> Vec<u8> {
+        self.kram(self.label(name), len)
     }
 
     pub fn run(&mut self, entry: &str) -> u32 {
@@ -204,7 +281,7 @@ impl Device {
 
     /// Initialises once, then verifies assertions 0..count in order.
     pub fn verify_all(&mut self, count: usize, limits: Limits) -> (u8, Vec<u8>, u32) {
-        let room = usize::from(self.label("TEST_BLOCK") - self.label("TEST_STATUSES"));
+        let room = usize::from(self.label("TEST_STATUSES_END") - self.label("TEST_STATUSES"));
         assert!(count <= room, "the status array holds {room} entries");
         self.params(limits);
         self.m
@@ -498,6 +575,7 @@ pub fn disjoint_library(terms: &[Vec<Tok>], nv: usize, checked: bool) -> (Databa
 }
 
 pub const PORT_BANK_B: u8 = 7;
+pub const SPARE_PAGE: u8 = 3;
 pub const RAM_PAGE: u8 = 0x81;
 
 /// Every assertion of the small library, which reaches every error path the model has.

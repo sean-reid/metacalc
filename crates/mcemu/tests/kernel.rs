@@ -4,18 +4,24 @@ mod app;
 mod crc;
 #[path = "kernel/edges.rs"]
 mod edges;
+#[path = "kernel/isolation.rs"]
+mod isolation;
 #[path = "kernel/launch.rs"]
 mod launch;
 #[path = "kernel/libraries.rs"]
 mod libraries;
 #[path = "kernel/limits.rs"]
 mod limits;
+#[path = "common/stackfree.rs"]
+mod stackfree;
 #[path = "kernel/state.rs"]
 mod state;
 #[path = "kernel/support.rs"]
 mod support;
 #[path = "kernel/sweep.rs"]
 mod sweep;
+#[path = "kernel/windows.rs"]
+mod windows;
 #[path = "kernel/work.rs"]
 mod work;
 
@@ -414,14 +420,14 @@ fn a_record_that_crosses_a_page_is_refused() {
 #[test]
 fn a_library_over_several_pages_is_read_across_them() {
     let mut src = String::from("$c T wff |- $.\n");
-    for i in 0..2500 {
+    for i in 0..2000 {
         src += &format!("a-long-label-to-fill-the-page-{i} $a |- T $.\n");
     }
     let db = parse(&src);
     let bytes = pack_all(&db);
     assert!(bytes.len() > 4 * library::CHUNK);
-    let (init, got, _) = Device::with_library(&bytes).verify_all(2500, ASKED_UNBOUNDED);
-    assert_eq!((init, got), (0, vec![0; 2500]));
+    let (init, got, _) = Device::with_library(&bytes).verify_all(2000, ASKED_UNBOUNDED);
+    assert_eq!((init, got), (0, vec![0; 2000]));
 }
 
 #[test]

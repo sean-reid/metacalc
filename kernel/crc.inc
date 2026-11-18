@@ -1,17 +1,19 @@
 ; Library checksum: CRC-32 of the bytes from offset 8 to the end, against the header's value.
 
 kernel_crc_begin:
-	ld hl,crc_begin_body
+	ld ix,crc_begin_body
 	jp kernel_enter
 
 kernel_crc_chunk:
-	ld hl,crc_chunk_body
+	ld ix,crc_chunk_body
 	jp kernel_enter
 
 crc_refuse:
 	ld hl,0
 	ld (KERNEL_CRC),hl
 	ld (KERNEL_CRC+2),hl
+	ld d,h
+	ld e,l
 	jp fail_malformed
 
 #macro CRC_BYTE(k)
@@ -137,6 +139,8 @@ cc_compare:
 	inc de
 	inc hl
 	djnz cc_compare
+	ld hl,(KERNEL_CRC)
+	ld de,(KERNEL_CRC+2)
 	ret
 
 ; in: HL = first byte, DE = end (not before HL), KERNEL_CRC = running value.

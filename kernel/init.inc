@@ -75,6 +75,9 @@ fill_bytes:
 	jp copy_bc
 
 init_body:
+	ld de,KERNEL_LIB_PAGE
+	ld bc,PARAM_LEN
+	ldir
 	ld hl,0
 	ld (kv_ready),hl
 	ld (kv_crc_state),hl

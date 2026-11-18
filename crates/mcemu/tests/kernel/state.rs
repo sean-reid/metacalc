@@ -2,21 +2,18 @@ use crate::support::*;
 use mcpack::mm::{Kind, Verifier};
 
 #[test]
-fn the_kernel_restores_bank_b_and_writes_only_its_own_memory() {
+fn the_kernel_restores_bank_b_and_writes_only_its_own_regions() {
     let (db, bytes) = small_library();
     let count = assertions(&db).len();
     let marker = *b"flash page marker";
-    let free_start = label("KERNEL_RAM_END");
-    let free_len = usize::from(label("TEST_BLOCK") - free_start);
     for entry_page in [RAM_PAGE, 0x50] {
         let mut device = Device::with_library(&bytes);
         device.m.load_flash(0x50, 0, &marker);
         let ram_pattern = vec![0xA5; PAGE];
-        let free_pattern = vec![0x5A; free_len];
         device.m.load_ram(0x8000, &ram_pattern);
-        device.m.load_ram(free_start, &free_pattern);
+        fill_outside(device.m.ram_page(SPARE_PAGE), DEFAULT, 0x5A);
         let stack = usize::from(label("KSTACK_TOP") - label("KSTACK"));
-        device.m.load_ram(label("KSTACK"), &vec![0xCC; stack]);
+        device.kram_write(label("KSTACK"), &vec![0xCC; stack]);
         let mut deepest = stack;
         for id in 0..count {
             device.m.out_port(PORT_BANK_B, entry_page);
@@ -27,12 +24,9 @@ fn the_kernel_restores_bank_b_and_writes_only_its_own_memory() {
             } else {
                 assert_eq!(bank, marker, "bank B after {id}");
             }
-            assert_eq!(
-                device.m.read_ram(free_start, free_len),
-                free_pattern,
-                "bank C after {id}"
-            );
-            let used = device.m.read_ram(label("KSTACK"), stack);
+            let page = device.m.ram_page(SPARE_PAGE);
+            assert_eq!(first_outside_not(page, DEFAULT, 0x5A), None, "after {id}");
+            let used = device.kram(label("KSTACK"), stack);
             deepest = deepest.min(used.iter().position(|&b| b != 0xCC).unwrap_or(stack));
         }
         device.m.out_port(PORT_BANK_B, RAM_PAGE);
