@@ -138,7 +138,11 @@ impl<'a> Kernel<'a> {
         let end = assertions
             .checked_mul(4)
             .and_then(|n| n.checked_add(directory));
-        if symbols > 255 || directory < reader.pos || end.is_none_or(|end| end > bytes.len()) {
+        if symbols > 255
+            || directory < reader.pos
+            || directory % 4 != 0
+            || end.is_none_or(|end| end > bytes.len())
+        {
             return Err(KernelError::Malformed);
         }
         Ok(Kernel {
@@ -442,7 +446,8 @@ impl<'a> Kernel<'a> {
             } else {
                 self.scratch.push(sym);
             }
+            self.within_limits()?;
         }
-        self.within_limits()
+        Ok(())
     }
 }

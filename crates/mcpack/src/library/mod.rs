@@ -21,6 +21,11 @@
 //!            reference, then a saved step; a byte under F0h is the number itself,
 //!            F0h..FEh carries eight more bits in the next byte, FFh saves the top of the stack
 //! ```
+//!
+//! A record is only usable if its float hypotheses name distinct variables, each of its
+//! expressions starts with a constant and uses no variable without a float hypothesis, every
+//! pair in its first list names two different variables that both have one, and every pair in a
+//! theorem's second list names two different variables of which at least one has none.
 
 mod kernel;
 mod pack;

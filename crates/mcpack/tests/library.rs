@@ -158,6 +158,80 @@ fn kernel_reports_what_is_wrong_with_a_proof() {
 }
 
 #[test]
+fn kernel_names_each_way_a_proof_can_fail() {
+    for (theorem, expected) in [
+        (
+            "$d x y $. t $p |- R x x $= vx vy vy vx ax-d ax-m $.",
+            KernelError::HypothesisMismatch,
+        ),
+        (
+            "$d x y $. t $p |- R x y $= vx ax-d $.",
+            KernelError::StackUnderflow,
+        ),
+        (
+            "$d x y $. t $p |- R x y $= vx vy ax-d vx $.",
+            KernelError::StackNotSingleton,
+        ),
+        (
+            "$d x y $. t $p |- R y x $= vx vy ax-d $.",
+            KernelError::WrongConclusion,
+        ),
+        (
+            "$d x y $. t $p |- R x y $= ( ax-d ) ABCD $.",
+            KernelError::BadBackReference,
+        ),
+        (
+            "$d x y $. t $p |- R x y $= ( ax-d ) ZABC $.",
+            KernelError::StackUnderflow,
+        ),
+    ] {
+        let db = db(&format!("{DB} ${{ {theorem} $}}"));
+        let id = db.find("t").unwrap();
+        assert!(Verifier::new(&db).verify(id).is_err(), "{theorem}");
+        let bytes = pack(&db, &everything(&db)).unwrap();
+        assert_eq!(check(&bytes, number(&db, "t")), Err(expected), "{theorem}");
+    }
+}
+
+#[test]
+fn a_reference_to_a_dummy_that_is_not_a_variable_is_refused() {
+    let db = db(DB);
+    let dummy = number(&db, "dummy");
+    let mut bytes = pack(&db, &everything(&db)).unwrap();
+    let refs = fields(&bytes, dummy).refs;
+    assert_eq!(
+        bytes[refs + 1],
+        0x80,
+        "the first reference is the dummy variable"
+    );
+    for not_a_variable in [0, 0xFE] {
+        bytes[refs] = not_a_variable;
+        reseal(&mut bytes);
+        assert_eq!(check(&bytes, dummy), Err(KernelError::Malformed));
+    }
+}
+
+#[test]
+fn a_header_that_breaks_the_layout_does_not_load() {
+    let db = db(DB);
+    let original = pack(&db, &everything(&db)).unwrap();
+    let variable_typecode = {
+        let mut at = library::HEADER_LEN;
+        for _ in 0..original[12] {
+            at += 2 + original[at + 1] as usize;
+        }
+        at
+    };
+    for (at, value) in [(0, b'X'), (16, original[16] + 1), (variable_typecode, 0xFF)] {
+        let mut bytes = original.clone();
+        bytes[at] = value;
+        reseal(&mut bytes);
+        let loaded = Kernel::new(&bytes, Limits::UNBOUNDED);
+        assert!(matches!(loaded, Err(KernelError::Malformed)), "byte {at}");
+    }
+}
+
+#[test]
 fn kernel_needs_exactly_the_memory_the_reference_verifier_measures() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus/big-unifier.mm");
     let db = mm::parse(std::fs::read(path).unwrap()).unwrap();
