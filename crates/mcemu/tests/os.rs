@@ -130,16 +130,46 @@ fn getcsc_reports_two_keys_in_sequence() {
     assert_eq!(getcsc(&mut m), 0x35);
 }
 
+/// TI-OS 2.43 and 2.55MP both report nothing while two keys are down from the same scan, and the
+/// one still down once the other is up, whichever code is the lower.
 #[test]
-fn getcsc_reports_the_lowest_code_when_two_keys_go_down_together() {
+fn getcsc_reports_nothing_while_two_keys_went_down_together_then_the_one_left_down() {
+    for (first, second) in [(0x35, 0x09), (0x09, 0x35)] {
+        let mut m = machine_with(GETCSC);
+        m.press_key(first);
+        m.press_key(second);
+        assert_eq!(getcsc(&mut m), 0);
+        assert_eq!(getcsc(&mut m), 0);
+        m.release_key(first);
+        assert_eq!(getcsc(&mut m), second);
+        assert_eq!(getcsc(&mut m), 0);
+        m.release_key(second);
+        assert_eq!(getcsc(&mut m), 0);
+    }
+}
+
+#[test]
+fn getcsc_reports_nothing_when_two_keys_go_up_together() {
     let mut m = machine_with(GETCSC);
     m.press_key(0x35);
     m.press_key(0x09);
-    assert_eq!(getcsc(&mut m), 0x09);
     assert_eq!(getcsc(&mut m), 0);
     m.release_key(0x35);
     m.release_key(0x09);
     assert_eq!(getcsc(&mut m), 0);
+}
+
+#[test]
+fn getcsc_reports_nothing_with_three_keys_down_until_one_is_left() {
+    let mut m = machine_with(GETCSC);
+    for key in [0x09, 0x0F, 0x35] {
+        m.press_key(key);
+    }
+    assert_eq!(getcsc(&mut m), 0);
+    m.release_key(0x35);
+    assert_eq!(getcsc(&mut m), 0);
+    m.release_key(0x0F);
+    assert_eq!(getcsc(&mut m), 0x09);
 }
 
 /// What the real OS did for these sequences under the key-logging app: a key pressed while
