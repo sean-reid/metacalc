@@ -2,6 +2,7 @@
 # Usage: test-require-tests.sh
 # Checks that require-tests.sh passes when enough tests ran and fails on a filter that matches
 # nothing, too few passes, a failing test and bad arguments. The tests run under a real cargo.
+# shellcheck disable=SC2016
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -74,6 +75,11 @@ expect_status() {
 
 expect_status failing-test 101 1 cargo test --offline --manifest-path "$manifest" -- --ignored --exact tests::breaks
 expect_status status-kept 7 1 sh -c 'exit 7'
-expect missing-command "No such file" 1 "$tmp/no-such-command"
+expect_status missing-command 127 1 "$tmp/no-such-command"
+expect missing-command-message "require-tests: cannot run" 1 no-such-command
+expect_ok coloured-count 2 sh -c 'printf "\033[32mtest result: ok. 2 passed; 0 failed\033[0m\n"'
+expect_ok partial-line 1 sh -c 'printf "..test result: ok. 1 passed; 0 failed\n"'
+expect too-few-coloured "1 tests passed, want at least 2" 2 sh -c 'printf "\033[1mtest result: ok. 1 passed\033[0m\n"'
+expect_ok colour-off 1 sh -c 'test "$CARGO_TERM_COLOR" = never && echo "test result: ok. 1 passed"'
 expect_status no-command 2
 expect_status no-number 2 many cargo test --offline --manifest-path "$manifest"
