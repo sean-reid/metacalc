@@ -173,73 +173,48 @@ app_exit:
 	halt
 	jr app_exit
 
-; A returns the scan code of a key newly pressed since the last call, 0 if none, and the
-; flags, BC, DE and HL are junk. The key that was reported stays the current one until it
-; is up, and no other key reads while it is down; then the lowest code down is reported.
+; A returns the scan code of the one key that is down if it is not the one reported last, else 0,
+; and the flags, BC, DE and HL are junk. Two or more keys down report nothing until one is
+; up; no key down forgets the last one reported.
 get_csc:
-	ld a,(kbdScanCode)
-	or a
-	jr z,get_csc_scan
-	dec a
-	ld d,a
-	and 7
-	inc a
-	ld e,a
-	ld a,d
-	rrca
-	rrca
-	rrca
-	and 7
-	ld b,a
-	ld c,$FE
-	or a
-	jr z,get_csc_select
-get_csc_rotate:
-	rlc c
-	djnz get_csc_rotate
-get_csc_select:
-	ld a,c
-	out (PORT_KEYS),a
-	in a,(PORT_KEYS)
-	ld b,e
-get_csc_shift:
-	rra
-	djnz get_csc_shift
-	jr c,get_csc_scan
-	ld a,$FF
-	out (PORT_KEYS),a
-	xor a
-	jr get_csc_return
-get_csc_scan:
-	ld e,0
+	ld de,0
+	ld l,0
 	ld c,$FE
 get_csc_group:
 	ld a,c
 	out (PORT_KEYS),a
 	in a,(PORT_KEYS)
 	cpl
-	or a
-	jr z,get_csc_next
+	ld b,8
 get_csc_bit:
 	inc e
 	rra
-	jr nc,get_csc_bit
-	ld a,e
-	jr get_csc_done
-get_csc_next:
-	ld a,e
-	add a,8
-	ld e,a
+	jr nc,get_csc_up
+	inc d
+	ld l,e
+get_csc_up:
+	djnz get_csc_bit
 	rlc c
+	ld a,e
 	cp 56
 	jr nz,get_csc_group
-	xor a
-get_csc_done:
-	ld d,a
 	ld a,$FF
 	out (PORT_KEYS),a
 	ld a,d
+	or a
+	jr z,get_csc_idle
+	dec a
+	jr nz,get_csc_none
+	ld a,(kbdScanCode)
+	cp l
+	jr z,get_csc_none
+	ld a,l
 	ld (kbdScanCode),a
+	jr get_csc_return
+get_csc_idle:
+	ld (kbdScanCode),a
+get_csc_none:
+	xor a
 get_csc_return:
 	ld bc,JUNK_BC
 	ld de,JUNK_DE
