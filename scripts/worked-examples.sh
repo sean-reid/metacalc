@@ -4,8 +4,8 @@
 #        worked-examples.sh images dir
 # The worked examples page marks each goal tree with a line `<!-- outline: LABEL -->` followed by a
 # fenced block. check fails unless every numbered section has one library link, one image and one
-# marker that name the same label, a block right after the marker, and hypotheses that appear in
-# its tree. It then regenerates every tree from the database with `mcpack outline` and fails when
+# marker that name the same label, a block right after the marker, and a Hypotheses list equal to
+# the essential hypotheses the database gives the theorem. It then regenerates every tree from the database with `mcpack outline` and fails when
 # a block differs. write rewrites the blocks. images draws the statement at the top of each block
 # in the calculator font into dir, one PNG per label; it needs no database.
 set -eu
@@ -42,14 +42,20 @@ structure() {
 			if (images != 1) bad(title ": expected one image, found " images)
 			if (markers == 1 && links == 1 && marker != link) bad(title ": the link names " link " but the marker names " marker)
 			if (markers == 1 && images == 1 && marker != image) bad(title ": the image names " image " but the marker names " marker)
+			if (markers == 1 && images == 1 && marker != imagefile) bad(title ": the image file is " imagefile ".png but the marker names " marker)
 			if (markers == 1 && !fenced) bad(title ": the marker for " marker " is not followed by a code block")
+			if (markers == 1 && seen[marker]++) bad(title ": the marker " marker " is used in another section")
 			n = split(hyps, list, "\n")
-			for (i = 1; i <= n; i++) if (list[i] != "") print marker "\t" list[i] > out
+			if (markers == 1) print "HYPS\t" marker > out
+			for (i = 1; i <= n; i++) if (list[i] != "") print "HYP\t" marker "\t" list[i] > out
 		}
+		afterMarker { fenced = ($0 ~ /^```/); afterMarker = 0 }
+		inh && $0 != "" && $0 !~ /^- / { inh = 0 }
+		inh && $0 == "" && hyps != "" { inh = 0 }
 		/^## / {
 			flush()
 			title = ($0 ~ /^## [0-9]+\. /) ? $0 : ""
-			links = markers = images = fenced = inh = 0
+			links = markers = images = fenced = inh = afterMarker = 0
 			hyps = ""
 			examples += (title != "")
 			next
@@ -60,8 +66,7 @@ structure() {
 			marker = $0
 			sub(/^<!-- outline: /, "", marker)
 			sub(/ -->$/, "", marker)
-			getline
-			fenced = ($0 ~ /^```/)
+			afterMarker = 1
 			next
 		}
 		/^\[`[^`]*`\]\(\.\.\/libraries\/[a-z]+\.md#[^)]*\)/ {
@@ -84,6 +89,9 @@ structure() {
 			image = $0
 			sub(/^!\[/, "", image)
 			sub(/\].*/, "", image)
+			imagefile = $0
+			sub(/^!\[[^]]*\]\(examples\//, "", imagefile)
+			sub(/\.png\)$/, "", imagefile)
 			next
 		}
 		/^Hypotheses:$/ { inh = 1; next }
@@ -95,13 +103,40 @@ structure() {
 			hyps = hyps line "\n"
 			next
 		}
-		inh && $0 != "" { inh = 0 }
 		END {
 			flush()
 			if (!examples) bad("the page has no numbered example sections")
 			exit failed
 		}
 	' "$page"
+}
+
+# Prints "label<TAB>statement" for each essential hypothesis in scope of each theorem named after
+# the database, read from the $e statements of the enclosing blocks.
+essentials() {
+	database=$1
+	shift
+	awk -v wanted="$*" '
+		BEGIN { n = split(wanted, w, /[ \n]+/); for (i = 1; i <= n; i++) want[w[i]] = 1 }
+		{
+			for (i = 1; i <= NF; i++) {
+				t = $i
+				if (comment) { if (t == "$)") comment = 0; continue }
+				if (t == "$(") { comment = 1; continue }
+				if (!open) {
+					if (t == "${") { depth++; mark[depth] = top }
+					else if (t == "$}") { top = mark[depth]; depth-- }
+					else if (t ~ /^\$[eapfcvd]$/) { open = 1; kind = substr(t, 2, 1); name = prev; body = ""; proof = 0 }
+					else prev = t
+				} else if (t == "$.") {
+					if (kind == "e") hyp[++top] = body
+					else if ((kind == "p" || kind == "a") && (name in want)) for (j = 1; j <= top; j++) print name "\t" hyp[j]
+					open = 0
+				} else if (kind == "p" && t == "$=") proof = 1
+				else if (!proof) body = (body == "" ? t : body " " t)
+			}
+		}
+	' "$database"
 }
 
 outlines() {
@@ -119,14 +154,24 @@ check)
 	: >"$tmp/structure"
 	structure "$tmp/structure" || status=1
 	outlines "$tmp"
-	while IFS=$(printf '\t') read -r label statement; do
-		if [ "$label" = FILE ]; then
-			[ -f "$root/docs/src/libraries/$statement" ] ||
-				{ echo "worked-examples: a link points at docs/src/libraries/$statement, which does not exist" >&2; status=1; }
-		elif [ -f "$tmp/$label" ]; then
-			sed 's/^ *//; s/  \[[^]]*\]$//' "$tmp/$label" | grep -qxF -e "$statement" ||
-				{ echo "worked-examples: the hypothesis $statement of $label is not in its tree" >&2; status=1; }
-		fi
+	wanted=$(labels | tr '\n' ' ')
+	essentials "$target" "$wanted" >"$tmp/essentials"
+	while IFS=$(printf '\t') read -r kind label statement; do
+		case $kind in
+		FILE)
+			[ -f "$root/docs/src/libraries/$label" ] ||
+				{ echo "worked-examples: a link points at docs/src/libraries/$label, which does not exist" >&2; status=1; }
+			;;
+		HYPS)
+			awk -F'\t' -v l="$label" '$1 == "HYP" && $2 == l { print $3 }' "$tmp/structure" | sort >"$tmp/listed"
+			awk -F'\t' -v l="$label" '$1 == l { print $2 }' "$tmp/essentials" | sort >"$tmp/expected"
+			cmp -s "$tmp/listed" "$tmp/expected" || {
+				echo "worked-examples: the hypotheses listed for $label differ from the database" >&2
+				diff -u "$tmp/listed" "$tmp/expected" >&2 || true
+				status=1
+			}
+			;;
+		esac
 	done <"$tmp/structure"
 	for label in $(labels); do
 		block "$label" >"$tmp/$label.page"
