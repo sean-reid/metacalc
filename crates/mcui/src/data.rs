@@ -10,6 +10,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
+/// The typecode of the statements that get proved; the rest are syntax.
+pub(crate) const PROVABLE: &str = "|-";
+
 /// A library to install: its name and its packed bytes.
 #[derive(Debug, Clone)]
 pub struct Installed {
@@ -188,13 +191,24 @@ impl Lib {
         }
         let index = ids.iter().enumerate().map(|(i, &id)| (id, i)).collect();
         let db = Rc::new(db);
-        let grammar = Grammar::shared(db.clone(), &[("|-", "wff")]).ok();
+        let grammar = Grammar::shared(db.clone(), &[(PROVABLE, "wff")]).ok();
         Some(Source {
             db,
             ids,
             index,
             grammar,
         })
+    }
+
+    /// The database and grammar a proof editor works over, when the library exports and parses.
+    pub(crate) fn database(&self) -> Option<(&Database, &Grammar<'static>)> {
+        let source = self.source()?;
+        Some((&source.db, source.grammar.as_ref()?))
+    }
+
+    /// The database statement of assertion `i`.
+    pub(crate) fn stmt_of(&self, i: usize) -> Option<StmtId> {
+        self.source()?.ids.get(i).copied()
     }
 
     /// Whether statements fall back to flat runs of tokens because the library does not export or

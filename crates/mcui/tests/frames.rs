@@ -81,7 +81,7 @@ fn proof_subgoal() {
 #[test]
 fn not_available_yet() {
     let mut ui = ui();
-    press(&mut ui, &[Enter, F4]);
+    press(&mut ui, &[Down, Enter]);
     check(&ui, "unavailable");
 }
 

@@ -6,15 +6,18 @@
 
 pub mod canvas;
 pub mod data;
+mod edit;
 pub mod expr;
 pub mod fold;
 mod key;
+mod proofs;
 mod screens;
 mod status;
 mod ui;
 
 pub use data::{Installed, LoadError, Statuses};
 pub use key::Key;
-pub use screens::{Kind, State};
+pub use proofs::{RestoreError, SavedProof};
+pub use screens::{Kind, State, View};
 pub use status::{Mark, Status};
 pub use ui::{CheckStep, Ui};

@@ -8,5 +8,6 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+mcedit = { path = "../mcedit" }
 mcglyph = { path = "../mcglyph" }
 mcpack = { path = "../mcpack" }

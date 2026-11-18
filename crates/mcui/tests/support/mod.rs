@@ -306,3 +306,52 @@ pub fn unchecked_ui(bytes: Vec<u8>) -> Ui {
     )
     .expect("the library loads")
 }
+
+/// Theorems and axioms for the proving screen: many candidates for one goal, a long statement,
+/// and a theorem that applying `ax-5` to would break a distinct variable rule.
+pub const PROVING: &str = "
+axa1 $a |- ( ph -> ph ) $.
+axa2 $a |- ( ph -> ph ) $.
+axa3 $a |- ( ph -> ph ) $.
+axa4 $a |- ( ph -> ph ) $.
+axa5 $a |- ( ph -> ph ) $.
+axa6 $a |- ( ph -> ph ) $.
+tmany $p |- ( ph -> ph ) $= wph id $.
+tlong $p |- ( ( ph -> ( ps -> ch ) ) -> ( ( ph -> ps ) -> ( ph -> ch ) ) ) $= wph wps wch ax-2 $.
+axq $a |- ( ph -> A. y ph ) $.
+tq $p |- ( ph -> A. y ph ) $= wph vy axq $.
+";
+
+pub fn proving_bytes() -> Vec<u8> {
+    let src = format!("{LOGIC}{EXTRA}{PROVING}");
+    let bytes = pack_all(&db(&src)).expect("the proving library packs");
+    library::check(&bytes).expect("the kernel accepts the proving library");
+    bytes
+}
+
+/// A logic with nothing that fits a bare variable, and a theorem that is its own hypothesis.
+pub const BARE: &str = "
+$c ( ) -> wff |- $.
+$v ph ps $.
+wph $f wff ph $.
+wps $f wff ps $.
+wi $a wff ( ph -> ps ) $.
+ax-1 $a |- ( ph -> ( ps -> ph ) ) $.
+${
+  th.1 $e |- ph $.
+  th $p |- ph $= th.1 $.
+$}
+";
+
+pub fn bare_bytes() -> Vec<u8> {
+    pack_all(&db(BARE)).expect("the bare logic packs")
+}
+
+/// The number of `label` in the library `bytes`.
+pub fn index_of(bytes: &[u8], label: &str) -> usize {
+    library::read(bytes)
+        .expect("library reads")
+        .iter()
+        .position(|a| a.label == label)
+        .unwrap_or_else(|| panic!("no {label}"))
+}

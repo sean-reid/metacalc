@@ -7,18 +7,20 @@ mod libraries;
 mod list;
 mod notice;
 mod proof;
+mod proving;
 mod theorem;
 
 use crate::canvas::Canvas;
 use crate::data::Lib;
 use crate::key::Key;
+use crate::proofs::Proofs;
 
 pub use list::Kind;
 
 /// Everything a screen reads and none changes.
 pub struct Ctx<'a> {
     pub libs: &'a [Lib],
-    pub my_proofs: usize,
+    pub proofs: &'a Proofs,
 }
 
 pub enum Nav {
@@ -42,6 +44,15 @@ pub enum Screen {
     Notice(notice::Notice),
     About(about::About),
     Checking(checking::Checking),
+    Proving(proving::Proving),
+}
+
+/// What the proving screen lists under the goal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    Candidates,
+    Hyps,
+    Tree,
 }
 
 /// Where a screen stands, for tests and scripts.
@@ -80,6 +91,22 @@ pub enum State {
         selected: usize,
         on_goal: bool,
     },
+    Proving {
+        label: String,
+        open: usize,
+        /// The goal on screen, none once nothing is open.
+        goal: Option<u32>,
+        /// Nothing is open and the session exports a proof: the point where the kernel check and
+        /// saving hook in.
+        finished: bool,
+        view: View,
+        /// The highlighted row of the open list.
+        selected: usize,
+        /// The label of the highlighted candidate while candidates are listed.
+        candidate: Option<String>,
+        /// Operations in force.
+        steps: usize,
+    },
     Notice {
         title: String,
     },
@@ -109,6 +136,7 @@ impl Screen {
             Screen::Notice(s) => s.press(key),
             Screen::About(s) => s.press(key),
             Screen::Checking(s) => s.press(key),
+            Screen::Proving(s) => s.press(ctx, key),
         }
     }
 
@@ -122,6 +150,7 @@ impl Screen {
             Screen::Notice(s) => s.draw(canvas),
             Screen::About(s) => s.draw(ctx, canvas),
             Screen::Checking(s) => s.draw(ctx, canvas),
+            Screen::Proving(s) => s.draw(ctx, canvas),
         }
     }
 
@@ -135,6 +164,7 @@ impl Screen {
             Screen::Notice(s) => s.state(),
             Screen::About(_) => State::About,
             Screen::Checking(s) => s.state(ctx),
+            Screen::Proving(s) => s.state(ctx),
         }
     }
 }

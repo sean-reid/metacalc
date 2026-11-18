@@ -66,7 +66,7 @@ impl Libraries {
             let at = self.top + row;
             let (left, right) = match ctx.libs.get(at) {
                 Some(lib) => (lib.name.clone(), progress(lib)),
-                None => ("My proofs".to_string(), ctx.my_proofs.to_string()),
+                None => ("My proofs".to_string(), ctx.proofs.count().to_string()),
             };
             canvas.list_row(1 + row, &left, &right, at == self.cursor);
         }
