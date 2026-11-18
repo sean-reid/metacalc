@@ -239,6 +239,80 @@ database "$tmp/empty-list"
 : >"$tmp/empty-list/libraries.list"
 expect empty-list 'libraries.list is empty' "$tmp/empty-list"
 
+# frames NAME MESSAGE EXPORT_SED EXPORT_EXTRA SOURCE_EXTRA: the export is the tiny database with
+# EXPORT_SED applied and EXPORT_EXTRA appended, the source is the tiny database with SOURCE_EXTRA
+# appended, both read by the real metamath-exe. With a MESSAGE the comparison must fail with it on
+# stderr after the export verifies; with an empty one it must pass.
+frames() {
+	database "$tmp/$1" "${3:-}"
+	printf '%s\n' "${4:-}" >>"$tmp/$1/tiny.mm"
+	{ write_tiny; printf '%s\n' "${5:-}"; } >"$tmp/$1.source.mm"
+	if sh "$root/scripts/verify-exports.sh" "$tmp/$1" "$tmp/$1.source.mm" >"$tmp/out" 2>"$tmp/err"; then
+		[ -z "$2" ] || { echo "FAIL $1: succeeded" >&2; exit 1; }
+		grep -qF 'assertions have the frames of' "$tmp/out" || { echo "FAIL $1: stdout was: $(cat "$tmp/out")" >&2; exit 1; }
+	else
+		[ -n "$2" ] || { echo "FAIL $1: $(cat "$tmp/err")" >&2; exit 1; }
+		grep -qF -e "$2" "$tmp/err" || { echo "FAIL $1: stderr was: $(cat "$tmp/err")" >&2; exit 1; }
+		grep -qF 'proofs verified' "$tmp/out" || { echo "FAIL $1: the export did not verify first" >&2; exit 1; }
+	fi
+	echo "ok $1"
+}
+
+frames same-frames ''
+frames renamed-hypotheses '' 's/ax-mp\.\([12]\)/ax-mp.e\1/g'
+frames reordered-disjoint-pair '' 's/^  \$d ph x \$\.$/  $d x ph $./'
+frames dropped-disjoint-pair '> ax-g	disjoint	ph,x' '/^  \$d ph x \$\.$/d'
+frames changed-hypothesis '< keep	hypothesis 2	$e |- ps $.' '' '${ keep.1 $e |- ps $. keep $a |- ps $. $}' '${ keep.1 $e |- ph $. keep $a |- ps $. $}'
+frames changed-statement '< keep	statement	keep $a |- ph $.' '' 'keep $a |- ph $.' 'keep $a |- ps $.'
+frames dropped-hypothesis "< keep	hypotheses	4" '' '${ keep.1 $e |- ph $. keep.2 $e |- ps $. keep $a |- ps $. $}' '${ keep.1 $e |- ph $. keep $a |- ps $. $}'
+frames added-hypothesis "< keep	hypotheses	3" '' '${ keep.1 $e |- ph $. keep $a |- ps $. $}' '${ keep.1 $e |- ph $. keep.2 $e |- ps $. keep $a |- ps $. $}'
+frames error-line-in-the-database 'metamath-exe reported: ?Error' '' '' 'oops oops oops'
+frames extra-assertion 'assertions in the export and' '' 'extra $a |- ph $.'
+frames missing-from-the-database 'assertions in the export and' 's/^  th-g \$p/  th-x $p/' '' ''
+
+# A statement of over 100 characters that differs from the database only after the point where
+# metamath-exe wraps it, and one whose label is long enough to push its keyword to the next line.
+nest() { awk -v last="$1" 'BEGIN { s = last; for (i = 0; i < 12; i++) s = "( ph -> " s " )"; print s }'; }
+frames wrapped-statement '< wrapped	statement' '' "wrapped \$a |- $(nest ps) \$." "wrapped \$a |- $(nest ph) \$."
+long_label=$(printf 'label-%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14)
+frames wrapped-label "< $long_label	statement" '' "$long_label \$a |- ps \$." "$long_label \$a |- ph \$."
+frames wrapped-label-same '' '' "$long_label \$a |- ph \$." "$long_label \$a |- ph \$."
+
+# A verifier whose output the script cannot place must fail the comparison, not shrink it.
+printf '' >"$tmp/stubbed.mm"
+compare_stub() {
+	stub "$1" "$3"
+	if METAMATH=$tmp/$1 sh "$root/scripts/compare-frames.sh" "$tmp/good/tiny.mm" "$tmp/stubbed.mm" >"$tmp/out" 2>"$tmp/err"; then
+		echo "FAIL $1: succeeded" >&2
+		exit 1
+	fi
+	grep -qF -e "$2" "$tmp/err" || { echo "FAIL $1: stderr was: $(cat "$tmp/err")" >&2; exit 1; }
+	echo "ok $1"
+}
+compare_stub header-without-statement 'is followed by no statement' 'Statement 12 is located on line 3 of the file "x".
+Its statement number for HTML pages is 1.'
+compare_stub unparsed-statement 'did not parse' 'Statement 12 is located on line 3 of the file "x".
+12 th-x $p |- ps'
+compare_stub fewer-statements-than-labels 'assertions in the export and' 'Statement 12 is located on line 3 of the file "x".
+12 wi $a wff ( ph -> ps ) $.'
+compare_stub error-line 'metamath-exe reported: ?Error: canned' '?Error: canned
+Statement 12 is located on line 3 of the file "x".
+12 wi $a wff ( ph -> ps ) $.'
+compare_stub unplaced-hypothesis-line 'among the hypotheses of statement 1 was not understood: stray' 'Statement 12 is located on line 3 of the file "x".
+12 wi $a wff ( ph -> ps ) $.
+Its mandatory hypotheses in RPN order are:
+  wph $f wff ph $.
+stray'
+
+for source in "" "$tmp/no-such-database.mm"; do
+	if sh "$root/scripts/verify-exports.sh" "$tmp/good" "$source" >"$tmp/out" 2>"$tmp/err"; then
+		echo "FAIL missing-source: succeeded with '$source'" >&2
+		exit 1
+	fi
+	grep -qF 'is not a file' "$tmp/err" || { echo "FAIL missing-source: stderr was: $(cat "$tmp/err")" >&2; exit 1; }
+done
+echo "ok missing-source"
+
 expect no-files 'no .mm files' "$tmp/empty"
 if run "$tmp/good" "$tmp/absent"; then echo "FAIL missing-verifier: succeeded" >&2; exit 1; fi
 grep -qF 'not an executable' "$tmp/err" || { echo "FAIL missing-verifier: stderr was: $(cat "$tmp/err")" >&2; exit 1; }

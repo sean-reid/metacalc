@@ -1,6 +1,6 @@
 use super::{fail, grammar};
 use mcpack::measure::measure;
-use mcpack::mm::{self, Database, Kind, StmtId, Verifier};
+use mcpack::mm::{self, Database, Kind, StmtId, Verifier, shown};
 use std::process::ExitCode;
 
 fn find_all(db: &Database, labels: &[String]) -> Result<Vec<StmtId>, ExitCode> {
@@ -15,8 +15,12 @@ fn find_all(db: &Database, labels: &[String]) -> Result<Vec<StmtId>, ExitCode> {
 
 pub(super) fn kept(db: &Database, roots: &[String]) -> Result<Vec<StmtId>, ExitCode> {
     let roots = find_all(db, roots)?;
-    mm::closure(db, &grammar(db)?, &roots)
-        .map_err(|(id, e)| fail(format_args!("{}: {e:?}", db.stmt(id).label)))
+    mm::closure(db, &grammar(db)?, &roots).map_err(|(id, e)| {
+        fail(format_args!(
+            "{}: {e:?}",
+            shown(db.stmt(id).label.as_bytes())
+        ))
+    })
 }
 
 pub fn closure(db: &Database, roots: &[String], splits: &[String]) -> Result<ExitCode, ExitCode> {
@@ -25,7 +29,7 @@ pub fn closure(db: &Database, roots: &[String], splits: &[String]) -> Result<Exi
     let report = measure(db, &kept, &splits);
     print!("{report}");
     for (label, e) in &report.failures {
-        eprintln!("{label}: {e:?}");
+        eprintln!("{}: {e:?}", shown(label.as_bytes()));
     }
     Ok(if report.failures.is_empty() {
         ExitCode::SUCCESS
@@ -53,12 +57,15 @@ pub fn parse(db: &Database) -> Result<ExitCode, ExitCode> {
                     .all(|(stmt, tree)| grammar.expr(tree)[1..] == stmt.expr[1..]);
                 if !spelled {
                     failed += 1;
-                    eprintln!("{}: the parse does not spell the statement", stmt.label);
+                    eprintln!(
+                        "{}: the parse does not spell the statement",
+                        shown(stmt.label.as_bytes())
+                    );
                 }
             }
             Err(e) => {
                 failed += 1;
-                eprintln!("{}: {e:?}", stmt.label);
+                eprintln!("{}: {e:?}", shown(stmt.label.as_bytes()));
             }
         }
     }
@@ -77,7 +84,7 @@ pub fn verify(db: &Database) -> ExitCode {
         checked += 1;
         if let Err(e) = verifier.verify(id) {
             failed += 1;
-            eprintln!("{}: {e:?}", db.stmt(id).label);
+            eprintln!("{}: {e:?}", shown(db.stmt(id).label.as_bytes()));
         }
     }
     println!("{checked} proofs checked, {failed} failed");

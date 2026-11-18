@@ -34,6 +34,37 @@ for entry in 32768:4 32673:4 32672:3 32671:3 16385:3 17311:3 17312:3; do
 	esac
 done
 
+# Libraries whose apps hash to each trailer form (01 01 to 01 03, then 00) and to a signature of 63
+# bytes, the signer's output being a function of the app's bytes alone.
+for entry in 37:63 111:64 185:64 333:64; do
+	len=${entry%:*}
+	want=${entry#*:}
+	make_library "$len"
+	rm -rf "$dir/build"
+	make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" > /dev/null
+	out=$(sh "$app/scripts/check-8xk.sh" -l "$dir/lib" "$dir/build/metacalc.8xk")
+	case $out in
+		*", $want-byte signature)") ;;
+		*) echo "test-library-pages: $len bytes: want a $want-byte signature: $out" >&2; exit 1 ;;
+	esac
+	echo "test-library-pages: $len bytes: $want-byte signature"
+done
+# A library of 952 bytes puts 0Ah in the file header's length field, which is not a line ending.
+make_library 952
+rm -rf "$dir/build"
+make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" > /dev/null
+[ "$(head -c 78 "$dir/build/metacalc.8xk" | tail -c 4 | od -An -tx1 | tr -d ' ')" = 0aa40000 ] || {
+	echo "test-library-pages: 952 bytes: the header has no 0Ah byte" >&2
+	exit 1
+}
+sh "$app/scripts/check-8xk.sh" -l "$dir/lib" "$dir/build/metacalc.8xk" > /dev/null
+echo "test-library-pages: 952 bytes: 0Ah in the header"
+
+make_library 37
+rm -rf "$dir/build"
+make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" > /dev/null
+sh "$app/scripts/test-check-8xk.sh" "$dir/build/metacalc.8xk"
+
 mkdir "$dir/with space"
 make_library 20000
 mv "$dir/lib" "$dir/with space/my library.mclib"

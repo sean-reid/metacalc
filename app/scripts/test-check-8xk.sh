@@ -67,6 +67,15 @@ resum() {
 	} > "$2"
 }
 
+# unlf file: drops the file's last byte when it is LF, which awk adds after the unterminated end
+# record the signer writes.
+unlf() {
+	if [ "$(tail -c 1 "$1" | od -An -tx1 | tr -d ' ')" = 0a ]; then
+		head -c $(($(wc -c < "$1") - 1)) "$1" > "$1.cut"
+		mv "$1.cut" "$1"
+	fi
+}
+
 # corrupt in page record out: changes the first nibble of data record $3 of page $2, both
 # counted from 0.
 corrupt() {
@@ -82,6 +91,7 @@ corrupt() {
 			{ print }
 		'
 	} > "$4"
+	unlf "$4"
 }
 
 # Sets the last data byte of the file, which the signer pads with FF, to 00.
@@ -150,7 +160,157 @@ set_field() {
 	resum "$1.tmp" "$1"
 }
 
+fill() { printf '%*s' "$1" '' | tr ' ' F; }
+hexlen() { printf %02X "$1"; }
+
+# append_ff in out: the file with one FF byte after the signature field, in a record of its own.
+append_ff() {
+	{
+		head -n 1 "$1"
+		tail -n +2 "$1" | awk "$HEX"'
+			/^:[0-9A-F]{6}00/ { next_address = hex(substr($0, 4, 4)) + hex(substr($0, 2, 2)) }
+			/^:00000001FF/ {
+				body = sprintf("01%04X00FF", next_address)
+				printf ":%s%02X\r\n", body, checksum(body)
+				printf "%s", $0
+				next
+			}
+			{ print }
+		'
+	} > "$2"
+}
+
+# The rules that hold for the app of any library: the signature covers every byte, the header
+# says shareware, the records end in CR LF and the file ends with the end record.
+common_tests() {
+	corrupt "$good" 0 4 "$dir/code.tmp"
+	resum "$dir/code.tmp" "$dir/code.8xk"
+	refuses code "a code byte changed under fixed checksums" "does not verify"
+
+	mutate 's/80120104/80120105/' key-id
+	refuses key-id "key ID 0105" "key ID"
+
+	# 80 12 01 04 elsewhere in the header is not the key ID field.
+	mutate 's/80120104/80120105/;s/A16B99F6/80120104/' key-id-elsewhere
+	refuses key-id-elsewhere "the key ID 0104 somewhere other than after the length" "key ID"
+
+	{ cat "$good"; printf '\n'; } > "$dir/lf-end.8xk"
+	refuses lf-end "an end record that ends in LF alone" "end record"
+
+	sed '$d' "$good" > "$dir/no-end.8xk"
+	refuses no-end "no end record" "end record"
+
+	sed "s/$(printf '\r')\$//" "$good" > "$dir/lf.8xk"
+	refuses lf "LF line endings" "CR LF"
+
+	# A signature of fewer than 64 bytes with a zero byte added at the top is the same number.
+	read_field
+	# The signature plus the modulus squares to the same number, and fits in 64 bytes when the
+	# signature is below 2^512 minus the modulus.
+	bumped=$(python3 -I -c '
+import sys
+n = int.from_bytes(bytes.fromhex(
+    "AD2431DA2297E4175EAC61A3154FA3D847115794DD330AB7FF36BA59FEDA195F"
+    "EA7C16743BD7BCED8A0DA885E5E5C34D5BF20D0AB3EF9181ED39BA2C4D898E87"), "little")
+s = int.from_bytes(bytes.fromhex(sys.argv[1]), "little") + n
+print(s.to_bytes(64, "little").hex().upper() if s < 1 << 512 else "")
+' "$sig")
+	if [ -n "$bumped" ]; then
+		set_field "$dir/above-modulus.8xk" "022D40${bumped}${trailer}$(fill $((192 - 6 - 128 - 2 * t)))"
+		refuses above-modulus "the signature plus the modulus" "not below the modulus"
+	fi
+	if [ "$n" -lt 64 ]; then
+		leading="022D$(hexlen $((n + 1)))${sig}00${trailer}$(fill $((192 - 6 - 2 * (n + 1) - 2 * t)))"
+		set_field "$dir/leading-zero.8xk" "$leading"
+		refuses leading-zero "a zero byte at the top of the signature" "zero byte at the top"
+	fi
+}
+
+# resign in out form delta claim: the good file with the code byte 100 bytes before the signature
+# field changed until the signer's arithmetic gives trailer form `form` for the MD5 of the data up
+# to the field plus delta bytes, signed with the factors of the modulus of key 0104 as published in
+# spasm-ng (export.cpp) and with the trailer written as form `claim`. Delta 0 is what the checker
+# hashes.
+RESIGN='
+import hashlib, re, sys
+
+P = int.from_bytes(bytes.fromhex(
+    "5B2E54E9B5C1FE26CE93261478D3873F3FC41BFFF1F5F934D7A5793A43C1C21C"), "little")
+Q = int.from_bytes(bytes.fromhex(
+    "97F7707B94079B73858720BF6D4909AB3BEDA1BA9B93112B041340A16ED597B604"), "little")
+N = P * Q
+src, out, form, delta, claim = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+raw = open(src, "rb").read()
+records = [m for m in re.finditer(rb":[0-9A-F]{8}[0-9A-F]*", raw) if m.group()[7:9] == b"00"]
+spans = [(m.start(), 11 + 2 * int(m.group()[1:3], 16)) for m in records]
+body = bytes.fromhex(b"".join(m.group()[9:-2] for m in records).decode())
+at = len(body) - 96
+
+
+def sign(data):
+    m = int.from_bytes(hashlib.md5(data).digest(), "little") * 256 + 1
+    lp = 0 if pow(m, (P - 1) // 2, P) == 1 else 1
+    lq = 1 if pow(m, (Q - 1) // 2, Q) == 1 else 0
+    f = lp + lq + lq
+    if lp == lq:
+        m *= 2
+    if lq == 0:
+        m = N - m
+    r, s = pow(m, (P + 1) // 4, P), pow(m, (Q + 1) // 4, Q)
+    root = ((r - s) * pow(Q, -1, P) % P) * Q + s
+    assert root * root % N == m
+    return f, root.to_bytes((root.bit_length() + 7) // 8, "little")
+
+
+for value in range(256):
+    data = body[:at - 100] + bytes([value]) + body[at - 99:at]
+    f, sig = sign((data + body[at:])[:at + delta])
+    if f == form:
+        break
+else:
+    sys.exit("no byte value gives form %d" % form)
+trailer = b"\x00" if claim == 0 else bytes([1, claim])
+field = (b"\x02\x2d" + bytes([len(sig)]) + sig + trailer).ljust(96, b"\xff")
+hexed = (data + field).hex().upper().encode()
+pieces, last, used = [], 0, 0
+for m, (start, size) in zip(records, spans):
+    rec = m.group()[1:9] + hexed[used:used + size - 11]
+    used += size - 11
+    total = sum(bytes.fromhex(rec.decode()))
+    pieces += [raw[last:start], b":" + rec + b"%02X" % ((256 - total % 256) % 256)]
+    last = start + size
+open(out, "wb").write(b"".join(pieces) + raw[last:])
+'
+
+# trailer_tests: for each of the four trailer forms, a file signed the way the signer signs passes,
+# and one whose signed range is a byte short or a byte long, or whose trailer names another form,
+# is refused.
+trailer_tests() {
+	form=0
+	while [ "$form" -le 3 ]; do
+		python3 -I -c "$RESIGN" "$good" "$dir/form$form.8xk" "$form" 0 "$form"
+		sh "$check" "$dir/form$form.8xk" "$name" > /dev/null || {
+			echo "test-check-8xk: refused a correct file with trailer form $form" >&2
+			exit 1
+		}
+		python3 -I -c "$RESIGN" "$good" "$dir/short$form.8xk" "$form" -1 "$form"
+		refuses "short$form" "a form $form signature over one byte too few" "does not verify"
+		python3 -I -c "$RESIGN" "$good" "$dir/long$form.8xk" "$form" 1 "$form"
+		refuses "long$form" "a form $form signature over one byte too many" "does not verify"
+		other=$(((form + 1) % 4))
+		python3 -I -c "$RESIGN" "$good" "$dir/claim$form.8xk" "$form" 0 "$other"
+		refuses "claim$form" "a form $form signature with the trailer of form $other" "does not verify"
+		form=$((form + 1))
+	done
+}
+
 if [ -z "$library" ]; then
+	common_tests
+	trailer_tests
+
+	append_ff "$good" "$dir/after-field.8xk"
+	refuses after-field "a byte after the signature field" "no signature field"
+
 	: > "$dir/empty.8xk"
 	refuses empty "no bytes"
 
@@ -163,7 +323,7 @@ if [ -z "$library" ]; then
 	mutate 's/807F00000000/807F00000001/' header
 	refuses header "bytes between the header and 4080h"
 
-	mutate 's/022D40/022D41/' signature
+	mutate "s/022D$(hexlen "$n")/022D$(hexlen $((n + 1)))/" signature
 	refuses signature "no signature field"
 
 	zero_last_byte "$good" "$dir/after-signature.tmp"
@@ -173,19 +333,11 @@ if [ -z "$library" ]; then
 	corrupt "$good" 0 1 "$dir/checksum.8xk"
 	refuses checksum "a data byte changed under its checksum" "checksum is wrong"
 
-	# The signer drops leading zero bytes of the number it exports, least significant byte first,
-	# so a shorter signature is the good one without its last byte, a smaller length byte and one
-	# more FF. This one is synthesised from the good file's own signature.
 	read_field
-	fill() { printf '%*s' "$1" '' | tr ' ' F; }
 	pad=$((192 - 6 - 2 * n - 2 * t))
-	hexlen() { printf %02X "$1"; }
 	short="022D$(hexlen $((n - 1)))$(printf '%s' "$sig" | cut -c1-$((2 * n - 2)))$trailer$(fill $((pad + 2)))"
 	set_field "$dir/short-signature.8xk" "$short"
-	sh "$check" "$dir/short-signature.8xk" "$name" | grep -q "$((n - 1))-byte signature" || {
-		echo "test-check-8xk: refused a signature one byte short" >&2
-		exit 1
-	}
+	refuses short-signature "a signature one byte short of the signed number" "does not verify"
 	liar="022D$(hexlen $((n - 1)))$sig$trailer$(fill $pad)"
 	set_field "$dir/length-lies.8xk" "$liar"
 	refuses length-lies "a length byte one under the signature bytes present" "no signature field"
@@ -207,6 +359,7 @@ fi
 pages=$(sh "$check" -l "$library" "$good" "$name" | sed -n 's/.* \([0-9][0-9]*\) pages.*/\1/p')
 [ "$pages" -ge 3 ] || { echo "test-check-8xk: $good has $pages pages, need at least 3" >&2; exit 1; }
 len=$(wc -c < "$library" | tr -d ' ')
+common_tests
 field() { printf '2s/8081%02X/8081%02X/' "$1" "$2"; }
 
 mutate "$(field "$pages" $((pages + 1)))" more-pages
@@ -235,6 +388,7 @@ refuses gap "a missing record in the middle of a page" "not contiguous"
 		{ print }
 	'
 } > "$dir/long-page.8xk"
+unlf "$dir/long-page.8xk"
 refuses long-page "a last page over 16384 bytes" "over 16384"
 
 corrupt "$good" 1 1 "$dir/chunk.tmp"
