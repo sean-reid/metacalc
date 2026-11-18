@@ -119,6 +119,7 @@ jobs:
       - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 2 cargo test --release --locked -p mcui --test ring -- --ignored --nocapture
       - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcglyph --test font -- --ignored --exact fixture_matches_the_ring_closure_of_set_mm
       - run: sh scripts/test-build-site.sh
+      - run: sh scripts/test-worked-examples.sh
       - run: sh scripts/test-require-tests.sh
       - run: sh scripts/test-script-paths.sh
       - run: sh scripts/build-site.sh "$RUNNER_TEMP/pages" "$RUNNER_TEMP/docs"
