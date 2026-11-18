@@ -216,8 +216,28 @@ iv_one:
 iv_col:
 	push hl
 	ld a,(ui_rows)
-	ld b,a
 	ld de,UI_STRIDE
+	cp UI_ROW
+	jr nz,iv_some
+#macro FLIP
+	ld a,(hl)
+	xor c
+	ld (hl),a
+	add hl,de
+#endmacro
+	FLIP
+	FLIP
+	FLIP
+	FLIP
+	FLIP
+	FLIP
+	FLIP
+	FLIP
+	pop hl
+	inc hl
+	ret
+iv_some:
+	ld b,a
 iv_cl:
 	ld a,(hl)
 	xor c
