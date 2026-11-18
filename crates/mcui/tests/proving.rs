@@ -617,7 +617,7 @@ fn a_group_of_two_operations_comes_back_from_a_restore_as_one_undo() {
     let mut fresh = ui_over(p.bytes.clone(), &[], &[]);
     fresh.restore_proof(saved).unwrap();
     open(&mut fresh, "ta1");
-    fresh.press(F4);
+    press(&mut fresh, &[F4, F4]);
     assert_eq!(at(&fresh).steps, 0);
     assert_eq!(at(&fresh).goal, Some(0));
 }
@@ -629,8 +629,8 @@ fn crafted(bytes: &[u8], label: &str, apply: &[&str], groups: Vec<usize>) -> Sav
     let grammar = Grammar::new(&db, &[("|-", "wff")]).unwrap();
     let mut session =
         Session::start_in(Catalog::new(&db, &grammar), db.find(label).unwrap()).unwrap();
-    for name in apply {
-        session.apply(0, db.find(name).unwrap()).unwrap();
+    for (goal, name) in apply.iter().enumerate() {
+        session.apply(goal as u32, db.find(name).unwrap()).unwrap();
     }
     SavedProof {
         library: 0,
@@ -816,7 +816,7 @@ fn no_key_press_replays_the_operations_before_it() {
         depth + 1,
         "the proof is replayed once, on opening"
     );
-    press(&mut fresh, &[F4, F1, F4]);
+    press(&mut fresh, &[F4, F4, F1]);
     assert_eq!(replayed(&fresh), depth + 1);
     let ms = |d: &std::time::Duration| d.as_secs_f64() * 1e3;
     let total: f64 = times.iter().map(ms).sum();
