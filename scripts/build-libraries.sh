@@ -1,7 +1,8 @@
 #!/bin/sh
 # Usage: build-libraries.sh database libdir pagedir
 # Builds every library in libraries/ from the pinned database into libdir, then writes each
-# library's reference page into pagedir.
+# library's reference page into pagedir, and checks that each library exports to a database the
+# reference verifier accepts.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -17,4 +18,6 @@ for manifest in "$root"/libraries/*.toml; do
 	[ "$name" = source ] && continue
 	"$mcpack" build "$manifest" --database "$database" -o "$libdir/$name.mclib"
 	"$mcpack" doc "$manifest" --library "$libdir/$name.mclib" -o "$pagedir/$name.md"
+	"$mcpack" export "$libdir/$name.mclib" -o "$libdir/$name.mm"
+	"$mcpack" verify "$libdir/$name.mm"
 done
