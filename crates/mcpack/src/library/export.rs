@@ -1,12 +1,14 @@
-use super::read::{Assertion, Hypothesis, Library, Reference, decode};
-use super::{ReadError, SAVE, WIDE};
-use std::collections::{HashMap, HashSet};
+use super::read::{Assertion, Hypothesis, Library, Reference, Step, Variable, decode};
+use super::{CheckError, ReadError, check};
+use std::collections::HashSet;
 use std::fmt;
 
 const WIDTH: usize = 79;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ExportError {
+    /// The kernel rejects the library.
+    Check(CheckError),
     /// The bytes are not a readable library.
     Read(ReadError),
     /// A symbol name that is empty, not printable ASCII, contains `$` or repeats.
@@ -20,6 +22,7 @@ pub enum ExportError {
 impl fmt::Display for ExportError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ExportError::Check(e) => e.fmt(f),
             ExportError::Read(e) => e.fmt(f),
             ExportError::Symbol(name) => write!(f, "{name:?} cannot be a math symbol"),
             ExportError::Label(label) => write!(f, "{label:?} cannot be a unique label"),
@@ -30,14 +33,21 @@ impl fmt::Display for ExportError {
 
 impl std::error::Error for ExportError {}
 
+impl From<CheckError> for ExportError {
+    fn from(e: CheckError) -> Self {
+        ExportError::Check(e)
+    }
+}
+
 impl From<ReadError> for ExportError {
     fn from(e: ReadError) -> Self {
         ExportError::Read(e)
     }
 }
 
-/// Writes a packed library as a Metamath database, using nothing but the library's bytes.
+/// Writes a packed library the kernel accepts as a Metamath database, using nothing but its bytes.
 pub fn export(bytes: &[u8]) -> Result<String, ExportError> {
+    check(bytes)?;
     let library = decode(bytes)?;
     let mut reserved = HashSet::new();
     for name in library
@@ -113,22 +123,19 @@ impl Writer<'_> {
         let label = &assertion.label;
         let refuse = |why| ExportError::Assertion(label.clone(), why);
 
-        let mut floats: HashMap<&str, String> = HashMap::new();
+        let mut floats: HashSet<&str> = HashSet::new();
         let mut hyps: Vec<(String, &Hypothesis)> = Vec::new();
         let (mut f, mut e) = (0, 0);
         for hyp in &assertion.hypotheses {
             let name = match hyp {
                 Hypothesis::Float { variable, .. } => {
                     f += 1;
-                    let name = self.fresh(format!("{label}.f{f}"));
-                    if floats.insert(variable, name.clone()).is_some() {
-                        return Err(refuse("two floating hypotheses for one variable"));
-                    }
-                    name
+                    floats.insert(variable);
+                    self.fresh(format!("{label}.f{f}"))
                 }
                 Hypothesis::Essential(expr) => {
                     e += 1;
-                    let active = |s: &String| !self.is_variable(s) || floats.contains_key(&**s);
+                    let active = |s: &String| !self.is_variable(s) || floats.contains(&**s);
                     if !expr.iter().all(active) {
                         return Err(refuse(
                             "an essential hypothesis uses a variable before its float",
@@ -139,39 +146,27 @@ impl Writer<'_> {
             };
             hyps.push((name, hyp));
         }
-        let mandatory = |s: &String| !self.is_variable(s) || floats.contains_key(&**s);
-        let well_formed = |expr: &Vec<String>| {
-            expr.first().is_some_and(|s| !self.is_variable(s)) && expr.iter().all(mandatory)
-        };
-        if !well_formed(&assertion.conclusion) {
-            return Err(refuse(
-                "the conclusion does not start with a constant or has a variable without a float",
-            ));
-        }
         let mut used: HashSet<&str> = assertion.conclusion.iter().map(String::as_str).collect();
         for (_, hyp) in &hyps {
             if let Hypothesis::Essential(expr) = hyp {
-                if !well_formed(expr) {
-                    return Err(refuse("a hypothesis does not start with a constant"));
-                }
                 used.extend(expr.iter().map(String::as_str));
             }
         }
-        if floats.keys().any(|v| !used.contains(v)) {
+        if floats.iter().any(|v| !used.contains(v)) {
             return Err(refuse(
                 "a floating hypothesis names a variable the assertion does not use",
             ));
         }
 
-        let mut dummies: Vec<(&str, String)> = Vec::new();
+        let mut dummies: Vec<(&Variable, String)> = Vec::new();
         let mut proof_labels: Vec<String> = Vec::new();
         for reference in &assertion.references {
             let name = match reference {
                 Reference::Dummy(var) => {
-                    if floats.contains_key(&**var) {
+                    if floats.contains(&*var.name) {
                         return Err(refuse("a proof names a mandatory variable's float"));
                     }
-                    if dummies.iter().any(|(v, _)| v == var) {
+                    if dummies.iter().any(|(v, _)| v.name == var.name) {
                         return Err(refuse("a proof names a dummy variable twice"));
                     }
                     let name = self.fresh(format!("{label}.d{}", dummies.len() + 1));
@@ -188,18 +183,10 @@ impl Writer<'_> {
             }
             proof_labels.push(name);
         }
-        let dummy_typecode = |var: &str| {
-            let variable = library.variables.iter().find(|v| v.name == var);
-            variable.and_then(|v| v.typecode.as_deref())
-        };
 
         self.out += "${\n";
         let pairs = assertion.disjoint.iter().chain(&assertion.extra_disjoint);
         for (a, b) in pairs {
-            let known = |v: &String| self.is_variable(v);
-            if a == b || !known(a) || !known(b) {
-                return Err(refuse("a disjoint pair does not name two variables"));
-            }
             let mut lines = Lines::new(&mut self.out, 2);
             ["$d", a, b, "$."].iter().for_each(|t| lines.token(t));
             lines.finish();
@@ -222,20 +209,18 @@ impl Writer<'_> {
             lines.finish();
         }
         for (var, name) in &dummies {
-            let typecode =
-                dummy_typecode(var).ok_or_else(|| refuse("a dummy variable has no typecode"))?;
             let mut lines = Lines::new(&mut self.out, 2);
-            [name, "$f", typecode, var, "$."]
+            [name, "$f", &var.typecode, &var.name, "$."]
                 .iter()
                 .for_each(|t| lines.token(t));
             lines.finish();
         }
-        self.assertion(assertion, &proof_labels)?;
+        self.assertion(assertion, &proof_labels);
         self.out += "$}\n";
         Ok(())
     }
 
-    fn assertion(&mut self, assertion: &Assertion, labels: &[String]) -> Result<(), ExportError> {
+    fn assertion(&mut self, assertion: &Assertion, labels: &[String]) {
         let mut lines = Lines::new(&mut self.out, 2);
         lines.token(&assertion.label);
         lines.token(if assertion.theorem { "$p" } else { "$a" });
@@ -243,37 +228,25 @@ impl Writer<'_> {
         if !assertion.theorem {
             lines.token("$.");
             lines.finish();
-            return Ok(());
+            return;
         }
         lines.token("$=");
         lines.token("(");
         labels.iter().for_each(|t| lines.token(t));
         lines.token(")");
-        let steps = step_letters(&assertion.proof).ok_or_else(|| {
-            ExportError::Assertion(assertion.label.clone(), "the proof is cut short")
-        })?;
-        lines.run(&steps);
+        lines.run(&step_letters(&assertion.proof));
         lines.token("$.");
         lines.finish();
-        Ok(())
     }
 }
 
-/// The compressed-proof letters for the stored step numbers.
-fn step_letters(proof: &[u8]) -> Option<String> {
+/// The compressed-proof letters for the stored steps.
+fn step_letters(proof: &[Step]) -> String {
     let mut out = String::new();
-    let mut bytes = proof.iter();
-    while let Some(&byte) = bytes.next() {
-        let number = match byte {
-            SAVE => {
-                out.push('Z');
-                continue;
-            }
-            b if b < WIDE => b as usize,
-            b => {
-                let low = *bytes.next()? as usize;
-                WIDE as usize + (((b - WIDE) as usize) << 8 | low)
-            }
+    for step in proof {
+        let Step::Number(number) = *step else {
+            out.push('Z');
+            continue;
         };
         let mut digits = vec![b'A' + (number % 20) as u8];
         let mut rest = number / 20;
@@ -284,7 +257,7 @@ fn step_letters(proof: &[u8]) -> Option<String> {
         }
         out.extend(digits.iter().rev().map(|&d| d as char));
     }
-    Some(out)
+    out
 }
 
 /// Appends tokens to a string, breaking lines before they pass `WIDTH` columns.

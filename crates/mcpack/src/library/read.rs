@@ -1,4 +1,4 @@
-use super::{DUMMY, HEADER_LEN, MAGIC};
+use super::{DUMMY, HEADER_LEN, MAGIC, SAVE, WIDE};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadError;
@@ -18,7 +18,7 @@ pub enum Hypothesis {
 /// What a theorem's proof names: a dummy variable's float hypothesis, or an earlier assertion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reference {
-    Dummy(String),
+    Dummy(Variable),
     Assertion(usize),
 }
 
@@ -33,14 +33,20 @@ pub struct Assertion {
     /// The pairs of a theorem that involve a dummy variable.
     pub extra_disjoint: Vec<(String, String)>,
     pub references: Vec<Reference>,
-    /// The proof's step numbers exactly as stored.
-    pub proof: Vec<u8>,
+    pub proof: Vec<Step>,
+}
+
+/// One entry of a stored proof: a step number, or the marker that saves the top of the stack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    Number(usize),
+    Save,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Variable {
     pub name: String,
-    pub typecode: Option<String>,
+    pub typecode: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,8 +139,14 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
         Ok(pairs)
     };
     let typecode = |id: usize| match typecodes.get(id) {
-        Some(&0xFF) | None => Ok(None),
-        Some(&t) => name(t).map(Some),
+        Some(&t) if t != 0xFF => name(t),
+        _ => Err(ReadError),
+    };
+    let dummy = |id: usize| -> Result<Variable, ReadError> {
+        Ok(Variable {
+            name: variable(id)?,
+            typecode: typecode(id)?,
+        })
     };
     let variables = (constants..symbols)
         .map(|id| {
@@ -165,7 +177,7 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
             hypotheses.push(match cur.u8()? {
                 0 => {
                     let var = cur.u8()?;
-                    let typecode = typecode(var)?.ok_or(ReadError)?;
+                    let typecode = typecode(var)?;
                     Hypothesis::Float {
                         typecode,
                         variable: variable(var)?,
@@ -194,12 +206,22 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
                 assertion
                     .references
                     .push(match reference.checked_sub(DUMMY as usize) {
-                        Some(var) => Reference::Dummy(variable(var)?),
+                        Some(var) => Reference::Dummy(dummy(var)?),
                         None => Reference::Assertion(reference),
                     });
             }
             let len = cur.u16()?;
-            assertion.proof = cur.take(len)?.to_vec();
+            let mut proof = Cursor {
+                bytes: cur.take(len)?,
+                pos: 0,
+            };
+            while proof.pos < len {
+                assertion.proof.push(match proof.u8()? {
+                    b if b == SAVE as usize => Step::Save,
+                    b if b < WIDE as usize => Step::Number(b),
+                    b => Step::Number(WIDE as usize + ((b - WIDE as usize) << 8 | proof.u8()?)),
+                });
+            }
         }
         assertions.push(assertion);
     }

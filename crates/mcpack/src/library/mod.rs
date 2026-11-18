@@ -37,7 +37,9 @@ pub use check::{CheckError, check};
 pub use export::{ExportError, export};
 pub use kernel::{Kernel, KernelError, Limits};
 pub use pack::{PackError, pack};
-pub use read::{Assertion, Hypothesis, Library, ReadError, Reference, Variable, decode, read};
+pub use read::{
+    Assertion, Hypothesis, Library, ReadError, Reference, Step, Variable, decode, read,
+};
 
 pub const MAGIC: &[u8; 4] = b"MCL1";
 pub const CHUNK: usize = 1 << 14;

@@ -1,0 +1,256 @@
+use super::*;
+
+const LABELS: &str = "$c |- wff R $. $v x $. vx $f wff x $.
+    one $a |- R $. two $a |- R $. six $a |- R $.";
+
+const UNUSED: &str = "$c |- wff R $. $v x y $. vx $f wff x $. vy $f wff y $.
+    ${ $d x y $. ax-d $a |- R x y $. $}";
+
+const ESSENTIAL: &str = "$c |- wff R $. $v x y $. vx $f wff x $. vy $f wff y $.
+    ${ m.1 $e |- R x y $. ax-m $a |- R x x $. $}";
+
+const REFS: &str = "$c R wff |- $. $v x y z $.
+    vx $f wff x $. vy $f wff y $. vz $f wff z $.
+    ${ $d x y $. ax-d $a |- R x y $. $}
+    ax-m $a |- R $.
+    ax-n $a |- R $.
+    ${ $d x y $. th $p |- R x y $= ( ax-d ax-m ax-n ) ABC $. $}";
+
+fn packed(src: &str) -> Vec<u8> {
+    let db = parse(src);
+    pack(&db, &all(&db)).expect("it packs")
+}
+
+fn reseal(bytes: &mut [u8]) {
+    let crc = crc32(&bytes[8..]);
+    bytes[4..8].copy_from_slice(&crc.to_le_bytes());
+}
+
+fn u16_at(bytes: &[u8], at: usize) -> usize {
+    u16::from_le_bytes([bytes[at], bytes[at + 1]]) as usize
+}
+
+fn u32_at(bytes: &[u8], at: usize) -> usize {
+    u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize
+}
+
+/// Positions inside a record, read from the documented layout.
+struct Record {
+    start: usize,
+    hyps: usize,
+    conclusion: usize,
+    refs: usize,
+    proof: usize,
+}
+
+fn record(bytes: &[u8], id: usize) -> Record {
+    let start = u32_at(bytes, u32_at(bytes, 16) + 4 * id);
+    let mut at = start + 2 + bytes[start + 1] as usize;
+    let hyps = at + 1;
+    let count = bytes[at];
+    at += 1;
+    for _ in 0..count {
+        at += 2 + if bytes[at] == 0 {
+            0
+        } else {
+            bytes[at + 1] as usize
+        };
+    }
+    at += 2 + 2 * u16_at(bytes, at);
+    let conclusion = at + 1;
+    at += 1 + bytes[at] as usize;
+    if bytes[start] == 0 {
+        return Record {
+            start,
+            hyps,
+            conclusion,
+            refs: 0,
+            proof: 0,
+        };
+    }
+    let count_at = at + 2 + 2 * u16_at(bytes, at);
+    let refs = count_at + 2;
+    let proof = refs + 2 * u16_at(bytes, count_at) + 2;
+    Record {
+        start,
+        hyps,
+        conclusion,
+        refs,
+        proof,
+    }
+}
+
+/// Where symbol `id`'s name length and name sit in the symbol table.
+fn symbol(bytes: &[u8], id: usize) -> usize {
+    let mut at = 20;
+    for _ in 0..id {
+        at += 2 + bytes[at + 1] as usize;
+    }
+    at + 1
+}
+
+fn patched(mut bytes: Vec<u8>, edit: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
+    edit(&mut bytes);
+    reseal(&mut bytes);
+    bytes
+}
+
+fn refused(bytes: &[u8]) -> ExportError {
+    check(bytes).expect("the kernel accepts the library");
+    export(bytes).expect_err("the export refuses it")
+}
+
+fn assertion_error(label: &str, why: &'static str) -> ExportError {
+    ExportError::Assertion(label.into(), why)
+}
+
+#[test]
+fn a_symbol_that_cannot_be_a_math_symbol_is_refused() {
+    let original = packed(LABELS);
+    let name = |id| symbol(&original, id) + 1;
+    let (wff, r, x) = (1, 2, 3);
+    let dollar = patched(original.clone(), |b| b[name(wff)] = b'$');
+    assert_eq!(refused(&dollar), ExportError::Symbol("$ff".into()));
+    let control = patched(original.clone(), |b| b[name(0)] = 1);
+    assert_eq!(refused(&control), ExportError::Symbol("\u{1}-".into()));
+    let repeat = patched(original.clone(), |b| b[name(x)] = b'R');
+    assert_eq!(refused(&repeat), ExportError::Symbol("R".into()));
+    let empty = patched(original.clone(), |b| {
+        b[name(r) - 1] = 0;
+        b.remove(name(r));
+        b.insert(u32_at(&original, 16) - 1, 0);
+    });
+    assert_eq!(refused(&empty), ExportError::Symbol(String::new()));
+}
+
+#[test]
+fn a_label_that_cannot_be_a_unique_label_is_refused() {
+    let original = packed(LABELS);
+    let label = |id| record(&original, id).start + 2;
+    let invalid = patched(original.clone(), |b| b[label(0) + 1] = b'$');
+    assert_eq!(refused(&invalid), ExportError::Label("o$e".into()));
+    let repeat = patched(original.clone(), |b| {
+        b.copy_within(label(0)..label(0) + 3, label(1))
+    });
+    assert_eq!(refused(&repeat), ExportError::Label("one".into()));
+    let symbol = patched(original.clone(), |b| {
+        b[label(2)..label(2) + 3].copy_from_slice(b"wff")
+    });
+    assert_eq!(refused(&symbol), ExportError::Label("wff".into()));
+    let empty = patched(original.clone(), |b| {
+        let at = record(&original, 2).start;
+        b[at + 1] = 0;
+        b.drain(at + 2..at + 5);
+        let length = b.len() as u32;
+        b[8..12].copy_from_slice(&length.to_le_bytes());
+    });
+    assert_eq!(refused(&empty), ExportError::Label(String::new()));
+}
+
+#[test]
+fn a_float_for_a_variable_the_assertion_does_not_use_is_refused() {
+    let original = packed(UNUSED);
+    let conclusion = record(&original, 0).conclusion;
+    let bytes = patched(original, |b| b[conclusion + 3] = b[conclusion + 2]);
+    let why = "a floating hypothesis names a variable the assertion does not use";
+    assert_eq!(refused(&bytes), assertion_error("ax-d", why));
+}
+
+#[test]
+fn an_essential_hypothesis_that_uses_a_variable_before_its_float_is_refused() {
+    let original = packed(ESSENTIAL);
+    let bytes = swapped_essential(original);
+    let why = "an essential hypothesis uses a variable before its float";
+    assert_eq!(refused(&bytes), assertion_error("ax-m", why));
+}
+
+fn swapped_essential(original: Vec<u8>) -> Vec<u8> {
+    let hyps = record(&original, 0).hyps;
+    patched(original, |b| {
+        let floats = b[hyps..hyps + 4].to_vec();
+        let essential = b[hyps + 4..hyps + 10].to_vec();
+        b[hyps..hyps + 6].copy_from_slice(&essential);
+        b[hyps + 6..hyps + 10].copy_from_slice(&floats);
+    })
+}
+
+#[test]
+fn a_proof_that_names_what_a_block_cannot_is_refused() {
+    let original = packed(REFS);
+    let refs = record(&original, 3).refs;
+    let (x, z) = (0x8000u16 + 3, 0x8000u16 + 5);
+    let set = |slots: [(usize, u16); 2]| {
+        patched(original.clone(), |b| {
+            for (slot, value) in slots {
+                b[refs + 2 * slot..][..2].copy_from_slice(&value.to_le_bytes());
+            }
+        })
+    };
+    for (slots, why) in [
+        (
+            [(1, x), (2, z)],
+            "a proof names a mandatory variable's float",
+        ),
+        ([(1, z), (2, z)], "a proof names a dummy variable twice"),
+        ([(1, 0), (2, z)], "a proof names an assertion twice"),
+        ([(1, 3), (2, z)], "a proof names a later assertion"),
+        ([(1, 4), (2, z)], "a proof names a later assertion"),
+    ] {
+        assert_eq!(refused(&set(slots)), assertion_error("th", why));
+    }
+    assert!(export(&set([(1, z), (2, 2)])).is_ok());
+}
+
+#[test]
+fn a_library_the_kernel_rejects_is_not_exported() {
+    let bad = "$c R wff |- $. $v x y $. vx $f wff x $. vy $f wff y $.
+        ${ $d x y $. ax-d $a |- R x y $. $}
+        bad $p |- R x y $= vx vy ax-d $.";
+    let failed = CheckError::Assertions(vec![("bad".into(), KernelError::DisjointViolation)]);
+    assert_eq!(export(&packed(bad)), Err(ExportError::Check(failed)));
+    let mut damaged = packed(bad);
+    *damaged.last_mut().unwrap() ^= 1;
+    let load = CheckError::Load(KernelError::Malformed);
+    assert_eq!(export(&damaged), Err(ExportError::Check(load)));
+}
+
+#[test]
+fn a_label_that_is_not_utf8_cannot_be_read() {
+    let original = packed(LABELS);
+    let at = record(&original, 0).start + 2;
+    let bytes = patched(original, |b| b[at] = 0xFF);
+    assert_eq!(refused(&bytes), ExportError::Read(ReadError));
+}
+
+#[test]
+fn a_proof_that_ends_inside_a_step_number_cannot_be_read() {
+    let original = packed(REFS);
+    let record = record(&original, 3);
+    let last = record.proof + 3 - 1;
+    let mut bytes = original;
+    assert_eq!(bytes[last], 2, "the proof is three one-byte steps");
+    bytes[last] = 0xF0;
+    assert_eq!(decode(&bytes), Err(ReadError));
+    reseal(&mut bytes);
+    assert!(matches!(
+        export(&bytes),
+        Err(ExportError::Check(CheckError::Assertions(_)))
+    ));
+}
+
+#[test]
+fn the_command_names_the_assertion_the_exporter_refuses() {
+    let dir = temp("export-refused");
+    let (library, output) = (dir.join("ess.mclib"), dir.join("ess.mm"));
+    std::fs::write(&library, swapped_essential(packed(ESSENTIAL))).unwrap();
+    let (code, stderr) = run_export(&library, &output);
+    assert_eq!(code, Some(1));
+    assert_eq!(
+        stderr,
+        format!(
+            "{}: ax-m: an essential hypothesis uses a variable before its float\n",
+            library.display()
+        )
+    );
+    assert!(!output.exists());
+}

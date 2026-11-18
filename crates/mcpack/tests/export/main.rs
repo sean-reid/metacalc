@@ -1,4 +1,7 @@
-use mcpack::library::{Hypothesis, check, decode, export, pack};
+use mcpack::library::{
+    CheckError, ExportError, Hypothesis, KernelError, ReadError, Step, check, crc32, decode,
+    export, pack,
+};
 use mcpack::mm::{self, Database, Kind, ProofBody, StmtId, Verifier};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -276,9 +279,13 @@ fn step_numbers_past_one_and_two_bytes_survive() {
             let out = round_trip(&format!("{name} {count}"), &db);
             assert!(check(&out.bytes).is_ok());
             let steps = decode(&out.bytes).unwrap().assertions.pop().unwrap().proof;
-            let wide = |at: usize| steps.iter().any(|&b| b == 0xF0 + at as u8);
-            assert!(wide(0), "{name} {count}");
-            assert_eq!(wide(1), count > 500, "{name} {count}");
+            let largest = steps.iter().filter_map(|s| match s {
+                Step::Number(n) => Some(*n),
+                Step::Save => None,
+            });
+            let largest = largest.max().unwrap();
+            assert!(largest >= 240, "{name} {count}");
+            assert_eq!(largest >= 496, count > 500, "{name} {count}");
         }
     }
 }
@@ -446,3 +453,5 @@ fn the_command_refuses_a_library_that_fails_the_kernel() {
     );
     assert!(!output.exists());
 }
+
+mod refusals;
