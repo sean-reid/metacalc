@@ -1,0 +1,34 @@
+#include "equates.inc"
+
+.org 4000h
+	.db 80h, 0Fh, 0, 0, 0, 0
+	.db 80h, 12h, 01h, 04h
+	.db 80h, 21h, 01h
+	.db 80h, 31h, 01h
+	.db 80h, 48h, "metacalc"
+	.db 80h, 81h, 01h
+	.db 80h, 90h
+	.db 03h, 26h, 09h, 04h, 04h, 6Fh, 1Bh, 80h
+	.db 02h, 0Dh, 40h
+	.fill 64, 0A5h
+	.db 80h, 7Fh, 0, 0, 0, 0
+
+start:
+	bcall(_ClrLCDFull)
+	xor a
+	ld (curRow), a
+	ld (curCol), a
+	ld hl, title
+print:
+	ld a, (hl)
+	or a
+	jr z, done
+	bcall(_PutC)
+	inc hl
+	jr print
+done:
+	bcall(_GetKey)
+	bjump(_JForceCmdNoChar)
+
+title:
+	.db "metacalc", 0
