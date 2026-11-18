@@ -6,7 +6,10 @@ const BCALL_MISSING: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_bcall_
 const BJUMP_MISSING: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_bjump_missing.bin"));
 const GR_BUF_CPY: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_gr_buf_cpy.bin"));
 const CLR_LCD_FULL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full.bin"));
-const PRESERVE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_preserve.bin"));
+const CLOBBER_GETCSC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_clobber_getcsc.bin"));
+const CLOBBER_CLR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_clobber_clr_lcd_full.bin"));
+const CLOBBER_GR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_clobber_gr_buf_cpy.bin"));
+const RELIANT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_reliant.bin"));
 
 const ENTRY: u16 = 0x9000;
 const RESULT: u16 = 0xA000;
@@ -128,27 +131,100 @@ fn getcsc_reports_two_keys_in_sequence() {
 }
 
 #[test]
-fn getcsc_reports_the_lowest_code_while_two_keys_are_down() {
+fn getcsc_reports_the_lowest_code_when_two_keys_go_down_together() {
     let mut m = machine_with(GETCSC);
     m.press_key(0x35);
     m.press_key(0x09);
     assert_eq!(getcsc(&mut m), 0x09);
     assert_eq!(getcsc(&mut m), 0);
+    m.release_key(0x35);
+    m.release_key(0x09);
+    assert_eq!(getcsc(&mut m), 0);
+}
+
+/// What the real OS did for these sequences under the key-logging app: a key pressed while
+/// another is down is never reported, whichever code is the lower, and it is reported once the
+/// first is up if it is still down.
+#[test]
+fn getcsc_ignores_a_key_pressed_and_released_while_another_is_held() {
+    for (held, other) in [(0x35, 0x0F), (0x0F, 0x35)] {
+        let mut m = machine_with(GETCSC);
+        m.press_key(held);
+        assert_eq!(getcsc(&mut m), held);
+        m.press_key(other);
+        assert_eq!(getcsc(&mut m), 0);
+        m.release_key(other);
+        assert_eq!(getcsc(&mut m), 0);
+        assert_eq!(getcsc(&mut m), 0);
+        m.release_key(held);
+        assert_eq!(getcsc(&mut m), 0);
+    }
 }
 
 #[test]
-fn a_bcall_keeps_the_registers_and_the_stack() {
-    let mut m = machine_with(PRESERVE);
-    let run = m.run(ENTRY, LIMIT);
-    assert_eq!(run.stop, Stop::Halted);
-    let words: Vec<u16> = m
-        .read_ram(RESULT, 18)
+fn getcsc_reports_a_second_key_once_the_first_is_released_whichever_code_is_lower() {
+    for (first, second) in [(0x09, 0x36), (0x36, 0x09)] {
+        let mut m = machine_with(GETCSC);
+        m.press_key(first);
+        assert_eq!(getcsc(&mut m), first);
+        m.press_key(second);
+        assert_eq!(getcsc(&mut m), 0);
+        m.release_key(first);
+        assert_eq!(getcsc(&mut m), second);
+        assert_eq!(getcsc(&mut m), 0);
+        m.release_key(second);
+        assert_eq!(getcsc(&mut m), 0);
+    }
+}
+
+/// AF, BC, DE, HL, IX, IY, SP after the call, then BC', DE', HL', AF', then SP before it.
+fn registers_after(code: &[u8]) -> Vec<u16> {
+    let mut m = machine_with(code);
+    assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::Halted);
+    m.read_ram(RESULT, 26)
         .chunks(2)
         .map(|w| u16::from_le_bytes([w[0], w[1]]))
-        .collect();
-    assert_eq!(words[..4], [0x1234, 0x5678, 0x9ABC, 0xDEF0]);
-    assert_eq!(words[4], words[5], "the stack pointer");
-    assert_eq!(words[6..], [0x1111, 0x2222, 0x3333]);
+        .collect()
+}
+
+#[test]
+fn getcsc_returns_the_scan_code_and_destroys_the_other_main_registers() {
+    let w = registers_after(CLOBBER_GETCSC);
+    assert_eq!(w[0] >> 8, 0, "A is the scan code, none here");
+    assert_eq!(w[1..4], [0xBC0B, 0xDE0D, 0xA11A], "BC, DE, HL");
+    assert_eq!(w[4..6], [0xDEF0, 0xBEEF], "IX and IY");
+    assert_eq!(w[6], w[12], "SP");
+    assert_eq!(
+        w[7..11],
+        [0x1111, 0x2222, 0x3333, 0xA5C3],
+        "shadow registers"
+    );
+}
+
+#[test]
+fn clr_lcd_full_and_gr_buf_cpy_destroy_every_register_but_ix_iy_and_sp() {
+    for code in [CLOBBER_CLR, CLOBBER_GR] {
+        let w = registers_after(code);
+        assert_eq!(w[0..4], [0xAF5A, 0xBC0B, 0xDE0D, 0xA11A], "AF, BC, DE, HL");
+        assert_eq!(w[4..6], [0xDEF0, 0xBEEF], "IX and IY");
+        assert_eq!(w[6], w[12], "SP");
+        assert_eq!(
+            w[7..11],
+            [0xBC27, 0xDE27, 0xA127, 0xAF27],
+            "shadow registers"
+        );
+    }
+}
+
+#[test]
+fn an_app_that_counts_on_bc_surviving_getcsc_gets_the_wrong_answer() {
+    let mut m = machine_with(RELIANT);
+    assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::Halted);
+    assert_eq!(
+        m.read_ram(RESULT, 1),
+        [0x0B],
+        "C, not the 42h the app put there"
+    );
 }
 
 #[test]

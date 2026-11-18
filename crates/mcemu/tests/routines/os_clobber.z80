@@ -1,0 +1,43 @@
+#include "equates.inc"
+
+; Calls SERVICE with known registers and records every register after it.
+.org ENTRY
+	ld hl, 0
+	add hl, sp
+	ld (RESULT + 24), hl
+	exx
+	ld bc, 1111h
+	ld de, 2222h
+	ld hl, 3333h
+	exx
+	ld bc, 0A5C3h
+	push bc
+	pop af
+	ex af, af'
+	ld bc, 1234h
+	ld de, 5678h
+	ld hl, 9ABCh
+	ld ix, 0DEF0h
+	ld iy, 0BEEFh
+	bcall(SERVICE)
+	ld (RESULT + 6), hl
+	push af
+	pop hl
+	ld (RESULT), hl
+	ld (RESULT + 2), bc
+	ld (RESULT + 4), de
+	ld hl, 0
+	add hl, sp
+	ld (RESULT + 12), hl
+	ld (RESULT + 8), ix
+	ld (RESULT + 10), iy
+	exx
+	ld (RESULT + 14), bc
+	ld (RESULT + 16), de
+	ld (RESULT + 18), hl
+	exx
+	ex af, af'
+	push af
+	pop hl
+	ld (RESULT + 20), hl
+	halt

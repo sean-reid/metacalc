@@ -17,6 +17,15 @@ PORT_LCD_CMD      .equ $10
 PORT_LCD_DATA     .equ $11
 LCD_READY         .equ $02
 
+JUNK_AF           .equ $AF5A
+JUNK_BC           .equ $BC0B
+JUNK_DE           .equ $DE0D
+JUNK_HL           .equ $A11A
+JUNK_AF2          .equ $AF27
+JUNK_BC2          .equ $BC27
+JUNK_DE2          .equ $DE27
+JUNK_HL2          .equ $A127
+
 .org $0000
 	.fill $0028-$,$FF
 	jp bcall
@@ -164,11 +173,44 @@ app_exit:
 	halt
 	jr app_exit
 
-; A returns the scan code of a key newly pressed since the last call, 0 if none. The scan runs
-; on the call, lowest code first, and a key that is still down from the last call reads 0.
+; A returns the scan code of a key newly pressed since the last call, 0 if none, and the
+; flags, BC, DE and HL are junk. The key that was reported stays the current one until it
+; is up, and no other key reads while it is down; then the lowest code down is reported.
 get_csc:
-	push bc
-	push de
+	ld a,(kbdScanCode)
+	or a
+	jr z,get_csc_scan
+	dec a
+	ld d,a
+	and 7
+	inc a
+	ld e,a
+	ld a,d
+	rrca
+	rrca
+	rrca
+	and 7
+	ld b,a
+	ld c,$FE
+	or a
+	jr z,get_csc_select
+get_csc_rotate:
+	rlc c
+	djnz get_csc_rotate
+get_csc_select:
+	ld a,c
+	out (PORT_KEYS),a
+	in a,(PORT_KEYS)
+	ld b,e
+get_csc_shift:
+	rra
+	djnz get_csc_shift
+	jr c,get_csc_scan
+	ld a,$FF
+	out (PORT_KEYS),a
+	xor a
+	jr get_csc_return
+get_csc_scan:
 	ld e,0
 	ld c,$FE
 get_csc_group:
@@ -182,7 +224,7 @@ get_csc_bit:
 	inc e
 	rra
 	jr nc,get_csc_bit
-	ld d,e
+	ld a,e
 	jr get_csc_done
 get_csc_next:
 	ld a,e
@@ -191,47 +233,48 @@ get_csc_next:
 	rlc c
 	cp 56
 	jr nz,get_csc_group
-	ld d,0
+	xor a
 get_csc_done:
+	ld d,a
 	ld a,$FF
 	out (PORT_KEYS),a
-	ld a,(kbdScanCode)
-	ld c,a
 	ld a,d
 	ld (kbdScanCode),a
-	cp c
-	jr nz,get_csc_report
-	xor a
-get_csc_report:
-	pop de
-	pop bc
+get_csc_return:
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_HL
+	cp $FF
 	ret
 
 ; Both services write the 12 columns of each of the 64 rows, waiting on the LCD between
-; accesses, whatever the CPU speed.
+; accesses, whatever the CPU speed. They destroy every register but IX, IY and SP.
 clr_lcd_full:
-	push af
-	push bc
-	push de
-	push hl
 	ld hl,zero
 	ld de,0
 	call lcd_blit
 	jr lcd_done
 
 gr_buf_cpy:
-	push af
-	push bc
-	push de
-	push hl
 	ld hl,plotSScreen
 	ld de,1
 	call lcd_blit
 lcd_done:
-	pop hl
-	pop de
-	pop bc
+	exx
+	ld bc,JUNK_BC2
+	ld de,JUNK_DE2
+	ld hl,JUNK_HL2
+	exx
+	ld bc,JUNK_AF2
+	push bc
 	pop af
+	ex af,af'
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_AF
+	push hl
+	pop af
+	ld hl,JUNK_HL
 	ret
 
 ; In: HL = the first byte, DE = how far HL moves after each byte.

@@ -56,8 +56,23 @@ const OS_ROUTINES: &[(&str, &str, &[&str])] = &[
         &["ENTRY=$9000", "SERVICE=_ClrLCDFull"],
     ),
     (
-        "os_preserve.z80",
-        "os_preserve.bin",
+        "os_clobber.z80",
+        "os_clobber_getcsc.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GetCSC"],
+    ),
+    (
+        "os_clobber.z80",
+        "os_clobber_clr_lcd_full.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_ClrLCDFull"],
+    ),
+    (
+        "os_clobber.z80",
+        "os_clobber_gr_buf_cpy.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GrBufCpy"],
+    ),
+    (
+        "os_reliant.z80",
+        "os_reliant.bin",
         &["ENTRY=$9000", "RESULT=$A000"],
     ),
     ("os_irq.z80", "os_irq.bin", &["ENTRY=$9000", "RESULT=$A000"]),
