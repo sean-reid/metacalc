@@ -222,3 +222,51 @@ fn an_empty_library_has_no_marks_to_count_and_is_not_degraded() {
         (0, 0, 0, false)
     );
 }
+
+#[test]
+fn marks_updated_one_status_at_a_time_equal_a_full_recompute() {
+    let sound = logic_bytes();
+    let at = |label: &str| {
+        library::read(&sound)
+            .unwrap()
+            .iter()
+            .position(|a| a.label == label)
+            .unwrap() as u16
+    };
+    let patched = support::patch_reference(&sound, "a1i", 0, at("alid"));
+    let patched = support::patch_reference(&patched, "mpd", 1, at("ax-many"));
+    let first = statuses(&patched, &[], &[]);
+    let mut live = Lib::new(
+        Installed {
+            name: "logic".into(),
+            bytes: patched.clone(),
+        },
+        first.clone(),
+    )
+    .unwrap();
+    let mut table = first;
+    let mut seed: u64 = 0x2545_f491_4f6c_dd1d;
+    let mut next = || {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (seed >> 33) as usize
+    };
+    for step in 0..400 {
+        let i = next() % live.len();
+        let status = [Status::Checked, Status::Failed, Status::Unchecked][next() % 3];
+        live.set_status(i, status);
+        table[i] = status;
+        let full = Lib::new(
+            Installed {
+                name: "logic".into(),
+                bytes: patched.clone(),
+            },
+            table.clone(),
+        )
+        .unwrap();
+        for j in 0..live.len() {
+            assert_eq!(live.mark(j), full.mark(j), "step {step}, {}", live.label(j));
+        }
+    }
+}

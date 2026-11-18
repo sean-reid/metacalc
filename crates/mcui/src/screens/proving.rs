@@ -292,7 +292,7 @@ impl Proving {
             canvas.layout(&self.statement, GUTTER, 2, window);
         } else {
             canvas.text_centered(1, "No open goals");
-            canvas.text_centered(2, "Unknowns remain");
+            canvas.text_centered(2, "Not valid yet");
         }
     }
 
@@ -406,6 +406,7 @@ impl Proving {
                 _ => None,
             },
             steps: self.saved.steps,
+            replayed: self.editor.replayed(),
         }
     }
 }

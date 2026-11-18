@@ -106,6 +106,8 @@ pub enum State {
         candidate: Option<String>,
         /// Operations in force.
         steps: usize,
+        /// Operations replayed to open the screen; none are replayed after that.
+        replayed: usize,
     },
     Notice {
         title: String,

@@ -92,6 +92,8 @@ pub struct Lib {
 }
 
 impl Lib {
+    /// A library's bytes, database and grammar live for the rest of the process, so load each
+    /// library once.
     pub fn new(installed: Installed, status: Vec<Status>) -> Result<Lib, LoadError> {
         let assertions = library::read(&installed.bytes)
             .map_err(|e| LoadError::Library(installed.name.clone(), e))?;

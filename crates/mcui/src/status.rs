@@ -67,10 +67,9 @@ pub fn marks(assertions: &[Assertion], status: &[Status]) -> Vec<Mark> {
 pub fn update(assertions: &[Assertion], status: &[Status], marks: &mut [Mark], changed: usize) {
     let mut moved = vec![false; assertions.len()];
     for at in changed..assertions.len() {
-        let uses_moved = assertions[at]
-            .references
-            .iter()
-            .any(|r| matches!(r, Reference::Assertion(i) if moved[*i]));
+        let uses_moved = assertions[at].references.iter().any(
+            |r| matches!(r, Reference::Assertion(i) if moved.get(*i).copied().unwrap_or(false)),
+        );
         if at != changed && !uses_moved {
             continue;
         }

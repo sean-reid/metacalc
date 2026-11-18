@@ -194,6 +194,15 @@ fn a_forward_reference_is_not_counted_as_a_failure_before_anything_ran() {
     assert_eq!(checking(ui.state()), (13, 13, 1, true));
 }
 
+#[test]
+fn a_reference_past_the_end_of_the_library_fails_its_assertion_without_a_panic() {
+    let sound = logic_bytes();
+    let mut ui = unchecked_ui(refreshed(support::patch_reference(&sound, "a1i", 0, 5000)));
+    press(&mut ui, &[F2]);
+    assert_eq!(run_all(&mut ui), (12, 1));
+    assert_eq!(checking(ui.state()), (13, 13, 1, true));
+}
+
 /// Steps the real libraries in `MCUI_LIBS` through the kernel and prints how long each took.
 #[test]
 #[ignore = "needs MCUI_LIBS, a directory of built libraries"]

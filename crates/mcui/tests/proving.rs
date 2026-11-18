@@ -45,6 +45,13 @@ fn at(ui: &Ui) -> Where {
     }
 }
 
+fn replayed(ui: &Ui) -> usize {
+    match ui.state() {
+        State::Proving { replayed, .. } => replayed,
+        other => panic!("not the proving screen: {other:?}"),
+    }
+}
+
 fn notice(ui: &Ui) -> String {
     match ui.state() {
         State::Notice { title } => title,
@@ -602,16 +609,76 @@ fn one_undo_takes_back_an_auto_that_made_two_operations() {
 }
 
 #[test]
-fn undo_groups_survive_a_restore() {
+fn a_group_of_two_operations_comes_back_from_a_restore_as_one_undo() {
     let mut p = Prover::new(proving_bytes(), "ta1");
     p.keys(&[F3]);
-    p.keys(&[F4]);
-    p.keys(&[F3]);
+    let saved = p.saved();
+    assert_eq!((saved.steps, saved.groups.clone()), (2, vec![2]));
     let mut fresh = ui_over(p.bytes.clone(), &[], &[]);
-    fresh.restore_proof(p.saved()).unwrap();
+    fresh.restore_proof(saved).unwrap();
     open(&mut fresh, "ta1");
-    press(&mut fresh, &[F4, F4]);
+    fresh.press(F4);
     assert_eq!(at(&fresh).steps, 0);
+    assert_eq!(at(&fresh).goal, Some(0));
+}
+
+/// A saved proof built straight from mcedit: goal 0 of `label` gets each of `apply` in turn.
+fn crafted(bytes: &[u8], label: &str, apply: &[&str], groups: Vec<usize>) -> SavedProof {
+    let text = library::export(bytes).unwrap();
+    let db = mm::parse(text.into_bytes()).unwrap();
+    let grammar = Grammar::new(&db, &[("|-", "wff")]).unwrap();
+    let mut session =
+        Session::start_in(Catalog::new(&db, &grammar), db.find(label).unwrap()).unwrap();
+    for name in apply {
+        session.apply(0, db.find(name).unwrap()).unwrap();
+    }
+    SavedProof {
+        library: 0,
+        crc: u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
+        theorem: index_of(bytes, label),
+        session: session.save(),
+        goal: Some(0),
+        steps: apply.len(),
+        groups,
+    }
+}
+
+#[test]
+fn groups_that_do_not_describe_the_operations_are_refused() {
+    let bytes = proving_bytes();
+    for (apply, groups) in [
+        (vec![], vec![0]),
+        (vec!["ax-mp", "ax-mp"], vec![2, 0]),
+        (vec!["ax-mp", "ax-mp"], vec![0, 2]),
+        (vec!["ax-mp"], vec![usize::MAX, 2]),
+        (vec!["ax-mp"], vec![3]),
+    ] {
+        let saved = crafted(&bytes, "a1i", &apply, groups.clone());
+        let mut ui = ui_over(bytes.clone(), &[], &[]);
+        assert!(
+            matches!(
+                ui.restore_proof(saved),
+                Err(mcui::RestoreError::Unreadable(_))
+            ),
+            "{groups:?}"
+        );
+        open(&mut ui, "a1i");
+        ui.press(F4);
+        ui.press(F4);
+        assert_eq!(notice(&ui), "Undo", "{groups:?}");
+    }
+}
+
+#[test]
+fn a_restored_proof_with_a_broken_distinct_variable_rule_is_not_finished() {
+    let bytes = proving_bytes();
+    let mut ui = ui_over(bytes.clone(), &[], &[]);
+    ui.restore_proof(crafted(&bytes, "tq", &["ax-5"], vec![1]))
+        .unwrap();
+    open(&mut ui, "tq");
+    ui.press(F4);
+    let now = at(&ui);
+    assert_eq!((now.open, now.goal, now.finished), (0, None, false));
 }
 
 #[test]
@@ -721,7 +788,7 @@ fn ui_press_n(ui: &mut Ui, key: Key, n: usize) {
 }
 
 #[test]
-fn a_long_proof_costs_about_the_same_for_every_key() {
+fn no_key_press_replays_the_operations_before_it() {
     use std::time::Instant;
     let depth = 45;
     let bytes = support::chain_bytes(depth);
@@ -731,12 +798,26 @@ fn a_long_proof_costs_about_the_same_for_every_key() {
         let started = Instant::now();
         ui.press(F1);
         times.push(started.elapsed());
+        assert_eq!(replayed(&ui), 0);
     }
     let started = Instant::now();
     press(&mut ui, &[F2, F1]);
     times.push(started.elapsed());
+    assert_eq!(replayed(&ui), 0);
     assert_eq!(at(&ui).steps, depth + 1);
     assert!(at(&ui).finished);
+    let saved = ui.saved_proofs().next().unwrap().clone();
+    let mut fresh = ui_over(bytes.clone(), &[], &[]);
+    fresh.restore_proof(saved).unwrap();
+    open(&mut fresh, "chain");
+    fresh.press(F4);
+    assert_eq!(
+        replayed(&fresh),
+        depth + 1,
+        "the proof is replayed once, on opening"
+    );
+    press(&mut fresh, &[F4, F1, F4]);
+    assert_eq!(replayed(&fresh), depth + 1);
     let ms = |d: &std::time::Duration| d.as_secs_f64() * 1e3;
     let total: f64 = times.iter().map(ms).sum();
     let max = times.iter().map(ms).fold(0.0, f64::max);
@@ -747,11 +828,5 @@ fn a_long_proof_costs_about_the_same_for_every_key() {
     println!(
         "{} keys: total {total:.1} ms, worst {max:.1} ms, first ten {first:.1} ms, last ten {last:.1} ms",
         times.len()
-    );
-    assert!(total < 1_000.0, "{total} ms for {} keys", times.len());
-    assert!(max < 500.0, "worst key {max} ms");
-    assert!(
-        last < 20.0 * first.max(1.0),
-        "the last ten keys cost {last} ms against {first} ms"
     );
 }

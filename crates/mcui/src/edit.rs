@@ -66,6 +66,8 @@ pub struct Editor {
     session: Session<'static>,
     lead: Vec<String>,
     groups: Vec<usize>,
+    /// Operations replayed to rebuild the session when it was opened.
+    replayed: usize,
 }
 
 fn refusal(error: &Error) -> &'static str {
@@ -105,7 +107,10 @@ impl Editor {
                 }
                 let session = Session::restore(catalog, &saved.session)
                     .map_err(|_| "the saved proof is damaged")?;
-                if saved.groups.iter().sum::<usize>() != session.ops().len() {
+                let total = saved.groups.iter().try_fold(0usize, |sum, &g| {
+                    (g > 0).then(|| sum.checked_add(g)).flatten()
+                });
+                if total != Some(session.ops().len()) {
                     return Err("the saved proof is damaged");
                 }
                 (session, saved.groups.clone())
@@ -119,16 +124,22 @@ impl Editor {
             return Err("the saved proof is for another theorem");
         }
         let lead = lib.statement(theorem).conclusion.lead.clone();
+        let replayed = session.ops().len();
         Ok(Editor {
             session,
             lead,
             groups,
+            replayed,
         })
     }
 
     /// Operations in force.
     pub fn steps(&self) -> usize {
         self.session.ops().len()
+    }
+
+    pub fn replayed(&self) -> usize {
+        self.replayed
     }
 
     pub fn groups(&self) -> &[usize] {
@@ -337,7 +348,15 @@ impl Editor {
     /// Takes back the last group and returns the goal it started on.
     pub fn undo(&mut self) -> Result<Option<GoalId>, &'static str> {
         let size = self.groups.pop().ok_or("Nothing to undo")?;
-        let first = self.session.ops()[self.session.ops().len() - size];
+        let at = self
+            .session
+            .ops()
+            .len()
+            .checked_sub(size)
+            .filter(|_| size > 0);
+        let first = *at
+            .and_then(|at| self.session.ops().get(at))
+            .ok_or("the saved proof is damaged")?;
         for _ in 0..size {
             let _ = self.session.undo();
         }
@@ -374,7 +393,9 @@ impl Editor {
         Snap {
             goal,
             open,
-            finished: open == 0 && self.session.store().unbound().next().is_none(),
+            finished: open == 0
+                && self.session.store().unbound().next().is_none()
+                && self.session.status().violations.is_empty(),
             goal_expr: goal.map(|g| self.expr(self.session.goal(g).expect("open goal").term)),
             picks,
         }
