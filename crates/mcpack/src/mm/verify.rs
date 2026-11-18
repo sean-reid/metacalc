@@ -47,6 +47,7 @@ impl<'a> Verifier<'a> {
     pub fn verify(&mut self, id: StmtId) -> Result<(), ProofError> {
         let db = self.db;
         let stmt = db.stmt(id);
+        self.usage = Usage::default();
         let proof = match &stmt.proof {
             Some(Ok(proof)) => proof,
             Some(Err(e)) => return Err(*e),
@@ -55,7 +56,6 @@ impl<'a> Verifier<'a> {
         self.arena.clear();
         self.starts.clear();
         self.saved.clear();
-        self.usage = Usage::default();
         match &proof.body {
             ProofBody::Normal(steps) => {
                 for &step in steps {
@@ -183,8 +183,6 @@ impl<'a> Verifier<'a> {
             }
         }
         self.substitute(&stmt.expr);
-        let held = self.arena.len() + self.scratch.len();
-        self.usage.stack_syms = self.usage.stack_syms.max(held);
         let bottom = self.starts.get(base).copied().unwrap_or(self.arena.len());
         self.starts.truncate(base);
         self.arena.truncate(bottom);
@@ -204,5 +202,7 @@ impl<'a> Verifier<'a> {
                 self.scratch.push(s);
             }
         }
+        let held = self.arena.len() + self.scratch.len();
+        self.usage.stack_syms = self.usage.stack_syms.max(held);
     }
 }

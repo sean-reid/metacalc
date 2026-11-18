@@ -1,5 +1,6 @@
 use mcpack::measure::measure;
 use mcpack::mm::{self, Database, ProofError, StmtId, Usage, Verifier, closure};
+use std::path::Path;
 use std::process::Command;
 
 const DB: &str = "
@@ -26,6 +27,8 @@ ${
   use $p |- ( q -> ( p -> r ) ) $= ( wi a1i ) ACEBCADFF $.
 $}
 bad $p |- ( p -> q ) $= ( ax-1 ) ABC $.
+twice $p wff ( ( p -> p ) -> ( p -> p ) ) $= ( wi ) AABZCB $.
+broken $p |- p $= nope $.
 ";
 
 fn db() -> Database {
@@ -64,18 +67,54 @@ fn closure_leaves_out_what_the_roots_do_not_use() {
 
 #[test]
 fn usage_reports_the_high_water_marks_of_a_proof() {
+    let usage = Usage {
+        steps: 3,
+        stack_depth: 2,
+        stack_syms: 14,
+        saved_syms: 0,
+    };
+    assert_eq!(usage_of("th"), (Ok(()), usage));
+}
+
+fn usage_of(label: &str) -> (Result<(), ProofError>, Usage) {
+    let db = db();
+    let mut verifier = Verifier::new(&db);
+    let result = verifier.verify(db.find(label).unwrap());
+    (result, verifier.usage())
+}
+
+#[test]
+fn usage_counts_the_scratch_of_an_essential_hypothesis() {
+    let usage = Usage {
+        steps: 9,
+        stack_depth: 5,
+        stack_syms: 30,
+        saved_syms: 0,
+    };
+    assert_eq!(usage_of("a1i"), (Ok(()), usage));
+}
+
+#[test]
+fn usage_counts_saved_steps() {
+    let usage = Usage {
+        steps: 5,
+        stack_depth: 2,
+        stack_syms: 26,
+        saved_syms: 6,
+    };
+    assert_eq!(usage_of("twice"), (Ok(()), usage));
+}
+
+#[test]
+fn usage_is_empty_for_a_proof_that_never_ran() {
     let db = db();
     let mut verifier = Verifier::new(&db);
     assert_eq!(verifier.verify(db.find("th").unwrap()), Ok(()));
     assert_eq!(
-        verifier.usage(),
-        Usage {
-            steps: 3,
-            stack_depth: 2,
-            stack_syms: 14,
-            saved_syms: 0,
-        }
+        verifier.verify(db.find("broken").unwrap()),
+        Err(ProofError::UnknownLabel)
     );
+    assert_eq!(verifier.usage(), Usage::default());
 }
 
 #[test]
@@ -118,11 +157,11 @@ fn measure_reports_a_proof_that_fails() {
     );
 }
 
-fn mcpack(args: &[&str]) -> (Option<i32>, String) {
-    let corpus = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/corpus/demo0.mm");
+fn mcpack(database: &str, args: &[&str]) -> (Option<i32>, String) {
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
     let out = Command::new(env!("CARGO_BIN_EXE_mcpack"))
         .arg("closure")
-        .arg(corpus)
+        .arg(corpus.join(database))
         .args(args)
         .output()
         .expect("mcpack runs");
@@ -134,7 +173,7 @@ fn mcpack(args: &[&str]) -> (Option<i32>, String) {
 
 #[test]
 fn closure_command_prints_a_row_per_segment() {
-    let (code, out) = mcpack(&["th1", "--split", "mp"]);
+    let (code, out) = mcpack("demo0.mm", &["th1", "--split", "mp"]);
     assert_eq!(code, Some(0));
     let rows: Vec<&str> = out.lines().map(|l| l.split(' ').next().unwrap()).collect();
     assert_eq!(rows[..4], ["from", "start", "mp", "total"]);
@@ -142,8 +181,21 @@ fn closure_command_prints_a_row_per_segment() {
 }
 
 #[test]
-fn closure_command_refuses_an_unknown_label() {
-    let (code, out) = mcpack(&["nope"]);
-    assert_eq!(code, Some(2));
-    assert!(out.is_empty());
+fn closure_command_fails_when_a_kept_proof_fails() {
+    let (code, out) = mcpack("demo0-bad1.mm", &["th1"]);
+    assert_eq!(code, Some(1));
+    assert!(out.contains("symbols: "), "{out}");
+}
+
+#[test]
+fn closure_command_refuses_what_it_cannot_find() {
+    for (database, args) in [
+        ("demo0.mm", &["nope"][..]),
+        ("demo0.mm", &["th1", "--split", "nope"]),
+        ("missing.mm", &["th1"]),
+    ] {
+        let (code, out) = mcpack(database, args);
+        assert_eq!(code, Some(2), "{database} {args:?}");
+        assert!(out.is_empty());
+    }
 }
