@@ -18,7 +18,9 @@ pub struct Libraries {
 /// The mark of a library, or how far its check has got.
 fn progress(lib: &Lib) -> String {
     let (checked, total) = (lib.checked(), lib.len());
-    if total == 0 {
+    if lib.damaged() {
+        "damaged".to_string()
+    } else if total == 0 {
         String::new()
     } else if lib.failed() > 0 {
         crate::status::Mark::Failed.glyph().to_string()
@@ -53,6 +55,12 @@ impl Libraries {
             }
             Key::F2 => {
                 if self.cursor < ctx.libs.len() {
+                    if ctx.libs[self.cursor].damaged() {
+                        return Nav::push(Notice::screen(
+                            "Verify",
+                            &["Library is damaged", "Install it again"],
+                        ));
+                    }
                     Nav::push(Screen::Checking(Checking::open(self.cursor)))
                 } else {
                     Nav::push(Notice::screen("Verify", &["Pick a library"]))

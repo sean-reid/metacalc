@@ -2,6 +2,9 @@ use super::{Nav, Screen, State};
 use crate::canvas::{CONTENT_ROWS, Canvas, TEXT_WIDTH, wrap};
 use crate::key::Key;
 
+/// The labels of the five keys.
+pub(crate) const KEYS: [&str; 5] = ["Back", "", "", "", ""];
+
 /// A plain message with nothing to press but a way back.
 pub struct Notice {
     title: String,
@@ -23,7 +26,7 @@ impl Notice {
 
     pub fn press(&mut self, key: Key) -> Nav {
         match key {
-            Key::Clear | Key::Enter => Nav::Pop,
+            Key::F1 | Key::Clear | Key::Enter => Nav::Pop,
             _ => Nav::Stay,
         }
     }
@@ -40,7 +43,7 @@ impl Notice {
         for (i, line) in lines.iter().enumerate() {
             canvas.text_centered(first + i, line);
         }
-        canvas.soft_keys(["", "", "", "", ""]);
+        canvas.soft_keys(KEYS);
     }
 
     pub fn state(&self) -> State {

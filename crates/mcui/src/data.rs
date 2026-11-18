@@ -2,7 +2,7 @@
 //! screens show.
 
 use crate::expr::{Expr, Shape};
-use crate::status::{Mark, Status, marks, update};
+use crate::status::{Ledger, Mark, Status};
 use mcedit::Catalog;
 use mcpack::library::{self, Assertion, Hypothesis, Kernel, Limits, Part, ReadError, Title, Trees};
 use mcpack::mm::{self, Database, Grammar, Kind, Node, StmtId, Sym, Tree};
@@ -82,16 +82,18 @@ pub struct Lib {
     pub name: String,
     /// Leaked: the kernel and the editor's catalog borrow the library for as long as it lives.
     bytes: &'static [u8],
-    /// The kernel over `bytes`, built on first use; none inside when the bytes do not load.
-    kernel: RefCell<Option<Option<Kernel<'static>>>>,
+    /// The kernel over `bytes`; none when the kernel refuses them, checksum included.
+    kernel: RefCell<Option<Kernel<'static>>>,
     assertions: Vec<Assertion>,
     /// Every symbol's name by id, constants first.
     names: Vec<String>,
     titles: Vec<Title>,
     /// The library's own parse trees, when it carries them.
     trees: Option<Trees>,
-    status: Vec<Status>,
-    marks: Vec<Mark>,
+    ledger: Ledger,
+    /// The status table as installed, kept as it was while the library is damaged and nothing
+    /// in the ledger is trusted.
+    installed: Vec<Status>,
     source: OnceCell<Option<Source>>,
     statements: RefCell<HashMap<usize, Rc<Statement>>>,
 }
@@ -117,16 +119,23 @@ impl Lib {
                 status.len()
             )));
         }
+        let bytes: &'static [u8] = Box::leak(installed.bytes.into_boxed_slice());
+        let kernel = Kernel::new(bytes, Limits::UNBOUNDED).ok();
+        let trusted = if kernel.is_some() {
+            status.clone()
+        } else {
+            vec![Status::Unchecked; status.len()]
+        };
         Ok(Lib {
             name: installed.name,
-            bytes: Box::leak(installed.bytes.into_boxed_slice()),
-            kernel: RefCell::new(None),
-            marks: marks(&assertions, &status),
+            bytes,
+            kernel: RefCell::new(kernel),
+            ledger: Ledger::new(&assertions, trusted),
+            installed: status,
             assertions,
             names,
             titles: sections.titles.unwrap_or_default(),
             trees: sections.trees,
-            status,
             source: OnceCell::new(),
             statements: RefCell::default(),
         })
@@ -154,51 +163,55 @@ impl Lib {
         self.assertions[i].theorem
     }
 
+    /// The recorded status of assertion `i`; a damaged library gives back the table it was
+    /// installed with, though every mark and count reads unchecked.
     pub fn status(&self, i: usize) -> Status {
-        self.status[i]
+        if self.damaged() {
+            self.installed[i]
+        } else {
+            self.ledger.status(i)
+        }
     }
 
     pub fn mark(&self, i: usize) -> Mark {
-        self.marks[i]
+        self.ledger.mark(i)
     }
 
     /// Assertions that count as checked: marked checked, whether or not they rest on others.
     pub fn checked(&self) -> usize {
-        self.marks
-            .iter()
-            .filter(|&&m| matches!(m, Mark::Checked | Mark::Resting))
-            .count()
+        self.ledger.checked()
     }
 
     /// Assertions a check has settled, either way.
     pub fn settled(&self) -> usize {
-        self.status
-            .iter()
-            .filter(|&&s| s != Status::Unchecked)
-            .count()
+        self.ledger.settled()
     }
 
     /// The first assertion no check has settled.
     pub fn next_unchecked(&self) -> Option<usize> {
-        self.status.iter().position(|&s| s == Status::Unchecked)
+        self.ledger.next_unchecked()
     }
 
     /// Runs the kernel on assertion `i`, trusting nothing but the library's bytes.
     pub fn verify(&self, i: usize) -> bool {
-        let mut slot = self.kernel.borrow_mut();
-        let kernel = slot.get_or_insert_with(|| Kernel::new(self.bytes, Limits::UNBOUNDED).ok());
+        let mut kernel = self.kernel.borrow_mut();
         kernel.as_mut().is_some_and(|k| k.verify(i).is_ok())
+    }
+
+    /// Whether the kernel refuses the library's bytes, a wrong checksum included. Nothing in
+    /// it can be checked, so every verification would fail.
+    pub fn damaged(&self) -> bool {
+        self.kernel.borrow().is_none()
     }
 
     /// Records the outcome of a check and settles every mark again.
     pub fn set_status(&mut self, i: usize, status: Status) {
-        self.status[i] = status;
-        update(&self.assertions, &self.status, &mut self.marks, i);
+        self.ledger.set(&self.assertions, i, status);
     }
 
     /// Assertions whose recorded status is a failed check.
     pub fn failed_checks(&self) -> usize {
-        self.status.iter().filter(|&&s| s == Status::Failed).count()
+        self.ledger.failed_checks()
     }
 
     /// The checksum the library carries, which tells two versions of it apart.
@@ -208,7 +221,7 @@ impl Lib {
 
     /// Assertions that failed, or whose proof uses itself or a later assertion.
     pub fn failed(&self) -> usize {
-        self.marks.iter().filter(|&&m| m == Mark::Failed).count()
+        self.ledger.failed()
     }
 
     /// The disjoint variable pairs the statement itself requires.

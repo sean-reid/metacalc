@@ -90,6 +90,8 @@ pub enum State {
         path: Vec<usize>,
         selected: usize,
         on_goal: bool,
+        /// The first row shown, counting from the goal.
+        scroll: usize,
     },
     Proving {
         label: String,
@@ -196,7 +198,7 @@ pub(crate) fn step(cursor: usize, len: usize, key: Key, page: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{checking, libraries, list, proof, proving, theorem};
+    use super::{checking, libraries, list, notice, proof, proving, theorem};
     use crate::canvas::{key_text_width, soft_key_room};
 
     #[test]
@@ -207,6 +209,8 @@ mod tests {
             theorem::KEYS,
             proof::KEYS,
             checking::KEYS,
+            checking::DONE,
+            notice::KEYS,
             proving::KEYS,
             proving::HYPS_KEYS,
         ];
