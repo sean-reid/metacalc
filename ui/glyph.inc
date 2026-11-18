@@ -101,13 +101,15 @@ ui_text:
 	ld a,b
 	cp UI_TEXT_ROWS
 	jp nc,ut_off
-	push hl
-	push de
-	ld a,b
-	call ui_row_addr
-	ld (ui_rowbase),hl
-	pop de
-	pop hl
+	add a,a
+	or ut_rows&$FF
+	ld c,a
+	ld b,ut_rows>>8
+	ld a,(bc)
+	ld (ui_rowbase),a
+	inc c
+	ld a,(bc)
+	ld (ui_rowbase+1),a
 	ld a,d
 	or a
 	jp nz,ut_tail
@@ -449,3 +451,9 @@ ui_vtab:
 	.dw ui_v0,ui_w1,ui_w2,ui_w3,ui_w4,ui_w5,ui_w6,ui_w7
 	.dw ui_tv0,ui_tv1,ui_tv2,ui_tv3,ui_tv4,ui_tv5,ui_tv6,ui_tv7
 	.dw ui_tv0,ui_tw1,ui_tw2,ui_tw3,ui_tw4,ui_tw5,ui_tw6,ui_tw7
+	.fill (16-($&15))&15,0
+ut_rows:
+	.dw UI_FRAME+UI_STRIDE+(0*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(1*UI_ROW*UI_STRIDE)
+	.dw UI_FRAME+UI_STRIDE+(2*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(3*UI_ROW*UI_STRIDE)
+	.dw UI_FRAME+UI_STRIDE+(4*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(5*UI_ROW*UI_STRIDE)
+	.dw UI_FRAME+UI_STRIDE+(6*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(7*UI_ROW*UI_STRIDE)
