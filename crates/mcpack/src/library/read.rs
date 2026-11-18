@@ -6,7 +6,9 @@ pub struct ReadError;
 
 impl std::fmt::Display for ReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("the library is cut short or points outside itself")
+        f.write_str(
+            "the library is cut short, points outside itself, or has records that overlap or are out of file order",
+        )
     }
 }
 
@@ -124,6 +126,9 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
         let len = cur.u8()?;
         names.push(cur.text(len)?);
     }
+    if directory < cur.pos {
+        return Err(ReadError);
+    }
     let mut records_end = cur.pos;
     let name = |id: usize| names.get(id).cloned().ok_or(ReadError);
     let variable = |id: usize| {
@@ -167,8 +172,15 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
         pos: directory,
     };
     let mut assertions = Vec::with_capacity(count);
+    let mut floor = count
+        .checked_mul(4)
+        .and_then(|n| n.checked_add(directory))
+        .ok_or(ReadError)?;
     for _ in 0..count {
         let offset = table.u32()?;
+        if offset < floor {
+            return Err(ReadError);
+        }
         let mut cur = Cursor { bytes, pos: offset };
         let theorem = match cur.u8()? {
             0 => false,
@@ -229,6 +241,7 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
                 });
             }
         }
+        floor = cur.pos;
         records_end = records_end.max(cur.pos);
         assertions.push(assertion);
     }

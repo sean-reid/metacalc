@@ -1,6 +1,8 @@
 #!/bin/sh
-# Usage: verify-exports.sh libdir
+# Usage: verify-exports.sh libdir [database]
 # Checks every libdir/*.mm with metamath-exe (METAMATH, default .metamath/metamath at the repo root).
+# With a database, each export that verifies must also have the frames of the database for every
+# assertion it holds (compare-frames.sh).
 # libdir/libraries.list names the libraries that must be there; each needs NAME.mm and a NAME.proofs
 # file holding the number of $p statements it must have.
 # metamath-exe exits 0 whatever it finds, so a file passes only if its output has no line starting
@@ -10,6 +12,11 @@ set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 libdir=$1
+database=
+if [ $# -ge 2 ]; then
+	database=$2
+	[ -f "$database" ] || { echo "verify-exports: $database is not a file" >&2; exit 1; }
+fi
 metamath=${METAMATH:-$root/.metamath/metamath}
 
 [ -x "$metamath" ] || { echo "verify-exports: $metamath is not an executable, run scripts/fetch-metamath.sh" >&2; exit 1; }
@@ -68,6 +75,14 @@ for file in "$libdir"/*.mm; do
 		grep -A8 '^?' "$out" | head -40 >&2 || true
 	else
 		echo "ok $file: $proofs proofs verified"
+		if [ -n "$database" ]; then
+			if report=$(METAMATH="$metamath" sh "$root/scripts/compare-frames.sh" "$file" "$database" 2>&1); then
+				echo "$report"
+			else
+				fail "$file" "the frames differ from those in $database"
+				echo "$report" >&2
+			fi
+		fi
 	fi
 done
 

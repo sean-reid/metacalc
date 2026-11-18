@@ -1,27 +1,57 @@
 use super::headings::heading;
+use super::include::{Expanded, MAX_FILE, MAX_TOTAL, expand};
+use super::shown::shown;
 use super::{
     Database, Frame, Heading, Kind, Proof, ProofBody, ProofError, Stmt, StmtId, Sym, Symbol,
     dv_pair,
 };
 use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct ParseError {
+    /// The included file the error is in, or `None` for the top-level file.
+    pub file: Option<String>,
     pub line: usize,
     pub message: String,
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(file) = &self.file {
+            write!(f, "{file}: ")?;
+        }
         write!(f, "line {}: {}", self.line, self.message)
     }
 }
 
 impl std::error::Error for ParseError {}
 
+/// Parses a database held in memory; a file inclusion command is refused.
 pub fn parse(src: Vec<u8>) -> Result<Database, ParseError> {
-    let mut parser = Parser::new(&src);
+    parse_expanded(expand(&src, None, MAX_FILE, MAX_TOTAL)?)
+}
+
+/// Parses the database in `src`, read from `path`, with each `$[ file $]` replaced by the file's
+/// text. A name is read relative to the directory of `path`; a name already included is skipped.
+pub fn parse_at(path: &Path, src: Vec<u8>) -> Result<Database, ParseError> {
+    parse_expanded(expand(&src, Some(path), MAX_FILE, MAX_TOTAL)?)
+}
+
+/// [`parse_at`] with the caps on an included file and on the expanded text set by the caller.
+#[doc(hidden)]
+pub fn parse_at_capped(
+    path: &Path,
+    src: Vec<u8>,
+    max_file: u64,
+    max_total: u64,
+) -> Result<Database, ParseError> {
+    parse_expanded(expand(&src, Some(path), max_file, max_total)?)
+}
+
+fn parse_expanded(expanded: Expanded) -> Result<Database, ParseError> {
+    let mut parser = Parser::new(&expanded.text);
     match parser.run() {
         Ok(()) => {
             let (syms, stmts) = (parser.syms, parser.stmts);
@@ -32,13 +62,14 @@ pub fn parse(src: Vec<u8>) -> Result<Database, ParseError> {
                 headings: parser.headings,
             })
         }
-        Err(message) => Err(ParseError {
-            line: 1 + src[..parser.token_start]
-                .iter()
-                .filter(|&&b| b == b'\n')
-                .count(),
-            message,
-        }),
+        Err(message) => {
+            let (file, line) = expanded.locate(parser.token_start);
+            Err(ParseError {
+                file: file.map(str::to_owned),
+                line,
+                message,
+            })
+        }
     }
 }
 
@@ -68,6 +99,10 @@ struct Parser<'a> {
 }
 
 type Res<T> = Result<T, String>;
+
+fn contains(token: &[u8], marker: &[u8; 2]) -> bool {
+    token.windows(2).any(|pair| pair == marker)
+}
 
 fn text(token: &[u8]) -> String {
     String::from_utf8_lossy(token).into_owned()
@@ -123,7 +158,12 @@ impl<'a> Parser<'a> {
                     loop {
                         match self.raw_token()? {
                             Some(b"$)") => break,
-                            Some(b"$(") => return Err("$( inside a comment".into()),
+                            Some(token) if contains(token, b"$(") => {
+                                return Err("$( inside a comment".into());
+                            }
+                            Some(token) if contains(token, b"$)") => {
+                                return Err("$) must stand alone".into());
+                            }
                             Some(_) => {}
                             None => return Err("unterminated comment".into()),
                         }
@@ -137,7 +177,6 @@ impl<'a> Parser<'a> {
                         });
                     }
                 }
-                Some(b"$[") => return Err("file inclusion is not supported".into()),
                 other => return Ok(other),
             }
         }
@@ -156,7 +195,7 @@ impl<'a> Parser<'a> {
                 b"$d" => self.disjoint()?,
                 b"${" => self.scopes.push(Scope::default()),
                 b"$}" => self.close_scope()?,
-                _ if token[0] == b'$' => return Err(format!("unexpected {}", text(token))),
+                _ if token[0] == b'$' => return Err(format!("unexpected {}", shown(token))),
                 label => self.labelled(label)?,
             }
         }
@@ -168,10 +207,10 @@ impl<'a> Parser<'a> {
 
     fn check_symbol_token(&self, token: &[u8]) -> Res<()> {
         if token.contains(&b'$') {
-            return Err(format!("math symbol {} contains $", text(token)));
+            return Err(format!("math symbol {} contains $", shown(token)));
         }
         if self.labels.contains_key(token) {
-            return Err(format!("math symbol {} is also a label", text(token)));
+            return Err(format!("math symbol {} is also a label", shown(token)));
         }
         Ok(())
     }
@@ -188,7 +227,7 @@ impl<'a> Parser<'a> {
             }
             self.check_symbol_token(token)?;
             if self.sym_ids.contains_key(token) {
-                return Err(format!("symbol {} is already declared", text(token)));
+                return Err(format!("symbol {} is already declared", shown(token)));
             }
             self.new_symbol(token, false);
             count += 1;
@@ -223,10 +262,10 @@ impl<'a> Parser<'a> {
             let id = match self.sym_ids.get(token) {
                 Some(&id) => {
                     if !self.syms[id as usize].is_var {
-                        return Err(format!("{} is a constant", text(token)));
+                        return Err(format!("{} is a constant", shown(token)));
                     }
                     if self.var_active[id as usize] {
-                        return Err(format!("variable {} is already active", text(token)));
+                        return Err(format!("variable {} is already active", shown(token)));
                     }
                     self.var_active[id as usize] = true;
                     id
@@ -247,7 +286,7 @@ impl<'a> Parser<'a> {
     fn active_var(&self, token: &[u8]) -> Res<Sym> {
         match self.sym_ids.get(token) {
             Some(&id) if self.syms[id as usize].is_var && self.var_active[id as usize] => Ok(id),
-            _ => Err(format!("{} is not an active variable", text(token))),
+            _ => Err(format!("{} is not an active variable", shown(token))),
         }
     }
 
@@ -260,7 +299,7 @@ impl<'a> Parser<'a> {
             }
             let var = self.active_var(token)?;
             if vars.contains(&var) {
-                return Err(format!("{} repeated in $d", text(token)));
+                return Err(format!("{} repeated in $d", shown(token)));
             }
             vars.push(var);
         }
@@ -308,13 +347,13 @@ impl<'a> Parser<'a> {
             .iter()
             .all(|&b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'));
         if !valid {
-            return Err(format!("invalid label {}", text(label)));
+            return Err(format!("invalid label {}", shown(label)));
         }
         if self.labels.contains_key(label) {
-            return Err(format!("label {} is already used", text(label)));
+            return Err(format!("label {} is already used", shown(label)));
         }
         if self.sym_ids.contains_key(label) {
-            return Err(format!("label {} is also a math symbol", text(label)));
+            return Err(format!("label {} is also a math symbol", shown(label)));
         }
         let keyword = self.expect_token()?;
         let kind = match keyword {
@@ -325,7 +364,7 @@ impl<'a> Parser<'a> {
             _ => {
                 return Err(format!(
                     "expected a statement keyword after {}",
-                    text(label)
+                    shown(label)
                 ));
             }
         };
@@ -337,14 +376,14 @@ impl<'a> Parser<'a> {
                 break;
             }
             let Some(&id) = self.sym_ids.get(token) else {
-                return Err(format!("undeclared symbol {}", text(token)));
+                return Err(format!("undeclared symbol {}", shown(token)));
             };
             if self.syms[id as usize].is_var {
                 if !self.var_active[id as usize] {
-                    return Err(format!("variable {} is not active", text(token)));
+                    return Err(format!("variable {} is not active", shown(token)));
                 }
                 if kind != Kind::Float && self.float_of[id as usize].is_none() {
-                    return Err(format!("variable {} has no active $f", text(token)));
+                    return Err(format!("variable {} has no active $f", shown(token)));
                 }
             }
             expr.push(id);
@@ -364,7 +403,7 @@ impl<'a> Parser<'a> {
                 if self.float_of[expr[1] as usize].is_some() {
                     return Err(format!(
                         "variable {} already has an active $f",
-                        self.syms[expr[1] as usize].name
+                        shown(self.syms[expr[1] as usize].name.as_bytes())
                     ));
                 }
                 self.float_of[expr[1] as usize] = Some(id);

@@ -13,3 +13,6 @@ clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.11"
 toml = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
