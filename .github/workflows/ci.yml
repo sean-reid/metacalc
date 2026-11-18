@@ -88,6 +88,8 @@ jobs:
           path=$(sh scripts/fetch-setmm.sh)
           echo "path=$path" >> "$GITHUB_OUTPUT"
       - run: sh scripts/build-libraries.sh "${{ steps.setmm.outputs.path }}" "$RUNNER_TEMP/libraries" "$RUNNER_TEMP/pages"
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" cargo test --locked --release -p mcpack --test sections -- --ignored
+      - run: SET_MM="${{ steps.setmm.outputs.path }}" cargo test --locked --release -p mcui --test ring -- --ignored every_shipped
       - uses: ./.github/actions/spasm
       - run: |
           for lib in "$RUNNER_TEMP"/libraries/*.mclib; do

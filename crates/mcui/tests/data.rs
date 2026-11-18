@@ -4,7 +4,7 @@ use mcpack::library;
 use mcpack::mm;
 use mcui::data::{By, Installed, Lib};
 use mcui::{Key, LoadError, Mark, State, Status, Statuses, Ui};
-use support::{LOGIC, db, logic_bytes, open, press, statuses};
+use support::{LOGIC, db, kernel_only_bytes, logic_bytes, open, press, statuses};
 
 fn lib(unchecked: &[&str], failed: &[&str]) -> Lib {
     let bytes = logic_bytes();
@@ -112,7 +112,7 @@ fn an_axiom_has_no_goal_tree() {
 }
 
 fn without_a_database() -> Ui {
-    let mut bytes = logic_bytes();
+    let mut bytes = kernel_only_bytes();
     bytes[4] ^= 0xFF;
     assert!(library::read(&bytes).is_ok());
     assert!(library::export(&bytes).is_err());
@@ -208,9 +208,28 @@ fn a_proof_that_names_itself_shows_as_failed() {
 #[test]
 fn only_a_library_that_cannot_be_read_as_a_tree_is_degraded() {
     assert!(!lib(&[], &[]).degraded());
-    let mut bytes = logic_bytes();
+    let mut bytes = kernel_only_bytes();
+    assert!(!lib_from(bytes.clone()).degraded());
     bytes[4] ^= 0xFF;
     assert!(lib_from(bytes).degraded());
+}
+
+#[test]
+fn a_library_with_its_own_trees_needs_no_export_to_show_a_statement_as_a_tree() {
+    let mut bytes = logic_bytes();
+    bytes[4] ^= 0xFF;
+    assert!(library::export(&bytes).is_err());
+    let damaged = lib_from(bytes);
+    assert!(!damaged.degraded());
+    let sound = lib(&[], &[]);
+    for i in 0..sound.len() {
+        assert_eq!(
+            damaged.statement(i).all(),
+            sound.statement(i).all(),
+            "{}",
+            sound.label(i)
+        );
+    }
 }
 
 #[test]
@@ -269,4 +288,26 @@ fn marks_updated_one_status_at_a_time_equal_a_full_recompute() {
             assert_eq!(live.mark(j), full.mark(j), "step {step}, {}", live.label(j));
         }
     }
+}
+
+#[test]
+fn a_library_gives_its_section_titles() {
+    let rule = "=-".repeat(40)[..79].to_string();
+    let head = |title: &str| format!("$(\n{rule}\n  {title}\n{rule}\n$)\n");
+    let src = format!(
+        "$c wff |- $.\n$v ph $.\nwph $f wff ph $.\n{}ax-a $a |- ph $.\n{}ax-b $a |- ph $.\nax-c $a |- ph $.\n",
+        head("First"),
+        head("Second")
+    );
+    let bytes = support::pack_all(&db(&src)).unwrap();
+    let titled = lib_from(bytes);
+    let got: Vec<(usize, u8, &str)> = titled
+        .titles()
+        .iter()
+        .map(|t| (t.assertion, t.depth, t.text.as_str()))
+        .collect();
+    assert_eq!(got, [(0, 3, "First"), (1, 3, "Second")]);
+    assert_eq!(titled.label(1), "ax-b");
+    assert!(lib(&[], &[]).titles().is_empty());
+    assert!(lib_from(kernel_only_bytes()).titles().is_empty());
 }
