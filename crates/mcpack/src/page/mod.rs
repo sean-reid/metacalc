@@ -80,6 +80,10 @@ impl Kind {
         }
     }
 
+    fn anchor(self) -> String {
+        self.heading().to_lowercase().replace(' ', "-")
+    }
+
     /// The name of one entry of the group, for counts in running text.
     fn noun(self) -> &'static str {
         match self {
@@ -353,8 +357,7 @@ pub fn render(manifest: &Manifest, pin: &Pin, library: &[u8]) -> Result<String, 
     let mut jumps = vec!["[Notation](#page:notation)".to_string()];
     for kind in Kind::ALL {
         if counts[kind as usize] > 0 {
-            let anchor = kind.heading().to_lowercase().replace(' ', "-");
-            jumps.push(format!("[{}](#page:{anchor})", kind.heading()));
+            jumps.push(format!("[{}](#page:{})", kind.heading(), kind.anchor()));
         }
     }
     let _ = writeln!(out, "On this page: {}.\n", jumps.join(", "));
@@ -372,15 +375,15 @@ pub fn render(manifest: &Manifest, pin: &Pin, library: &[u8]) -> Result<String, 
         if count == 0 {
             continue;
         }
+        let anchor = kind.anchor();
         let _ = writeln!(
             out,
             "\n## {} {{#page:{}}}\n\n{}. {}\n",
             kind.heading(),
-            kind.heading().to_lowercase().replace(' ', "-"),
+            anchor,
             counted(count, kind.noun()),
             kind.explanation()
         );
-        let anchor = kind.heading().to_lowercase().replace(' ', "-");
         let mut headings = sections::Headings::new(titles, &anchor);
         let of_kind = decoded.assertions.iter().enumerate();
         for (i, a) in of_kind.filter(|(_, a)| Kind::of(a) == kind) {

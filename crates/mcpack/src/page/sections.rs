@@ -21,7 +21,7 @@ fn level(depth: u8) -> usize {
 fn literal(text: &str) -> String {
     let mut out = String::new();
     for c in escape(text).chars() {
-        if matches!(c, '\\' | '`' | '*' | '_' | '[' | ']') {
+        if matches!(c, '\\' | '`' | '*' | '_' | '[' | ']' | '{' | '}') {
             out.push('\\');
         }
         out.push(c);
