@@ -360,3 +360,83 @@ fn a_pair_a_question_mark_theorem_does_not_declare_is_refused_and_the_verifier_a
         ))
     );
 }
+
+#[test]
+fn a_syntax_axiom_in_a_substituted_term_records_its_pair() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "tm");
+    s.apply(0, id(&db, "ax-mp")).unwrap();
+    let out = s.close(1, id(&db, "tm.2")).unwrap();
+    let wrong = violation(&db, "wq", "y", "ch", ViolationKind::Undeclared);
+    assert_eq!(out.violations, [wrong]);
+    s.close(2, id(&db, "tm.1")).unwrap();
+    assert_eq!(s.status().violations, [wrong]);
+    assert!(s.export().is_err());
+    assert_eq!(
+        mcpack::mm::Verifier::new(&db).verify(id(&db, "tm")),
+        Err(mcpack::mm::ProofError::DisjointViolation)
+    );
+}
+
+#[test]
+fn the_same_substituted_term_is_clean_when_the_theorem_declares_the_pair() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "tm-ok");
+    s.apply(0, id(&db, "ax-mp")).unwrap();
+    assert_eq!(s.close(1, id(&db, "tm-ok.2")).unwrap().violations, []);
+    s.close(2, id(&db, "tm-ok.1")).unwrap();
+    let done = s.export().unwrap();
+    assert_eq!(labels(&db, &done), "wch vy wq wps tm-ok.2 tm-ok.1 ax-mp");
+    assert_eq!(verified(&db, &done), Ok(()));
+    assert_eq!(
+        mcpack::mm::Verifier::new(&db).verify(id(&db, "tm-ok")),
+        Ok(())
+    );
+}
+
+#[test]
+fn a_term_only_matched_against_a_hypothesis_owes_nothing() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "trest");
+    let out = s.close(0, id(&db, "trest.1")).unwrap();
+    assert_eq!(out.violations, []);
+    let done = s.export().unwrap();
+    assert_eq!(labels(&db, &done), "trest.1");
+    assert_eq!(done.dv, []);
+    assert_eq!(verified(&db, &done), Ok(()));
+    assert_eq!(
+        mcpack::mm::Verifier::new(&db).verify(id(&db, "trest")),
+        Ok(())
+    );
+}
+
+#[test]
+fn a_syntax_axiom_two_levels_down_in_a_value_owes_its_pair() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "tnest");
+    s.apply(0, id(&db, "ax-mp")).unwrap();
+    let out = s.close(1, id(&db, "tnest.2")).unwrap();
+    let wrong = violation(&db, "wq", "y", "ch", ViolationKind::Undeclared);
+    assert_eq!(out.violations, [wrong]);
+    s.close(2, id(&db, "tnest.1")).unwrap();
+    assert!(s.export().is_err());
+    assert_eq!(
+        mcpack::mm::Verifier::new(&db).verify(id(&db, "tnest")),
+        Err(mcpack::mm::ProofError::DisjointViolation)
+    );
+
+    let mut ok = session(&cat, "tnest-ok");
+    ok.apply(0, id(&db, "ax-mp")).unwrap();
+    assert_eq!(ok.close(1, id(&db, "tnest-ok.2")).unwrap().violations, []);
+    ok.close(2, id(&db, "tnest-ok.1")).unwrap();
+    let done = ok.export().unwrap();
+    assert_eq!(verified(&db, &done), Ok(()));
+}

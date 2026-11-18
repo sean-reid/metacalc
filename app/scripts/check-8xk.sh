@@ -22,6 +22,20 @@ fail() { echo "check-8xk: $f: $*" >&2; exit 1; }
 name=$(dd if="$f" bs=1 skip=17 count=8 2>/dev/null)
 [ "$name" = "$want" ] || fail "file header name is '$name', want '$want'"
 
+# From the first page record on, every record line starts with a colon and ends in CR LF, and the
+# file ends with the end record, whose own CR LF is optional. Header bytes before the first record
+# may be anything, including 0Ah.
+first=$(grep -a -b -o -m 1 ':02000002' "$f" | head -n 1 | cut -d: -f1)
+[ -n "$first" ] || fail "no page record"
+tail -c +$((first + 1)) "$f" | sed '$d' | awk '
+	!/^:/ || !/\r$/ { bad = 1 }
+	END { exit bad }
+' || fail "a record line does not start with a colon or does not end in CR LF"
+case $(tail -c 14 "$f" | tr '\r\n' 'RN') in
+	*N:00000001FF | *N:00000001FFRN) ;;
+	*) fail "the file does not end with the end record" ;;
+esac
+
 # Data bytes of every type-00 Intel hex record, as one hex string.
 body=$(grep -a -E '^:[0-9A-F]{6}00' "$f" | tr -d '\r' |
 	sed -E 's/^:[0-9A-F]{6}00(.*)..$/\1/' | tr -d '\n')
@@ -37,22 +51,12 @@ esac
 last=$(printf '%s' "$body" | cut -c1-256 | grep -oE '807F(00)*$' || true)
 [ "${#last}" -eq $((44 + 2 * (8 - ${#want}))) ] || fail "app header is not 128 bytes"
 
-# The signer writes 02 2D n, then the n bytes of a number below its 512-bit modulus with the leading
-# zero bytes dropped, so n is 1 to 64. A trailer follows, 00 or 01 xx, and FF fills the field to 96
-# bytes. The field's own length byte has to match the bytes before the trailer.
-tail=$(printf '%s' "$body" | tail -c 40000)
-sig=
-siglen=64
-while [ "$siglen" -ge 1 ]; do
-	found=$(printf '%s' "$tail" | grep -oE "022D$(printf %02X "$siglen")[0-9A-F]{$((2 * siglen))}(00F{$((2 * (92 - siglen)))}|01[0-9A-F]{2}F{$((2 * (91 - siglen)))})F*\$" || true)
-	if [ -n "$found" ]; then
-		sig=$(printf '%s' "$found" | cut -c7-$((6 + 2 * siglen)))
-		break
-	fi
-	siglen=$((siglen - 1))
-done
-[ -n "$sig" ] || fail "no signature field"
-[ -n "$(printf '%s' "$sig" | tr -d '0')" ] || fail "signature is all zero"
+# The key ID field 80 12 01 04 follows the length field, and 0104 is the key the signer uses.
+case $body in
+	800F????????80120104*) ;;
+	*) fail "app header has no 0104 key ID field after the length field" ;;
+esac
+
 
 # Pages 8081 nn field of the header against the 02 records that start each page.
 declared=$(printf '%s' "$body" | sed -nE "s/^800F[0-9A-F]{0,80}${namefield}${hexname}8081(..).*/\1/p")
@@ -118,8 +122,66 @@ if [ -n "$library" ]; then
 		n=$((n + 1))
 	done > "$dir/all"
 	tail=$(cut -c$(((PAGE + len) * 2 + 1))- "$dir/all")
-	[ "$(printf '%s' "$tail" | grep -cE '^(00)*022D40' || true)" = 1 ] ||
+	pad=$((${#tail} - 192))
+	[ "$pad" -ge 0 ] || fail "bytes after the library are not zero padding then the signature"
+	[ "$pad" -eq 0 ] || [ -z "$(printf '%s' "$tail" | cut -c1-"$pad" | tr -d 0)" ] ||
 		fail "bytes after the library are not zero padding then the signature"
 fi
+
+# The last 96 bytes of the data are the signature field: 02 2D n, then the n bytes of a number below
+# the signer's 512-bit modulus, least significant byte first, with no zero byte at the top, so n is
+# 1 to 64 and below the modulus. A trailer follows, 00 or 01 f with f 1 to 3, and FF fills the field to 96 bytes. The
+# number is a Rabin signature: its square, mod the modulus, is the MD5 of the data before the field
+# read as a little-endian number, times 256 plus 1, then doubled if f is 0 or 3 and subtracted from
+# the modulus if f is 0 or 1.
+command -v python3 > /dev/null || fail "python3 is needed to verify the signature"
+verdict=$(printf '%s' "$body" | python3 -I -c '
+import hashlib, sys
+
+# The public modulus of the TI application key 0104, published in WabbitSign and spasm-ng (export.cpp).
+MODULUS = int.from_bytes(bytes.fromhex(
+    "AD2431DA2297E4175EAC61A3154FA3D847115794DD330AB7FF36BA59FEDA195F"
+    "EA7C16743BD7BCED8A0DA885E5E5C34D5BF20D0AB3EF9181ED39BA2C4D898E87"), "little")
+
+
+def verdict(data):
+    if len(data) < 96:
+        return "field"
+    data, field = data[:-96], data[-96:]
+    n = field[2]
+    if field[:2] != b"\x02\x2d" or not 1 <= n <= 64:
+        return "field"
+    sig, rest = field[3:3 + n], field[3 + n:]
+    f = 0
+    if rest[:1] == b"\x01" and rest[1:2] in (b"\x01", b"\x02", b"\x03"):
+        f, rest = rest[1], rest[2:]
+    elif rest[:1] == b"\x00":
+        rest = rest[1:]
+    else:
+        return "field"
+    if rest.strip(b"\xff"):
+        return "field"
+    if sig[-1] == 0:
+        return "leading"
+    if int.from_bytes(sig, "little") >= MODULUS:
+        return "range"
+    m = int.from_bytes(hashlib.md5(data).digest(), "little") * 256 + 1
+    if f in (0, 3):
+        m *= 2
+    if f in (0, 1):
+        m = MODULUS - m
+    return str(n) if pow(int.from_bytes(sig, "little"), 2, MODULUS) == m else "verify"
+
+
+print(verdict(bytes.fromhex(sys.stdin.read())))
+')
+case $verdict in
+	field) fail "no signature field" ;;
+	leading) fail "the signature has a zero byte at the top, which the signer never writes" ;;
+	range) fail "the signature is not below the modulus, so the signer cannot have written it" ;;
+	verify) fail "the signature does not verify against the data" ;;
+	[0-9]*) siglen=$verdict ;;
+	*) fail "the signature check failed: $verdict" ;;
+esac
 
 echo "check-8xk: ok: $f ($(wc -c < "$f" | tr -d ' ') bytes, $pages pages, name $name, $siglen-byte signature)"

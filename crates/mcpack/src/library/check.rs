@@ -1,7 +1,33 @@
 use super::{
-    Kernel, KernelError, Limits, ReadError, SectionCheckError, SectionError, decode, labels,
-    locate_sections, verify_sections,
+    Kernel, KernelError, Limits, ReadError, SectionCheckError, SectionError, WORK_LIMIT, decode,
+    labels, locate_sections, verify_sections,
 };
+
+/// The most working memory `check` lets a proof use, a multiple of the calculator's buffers in
+/// `kernel/ram.inc`, so a proof too big for the calculator still checks on the host and one that
+/// would take gigabytes is refused.
+pub const HOST_LIMITS: Limits = Limits {
+    stack_syms: 131072,
+    stack_entries: 8192,
+    saved_syms: 131072,
+    saved_entries: 8192,
+};
+
+fn describe(error: &KernelError) -> String {
+    match error {
+        KernelError::OutOfMemory => {
+            let l = HOST_LIMITS;
+            format!(
+                "OutOfMemory: the proof needs more than {} stack symbols, {} stack entries, {} saved symbols or {} saved entries",
+                l.stack_syms, l.stack_entries, l.saved_syms, l.saved_entries
+            )
+        }
+        KernelError::WorkLimit => format!(
+            "WorkLimit: the disjoint-variable checks need more than {WORK_LIMIT} units of work"
+        ),
+        other => format!("{other:?}"),
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CheckError {
@@ -13,7 +39,8 @@ pub enum CheckError {
     Label(String),
     /// The library's trailer or one of its sections is damaged.
     Damaged(SectionError),
-    /// The library has sections and does not decode.
+    /// The kernel accepts the library and the decoder does not, for instance because records
+    /// overlap or share an offset.
     Read(ReadError),
     /// A section says something its records do not.
     Sections(SectionCheckError),
@@ -28,19 +55,24 @@ impl std::fmt::Display for CheckError {
             CheckError::Sections(e) => write!(f, "a section is wrong: {e}"),
             CheckError::Assertions(failed) => {
                 for (label, e) in failed {
-                    writeln!(f, "{label}: {e:?}")?;
+                    writeln!(f, "{}: {}", crate::mm::shown(label.as_bytes()), describe(e))?;
                 }
                 write!(f, "{} assertions failed the kernel check", failed.len())
             }
-            CheckError::Label(label) => write!(f, "{label:?} cannot be a unique label"),
+            CheckError::Label(label) => write!(
+                f,
+                "\"{}\" cannot be a unique label",
+                crate::mm::shown(label.as_bytes())
+            ),
         }
     }
 }
 
-/// Runs the kernel over every assertion of a library, checks its labels, then checks its sections
-/// against its records, and returns how many assertions there are.
+/// Runs the kernel over every assertion of a library within `HOST_LIMITS` and `WORK_LIMIT`, checks
+/// its labels, then checks its sections against its records, and returns how many assertions there
+/// are.
 pub fn check(bytes: &[u8]) -> Result<usize, CheckError> {
-    let mut kernel = Kernel::new(bytes, Limits::UNBOUNDED).map_err(CheckError::Load)?;
+    let mut kernel = Kernel::new(bytes, HOST_LIMITS).map_err(CheckError::Load)?;
     let mut failed = Vec::new();
     for id in 0..kernel.assertions() {
         if let Err(e) = kernel.verify(id) {
@@ -55,8 +87,8 @@ pub fn check(bytes: &[u8]) -> Result<usize, CheckError> {
         return Err(CheckError::Label(label));
     }
     let sections = locate_sections(bytes).map_err(CheckError::Damaged)?;
+    let library = decode(bytes).map_err(CheckError::Read)?;
     if sections.is_some() {
-        let library = decode(bytes).map_err(CheckError::Read)?;
         verify_sections(&library).map_err(CheckError::Sections)?;
     }
     Ok(kernel.assertions())

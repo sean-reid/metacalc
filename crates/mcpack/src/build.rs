@@ -22,12 +22,18 @@ impl BuildError {
 impl std::fmt::Display for BuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BuildError::UnknownLabel(label) => write!(f, "no statement is labelled {label}"),
+            BuildError::UnknownLabel(label) => {
+                write!(
+                    f,
+                    "no statement is labelled {}",
+                    mm::shown(label.as_bytes())
+                )
+            }
             BuildError::Empty(before) => write!(f, "no assertion comes before {before}"),
             BuildError::Grammar(e) => {
-                write!(f, "the syntax axioms do not form a usable grammar: {e:?}")
+                write!(f, "the syntax axioms do not form a usable grammar: {e}")
             }
-            BuildError::Syntax(label, e) => write!(f, "{label}: {e:?}"),
+            BuildError::Syntax(label, e) => write!(f, "{}: {e:?}", mm::shown(label.as_bytes())),
         }
     }
 }

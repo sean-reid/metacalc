@@ -189,7 +189,7 @@ fn fixtures(name: &str, library: Option<&[u8]>) -> Vec<(String, Decoded)> {
 fn the_decoder_and_the_checker_agree_on_the_broken_files_the_checker_is_tested_with() {
     let (_, small) = small_library();
     let library = padded(&small, 3 * PAGE - 96);
-    let hex_level = ["empty", "checksum", "gap", "long-page"];
+    let hex_level = ["empty", "checksum", "gap", "long-page", "no-end"];
     for (label, library) in [("fixtures-one", None), ("fixtures-lib", Some(&library[..]))] {
         let found = fixtures(label, library);
         assert!(found.len() >= 5, "{label}: {} fixtures", found.len());

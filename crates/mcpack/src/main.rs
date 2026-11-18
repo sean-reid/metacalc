@@ -14,17 +14,24 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Check every proof in a Metamath database
+    ///
+    /// Files named by `$[ file $]` are read, and may lie outside the database's directory.
     Verify { database: PathBuf },
     /// Parse every statement with the database's syntax axioms
+    ///
+    /// Files named by `$[ file $]` are read, and may lie outside the database's directory.
     Parse { database: PathBuf },
     /// Print the proof of one theorem as a backward goal tree
     ///
     /// Each line is a statement and the label applied to it in brackets, indented under the
     /// statement that needed it. Steps that build syntax are left out. A step a compressed proof
     /// saved appears at every place it is used. Exits 2 for an unknown label and 1 for an axiom
-    /// or a proof that does not verify.
+    /// or a proof that does not verify. Files named by `$[ file $]` are read, and may lie outside
+    /// the database's directory.
     Outline { database: PathBuf, label: String },
     /// Pack what the given theorems depend on into a library and check it
+    ///
+    /// A database that includes files is refused: a library comes from the one file named.
     Pack {
         database: PathBuf,
         /// Labels of the theorems to keep
@@ -35,6 +42,8 @@ enum Command {
         output: PathBuf,
     },
     /// Measure what the given theorems depend on
+    ///
+    /// A database that includes files is refused: a library comes from the one file named.
     Closure {
         database: PathBuf,
         /// Labels of the theorems to keep
@@ -97,12 +106,12 @@ fn main() -> ExitCode {
             database,
             roots,
             output,
-        } => cmd::load(&database).and_then(|db| cmd::pack(&db, &roots, &output)),
+        } => cmd::load_plain(&database).and_then(|db| cmd::pack(&db, &roots, &output)),
         Command::Closure {
             database,
             roots,
             splits,
-        } => cmd::load(&database).and_then(|db| cmd::closure(&db, &roots, &splits)),
+        } => cmd::load_plain(&database).and_then(|db| cmd::closure(&db, &roots, &splits)),
         Command::Build {
             manifest,
             database,
