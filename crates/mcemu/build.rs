@@ -1,7 +1,10 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, exit};
+use std::process::exit;
+
+#[path = "build_support/spasm.rs"]
+mod spasm_run;
 
 const ROM_SIZE: usize = 0x20_0000;
 const PAGE: usize = 0x4000;
@@ -136,43 +139,21 @@ fn compile_tilem() {
     println!("cargo:rerun-if-changed=csrc/harness.c");
 }
 
-/// Runs spasm; an error holds the assembler's own words.
 fn spasm_try(src: &Path, out: &Path, defines: &[&str], args: &[&str]) -> Result<(), String> {
-    let mut cmd = Command::new(env::var_os("SPASM").unwrap_or_else(|| "spasm".into()));
-    for d in defines {
-        cmd.arg(format!("-D{d}"));
-    }
-    match cmd.args(args).arg("-N").arg(src).arg(out).output() {
-        Ok(o) if o.status.success() => Ok(()),
-        Ok(o) => Err(String::from_utf8_lossy(&o.stdout).trim().replace('\n', " ")),
-        Err(e) => Err(format!("cannot run spasm (set SPASM to its path): {e}")),
-    }
-}
-
-fn spasm_ok(src: &Path, out: &Path, defines: &[&str], args: &[&str]) -> bool {
-    spasm_try(src, out, defines, args).is_ok()
+    spasm_run::assemble(src, out, defines, args)
 }
 
 fn spasm(src: &Path, out: &Path, defines: &[&str], args: &[&str]) {
     println!("cargo:rerun-if-changed={}", src.display());
-    let mut cmd = Command::new(env::var_os("SPASM").unwrap_or_else(|| "spasm".into()));
-    for d in defines {
-        cmd.arg(format!("-D{d}"));
-    }
-    let status = cmd.args(args).arg("-N").arg(src).arg(out).output();
-    match status {
-        Ok(o) if o.status.success() => {}
-        Ok(o) => fail(&format!(
-            "spasm failed on {}: {}",
-            src.display(),
-            String::from_utf8_lossy(&o.stdout).trim().replace('\n', " ")
-        )),
-        Err(e) => fail(&format!("cannot run spasm (set SPASM to its path): {e}")),
+    if let Err(why) = spasm_try(src, out, defines, args) {
+        fail(&format!("spasm failed on {}: {why}", src.display()));
     }
 }
 
 fn main() {
     println!("cargo:rerun-if-env-changed=SPASM");
+    println!("cargo:rerun-if-changed=../../scripts/spasm.sh");
+    println!("cargo:rerun-if-changed=build_support/spasm.rs");
     compile_tilem();
 
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -268,37 +249,62 @@ fn assemble_kernel(out: &Path) {
         &[],
         &["-I", include],
     );
-    let assembles = |defines: &[&str]| {
-        spasm_ok(
+    let assemble = |defines: &[&str]| {
+        spasm_try(
             &dir.join("kernel.z80"),
             &out.join("kernel_base_probe.bin"),
             defines,
             &["-I", include],
         )
     };
-    for (defines, ok) in [
-        (&["KERNEL_RAM_LOW=$C000", "KERNEL_RAM_HIGH=$E000"][..], true),
-        (&["KERNEL_RAM_LOW=$EE00", "KERNEL_RAM_HIGH=$C000"][..], true),
-        (&["KERNEL_RAM_LOW=$C000", "KERNEL_RAM_HIGH=$D200"][..], true),
+    let overlap = "the low and high regions overlap";
+    for (defines, refusal) in [
+        (&["KERNEL_RAM_LOW=$C000", "KERNEL_RAM_HIGH=$E000"][..], None),
+        (&["KERNEL_RAM_LOW=$EE00", "KERNEL_RAM_HIGH=$C000"][..], None),
+        (&["KERNEL_RAM_LOW=$C000", "KERNEL_RAM_HIGH=$D200"][..], None),
         (
             &["KERNEL_RAM_LOW=$C000", "KERNEL_RAM_HIGH=$D100"][..],
-            false,
+            Some(overlap),
         ),
-        (&["KERNEL_RAM_LOW=$D000"][..], false),
-        (&["KERNEL_RAM_LOW=$BF00"][..], false),
-        (&["KERNEL_RAM_LOW=$C080"][..], false),
-        (&["KERNEL_RAM_LOW=$EF00"][..], false),
-        (&["KERNEL_RAM_HIGH=$BF00"][..], false),
-        (&["KERNEL_RAM_HIGH=$E100"][..], false),
-        (&["KERNEL_RAM_HIGH=$D880"][..], false),
-        (&["KERNEL_RAM_PAGE=7"][..], true),
-        (&["KERNEL_RAM_PAGE=8"][..], false),
+        (&["KERNEL_RAM_LOW=$D000"][..], Some(overlap)),
+        (
+            &["KERNEL_RAM_LOW=$BF00"][..],
+            Some("KERNEL_RAM_LOW must be in bank C"),
+        ),
+        (
+            &["KERNEL_RAM_LOW=$C080"][..],
+            Some("KERNEL_RAM_LOW must be a multiple of $100"),
+        ),
+        (
+            &["KERNEL_RAM_LOW=$EF00"][..],
+            Some("the low region does not fit below $10000"),
+        ),
+        (
+            &["KERNEL_RAM_HIGH=$BF00"][..],
+            Some("KERNEL_RAM_HIGH must be in bank C"),
+        ),
+        (
+            &["KERNEL_RAM_HIGH=$E100"][..],
+            Some("the high region does not fit below $10000"),
+        ),
+        (
+            &["KERNEL_RAM_HIGH=$D880"][..],
+            Some("KERNEL_RAM_HIGH must be a multiple of $100"),
+        ),
+        (&["KERNEL_RAM_PAGE=7"][..], None),
+        (
+            &["KERNEL_RAM_PAGE=8"][..],
+            Some("KERNEL_RAM_PAGE must be a RAM page"),
+        ),
     ] {
-        assert_eq!(
-            assembles(defines),
-            ok,
-            "assembling the kernel with {defines:?}"
-        );
+        match (assemble(defines), refusal) {
+            (Ok(()), None) => {}
+            (Err(why), Some(want)) if why.contains(want) => {}
+            (got, _) => fail(&format!(
+                "assembling the kernel with {defines:?} gave {got:?}, wanted {}",
+                refusal.map_or("success", |want| want)
+            )),
+        }
     }
     for (name, defines) in [
         ("kernel_test", &[][..]),
@@ -344,13 +350,15 @@ fn assemble_ui(out: &Path) {
         }
     }
     match assemble(&["UI_VARS=$9400"], &out.join("ui_probe.bin")) {
-        Err(why) if why.contains("overlap") => {}
+        Err(why) if why.contains("UI_FRAME and UI_VARS overlap") => {}
         other => fail(&format!(
             "overlapping canvas blocks gave {other:?}, not an overlap error"
         )),
     }
+    const BOX_ERROR: &str =
+        "a soft key box must span one or two whole bytes between its edge bytes";
     match assemble(&["UI_WIDTH=250"], &out.join("ui_probe.bin")) {
-        Err(why) if why.contains("whole bytes between") => {}
+        Err(why) if why.contains(BOX_ERROR) => {}
         other => fail(&format!(
             "soft key boxes too wide for the flip gave {other:?}, not a box error"
         )),
