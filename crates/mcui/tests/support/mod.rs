@@ -64,6 +64,119 @@ ${
 $}
 ";
 
+/// The logic plus a theorem proved by a hypothesis alone, a syntax theorem, a theorem whose proof
+/// applies an assertion with eight hypotheses, and an axiom with forty-five distinct variable pairs.
+pub const EXTRA: &str = "
+$v y z w v u t s f g $.
+vy $f setvar y $.
+vz $f setvar z $.
+vw $f setvar w $.
+vv $f setvar v $.
+vu $f setvar u $.
+vt $f setvar t $.
+vs $f setvar s $.
+vf $f setvar f $.
+vg $f setvar g $.
+${
+  foo.1 $e |- ph $.
+  foo $p |- ph $= foo.1 $.
+$}
+wtwice $p wff ( ph -> ph ) $= wph wph wi $.
+${
+  many2.1 $e |- ph $.
+  many2.2 $e |- ps $.
+  many2.3 $e |- ch $.
+  many2.4 $e |- ( ph -> ps ) $.
+  many2.5 $e |- ( ps -> ch ) $.
+  many2.6 $e |- ( ph -> ch ) $.
+  many2.7 $e |- ( ch -> ph ) $.
+  many2.8 $e |- ( ps -> ph ) $.
+  many2 $p |- ( ph -> ( ps -> ch ) ) $=
+    wph wps wch many2.1 many2.2 many2.3 many2.4 many2.5 many2.6 many2.7 many2.8 ax-many $.
+$}
+${
+  $d x y z w v u t s f g $.
+  ax-dvs $a |- A. x A. y A. z A. w A. v A. u A. t A. s A. f A. g ph $.
+$}
+";
+
+pub fn extra_bytes() -> Vec<u8> {
+    let src = format!("{LOGIC}{EXTRA}");
+    let bytes = pack_all(&db(&src)).expect("the extended logic packs");
+    library::check(&bytes).expect("the kernel accepts the extended logic");
+    bytes
+}
+
+/// A user interface over one library named `logic`, every assertion checked except the ones named.
+pub fn ui_over(bytes: Vec<u8>, unchecked: &[&str], failed: &[&str]) -> Ui {
+    let table = statuses(&bytes, unchecked, failed);
+    Ui::new(
+        vec![Installed {
+            name: "logic".into(),
+            bytes,
+        }],
+        Statuses {
+            libraries: vec![table],
+            my_proofs: 2,
+        },
+    )
+    .expect("the library loads")
+}
+
+pub fn extra_ui() -> Ui {
+    ui_over(extra_bytes(), &[], &[])
+}
+
+/// The bytes of `bytes` with the `which`th reference of assertion `label` set to `to`.
+pub fn patch_reference(bytes: &[u8], label: &str, which: usize, to: u16) -> Vec<u8> {
+    let u16_at = |at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]) as usize;
+    let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+    let count = u16_at(14);
+    let directory = u32_at(16);
+    for i in 0..count {
+        let mut at = u32_at(directory + 4 * i);
+        let theorem = bytes[at] == 1;
+        let len = bytes[at + 1] as usize;
+        if &bytes[at + 2..at + 2 + len] != label.as_bytes() {
+            continue;
+        }
+        assert!(theorem);
+        at += 2 + len;
+        let hyps = bytes[at] as usize;
+        at += 1;
+        for _ in 0..hyps {
+            at += if bytes[at] == 0 {
+                2
+            } else {
+                2 + bytes[at + 1] as usize
+            };
+        }
+        at += 2 + 2 * u16_at(at);
+        at += 1 + bytes[at] as usize;
+        at += 2 + 2 * u16_at(at);
+        let refs = u16_at(at);
+        assert!(which < refs);
+        let mut out = bytes.to_vec();
+        out[at + 2 + 2 * which..at + 4 + 2 * which].copy_from_slice(&to.to_le_bytes());
+        return out;
+    }
+    panic!("no theorem {label}");
+}
+
+/// Whether the title row of `frame` is `left` at the left margin and `right` at the right margin
+/// in white on black, and nothing else is drawn in it.
+pub fn title_is(frame: &mcglyph::Bitmap, left: &str, right: &str) -> bool {
+    let font = mcglyph::Font::builtin();
+    let (l, r) = (font.text(left), font.text(right));
+    let right_x = 95usize.saturating_sub(r.width());
+    (0..8).all(|y| {
+        (0..96).all(|x| {
+            let ink = |t: &mcglyph::Bitmap, at: usize| x >= at && y >= 1 && t.get(x - at, y - 1);
+            frame.get(x, y) == !(ink(&l, 1) || ink(&r, right_x))
+        })
+    })
+}
+
 pub fn db(src: &str) -> Database {
     mm::parse(src.as_bytes().to_vec()).expect("database parses")
 }

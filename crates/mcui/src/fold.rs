@@ -92,6 +92,36 @@ impl Layout {
         out
     }
 
+    /// The layout cut to its first `rows` lines, with an ellipsis in place of as many trailing
+    /// pieces as it takes for the lines to fit. A layout that already fits is returned as is.
+    pub fn clipped(&self, width: usize, rows: usize) -> Layout {
+        if self.rows() <= rows {
+            return self.clone();
+        }
+        let font = Font::builtin();
+        let kept = rows
+            .checked_sub(1)
+            .and_then(|r| self.lines[r].tokens.last())
+            .map_or(0, |p| p.index + 1);
+        for n in (0..=kept).rev() {
+            let mut pieces = self.pieces[..n].to_vec();
+            pieces.push(Piece::Ellipsis);
+            let items: Vec<Item> = pieces.iter().map(|p| item(font, p)).collect();
+            let lines = place(&items, width);
+            if lines.len() <= rows || n == 0 {
+                let mut spans = vec![None; self.spans.len()];
+                spans[0] = Some((0, pieces.len() - 1));
+                return Layout {
+                    owner: vec![0; pieces.len()],
+                    pieces,
+                    lines,
+                    spans,
+                };
+            }
+        }
+        unreachable!("the loop returns at zero")
+    }
+
     /// The node a piece was drawn for.
     pub fn owner(&self, piece: usize) -> usize {
         self.owner[piece]
@@ -172,7 +202,8 @@ fn total_rows(items: &[Fit], folds: &[Folds]) -> usize {
 /// Folds `items` until together they fit in `rows` lines, deepest levels first. Each level of
 /// the trees is folded across the items in order, and the search stops at the first fold that
 /// fits. The last level is the whole statement, so a set that fits when everything is folded
-/// always fits. When even that is not enough the whole statements stay open and the view scrolls.
+/// always fits. When even that is not enough every node below the root stays folded, the roots
+/// stay open and the view scrolls.
 pub fn fit(items: &[Fit], rows: usize) -> Vec<Folds> {
     let mut folds: Vec<Folds> = items.iter().map(|i| Folds::none(i.expr)).collect();
     if total_rows(items, &folds) <= rows {

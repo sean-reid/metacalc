@@ -309,3 +309,28 @@ fn unfolding_everything_reproduces_the_unfolded_layout() {
         assert_eq!(open.lines, want);
     }
 }
+
+#[test]
+fn a_clipped_layout_keeps_the_first_rows_and_ends_in_an_ellipsis() {
+    let tokens: Vec<String> = (0..60)
+        .map(|i| ["ph", "ps", "ch"][i % 3].to_string())
+        .collect();
+    let expr = Expr::flat(vec!["|-".into()], &tokens);
+    let open = layout(&expr, &Folds::none(&expr), 60);
+    assert!(open.rows() > 3);
+    for rows in 1..=3 {
+        let clipped = open.clipped(60, rows);
+        assert_eq!(clipped.rows(), rows);
+        assert_eq!(clipped.pieces.last(), Some(&Piece::Ellipsis));
+        let shown = clipped.pieces.len() - 1;
+        assert_eq!(clipped.pieces[..shown], open.pieces[..shown]);
+        assert!(clipped.lines.iter().all(|l| l.width <= 60));
+    }
+}
+
+#[test]
+fn a_layout_that_fits_is_not_clipped() {
+    let expr = chain(2);
+    let open = layout(&expr, &Folds::none(&expr), 94);
+    assert_eq!(open.clipped(94, 1), open);
+}

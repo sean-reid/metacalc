@@ -8,7 +8,7 @@ use mcpack::mm::{self, Kind};
 use mcui::data::{Installed, Lib};
 use mcui::expr::Expr;
 use mcui::fold::{Fit, Folds, fit, layout};
-use mcui::{Key, Status, Statuses, Ui};
+use mcui::{Key, State, Status, Statuses, Ui};
 use std::path::Path;
 
 fn corpus() -> Vec<(String, Vec<u8>)> {
@@ -176,19 +176,40 @@ fn every_screen_opens_for_every_assertion_of_the_packable_databases() {
         )
         .unwrap();
         support::press(&mut ui, &[Key::Enter]);
+        let mut proofs = 0;
         for _ in 0..count {
             for keys in [
                 &[Key::Enter][..],
                 &[Key::F2, Key::Clear],
+                &[
+                    Key::Down,
+                    Key::Right,
+                    Key::Enter,
+                    Key::Up,
+                    Key::Left,
+                    Key::F1,
+                ],
                 &[Key::F3],
-                &[Key::Enter, Key::Left],
+                &[
+                    Key::Down,
+                    Key::Enter,
+                    Key::Down,
+                    Key::Enter,
+                    Key::Up,
+                    Key::Up,
+                ],
+                &[Key::F1, Key::Left, Key::Left, Key::F2, Key::Right, Key::F1],
                 &[Key::Clear, Key::Clear],
             ] {
                 support::press(&mut ui, keys);
-                assert_eq!(ui.frame().width(), 96, "{name}");
+                let frame = ui.frame();
+                assert_eq!((frame.width(), frame.height()), (96, 64), "{name}");
+                proofs += usize::from(matches!(ui.state(), State::Proof { .. }));
             }
             support::press(&mut ui, &[Key::Down]);
+            assert!(matches!(ui.state(), State::List { .. }), "{name}");
         }
+        assert!(proofs > 0 || name.contains("bad"), "{name} opened no proof");
         assert!(db.stmts.iter().any(|s| s.kind == Kind::Theorem));
     }
 }

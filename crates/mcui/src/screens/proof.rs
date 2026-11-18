@@ -53,6 +53,13 @@ impl Proof {
 
     /// Builds what the screen shows for the node the path points at.
     fn refresh(&mut self, ctx: &Ctx) {
+        self.rebuild(ctx);
+        self.selected = self.selected.min(self.subgoals.len().saturating_sub(1));
+        self.on_goal = self.subgoals.is_empty();
+    }
+
+    /// Lays out the node again, leaving the cursor where it is.
+    fn rebuild(&mut self, ctx: &Ctx) {
         let node = self.goals.node(&self.path);
         let view = self.lib(ctx).view(&self.goals, &node);
         self.by = view.by;
@@ -61,7 +68,12 @@ impl Proof {
         } else {
             fit_one(&view.goal, STATEMENT_WIDTH, GOAL_ROWS)
         };
-        self.goal = layout(&view.goal, &folds, STATEMENT_WIDTH);
+        let goal = layout(&view.goal, &folds, STATEMENT_WIDTH);
+        self.goal = if self.full {
+            goal
+        } else {
+            goal.clipped(STATEMENT_WIDTH, GOAL_ROWS)
+        };
         let indent = text_width(&number(view.subgoals.len())) + 2;
         self.subgoals = view
             .subgoals
@@ -69,15 +81,14 @@ impl Proof {
             .map(|expr| {
                 let width = TEXT_WIDTH - indent;
                 let folds = fit_one(expr, width, 1);
-                (layout(expr, &folds, width), indent)
+                (layout(expr, &folds, width).clipped(width, 1), indent)
             })
             .collect();
-        self.selected = self.selected.min(self.subgoals.len().saturating_sub(1));
-        self.on_goal = self.subgoals.is_empty();
     }
 
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
         match key {
+            Key::Up | Key::Down if self.subgoals.is_empty() => {}
             Key::Up | Key::Down => {
                 if self.on_goal {
                     self.on_goal = key == Key::Up;
@@ -88,7 +99,7 @@ impl Proof {
                 }
             }
             Key::Enter | Key::Right => {
-                if !self.on_goal {
+                if !self.on_goal && self.selected < self.subgoals.len() {
                     self.path.push(self.selected);
                     self.selected = 0;
                     self.refresh(ctx);
@@ -96,13 +107,14 @@ impl Proof {
             }
             Key::Left | Key::F2 => {
                 if let Some(came_from) = self.path.pop() {
-                    self.selected = came_from;
                     self.refresh(ctx);
+                    self.selected = came_from.min(self.subgoals.len().saturating_sub(1));
+                    self.on_goal = self.subgoals.is_empty();
                 }
             }
             Key::F1 => {
                 self.full = !self.full;
-                self.refresh(ctx);
+                self.rebuild(ctx);
             }
             Key::F3 => {
                 if let By::Assertion(i) = self.by {
@@ -128,7 +140,11 @@ impl Proof {
     pub fn draw(&self, ctx: &Ctx, canvas: &mut Canvas) {
         let lib = self.lib(ctx);
         let theorem = lib.label(self.goals.theorem);
-        let place = format!("{}/{}", self.goals.position(&self.path), self.goals.total());
+        let place = format!(
+            "{}/{}",
+            capped(self.goals.position(&self.path)),
+            capped(self.goals.total())
+        );
         canvas.title(theorem, &place);
         let top = self.top() as isize;
         let window = 1..1 + CONTENT_ROWS as isize;
@@ -152,7 +168,7 @@ impl Proof {
                 continue;
             }
             canvas.text(MARGIN, row as usize, &number(k + 1));
-            canvas.layout(sub, MARGIN + indent, row, window.clone());
+            canvas.layout(sub, MARGIN + indent, row, row..row + 1);
             if k == self.selected && !self.on_goal {
                 canvas.invert_row(row as usize);
             }
@@ -170,7 +186,29 @@ impl Proof {
     }
 }
 
+/// A count as the title shows it: whole up to five digits, then `99999+`.
+fn capped(n: u64) -> String {
+    if n > 99_999 {
+        "99999+".to_string()
+    } else {
+        n.to_string()
+    }
+}
+
 fn layout_none() -> Layout {
     let expr = crate::expr::Expr::flat(Vec::new(), &[]);
     layout(&expr, &Folds::none(&expr), STATEMENT_WIDTH)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::capped;
+
+    #[test]
+    fn counts_show_whole_up_to_five_digits() {
+        assert_eq!(capped(7), "7");
+        assert_eq!(capped(99_999), "99999");
+        assert_eq!(capped(100_000), "99999+");
+        assert_eq!(capped(u64::MAX), "99999+");
+    }
 }

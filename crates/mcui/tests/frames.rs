@@ -6,18 +6,26 @@ mod support;
 use mcui::Key::*;
 use mcui::Ui;
 use std::path::PathBuf;
-use support::{open, press, typed, ui};
+use support::{extra_ui, open, press, typed, ui};
 
 fn check(ui: &Ui, name: &str) {
-    let frame = ui.frame();
+    check_frame(&ui.frame(), name);
+}
+
+/// Compares `frame` with the checked-in text art. With MCUI_BLESS set the art is rewritten first
+/// and compared as usual, so a blessing run cannot pass without a comparison; a CI run cannot bless.
+fn check_frame(frame: &mcglyph::Bitmap, name: &str) {
     assert_eq!((frame.width(), frame.height()), (96, 64), "{name}");
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/frames")
         .join(format!("{name}.txt"));
     let got = format!("{frame}\n");
     if std::env::var_os("MCUI_BLESS").is_some() {
-        std::fs::write(&path, got).expect("write frame");
-        return;
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "frames cannot be blessed in CI"
+        );
+        std::fs::write(&path, &got).expect("write frame");
     }
     let want = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
     assert!(
@@ -104,7 +112,22 @@ fn not_available_yet() {
 fn about() {
     let mut ui = ui();
     press(&mut ui, &[F3]);
-    check(&ui, "about");
+    let frame = ui.frame();
+    let version = format!("metacalc {}", env!("CARGO_PKG_VERSION"));
+    let line = mcglyph::Font::builtin().text(&version);
+    let x0 = (96 - line.width()) / 2;
+    let mut blanked = frame.clone();
+    for y in 16..24 {
+        for x in 0..96 {
+            assert_eq!(
+                frame.get(x, y),
+                x >= x0 && y >= 17 && line.get(x - x0, y - 17),
+                "{x},{y}"
+            );
+            blanked.set(x, y, false);
+        }
+    }
+    check_frame(&blanked, "about");
 }
 
 #[test]
@@ -121,4 +144,127 @@ fn proof_with_the_cursor_on_the_goal() {
     open(&mut ui, "syl");
     press(&mut ui, &[F3, Up]);
     check(&ui, "proof-goal");
+}
+
+#[test]
+fn the_library_list_says_when_statements_are_flat() {
+    let mut ui = support::ui_over(
+        {
+            let mut bytes = support::logic_bytes();
+            bytes[4] ^= 0xFF;
+            bytes
+        },
+        &[],
+        &[],
+    );
+    press(&mut ui, &[Enter]);
+    check(&ui, "list-flat");
+}
+
+#[test]
+fn a_notice_wraps_at_word_boundaries() {
+    let mut broken = support::logic_bytes();
+    broken[4] ^= 0xFF;
+    let mut ui = support::ui_over(broken, &[], &[]);
+    open(&mut ui, "syl");
+    press(&mut ui, &[F3]);
+    check(&ui, "notice-no-export");
+}
+
+#[test]
+fn a_syntax_theorem_has_no_goal_tree() {
+    let mut ui = extra_ui();
+    open(&mut ui, "wtwice");
+    press(&mut ui, &[F3]);
+    check(&ui, "notice-syntax");
+}
+
+#[test]
+fn a_long_find_prefix_shows_its_tail() {
+    let mut ui = ui();
+    press(&mut ui, &[Enter, F2]);
+    typed(&mut ui, "abcdefghijklmnopqrstuvwxyzabcd");
+    check(&ui, "list-find-long");
+}
+
+#[test]
+fn list_rows_carry_every_mark() {
+    let mut ui = ui();
+    press(&mut ui, &[Enter, F2]);
+    typed(&mut ui, "a1i");
+    check(&ui, "list-marks");
+}
+
+#[test]
+fn a_kind_that_matches_nothing_leaves_an_empty_list() {
+    let mut ui = support::ui_with(&[], &[]);
+    press(&mut ui, &[Enter, F3, F3, F3]);
+    check(&ui, "list-empty");
+}
+
+#[test]
+fn no_libraries() {
+    let ui = Ui::new(Vec::new(), mcui::Statuses::default()).unwrap();
+    check(&ui, "no-libraries");
+}
+
+#[test]
+fn an_empty_library() {
+    let mut ui = empty_ui();
+    check(&ui, "empty-library");
+    press(&mut ui, &[Enter]);
+    check(&ui, "empty-library-list");
+}
+
+fn empty_ui() -> Ui {
+    let db = support::db(support::LOGIC);
+    let bytes = mcpack::library::pack(&db, &[]).expect("an empty library packs");
+    support::ui_over(bytes, &[], &[])
+}
+
+#[test]
+fn a_theorem_whose_root_is_folded() {
+    let mut ui = ui();
+    open(&mut ui, "syl");
+    press(&mut ui, &[Enter]);
+    check(&ui, "theorem-root-folded");
+}
+
+#[test]
+fn many_distinct_variable_pairs_scroll() {
+    let mut ui = extra_ui();
+    open(&mut ui, "ax-dvs");
+    press(&mut ui, &[F2]);
+    check(&ui, "dist-top");
+    press(
+        &mut ui,
+        &[Down, Down, Down, Down, Down, Down, Down, Down, Down, Down],
+    );
+    check(&ui, "dist-scrolled");
+}
+
+#[test]
+fn a_proof_node_with_more_than_six_subgoals() {
+    let mut ui = extra_ui();
+    open(&mut ui, "many2");
+    press(&mut ui, &[F3]);
+    check(&ui, "proof-many-top");
+    press(&mut ui, &[Down, Down, Down, Down, Down, Down, Down]);
+    check(&ui, "proof-many-bottom");
+}
+
+#[test]
+fn hide_on_the_proof_screen() {
+    let mut ui = ui();
+    open(&mut ui, "syl");
+    press(&mut ui, &[F3, Down, F1]);
+    check(&ui, "proof-hide");
+}
+
+#[test]
+fn a_hypothesis_leaf_keeps_its_cursor_on_the_goal() {
+    let mut ui = extra_ui();
+    open(&mut ui, "foo");
+    press(&mut ui, &[F3, Down, Enter]);
+    check(&ui, "proof-hypothesis-root");
 }

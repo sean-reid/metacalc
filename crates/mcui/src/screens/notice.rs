@@ -1,5 +1,5 @@
 use super::{Nav, Screen, State};
-use crate::canvas::Canvas;
+use crate::canvas::{CONTENT_ROWS, Canvas, TEXT_WIDTH, wrap};
 use crate::key::Key;
 
 /// A plain message with nothing to press but a way back.
@@ -30,8 +30,14 @@ impl Notice {
 
     pub fn draw(&self, canvas: &mut Canvas) {
         canvas.title(&self.title, "");
-        let first = 3 - (self.lines.len() - 1) / 2;
-        for (i, line) in self.lines.iter().enumerate() {
+        let lines: Vec<String> = self
+            .lines
+            .iter()
+            .flat_map(|line| wrap(line, TEXT_WIDTH))
+            .take(CONTENT_ROWS)
+            .collect();
+        let first = 1 + (CONTENT_ROWS - lines.len()) / 2;
+        for (i, line) in lines.iter().enumerate() {
             canvas.text_centered(first + i, line);
         }
         canvas.soft_keys(["", "", "", "", ""]);

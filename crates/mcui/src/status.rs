@@ -30,11 +30,17 @@ impl Mark {
     }
 }
 
-/// The mark of every assertion. A proof only uses earlier assertions, so one pass settles them.
+/// The mark of every assertion. A proof only uses earlier assertions, so one pass settles them;
+/// one that names itself or a later assertion cannot be right and shows as failed.
 pub fn marks(assertions: &[Assertion], status: &[Status]) -> Vec<Mark> {
     let mut marks: Vec<Mark> = Vec::with_capacity(assertions.len());
-    for (assertion, status) in assertions.iter().zip(status) {
+    for (at, (assertion, status)) in assertions.iter().zip(status).enumerate() {
+        let forward = assertion
+            .references
+            .iter()
+            .any(|r| matches!(r, Reference::Assertion(i) if *i >= at));
         marks.push(match status {
+            _ if forward => Mark::Failed,
             Status::Unchecked => Mark::Unchecked,
             Status::Failed => Mark::Failed,
             Status::Checked => {

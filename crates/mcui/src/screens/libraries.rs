@@ -12,7 +12,9 @@ pub struct Libraries {
 /// The mark of a library, or how far its check has got.
 fn progress(lib: &Lib) -> String {
     let (checked, total) = (lib.checked(), lib.len());
-    if lib.failed() > 0 {
+    if total == 0 {
+        String::new()
+    } else if lib.failed() > 0 {
         crate::status::Mark::Failed.glyph().to_string()
     } else if checked == total {
         crate::status::Mark::Checked.glyph().to_string()

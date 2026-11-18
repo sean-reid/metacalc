@@ -419,3 +419,265 @@ fn a_node_without_subgoals_keeps_the_cursor_on_its_goal() {
         other => panic!("{other:?}"),
     }
 }
+
+fn proof(ui: &mcui::Ui) -> (Vec<usize>, usize, bool) {
+    match ui.state() {
+        State::Proof {
+            path,
+            selected,
+            on_goal,
+            ..
+        } => (path, selected, on_goal),
+        other => panic!("not a proof: {other:?}"),
+    }
+}
+
+#[test]
+fn arrows_and_enter_on_a_node_without_subgoals_change_nothing() {
+    let mut ui = ui();
+    open(&mut ui, "syl");
+    press(&mut ui, &[F3, Enter]);
+    assert_eq!(proof(&ui), (vec![0], 0, true));
+    let frame = ui.frame();
+    press(&mut ui, &[Down, Enter, Right, Up, Down, Down]);
+    assert_eq!(proof(&ui), (vec![0], 0, true));
+    assert!(ui.frame() == frame, "the goal keeps its cursor");
+}
+
+#[test]
+fn a_proof_whose_root_is_a_hypothesis_has_nothing_to_enter() {
+    let mut ui = support::extra_ui();
+    open(&mut ui, "foo");
+    press(&mut ui, &[F3]);
+    assert_eq!(proof(&ui), (vec![], 0, true));
+    let frame = ui.frame();
+    press(&mut ui, &[Down, Enter, Right, Up, Down]);
+    assert_eq!(proof(&ui), (vec![], 0, true));
+    assert!(ui.frame() == frame);
+    ui.press(F3);
+    assert!(
+        matches!(ui.state(), State::Proof { .. }),
+        "a hypothesis cites no theorem"
+    );
+}
+
+#[test]
+fn hide_keeps_the_cursor_where_it_was() {
+    let mut ui = ui();
+    open(&mut ui, "syl");
+    press(&mut ui, &[F3, Down]);
+    assert_eq!(proof(&ui), (vec![], 1, false));
+    ui.press(F1);
+    assert_eq!(proof(&ui), (vec![], 1, false));
+    press(&mut ui, &[Up, Up]);
+    assert_eq!(proof(&ui), (vec![], 0, true));
+    press(&mut ui, &[F1, F1]);
+    assert_eq!(proof(&ui), (vec![], 0, true));
+}
+
+#[test]
+fn eight_subgoals_scroll_the_view_to_the_highlight() {
+    let mut ui = support::extra_ui();
+    open(&mut ui, "many2");
+    ui.press(F3);
+    let inverted_rows = |ui: &mcui::Ui| -> Vec<usize> {
+        let frame = ui.frame();
+        (1..7).filter(|&r| frame.get(0, 8 * r + 1)).collect()
+    };
+    assert_eq!(inverted_rows(&ui), [3]);
+    for k in 1..8 {
+        ui.press(Down);
+        assert_eq!(proof(&ui), (vec![], k, false));
+        assert_eq!(inverted_rows(&ui), [(3 + k).min(6)], "subgoal {k}");
+    }
+    ui.press(Down);
+    assert_eq!(proof(&ui).1, 7);
+    ui.press(Enter);
+    assert_eq!(proof(&ui).0, vec![7]);
+}
+
+#[test]
+fn a_long_find_prefix_leaves_every_later_frame_drawable() {
+    let mut ui = ui();
+    press(&mut ui, &[Enter, F2]);
+    support::typed(&mut ui, "abcdefghijklmnopqrstuvwxyzabcd");
+    let frame = ui.frame();
+    let find = "abcdefghijklmnopqrstuvwxyzabcd";
+    let right = format!(
+        "{} {}",
+        mcui::canvas::tail(find, mcui::canvas::PREFIX_WIDTH - 9),
+        mcglyph::CROSS
+    );
+    let left = mcui::canvas::truncate(
+        "logic",
+        96 - 2 - mcglyph::Font::builtin().text_width(&right) - 3,
+    );
+    assert!(support::title_is(&frame, &left, &right));
+    press(&mut ui, &[Down, F3, F3, F3, F3, F2]);
+    let _ = ui.frame();
+}
+
+#[test]
+fn the_no_match_cross_goes_when_the_cursor_moves_or_the_kind_changes() {
+    for key in [Down, Up, Left, Right, F3] {
+        let mut ui = ui();
+        press(&mut ui, &[Enter, F2]);
+        typed(&mut ui, "synx");
+        assert!(support::title_is(
+            &ui.frame(),
+            "logic",
+            &format!("synx {}", mcglyph::CROSS)
+        ));
+        ui.press(key);
+        let right = "synx";
+        let left = if key == F3 { "logic:thm" } else { "logic" };
+        assert!(support::title_is(&ui.frame(), left, right), "{key:?}");
+    }
+}
+
+#[test]
+fn find_survives_a_kind_change_and_searches_the_filtered_list() {
+    let mut ui = ui();
+    press(&mut ui, &[Enter, F2]);
+    typed(&mut ui, "sy");
+    assert_eq!(list(ui.state()).0.as_deref(), Some("syl"));
+    press(&mut ui, &[F3]);
+    let (label, _, _, find, kind, _) = list(ui.state());
+    assert_eq!(
+        (label.as_deref(), find.as_str(), kind),
+        (Some("syl"), "sy", Kind::Theorems)
+    );
+    press(&mut ui, &[F3]);
+    let (label, _, _, find, kind, _) = list(ui.state());
+    assert_eq!(
+        (label.as_deref(), find.as_str(), kind),
+        (Some("ax-many"), "sy", Kind::Axioms)
+    );
+    typed(&mut ui, "l");
+    let (label, _, _, _, _, _) = list(ui.state());
+    assert_eq!(
+        label.as_deref(),
+        Some("ax-many"),
+        "syl is not an axiom, so the cursor stays"
+    );
+    assert!(support::title_is(
+        &ui.frame(),
+        "logic:ax",
+        &format!("syl {}", mcglyph::CROSS)
+    ));
+}
+
+#[test]
+fn a_kind_with_nothing_in_it_shows_an_empty_list_that_does_not_open() {
+    let mut ui = support::ui_with(&[], &[]);
+    press(&mut ui, &[Enter, F3, F3, F3]);
+    let (label, cursor, top, _, kind, len) = list(ui.state());
+    assert_eq!(
+        (label, cursor, top, kind, len),
+        (None, 0, 0, Kind::Unchecked, 0)
+    );
+    press(
+        &mut ui,
+        &[Enter, F1, Up, Down, Left, Right, F2, Letter('a')],
+    );
+    assert_eq!(ui.depth(), 2);
+    ui.press(F3);
+    assert_eq!(list(ui.state()).5, 13);
+}
+
+#[test]
+fn my_proofs_and_verify_open_the_not_available_frame() {
+    let mut ui = ui();
+    press(&mut ui, &[Down, Enter]);
+    assert_eq!(
+        ui.state(),
+        State::Notice {
+            title: "My proofs".into()
+        }
+    );
+    ui.press(Clear);
+    assert_eq!(ui.state(), State::Libraries { cursor: 1, top: 0 });
+    ui.press(F2);
+    assert_eq!(
+        ui.state(),
+        State::Notice {
+            title: "Verify".into()
+        }
+    );
+}
+
+#[test]
+fn notice_and_about_leave_on_clear_or_enter_and_ignore_the_rest() {
+    for open_with in [vec![F2], vec![F3]] {
+        for leave in [Clear, Enter] {
+            let mut ui = ui();
+            press(&mut ui, &open_with);
+            let frame = ui.frame();
+            press(
+                &mut ui,
+                &[Up, Down, Left, Right, F1, F2, F3, F4, F5, Letter('x')],
+            );
+            assert!(ui.frame() == frame);
+            assert_eq!(ui.depth(), 2);
+            ui.press(leave);
+            assert_eq!(ui.depth(), 1);
+        }
+    }
+}
+
+#[test]
+fn dist_scrolls_one_row_at_a_time_and_ignores_left_and_right() {
+    let mut ui = support::extra_ui();
+    open(&mut ui, "ax-dvs");
+    ui.press(F2);
+    let top = |ui: &mcui::Ui| match ui.state() {
+        State::Dist { top, .. } => top,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(top(&ui), 0);
+    ui.press(Up);
+    assert_eq!(top(&ui), 0);
+    let first = ui.frame();
+    press(&mut ui, &[Left, Right]);
+    assert!(ui.frame() == first);
+    ui.press(Down);
+    assert_eq!(top(&ui), 1);
+    assert!(ui.frame() != first);
+    for _ in 0..30 {
+        ui.press(Down);
+    }
+    let last = top(&ui);
+    assert!(last >= 2);
+    let bottom = ui.frame();
+    ui.press(Down);
+    assert_eq!(top(&ui), last);
+    assert!(ui.frame() == bottom);
+    ui.press(Up);
+    assert_eq!(top(&ui), last - 1);
+}
+
+#[test]
+fn clear_from_dist_returns_to_the_same_cursor_and_scroll() {
+    let mut ui = ui();
+    open(&mut ui, "ax-many");
+    press(&mut ui, &[Left, Left]);
+    let before = ui.state();
+    let frame = ui.frame();
+    ui.press(F2);
+    assert!(matches!(ui.state(), State::Dist { .. }));
+    ui.press(Clear);
+    assert_eq!(ui.state(), before);
+    assert!(ui.frame() == frame);
+}
+
+#[test]
+fn a_folded_root_cannot_be_entered_and_unfolds_again() {
+    let mut ui = ui();
+    open(&mut ui, "syl");
+    ui.press(Enter);
+    assert_eq!(theorem(ui.state()), (2, 0, 0, 1, true));
+    press(&mut ui, &[Down, Right]);
+    assert_eq!(theorem(ui.state()).1, 0);
+    ui.press(Enter);
+    assert_eq!(theorem(ui.state()), (2, 0, 0, 0, false));
+}

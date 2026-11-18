@@ -13,6 +13,8 @@ pub const CONTENT_ROWS: usize = 6;
 pub const MARGIN: usize = 1;
 /// Pixels a list row or a one-line preview may use.
 pub const TEXT_WIDTH: usize = WIDTH - 2 * MARGIN;
+/// Pixels the title bar gives the typed prefix of a Find.
+pub const PREFIX_WIDTH: usize = 50;
 /// Columns left of a statement for the marker of a cursor on its root.
 pub const GUTTER: usize = 3;
 /// Pixels a statement may use.
@@ -46,6 +48,41 @@ pub fn truncate(text: &str, limit: usize) -> String {
     out
 }
 
+/// `text` broken between words into lines no wider than `limit`; a word wider than that is cut
+/// with an ellipsis.
+pub fn wrap(text: &str, limit: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        let word = truncate(word, limit);
+        match lines.last_mut() {
+            Some(line) if text_width(&format!("{line} {word}")) <= limit => {
+                line.push(' ');
+                line.push_str(&word);
+            }
+            _ => lines.push(word),
+        }
+    }
+    lines
+}
+
+/// The newest characters of `text` that fit `limit` pixels behind an ellipsis, or all of it when
+/// it fits.
+pub fn tail(text: &str, limit: usize) -> String {
+    if text_width(text) <= limit {
+        return text.to_string();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    for from in 0..=chars.len() {
+        let cut: String = std::iter::once(ELLIPSIS)
+            .chain(chars[from..].iter().copied())
+            .collect();
+        if text_width(&cut) <= limit {
+            return cut;
+        }
+    }
+    ELLIPSIS.to_string()
+}
+
 pub struct Canvas {
     bitmap: Bitmap,
 }
@@ -68,6 +105,12 @@ impl Canvas {
         row * ROW
     }
 
+    /// Pixels left of a row for its left text beside a right text of `right_width`.
+    fn room(right_width: usize, right: &str) -> usize {
+        let gap = if right.is_empty() { 0 } else { 3 };
+        WIDTH.saturating_sub(2 * MARGIN + right_width + gap)
+    }
+
     /// Draws `text` with its first column at `x` on `row`; returns its width.
     pub fn text(&mut self, x: usize, row: usize, text: &str) -> usize {
         let ink = font().text(text);
@@ -83,7 +126,7 @@ impl Canvas {
     /// Draws `text` so that it ends at the right margin.
     pub fn text_right(&mut self, row: usize, text: &str) -> usize {
         let width = text_width(text);
-        self.text(WIDTH - MARGIN - width, row, text);
+        self.text(WIDTH.saturating_sub(MARGIN + width), row, text);
         width
     }
 
@@ -110,7 +153,7 @@ impl Canvas {
     /// ellipsis when the two would meet.
     pub fn title(&mut self, left: &str, right: &str) {
         let right_width = text_width(right);
-        let room = WIDTH - 2 * MARGIN - right_width - if right.is_empty() { 0 } else { 3 };
+        let room = Self::room(right_width, right);
         self.text(MARGIN, 0, &truncate(left, room));
         self.text_right(0, right);
         self.invert_row(0);
@@ -136,7 +179,7 @@ impl Canvas {
     /// row is inverted across the whole width.
     pub fn list_row(&mut self, row: usize, left: &str, right: &str, selected: bool) {
         let right_width = text_width(right);
-        let room = WIDTH - 2 * MARGIN - right_width - if right.is_empty() { 0 } else { 3 };
+        let room = Self::room(right_width, right);
         self.text(MARGIN, row, &truncate(left, room));
         self.text_right(row, right);
         if selected {

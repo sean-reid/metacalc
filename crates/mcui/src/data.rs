@@ -63,11 +63,14 @@ impl Statement {
     }
 }
 
-/// The library as a Metamath database, which is where parse trees and goal trees come from.
+/// The library as a Metamath database, which is where parse trees and goal trees come from, and
+/// the grammar built from it once. The database is leaked so the grammar can borrow it for as
+/// long as the process runs; a library is loaded once.
 struct Source {
-    db: Database,
+    db: &'static Database,
     ids: Vec<StmtId>,
     index: HashMap<StmtId, usize>,
+    grammar: Option<Grammar<'static>>,
 }
 
 pub struct Lib {
@@ -127,15 +130,17 @@ impl Lib {
         self.marks[i]
     }
 
+    /// Assertions that count as checked: marked checked, whether or not they rest on others.
     pub fn checked(&self) -> usize {
-        self.status
+        self.marks
             .iter()
-            .filter(|&&s| s == Status::Checked)
+            .filter(|&&m| matches!(m, Mark::Checked | Mark::Resting))
             .count()
     }
 
+    /// Assertions that failed, or whose proof uses itself or a later assertion.
     pub fn failed(&self) -> usize {
-        self.status.iter().filter(|&&s| s == Status::Failed).count()
+        self.marks.iter().filter(|&&m| m == Mark::Failed).count()
     }
 
     /// The disjoint variable pairs the statement itself requires.
@@ -157,11 +162,25 @@ impl Lib {
             return None;
         }
         let index = ids.iter().enumerate().map(|(i, &id)| (id, i)).collect();
-        Some(Source { db, ids, index })
+        let db: &'static Database = Box::leak(Box::new(db));
+        let grammar = Grammar::new(db, &[("|-", "wff")]).ok();
+        Some(Source {
+            db,
+            ids,
+            index,
+            grammar,
+        })
+    }
+
+    /// Whether statements fall back to flat runs of tokens because the library does not export or
+    /// its grammar cannot be built. A library with no statements has nothing to show flat.
+    pub fn degraded(&self) -> bool {
+        !self.is_empty() && self.source().is_none_or(|s| s.grammar.is_none())
     }
 
     /// The statement of assertion `i`, with parse trees when the grammar reads it and one flat
-    /// run of tokens when it does not.
+    /// run of tokens when it does not. Whether a statement is a tree or flat decides where the
+    /// cursor can go and how it folds, so it is part of what the frames specify.
     pub fn statement(&self, i: usize) -> Rc<Statement> {
         if let Some(found) = self.statements.borrow().get(&i) {
             return found.clone();
@@ -194,10 +213,9 @@ impl Lib {
 
     fn parse_statement(&self, i: usize) -> Option<Statement> {
         let source = self.source()?;
-        let grammar = Grammar::new(&source.db, &[("|-", "wff")]).ok()?;
-        let parsed = grammar.parse(source.ids[i]).ok()?;
+        let parsed = source.grammar.as_ref()?.parse(source.ids[i]).ok()?;
         let build =
-            |lead: &str, tree: &Tree| Expr::build(vec![lead.to_string()], &shape(&source.db, tree));
+            |lead: &str, tree: &Tree| Expr::build(vec![lead.to_string()], &shape(source.db, tree));
         let hyps = self
             .essentials(i)
             .zip(&parsed.hyps)
@@ -214,7 +232,10 @@ impl Lib {
         }
         let source = self.source().ok_or("the library does not export")?;
         let id = source.ids[i];
-        let root = mm::outline(&source.db, id, "|-").map_err(|_| "the proof does not verify")?;
+        let root = mm::outline(source.db, id, "|-").map_err(|e| match e {
+            mm::OutlineError::NotProvable => "it proves a syntax statement",
+            _ => "the proof does not verify",
+        })?;
         let stmt = source.db.stmt(id);
         let mut floats: Vec<(Sym, StmtId)> = Vec::new();
         let mut hyps = Vec::new();
@@ -253,14 +274,12 @@ impl Lib {
     /// What the screen shows of one goal: its statement, how it was proved, and its subgoals.
     pub fn view(&self, goals: &Goals, node: &Node) -> GoalView {
         let source = self.source().expect("goals exist only with a source");
-        let db = &source.db;
-        let grammar = Grammar::new(db, &[("|-", "wff")]).ok();
+        let db = source.db;
+        let grammar = source.grammar.as_ref();
         let expr = |syms: &[Sym]| {
             let name = |s: Sym| db.syms[s as usize].name.clone();
             let lead = vec![name(syms[0])];
-            let parsed = grammar
-                .as_ref()
-                .and_then(|g| g.parse_expr(syms, &goals.floats).ok());
+            let parsed = grammar.and_then(|g| g.parse_expr(syms, &goals.floats).ok());
             match parsed {
                 Some(tree) => Expr::build(lead, &shape(db, &tree)),
                 None => {
@@ -317,7 +336,10 @@ fn measure(node: &Rc<Node>, sizes: &mut HashMap<*const Node, u64>) -> u64 {
     if let Some(&size) = sizes.get(&Rc::as_ptr(node)) {
         return size;
     }
-    let size = 1 + node.children.iter().map(|c| measure(c, sizes)).sum::<u64>();
+    let size = node
+        .children
+        .iter()
+        .fold(1u64, |sum, c| sum.saturating_add(measure(c, sizes)));
     sizes.insert(Rc::as_ptr(node), size);
     size
 }
@@ -361,14 +383,38 @@ impl Goals {
     /// The place of the node at `path` in reading order, from one.
     pub fn position(&self, path: &[usize]) -> u64 {
         let mut node = self.root.clone();
-        let mut at = 1;
+        let mut at: u64 = 1;
         for &k in path {
-            at += 1 + node.children[..k]
+            at = node.children[..k]
                 .iter()
-                .map(|c| self.sizes[&Rc::as_ptr(c)])
-                .sum::<u64>();
+                .fold(at.saturating_add(1), |sum, c| {
+                    sum.saturating_add(self.sizes[&Rc::as_ptr(c)])
+                });
             node = node.children[k].clone();
         }
         at
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counts_over_a_tree_that_shares_its_children_saturate() {
+        let mut node = Rc::new(Node {
+            label: 0,
+            expr: Vec::new(),
+            children: Vec::new(),
+        });
+        for _ in 0..80 {
+            node = Rc::new(Node {
+                label: 0,
+                expr: Vec::new(),
+                children: vec![node.clone(), node],
+            });
+        }
+        let mut sizes = HashMap::new();
+        assert_eq!(measure(&node, &mut sizes), u64::MAX);
     }
 }

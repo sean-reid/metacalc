@@ -17,7 +17,11 @@ impl About {
         canvas.text_centered(2, &format!("metacalc {}", env!("CARGO_PKG_VERSION")));
         canvas.text_centered(3, "Metamath verifier");
         canvas.text_centered(4, "and proof editor");
-        canvas.text_centered(6, &format!("{} libraries", ctx.libs.len()));
+        let n = ctx.libs.len();
+        canvas.text_centered(
+            6,
+            &format!("{n} {}", if n == 1 { "library" } else { "libraries" }),
+        );
         canvas.soft_keys(["", "", "", "", ""]);
     }
 }

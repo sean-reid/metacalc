@@ -169,3 +169,56 @@ fn without_a_database_a_statement_is_one_run_of_tokens_and_a_proof_cannot_be_rea
         }
     );
 }
+
+fn lib_from(bytes: Vec<u8>) -> Lib {
+    let table = statuses(&bytes, &[], &[]);
+    Lib::new(
+        Installed {
+            name: "patched".into(),
+            bytes,
+        },
+        table,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_proof_that_names_a_later_assertion_shows_as_failed_and_what_rests_on_it_rests() {
+    let sound = logic_bytes();
+    let reader = lib_from(sound.clone());
+    let (a1i, alid) = (index(&reader, "a1i"), index(&reader, "alid"));
+    let patched = lib_from(support::patch_reference(&sound, "a1i", 0, alid as u16));
+    assert_eq!(patched.mark(a1i), Mark::Failed);
+    assert_eq!(patched.mark(index(&patched, "syl")), Mark::Resting);
+    assert_eq!(patched.mark(index(&patched, "ax-1")), Mark::Checked);
+    assert_eq!(patched.failed(), 1);
+    assert_eq!(patched.checked(), patched.len() - 1);
+    assert_eq!(reader.failed(), 0);
+}
+
+#[test]
+fn a_proof_that_names_itself_shows_as_failed() {
+    let sound = logic_bytes();
+    let reader = lib_from(sound.clone());
+    let a1i = index(&reader, "a1i");
+    let patched = lib_from(support::patch_reference(&sound, "a1i", 0, a1i as u16));
+    assert_eq!(patched.mark(a1i), Mark::Failed);
+}
+
+#[test]
+fn only_a_library_that_cannot_be_read_as_a_tree_is_degraded() {
+    assert!(!lib(&[], &[]).degraded());
+    let mut bytes = logic_bytes();
+    bytes[4] ^= 0xFF;
+    assert!(lib_from(bytes).degraded());
+}
+
+#[test]
+fn an_empty_library_has_no_marks_to_count_and_is_not_degraded() {
+    let bytes = library::pack(&db(LOGIC), &[]).unwrap();
+    let lib = lib_from(bytes);
+    assert_eq!(
+        (lib.len(), lib.checked(), lib.failed(), lib.degraded()),
+        (0, 0, 0, false)
+    );
+}

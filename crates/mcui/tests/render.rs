@@ -152,3 +152,34 @@ fn a_long_label_is_cut_before_its_mark() {
             .all(|&x| x < mark_start - 2)
     );
 }
+
+#[test]
+fn text_wider_than_the_bar_draws_without_arithmetic_trouble() {
+    let long = "a-status-far-wider-than-the-whole-bar-of-ninety-six-pixels";
+    let mut canvas = Canvas::default();
+    canvas.title("ring", long);
+    canvas.list_row(1, "ring", long, false);
+    canvas.text_right(2, long);
+    let _ = canvas.into_bitmap();
+}
+
+#[test]
+fn the_tail_of_a_long_prefix_keeps_the_newest_characters() {
+    use mcui::canvas::{tail, wrap};
+    assert_eq!(tail("abc", 50), "abc");
+    let cut = tail("abcdefghijklmnopqrstuvwxyz", 40);
+    assert!(text_width(&cut) <= 40);
+    assert!(cut.starts_with(ELLIPSIS));
+    assert!("abcdefghijklmnopqrstuvwxyz".ends_with(cut.trim_start_matches(ELLIPSIS)));
+    assert_eq!(tail("abcdefghij", 4), ELLIPSIS.to_string());
+    assert_eq!(
+        wrap("the library does not export", 94),
+        ["the library does not", "export"]
+    );
+    assert_eq!(wrap("", 94), Vec::<String>::new());
+    assert!(
+        wrap("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", 40)
+            .iter()
+            .all(|l| text_width(l) <= 40)
+    );
+}

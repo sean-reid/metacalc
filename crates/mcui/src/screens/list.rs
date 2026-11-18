@@ -1,5 +1,5 @@
 use super::{Ctx, Nav, Screen, State, notice::Notice, reveal, step, theorem::Theorem};
-use crate::canvas::{Canvas, TEXT_WIDTH};
+use crate::canvas::{Canvas, PREFIX_WIDTH, TEXT_WIDTH, tail};
 use crate::fold::{Fit, Layout, fit, layout};
 use crate::key::Key;
 use crate::status::Status;
@@ -115,6 +115,7 @@ impl List {
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
         match key {
             Key::Up | Key::Down | Key::Left | Key::Right => {
+                self.missed = false;
                 self.cursor = step(self.cursor, self.items.len(), key, LIST_ROWS);
                 self.top = reveal(self.top, self.cursor, LIST_ROWS);
             }
@@ -128,6 +129,7 @@ impl List {
                 self.missed = false;
             }
             Key::F3 => {
+                self.missed = false;
                 let was = self.current().unwrap_or(0);
                 self.kind = self.kind.next();
                 self.items = self.filtered(ctx);
@@ -159,11 +161,16 @@ impl List {
     pub fn draw(&self, ctx: &Ctx, canvas: &mut Canvas) {
         let lib = &ctx.libs[self.library];
         let right = if self.find.is_empty() {
-            format!("{}/{}", lib.checked(), lib.len())
+            let counts = format!("{}/{}", lib.checked(), lib.len());
+            if lib.degraded() {
+                format!("flat {counts}")
+            } else {
+                counts
+            }
         } else if self.missed {
-            format!("{} {}", self.find, mcglyph::CROSS)
+            format!("{} {}", tail(&self.find, PREFIX_WIDTH - 9), mcglyph::CROSS)
         } else {
-            self.find.clone()
+            tail(&self.find, PREFIX_WIDTH)
         };
         canvas.title(&format!("{}{}", lib.name, self.kind.suffix()), &right);
         if self.items.is_empty() {
