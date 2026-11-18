@@ -28,14 +28,18 @@
 //! theorem's second list names two different variables of which at least one has none.
 
 mod check;
+mod export;
 mod kernel;
 mod pack;
 mod read;
 
 pub use check::{CheckError, check};
+pub use export::{ExportError, export};
 pub use kernel::{Kernel, KernelError, Limits};
 pub use pack::{PackError, pack};
-pub use read::{Assertion, Hypothesis, ReadError, read};
+pub use read::{
+    Assertion, Hypothesis, Library, ReadError, Reference, Step, Variable, decode, read,
+};
 
 pub const MAGIC: &[u8; 4] = b"MCL1";
 pub const CHUNK: usize = 1 << 14;

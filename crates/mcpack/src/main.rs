@@ -64,6 +64,13 @@ enum Command {
         #[arg(short, long)]
         output: PathBuf,
     },
+    /// Write a packed library back out as a Metamath database
+    Export {
+        library: PathBuf,
+        /// Where to write the database
+        #[arg(short, long)]
+        output: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -93,6 +100,7 @@ fn main() -> ExitCode {
             library,
             output,
         } => cmd::doc(&manifest, &library, &output),
+        Command::Export { library, output } => cmd::export(&library, &output),
     }
     .unwrap_or_else(|code| code)
 }
