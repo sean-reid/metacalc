@@ -4,6 +4,7 @@ use mcglyph::{Bitmap, Font};
 use mcui::canvas::Canvas;
 
 const WIDE: &str = include_str!("../../../mcglyph/tests/fixtures/wide.font");
+const TALL: &str = include_str!("../../../mcglyph/tests/fixtures/tall.font");
 
 fn wide_font() -> Font {
     Font::parse(WIDE, "").unwrap()
@@ -101,6 +102,47 @@ fn glyphs_nine_wide_on_the_last_row_at_the_last_frame_byte() {
                 &got.frame,
                 &pack(&model),
             );
+        }
+    }
+}
+
+/// Glyphs six to nine wide with ink in rows 5 and 6: at shifts 1 to 3 the six, seven and eight
+/// wide ones take the two-byte path with the descender rows, `ui_tv1` to `ui_tv3`.
+#[test]
+fn flagged_glyphs_six_to_nine_wide_draw_at_every_alignment_on_three_rows() {
+    let font = Font::parse(TALL, "").unwrap();
+    let table = Table::new(&font).unwrap();
+    let cases: [(&str, std::ops::RangeInclusive<usize>); 7] = [
+        ("a", 0..=100),
+        ("b", 0..=100),
+        ("c", 0..=100),
+        ("d", 0..=100),
+        ("ab", 80..=100),
+        ("cba", 80..=100),
+        ("dcba", 80..=100),
+    ];
+    for (text, xs) in cases {
+        for row in [0, 3, 7] {
+            for x in xs.clone() {
+                let mut model = Bitmap::new(96, 64);
+                model_text(&mut model, &font, x, row, text);
+                let got = run(
+                    REAL,
+                    &[
+                        Op::SetFont(flat(&table)),
+                        Op::Text {
+                            x,
+                            row,
+                            codes: table.encode(text),
+                        },
+                    ],
+                );
+                same_frame(
+                    &format!("{text:?} at {x} on row {row}"),
+                    &got.frame,
+                    &pack(&model),
+                );
+            }
         }
     }
 }
