@@ -13,7 +13,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.jobs.outputs.rust }}
+      emu: ${{ steps.jobs.outputs.emu }}
+      audit: ${{ steps.jobs.outputs.audit }}
+      docs: ${{ steps.jobs.outputs.docs }}
+      app: ${{ steps.jobs.outputs.app }}
+      libraries: ${{ steps.jobs.outputs.libraries }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - run: sh scripts/test-ci-changes.sh
+      - id: jobs
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            git diff --name-only "$BASE...$HEAD" > "$RUNNER_TEMP/changed"
+          else
+            echo every-job > "$RUNNER_TEMP/changed"
+          fi
+          sh scripts/ci-changes.sh < "$RUNNER_TEMP/changed" | tee -a "$GITHUB_OUTPUT"
+
   rust:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,6 +55,8 @@ jobs:
       - run: cargo build --release --locked
 
   emu:
+    needs: changes
+    if: needs.changes.outputs.emu == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,6 +74,8 @@ jobs:
       - run: cargo test -p mcemu --locked
 
   audit:
+    needs: changes
+    if: needs.changes.outputs.audit == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,6 +85,8 @@ jobs:
       - run: cargo deny check advisories licenses
 
   docs:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,6 +96,8 @@ jobs:
       - run: mdbook build docs
 
   app:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,6 +107,8 @@ jobs:
       - run: make -C probe check
 
   libraries:
+    needs: changes
+    if: needs.changes.outputs.libraries == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -125,3 +163,18 @@ jobs:
       - run: sh scripts/test-release-config.sh
       - run: sh scripts/test-script-paths.sh
       - run: sh scripts/build-site.sh "$RUNNER_TEMP/pages" "$RUNNER_TEMP/docs"
+
+  ci-ok:
+    needs: [changes, rust, emu, audit, docs, app, libraries]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+          CHANGES: ${{ needs.changes.result }}
+        run: |
+          echo "changes: $CHANGES, all: $RESULTS"
+          [ "$CHANGES" = success ] || exit 1
+          for result in $RESULTS; do
+            case $result in success | skipped) ;; *) exit 1 ;; esac
+          done
