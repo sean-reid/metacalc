@@ -231,6 +231,17 @@ impl Machine {
         self.stopped(reason, tstates)
     }
 
+    /// Runs on from the registers, interrupt state and halt the last run left, until it stops or
+    /// `limit` T-states pass.
+    pub fn resume(&mut self, limit: u64) -> Run {
+        if limit == 0 {
+            return Run::NO_TIME;
+        }
+        let limit = i32::try_from(limit).expect("limit fits in i32");
+        let (reason, tstates) = self.calc.resume(limit);
+        self.stopped(reason, tstates)
+    }
+
     fn stopped(&self, reason: u32, tstates: u32) -> Run {
         let stop = match reason {
             0 => Stop::Limit,
