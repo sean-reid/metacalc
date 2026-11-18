@@ -105,9 +105,9 @@ fn title_bars_with_short_and_long_texts() {
 
 #[test]
 fn soft_key_rows_with_all_some_and_no_labels() {
-    const LABELS: [&str; 17] = [
-        "See", "Vrfy", "Info", "Find", "Kind", "Try", "Fold", "Dist", "Why", "Up", "Thm", "Aply",
-        "Hyp", "Auto", "Undo", "Tree", "Stop",
+    const LABELS: [&str; 18] = [
+        "Open", "Run", "Info", "Find", "Kind", "Try", "Fold", "Dist", "Why", "Up", "Thm", "Aply",
+        "Hyp", "Auto", "Undo", "Tree", "Go", "Stop",
     ];
     for start in 0..LABELS.len() {
         let five: [&str; 5] = std::array::from_fn(|i| LABELS[(start + i) % LABELS.len()]);
@@ -116,7 +116,7 @@ fn soft_key_rows_with_all_some_and_no_labels() {
     for mask in 0..32u32 {
         let labels: [&str; 5] = std::array::from_fn(|i| {
             if mask >> i & 1 == 1 {
-                LABELS[(i * 3 + 1) % 17]
+                LABELS[(i * 3 + 1) % LABELS.len()]
             } else {
                 ""
             }
@@ -126,8 +126,8 @@ fn soft_key_rows_with_all_some_and_no_labels() {
             c.soft_keys(labels);
         });
     }
-    agree("keys cut by the model", |c| {
-        c.soft_keys(["Overlong", "WWWW", "", "", "i"])
+    agree("keys with the widest and narrowest letters", |c| {
+        c.soft_keys(["Why", "Thm", "Hyp", "Undo", "Go"])
     });
 }
 

@@ -38,6 +38,12 @@ pub fn table() -> &'static Table {
     TABLE.get_or_init(Table::builtin)
 }
 
+/// The key font's table: soft key labels are encoded with it, everything else with `table()`.
+pub fn key_table() -> &'static Table {
+    static TABLE: OnceLock<Table> = OnceLock::new();
+    TABLE.get_or_init(Table::keys)
+}
+
 pub fn label(image: Image, name: &str) -> u16 {
     image
         .labels
@@ -137,7 +143,7 @@ pub fn ops(calls: &[Call]) -> Vec<Op> {
                 left: enc(left),
                 right: enc(right),
             },
-            Call::SoftKeys(labels) => Op::Keys(labels.each_ref().map(|l| enc(l))),
+            Call::SoftKeys(labels) => Op::Keys(labels.each_ref().map(|l| key_table().encode(l))),
             Call::ListRow {
                 row,
                 left,

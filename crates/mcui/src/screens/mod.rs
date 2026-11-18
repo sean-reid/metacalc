@@ -193,3 +193,30 @@ pub(crate) fn step(cursor: usize, len: usize, key: Key, page: usize) -> usize {
         _ => cursor,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{checking, libraries, list, proof, proving, theorem};
+    use crate::canvas::{key_text_width, soft_key_room};
+
+    #[test]
+    fn every_key_label_the_screens_use_fits_its_key() {
+        let mut sets = vec![
+            libraries::KEYS,
+            list::KEYS,
+            theorem::KEYS,
+            proof::KEYS,
+            checking::KEYS,
+            proving::KEYS,
+        ];
+        sets.push([proving::GO, "", "", proving::KEYS[3], proving::KEYS[4]]);
+        for set in sets {
+            for (i, label) in set.iter().enumerate() {
+                assert!(
+                    key_text_width(label) <= soft_key_room(i),
+                    "{label} on key {i}"
+                );
+            }
+        }
+    }
+}

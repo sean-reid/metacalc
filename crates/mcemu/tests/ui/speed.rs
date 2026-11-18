@@ -33,7 +33,7 @@ fn typical() -> Vec<Op> {
         {
             c.list_row(1 + i, &format!("{name} implication"), "\u{2713}", i == 2);
         }
-        c.soft_keys(["See", "Find", "Kind", "Try", ""]);
+        c.soft_keys(["Open", "Find", "Kind", "Try", ""]);
     })
 }
 
@@ -53,7 +53,7 @@ fn measure(speed: Speed) -> Times {
         codes: table().encode("Metamath prover!"),
     }];
     let title = calls(|c| c.title("Propositional logic", "12/40"));
-    let keys = calls(|c| c.soft_keys(["See", "Find", "Kind", "Try", ""]));
+    let keys = calls(|c| c.soft_keys(["Open", "Find", "Kind", "Try", ""]));
     let clear = cost(speed, &[Op::Clear]);
     Times {
         clear,

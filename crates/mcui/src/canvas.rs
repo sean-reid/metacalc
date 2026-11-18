@@ -88,6 +88,29 @@ fn soft_key_box(i: usize) -> (usize, usize) {
     ((WIDTH * i + 2) / 5, (WIDTH * (i + 1) + 2) / 5 - 1)
 }
 
+fn key_font() -> &'static Font {
+    Font::keys()
+}
+
+/// Pixel width of `text` in the key font.
+pub fn key_text_width(text: &str) -> usize {
+    key_font().text_width(text)
+}
+
+/// `text` cut after as many characters as fit in `limit` pixels, or before the first character
+/// the key font cannot draw, with trailing spaces dropped; the key font has no ellipsis.
+fn key_cut(text: &str, limit: usize) -> &str {
+    let mut end = 0;
+    for (at, c) in text.char_indices() {
+        let next = at + c.len_utf8();
+        if !(c.is_ascii_alphanumeric() || c == ' ') || key_text_width(&text[..next]) > limit {
+            break;
+        }
+        end = next;
+    }
+    text[..end].trim_end_matches(' ')
+}
+
 /// Pixels a label of soft key `i` may use.
 pub fn soft_key_room(i: usize) -> usize {
     let (from, to) = soft_key_box(i);
@@ -95,7 +118,8 @@ pub fn soft_key_room(i: usize) -> usize {
 }
 
 /// A drawing call as a Z80 canvas receives it: strings already cut to fit, nothing left to
-/// decide.
+/// decide. The recording API exists for the Z80 replay tests.
+#[doc(hidden)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Call {
     Text {
@@ -154,6 +178,7 @@ impl Default for Canvas {
 impl Canvas {
     /// A canvas that also keeps the calls made on it, the ones a screen makes and not the ones
     /// they make in turn.
+    #[doc(hidden)]
     pub fn recording() -> Self {
         Canvas {
             calls: Some(Vec::new()),
@@ -165,6 +190,7 @@ impl Canvas {
         self.bitmap
     }
 
+    #[doc(hidden)]
     pub fn into_parts(self) -> (Bitmap, Vec<Call>) {
         (self.bitmap, self.calls.unwrap_or_default())
     }
@@ -208,13 +234,18 @@ impl Canvas {
 
     /// Draws `ink` with its top left corner at `x` on `row`.
     pub fn blit(&mut self, ink: &Bitmap, x: usize, row: usize) {
-        let mut layer = Bitmap::new(WIDTH, HEIGHT);
-        layer.blit(ink, x, Self::top(row) + 1);
-        self.put(layer);
+        self.ink(|bitmap| bitmap.blit(ink, x, Self::top(row) + 1));
     }
 
-    /// ORs `layer` onto the screen, recording it as one call.
-    fn put(&mut self, layer: Bitmap) {
+    /// Runs `draw` on the screen; while recording, on a fresh layer that is then ORed onto the
+    /// screen and kept as one call.
+    fn ink(&mut self, draw: impl FnOnce(&mut Bitmap)) {
+        if self.calls.is_none() {
+            draw(&mut self.bitmap);
+            return;
+        }
+        let mut layer = Bitmap::new(WIDTH, HEIGHT);
+        draw(&mut layer);
         self.bitmap.blit(&layer, 0, 0);
         self.record(|| Call::Ink(layer));
     }
@@ -291,24 +322,27 @@ impl Canvas {
 
     /// The labels of the five keys under the screen. A key with a label is an inverted box
     /// across its fifth of the width, one column short on the right so neighbours stay apart,
-    /// with the label centred in it; a key without one stays blank.
+    /// with the label centred in it, set in the key font; a key without one stays blank.
     pub fn soft_keys(&mut self, labels: [&str; 5]) {
-        let labels: [String; 5] = std::array::from_fn(|i| {
-            if labels[i].is_empty() {
-                String::new()
-            } else {
-                truncate(labels[i], soft_key_room(i))
+        let cut: [&str; 5] = std::array::from_fn(|i| {
+            let label = labels[i];
+            if label.is_empty() {
+                return "";
             }
+            let cut = key_cut(label, soft_key_room(i));
+            debug_assert_eq!(cut, label, "label {label:?} does not fit key {i}");
+            cut
         });
-        self.record(|| Call::SoftKeys(labels.clone()));
+        self.record(|| Call::SoftKeys(cut.map(String::from)));
         self.nested(|c| {
-            for (i, label) in labels.iter().enumerate() {
+            for (i, label) in cut.iter().enumerate() {
                 if label.is_empty() {
                     continue;
                 }
                 let (from, to) = soft_key_box(i);
-                let x = from + (to - from - text_width(label)).div_ceil(2);
-                c.text(x, CONTENT_ROWS + 1, label);
+                let ink = key_font().text(label);
+                let x = from + (to - from - ink.width()).div_ceil(2);
+                c.bitmap.blit(&ink, x, Self::top(CONTENT_ROWS + 1) + 1);
                 c.invert(from, Self::top(CONTENT_ROWS + 1), to - from, ROW);
             }
         });
@@ -344,18 +378,18 @@ impl Canvas {
         row: isize,
         window: std::ops::Range<isize>,
     ) {
-        let mut layer = Bitmap::new(WIDTH, HEIGHT);
-        for (r, line) in layout.lines.iter().enumerate() {
-            let at = row + r as isize;
-            if !window.contains(&at) {
-                continue;
+        self.ink(|bitmap| {
+            for (r, line) in layout.lines.iter().enumerate() {
+                let at = row + r as isize;
+                if !window.contains(&at) {
+                    continue;
+                }
+                for placed in &line.tokens {
+                    let ink = piece_bitmap(&layout.pieces[placed.index]);
+                    bitmap.blit(&ink, x + placed.x, Self::top(at as usize) + 1);
+                }
             }
-            for placed in &line.tokens {
-                let ink = piece_bitmap(&layout.pieces[placed.index]);
-                layer.blit(&ink, x + placed.x, Self::top(at as usize) + 1);
-            }
-        }
-        self.put(layer);
+        });
     }
 
     /// A progress bar across the text width on `row`, `done` of `total` filled; with nothing to
@@ -366,17 +400,17 @@ impl Canvas {
         let filled = (inner * done.min(total))
             .checked_div(total)
             .unwrap_or(inner);
-        let mut layer = Bitmap::new(WIDTH, HEIGHT);
-        for y in 0..height {
-            for x in 0..width {
-                let edge = y == 0 || y == height - 1 || x == 0 || x == width - 1;
-                let fill = (2..height - 2).contains(&y) && (2..2 + filled).contains(&x);
-                if edge || fill {
-                    layer.set(MARGIN + x, Self::top(row) + 1 + y, true);
+        self.ink(|bitmap| {
+            for y in 0..height {
+                for x in 0..width {
+                    let edge = y == 0 || y == height - 1 || x == 0 || x == width - 1;
+                    let fill = (2..height - 2).contains(&y) && (2..2 + filled).contains(&x);
+                    if edge || fill {
+                        bitmap.set(MARGIN + x, Self::top(row) + 1 + y, true);
+                    }
                 }
             }
-        }
-        self.put(layer);
+        });
     }
 
     /// A two column bar in the left margin of `row`, the cursor of a whole statement.
@@ -410,5 +444,52 @@ fn piece_bitmap(piece: &Piece) -> Bitmap {
             .token_bitmap(token)
             .unwrap_or_else(|| font().text(token)),
         Piece::Ellipsis => font().text(&ELLIPSIS.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_label_is_cut_to_the_letters_that_fit() {
+        for limit in 0..40 {
+            let cut = key_cut("Prove it now", limit);
+            assert!(key_text_width(cut) <= limit, "{cut:?} at {limit}");
+            assert!("Prove it now".starts_with(cut));
+            assert!(!cut.ends_with(' '), "{cut:?} at {limit}");
+        }
+        assert_eq!(key_cut("Prove it now", 16), "Prov");
+        assert_eq!(key_cut("Prove it now", 22), "Prove");
+        assert_eq!(key_cut("Open", 16), "Open");
+    }
+
+    #[test]
+    fn a_label_is_cut_at_the_first_character_the_key_font_lacks() {
+        assert_eq!(key_cut("A?", 16), "A");
+        assert_eq!(key_cut("\u{dc}n\u{ef}", 16), "");
+        assert_eq!(key_cut("Go\u{2026}", 16), "Go");
+        assert_eq!(key_cut("a b", 16), "a b");
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn soft_keys_draw_a_cut_label_without_panicking_on_odd_text() {
+        let mut canvas = Canvas::default();
+        canvas.soft_keys(["A?", "\u{dc}n\u{ef}", "Prove it now", "", ""]);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "does not fit key 0")]
+    fn a_label_that_does_not_fit_trips_the_debug_assertion() {
+        Canvas::default().soft_keys(["Prove it now", "", "", "", ""]);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "does not fit key 0")]
+    fn a_label_with_an_undrawable_character_trips_the_debug_assertion() {
+        Canvas::default().soft_keys(["A?", "", "", "", ""]);
     }
 }

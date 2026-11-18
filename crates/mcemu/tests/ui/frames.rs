@@ -1,3 +1,10 @@
+//! Whole screens replayed on the Z80. Statements, goals, hypotheses, tree lines and bars are laid
+//! out by the host, so they arrive as ink layers that the test ORs into the frame where the model
+//! drew them. What these tests prove is the layering of the Z80 calls (title, rows, soft keys,
+//! inverts, markers and the order they and the ink go in); every replay prints how many lit
+//! pixels the Z80 calls produced and requires some. Glyph drawing itself is proved in draw.rs
+//! and font.rs, and the mutation test below shows that a wrong glyph fails a replay.
+
 #[path = "../../../mcui/tests/support/mod.rs"]
 mod model;
 
@@ -5,15 +12,32 @@ use crate::support::*;
 use mcui::Key::*;
 use mcui::{State, Ui};
 use model::{extra_ui, logic_bytes, open, press, proving_bytes, typed, ui, ui_over, unchecked_ui};
+use std::io::Write;
+
+fn lit(frame: &[u8]) -> u32 {
+    frame.iter().map(|b| b.count_ones()).sum()
+}
 
 /// Replays the calls that drew `ui`'s screen on the Z80 and requires all 768 bytes to equal the
-/// model's frame; the pixels of laid out tokens, which the Z80 does not draw, are ORed in by the
-/// test where the model drew them. Returns the number of calls replayed.
+/// model's frame. Returns the number of calls replayed.
 fn replay(name: &str, ui: &Ui) -> usize {
     let (frame, calls) = ui.frame_calls();
     assert_eq!(frame, ui.frame(), "{name}: recording changed the frame");
-    let got = run(REAL, &ops(&calls));
+    let script = ops(&calls);
+    let got = run(REAL, &script);
     same_frame(name, &got.frame, &pack(&frame));
+    let drawn: Vec<Op> = script
+        .iter()
+        .filter(|op| !matches!(op, Op::Ink(_)))
+        .cloned()
+        .collect();
+    let (z80, all) = (lit(&run(REAL, &drawn).frame), lit(&got.frame));
+    assert!(z80 > 0, "{name}: no pixel comes from a Z80 call");
+    let _ = writeln!(
+        std::io::stderr(),
+        "{name}: {z80} of {all} lit pixels ({}%) come from Z80 calls",
+        z80 * 100 / all
+    );
     calls.len()
 }
 
@@ -169,4 +193,52 @@ fn the_checking_screen_at_the_start_midway_and_finished() {
     assert!(replay("checking-midway", &ui) >= 5);
     while ui.step_check() != mcui::CheckStep::Finished {}
     replay("checking-finished", &ui);
+}
+
+#[test]
+fn the_proof_reading_screen_at_the_root_a_subgoal_and_the_goal() {
+    let mut ui = ui();
+    open(&mut ui, "syl");
+    press(&mut ui, &[F3]);
+    replay("proof-root", &ui);
+    press(&mut ui, &[Down, Enter]);
+    replay("proof-subgoal", &ui);
+    let mut ui = self::ui();
+    open(&mut ui, "syl");
+    press(&mut ui, &[F3, Up]);
+    replay("proof-goal", &ui);
+}
+
+#[test]
+fn the_distinct_variables_screen_short_and_scrolled() {
+    let mut ui = ui();
+    open(&mut ui, "alid");
+    press(&mut ui, &[F2]);
+    replay("dist", &ui);
+    let mut ui = extra_ui();
+    open(&mut ui, "ax-dvs");
+    press(&mut ui, &[F2]);
+    replay("dist-top", &ui);
+    press(&mut ui, &[Down; 10]);
+    replay("dist-scrolled", &ui);
+}
+
+#[test]
+fn a_wrong_glyph_in_the_font_table_fails_a_replay() {
+    let ui = ui();
+    let (frame, calls) = ui.frame_calls();
+    let table = mcglyph::z80::Table::builtin();
+    let mut font: Vec<u8> = table.slots().iter().flatten().copied().collect();
+    let mut script = vec![Op::SetFont(font.clone())];
+    script.extend(ops(&calls));
+    same_frame("intact table", &run(REAL, &script).frame, &pack(&frame));
+    let l = (usize::from(table.code('L')) - 1) * 8;
+    font[l + 2] ^= 0xFF;
+    script[0] = Op::SetFont(font);
+    let got = run(REAL, &script);
+    assert_ne!(
+        got.frame,
+        pack(&frame),
+        "a corrupted glyph row went unnoticed"
+    );
 }

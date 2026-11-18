@@ -115,7 +115,8 @@ impl Ui {
         self.draw(Canvas::default()).into_bitmap()
     }
 
-    /// The screen and the canvas calls that drew it.
+    /// The screen and the canvas calls that drew it; for the Z80 replay tests.
+    #[doc(hidden)]
     pub fn frame_calls(&self) -> (Bitmap, Vec<Call>) {
         self.draw(Canvas::recording()).into_parts()
     }

@@ -8,9 +8,14 @@ pub const MAX_GLYPH_WIDTH: usize = 9;
 
 const FONT_SRC: &str = include_str!("../font/metacalc.font");
 const MAP_SRC: &str = include_str!("../font/tokens.map");
+const KEYS_SRC: &str = include_str!("../font/keys.font");
 
 static BUILTIN: LazyLock<Font> =
     LazyLock::new(|| Font::parse(FONT_SRC, MAP_SRC).expect("embedded font is valid"));
+
+static KEYS: LazyLock<Font> = LazyLock::new(|| {
+    Font::parse_file("keys.font", KEYS_SRC, "").expect("embedded key font is valid")
+});
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FontError {
@@ -100,6 +105,11 @@ impl Font {
         &BUILTIN
     }
 
+    /// The narrow font of the soft key row: letters and digits, no token mapping.
+    pub fn keys() -> &'static Font {
+        &KEYS
+    }
+
     /// Parses the font and the token mapping.
     ///
     /// The font file starts with one `height N` line. A glyph is a `glyph NAME` line followed by exactly
@@ -111,7 +121,11 @@ impl Font {
     /// The classes are `tight`, `before`, `after`, `both`, `var` (gap next to another `var`),
     /// `binder` (gap before) and `open` (no gap after).
     pub fn parse(font_src: &str, map_src: &str) -> Result<Font, FontError> {
-        let (height, glyphs) = parse_glyphs(font_src)?;
+        Self::parse_file("metacalc.font", font_src, map_src)
+    }
+
+    fn parse_file(file: &'static str, font_src: &str, map_src: &str) -> Result<Font, FontError> {
+        let (height, glyphs) = parse_glyphs(file, font_src)?;
         let mut font = Font {
             height,
             glyphs,
@@ -242,8 +256,10 @@ impl Font {
     }
 }
 
-fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontError> {
-    const FILE: &str = "metacalc.font";
+fn parse_glyphs(
+    file: &'static str,
+    src: &str,
+) -> Result<(usize, BTreeMap<String, Bitmap>), FontError> {
     let mut height = None;
     let mut glyphs = BTreeMap::new();
     let mut current: Option<(String, usize, Vec<Vec<bool>>)> = None;
@@ -255,7 +271,7 @@ fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontErro
         };
         let h = height.ok_or_else(|| {
             err(
-                FILE,
+                file,
                 line,
                 FontErrorKind::GlyphBeforeHeight,
                 "glyph before the height line",
@@ -263,7 +279,7 @@ fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontErro
         })?;
         if rows.len() != h {
             return Err(err(
-                FILE,
+                file,
                 line,
                 FontErrorKind::RowCount,
                 format!("glyph {name} has {} rows, want {h}", rows.len()),
@@ -272,7 +288,7 @@ fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontErro
         let bitmap = Bitmap::from_rows(&rows);
         if bitmap.width() == 0 || bitmap.width() > MAX_GLYPH_WIDTH {
             return Err(err(
-                FILE,
+                file,
                 line,
                 FontErrorKind::GlyphWidth,
                 format!("glyph {name} is {} wide", bitmap.width()),
@@ -280,7 +296,7 @@ fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontErro
         }
         if glyphs.insert(name.clone(), bitmap).is_some() {
             return Err(err(
-                FILE,
+                file,
                 line,
                 FontErrorKind::DuplicateGlyph,
                 format!("glyph {name} defined twice"),
@@ -299,7 +315,7 @@ fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontErro
         } else if let Some(h) = line.strip_prefix("height ") {
             if current.is_some() {
                 return Err(err(
-                    FILE,
+                    file,
                     n,
                     FontErrorKind::HeightInsideGlyph,
                     "height line inside a glyph",
@@ -307,7 +323,7 @@ fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontErro
             }
             if height.is_some() {
                 return Err(err(
-                    FILE,
+                    file,
                     n,
                     FontErrorKind::DuplicateHeight,
                     "second height line",
@@ -316,7 +332,7 @@ fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontErro
             let h = h
                 .trim()
                 .parse()
-                .map_err(|_| err(FILE, n, FontErrorKind::BadHeight, "bad height"))?;
+                .map_err(|_| err(file, n, FontErrorKind::BadHeight, "bad height"))?;
             height = Some(h);
         } else if let Some(name) = line.strip_prefix("glyph ") {
             finish(&mut current, height)?;
@@ -332,7 +348,7 @@ fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontErro
                 .collect();
             let row = row.ok_or_else(|| {
                 err(
-                    FILE,
+                    file,
                     n,
                     FontErrorKind::BadRow,
                     "row holds something besides # and .",
@@ -340,7 +356,7 @@ fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontErro
             })?;
             if rows.first().is_some_and(|first| first.len() != row.len()) {
                 return Err(err(
-                    FILE,
+                    file,
                     n,
                     FontErrorKind::RaggedRow,
                     "row width differs from the glyph's first row",
@@ -349,7 +365,7 @@ fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontErro
             rows.push(row);
         } else {
             return Err(err(
-                FILE,
+                file,
                 n,
                 FontErrorKind::RowOutsideGlyph,
                 "row outside a glyph",
@@ -358,6 +374,6 @@ fn parse_glyphs(src: &str) -> Result<(usize, BTreeMap<String, Bitmap>), FontErro
     }
     finish(&mut current, height)?;
     let height =
-        height.ok_or_else(|| err(FILE, 1, FontErrorKind::MissingHeight, "missing height line"))?;
+        height.ok_or_else(|| err(file, 1, FontErrorKind::MissingHeight, "missing height line"))?;
     Ok((height, glyphs))
 }

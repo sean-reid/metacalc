@@ -1,20 +1,22 @@
 //! Renders a Metamath token sequence in the calculator font to PNG files.
 
-use mcglyph::z80::Table;
-use mcglyph::{Font, png};
+use mcglyph::z80::fonts_include;
+use mcglyph::{Bitmap, Font, png};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::{env, fs};
 
 const SCREEN: (usize, usize) = (96, 64);
-const USAGE: &str = "usage: mcglyph [--scale N] -o OUT.png TOKEN...
+const USAGE: &str = "usage: mcglyph [--scale N] [--font main|keys] -o OUT.png TOKEN...
 Draws the tokens in the calculator font on 96x64 screens. A statement that wraps past one screen
 is written to OUT-1.png, OUT-2.png and so on. Prints each file written.
+With --font keys each argument is a soft key label, drawn in the key font as an inverted box,
+one label per 8 pixel row, and the output is a single screen.
 
 usage: mcglyph z80 OUT.inc
-Writes the font as an assembler include for the Z80 canvas: the glyph table at the label ui_font,
-UI_FONT_GLYPHS and UI_FONT_CH_<hex> for the code of each character. The command takes exactly the output path; with -o
-anywhere, z80 is an ordinary token to draw.";
+Writes the font as an assembler include for the Z80 canvas: the glyph tables at the labels ui_font and
+ui_key_font, with UI_FONT_GLYPHS and UI_FONT_CH_<hex> (and UI_KEY_FONT_...) for the codes. The command takes exactly the
+output path; with -o anywhere, z80 is an ordinary token to draw.";
 
 fn main() -> ExitCode {
     match run(env::args().skip(1).collect()) {
@@ -30,7 +32,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     if args.first().is_some_and(|a| a == "z80") && !args.iter().any(|a| a == "-o") {
         return z80(&args[1..]);
     }
-    let (mut scale, mut output, mut tokens) = (4usize, None, Vec::new());
+    let (mut scale, mut output, mut tokens, mut keys) = (4usize, None, Vec::new(), false);
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -42,15 +44,26 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     .filter(|&n| n > 0)
                     .ok_or(USAGE)?;
             }
+            "--font" => {
+                keys = match args.next().as_deref() {
+                    Some("main") => false,
+                    Some("keys") => true,
+                    _ => return Err(USAGE.into()),
+                }
+            }
             "-h" | "--help" => return Err(USAGE.into()),
             _ => tokens.push(arg),
         }
     }
     let output = output.filter(|_| !tokens.is_empty()).ok_or(USAGE)?;
     let words: Vec<&str> = tokens.iter().map(String::as_str).collect();
-    let frames = Font::builtin()
-        .frames(&words, SCREEN)
-        .map_err(|e| e.to_string())?;
+    let frames = if keys {
+        vec![key_labels(&words)?]
+    } else {
+        Font::builtin()
+            .frames(&words, SCREEN)
+            .map_err(|e| e.to_string())?
+    };
     for (i, frame) in frames.iter().enumerate() {
         let path = if frames.len() == 1 {
             output.clone()
@@ -75,8 +88,39 @@ fn z80(args: &[String]) -> Result<(), String> {
     let [output] = args else {
         return Err(USAGE.into());
     };
-    let table = Table::new(Font::builtin())?;
-    fs::write(output, table.include("ui_font")).map_err(|e| format!("{output}: {e}"))?;
+    fs::write(output, fonts_include()).map_err(|e| format!("{output}: {e}"))?;
     println!("{output}");
     Ok(())
+}
+
+fn key_labels(labels: &[&str]) -> Result<Bitmap, String> {
+    let font = Font::keys();
+    let rows = SCREEN.1 / 8;
+    if labels.len() > rows {
+        return Err(format!("at most {rows} labels fit a screen"));
+    }
+    if let Some(bad) = labels
+        .iter()
+        .find(|l| !l.chars().all(|c| c.is_ascii_alphanumeric()))
+    {
+        return Err(format!("label {bad} is not letters and digits"));
+    }
+    let mut screen = Bitmap::new(SCREEN.0, SCREEN.1);
+    for (i, label) in labels.iter().enumerate() {
+        let ink = font.text(label);
+        let (top, width) = (i * 8, ink.width() + 4);
+        for y in top..top + 8 {
+            for x in 0..width.min(SCREEN.0) {
+                screen.set(x, y, true);
+            }
+        }
+        for y in 0..ink.height() {
+            for x in 0..ink.width() {
+                if ink.get(x, y) {
+                    screen.set(2 + x, top + 1 + y, false);
+                }
+            }
+        }
+    }
+    Ok(screen)
 }

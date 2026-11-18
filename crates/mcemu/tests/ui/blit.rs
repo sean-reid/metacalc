@@ -26,7 +26,7 @@ fn busy_frame() -> (mcglyph::Bitmap, Vec<Call>) {
         c.invert(x * 8 + x % 8, x * 5, 7 + x, 4);
     }
     c.title("Libraries", "metacalc");
-    c.soft_keys(["See", "Run", "Info", "Find", "Up"]);
+    c.soft_keys(["Open", "Run", "Info", "Find", "Up"]);
     c.into_parts()
 }
 

@@ -19,13 +19,24 @@ fn model_text(frame: &mut Bitmap, font: &Font, x: usize, row: usize, text: &str)
 }
 
 #[test]
-fn the_assembled_image_holds_the_generated_table() {
-    let table = Table::builtin();
-    let at = usize::from(label(REAL, "ui_font")) - 0x4000;
-    let bytes = flat(&table);
-    assert_eq!(&REAL.code[at..at + bytes.len()], bytes);
-    assert_eq!(bytes.len(), 1328);
-    assert_eq!(label(REAL, "UI_FONT_GLYPHS") as usize * SLOT, bytes.len());
+fn the_assembled_image_holds_both_generated_tables() {
+    for (name, table, size) in [
+        ("ui_font", Table::builtin(), 1328),
+        ("ui_key_font", Table::keys(), 504),
+    ] {
+        let at = usize::from(label(REAL, name)) - 0x4000;
+        let bytes = flat(&table);
+        assert_eq!(&REAL.code[at..at + bytes.len()], bytes, "{name}");
+        assert_eq!(bytes.len(), size, "{name}");
+        let glyphs = label(REAL, &format!("{name}_GLYPHS"));
+        assert_eq!(usize::from(glyphs) * SLOT, bytes.len(), "{name}");
+    }
+    let (main, keys) = (Table::builtin(), Table::keys());
+    let equate = |name: &str, c: char| label(REAL, &format!("{name}_CH_{:X}", c as u32));
+    for c in ['A', 'a', 'z', '0', ' '] {
+        assert_eq!(equate("ui_font", c), u16::from(main.code(c)));
+        assert_eq!(equate("ui_key_font", c), u16::from(keys.code(c)));
+    }
 }
 
 #[test]
@@ -109,7 +120,7 @@ fn the_soft_key_row_uses_its_own_font_and_restores_the_one_in_use() {
     let font = wide_font();
     let table = Table::new(&font).unwrap();
     let mut keys = Canvas::recording();
-    keys.soft_keys(["See", "", "Info", "Find", "Up"]);
+    keys.soft_keys(["Open", "", "Info", "Find", "Up"]);
     let (key_frame, calls) = keys.into_parts();
     let mut model = key_frame;
     model_text(&mut model, &font, 10, 2, "aba");
@@ -162,7 +173,7 @@ fn the_canvas_works_at_another_ram_base_and_writes_nothing_outside_its_two_block
         "\u{2713}",
         true,
     );
-    canvas.soft_keys(["See", "Run", "Info", "", ""]);
+    canvas.soft_keys(["Open", "Run", "Info", "", ""]);
     canvas.marker(4);
     canvas.invert(90, 40, 30, 30);
     let (bitmap, calls) = canvas.into_parts();

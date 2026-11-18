@@ -104,9 +104,27 @@ fn a_font_that_is_not_seven_rows_high_is_refused() {
 }
 
 #[test]
-fn a_font_without_a_question_mark_is_refused() {
+fn a_font_without_a_question_mark_maps_only_what_it_draws() {
     let font = Font::parse("height 7\n\nglyph a\n#\n#\n#\n#\n#\n#\n#\n", "").unwrap();
-    assert!(Table::new(&font).is_err());
+    let table = Table::new(&font).unwrap();
+    assert_eq!(table.try_code('a'), table.glyph("a"));
+    assert_eq!(table.try_code('?'), None);
+    assert_eq!(table.try_code(' '), Some(SPACE_CODE));
+    assert!(!table.include("ui_font").contains("UI_FONT_CH_3F"));
+}
+
+#[test]
+fn the_key_table_is_its_own_encoding_of_letters_and_digits() {
+    let keys = Table::keys();
+    let main = Table::builtin();
+    check(Font::keys());
+    assert_eq!(keys.slots().len() * SLOT, 63 * SLOT);
+    assert_ne!(keys.code('z'), main.code('z'));
+    assert_eq!(keys.try_code('?'), None);
+    assert_eq!(keys.encode("Aply").last(), Some(&0));
+    let include = mcglyph::z80::fonts_include();
+    assert!(include.contains("UI_KEY_FONT_CH_41\t.equ"));
+    assert!(!include.contains("UI_KEY_FONT_CH_3F"));
 }
 
 /// A font of `n` glyphs in seven rows, one of them the question mark.

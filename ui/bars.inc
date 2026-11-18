@@ -33,11 +33,8 @@ ui_list_row:
 	ld a,b
 	jp ui_invert_row
 
-; The font the soft key labels are set in; the font in use is restored afterwards.
-#define ui_key_font ui_font
-
-; ui_soft_keys   in:  HL = five little endian pointers to label strings; an empty string leaves
-;                     its key blank
+; ui_soft_keys   in:  HL = five little endian pointers to label strings encoded for the key font
+;                     table ui_key_font, not the main one; an empty string leaves its key blank
 ;                a label is centred in its key's box on row 7, rounding the left margin up,
 ;                and the box is inverted; a label wider than its box is not handled
 ;                destroys AF BC DE HL

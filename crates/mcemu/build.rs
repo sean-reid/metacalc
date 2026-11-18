@@ -293,8 +293,7 @@ fn assemble_ui(out: &Path) {
     }
     let font_dir = out.join("ui_font");
     fs::create_dir_all(&font_dir).unwrap();
-    let table = mcglyph::z80::Table::new(mcglyph::Font::builtin()).unwrap_or_else(|e| fail(&e));
-    fs::write(font_dir.join("font.inc"), table.include("ui_font")).unwrap();
+    fs::write(font_dir.join("font.inc"), mcglyph::z80::fonts_include()).unwrap();
     let include = dir.to_str().unwrap();
     let assemble = |defines: &[&str], output: &Path| {
         spasm_try(

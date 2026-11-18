@@ -18,7 +18,7 @@ pub const SPACE_CODE: u8 = 1;
 pub struct Table {
     slots: Vec<[u8; SLOT]>,
     codes: BTreeMap<String, u8>,
-    question: u8,
+    question: Option<u8>,
 }
 
 impl Table {
@@ -66,9 +66,7 @@ impl Table {
         if slots.len() > 255 {
             return Err(format!("{} slots do not fit one-byte codes", slots.len()));
         }
-        let question = *codes
-            .get("question")
-            .ok_or("the font has no question mark")?;
+        let question = codes.get("question").copied();
         Ok(Table {
             slots,
             codes,
@@ -79,6 +77,12 @@ impl Table {
     /// The table of the font the app ships.
     pub fn builtin() -> Table {
         Table::new(Font::builtin()).expect("the built-in font fits the Z80 table")
+    }
+
+    /// The table of the soft key font. Its codes are its own: a label for the key row is
+    /// encoded with this table, everything else with [`Table::builtin`].
+    pub fn keys() -> Table {
+        Table::new(Font::keys()).expect("the key font fits the Z80 table")
     }
 
     pub fn slots(&self) -> &[[u8; SLOT]] {
@@ -98,15 +102,21 @@ impl Table {
     }
 
     /// The code interface text uses for `c`: the space, the glyph named for it, or the question
-    /// mark when the font has none.
-    pub fn code(&self, c: char) -> u8 {
+    /// mark when the font has none; `None` when the font has neither.
+    pub fn try_code(&self, c: char) -> Option<u8> {
         if c == ' ' {
-            return SPACE_CODE;
+            return Some(SPACE_CODE);
         }
         self.codes
             .get(glyph_name(c).as_ref())
             .copied()
-            .unwrap_or(self.question)
+            .or(self.question)
+    }
+
+    /// [`Table::try_code`] for a character the font is known to draw.
+    pub fn code(&self, c: char) -> u8 {
+        self.try_code(c)
+            .unwrap_or_else(|| panic!("the font has no glyph for {c:?}"))
     }
 
     /// `text` as codes with the terminating 0.
@@ -123,7 +133,9 @@ impl Table {
         out += &format!("{upper}_GLYPHS\t.equ {}\n", self.slots.len());
         let chars = (' '..='~').chain([CHECK, CROSS, ELLIPSIS]);
         for c in chars {
-            out += &format!("{upper}_CH_{:X}\t.equ {}\n", c as u32, self.code(c));
+            if let Some(code) = self.try_code(c) {
+                out += &format!("{upper}_CH_{:X}\t.equ {code}\n", c as u32);
+            }
         }
         out += &format!("{name}:\n");
         for slot in &self.slots {
@@ -132,4 +144,10 @@ impl Table {
         }
         out
     }
+}
+
+/// The include `mcglyph z80` writes: the main font at `ui_font` and the soft key font at
+/// `ui_key_font`, each with its own equates.
+pub fn fonts_include() -> String {
+    Table::builtin().include("ui_font") + &Table::keys().include("ui_key_font")
 }
