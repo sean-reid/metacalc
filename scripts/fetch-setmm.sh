@@ -1,12 +1,12 @@
 #!/bin/sh
 # Usage: fetch-setmm.sh [dir]
-# Downloads set.mm at the commit pinned in libraries/source.toml into dir (default .setmm)
+# Downloads set.mm at the commit pinned in libraries/source.toml into dir (default .setmm at the repo root)
 # and verifies its SHA-256. Prints the path of the file.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 pin=$root/libraries/source.toml
-dir=${1:-.setmm}
+dir=${1:-$root/.setmm}
 
 field() { sed -n "s/^$1 = \"\(.*\)\"\$/\1/p" "$pin"; }
 repository=$(field repository)
