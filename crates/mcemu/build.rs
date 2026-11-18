@@ -56,6 +56,36 @@ const OS_ROUTINES: &[(&str, &str, &[&str])] = &[
         &["ENTRY=$9000", "SERVICE=_ClrLCDFull"],
     ),
     (
+        "os_service.z80",
+        "os_chk_find_sym.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_ChkFindSym"],
+    ),
+    (
+        "os_service.z80",
+        "os_enough_mem.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_EnoughMem"],
+    ),
+    (
+        "os_service.z80",
+        "os_create_app_var.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_CreateAppVar"],
+    ),
+    (
+        "os_service.z80",
+        "os_del_var_arc.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_DelVarArc"],
+    ),
+    (
+        "os_service.z80",
+        "os_arc_unarc.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_Arc_Unarc"],
+    ),
+    (
+        "os_service.z80",
+        "os_load_de_ind_paged.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_LoadDEIndPaged"],
+    ),
+    (
         "os_clobber.z80",
         "os_clobber_getcsc.bin",
         &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GetCSC"],
@@ -241,7 +271,23 @@ fn main() {
 
 /// The stub addresses the library needs, as constants named after their labels.
 fn write_stub_labels(labels: &Path, out: &Path) {
-    const WANTED: &[&str] = &["APP_EXIT", "FAULT_BCALL", "FAULT_BJUMP", "OS_INIT"];
+    const WANTED: &[&str] = &[
+        "APP_EXIT",
+        "FAULT_BCALL",
+        "FAULT_BJUMP",
+        "FAULT_ERROR",
+        "OS_INIT",
+        "HOST_INIT",
+        "HOST_FIND",
+        "HOST_CREATE",
+        "HOST_ARCHIVE",
+        "HOST_DELETE",
+        "VS_HEAP_END",
+        "VS_VAT_LOW",
+        "VS_RESERVE",
+        "VS_ARC_NEXT",
+        "ARC_PAGE",
+    ];
     let text = fs::read_to_string(labels).unwrap();
     let mut code = String::new();
     for name in WANTED {

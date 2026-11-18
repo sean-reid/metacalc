@@ -6,6 +6,16 @@ _GetCSC           .equ $4018
 _JForceCmdNoChar  .equ $4027
 _ClrLCDFull       .equ $4540
 _GrBufCpy         .equ $486A
+_ChkFindSym       .equ $42F1
+_EnoughMem        .equ $42FD
+_CreateAppVar     .equ $4E6A
+_DelVarArc        .equ $4FC6
+_Arc_Unarc        .equ $4FD8
+_LoadDEIndPaged   .equ $501A
+
+OP1               .equ $8478
+E_MEMORY          .equ $8E
+E_BAD_CALL        .equ $FF
 
 kbdScanCode       .equ $843F
 plotSScreen       .equ $9340
@@ -17,6 +27,7 @@ PORT_LCD_CMD      .equ $10
 PORT_LCD_DATA     .equ $11
 LCD_READY         .equ $02
 
+JUNK_IX           .equ $1D27
 JUNK_AF           .equ $AF5A
 JUNK_BC           .equ $BC0B
 JUNK_DE           .equ $DE0D
@@ -160,6 +171,12 @@ bcall_table:
 	.dw _GetCSC, get_csc
 	.dw _ClrLCDFull, clr_lcd_full
 	.dw _GrBufCpy, gr_buf_cpy
+	.dw _ChkFindSym, chk_find_sym
+	.dw _EnoughMem, enough_mem
+	.dw _CreateAppVar, create_app_var
+	.dw _DelVarArc, del_var_arc
+	.dw _Arc_Unarc, arc_unarc
+	.dw _LoadDEIndPaged, load_de_ind_paged
 	.dw 0
 
 bjump_table:
@@ -308,4 +325,663 @@ os_init:
 	call lcd_command
 	xor a
 	ld (kbdScanCode),a
+	halt
+
+; Variables. The symbol table grows down from VAT_TOP and the data heap up from HEAP_START.
+; An entry is addressed by its top byte E: type at E, version at E-1, data pointer at E-2
+; (low) and E-3 (high), page at E-4 (0 in RAM), name length n at E-5, a spare byte at E-6, the
+; name at E-7 downward, 7 + n bytes in all.
+; Data in RAM is the two-byte size word then the bytes, and the data pointer names the size
+; word. A new variable's data goes at the end of the heap, below the data of any variable of a
+; later type, so those move up and an earlier variable's deletion moves the later ones down.
+; An archived variable's page is ARC_PAGE and its pointer is in 4000h-7FFFh, at a record the
+; host writes: FCh, the length (2), the type, the version, 0, the pointer (2), the page, the
+; name length n, the name, then the size word and the data.
+; The state is lazy: a zero VS_HEAP_END means nothing is initialised.
+HEAP_START        .equ $9D95
+VAT_TOP           .equ $FE66
+ARC_PAGE          .equ $50
+ARC_BASE          .equ $4000
+
+VS_HEAP_END       .equ $8200
+VS_VAT_LOW        .equ $8202
+VS_RESERVE        .equ $8204
+VS_ARC_NEXT       .equ $8206
+vs_t0             .equ $8208
+vs_t1             .equ $820A
+vs_t2             .equ $820C
+vs_t3             .equ $820E
+vs_size           .equ $8210
+vs_ent            .equ $8212
+vs_src            .equ $8214
+vs_dst            .equ $8216
+vs_page           .equ $8218
+vs_port6          .equ $8219
+vs_len            .equ $821A
+
+vs_init:
+	ld hl,(VS_HEAP_END)
+	ld a,h
+	or l
+	ret nz
+	ld hl,HEAP_START
+	ld (VS_HEAP_END),hl
+	ld hl,VAT_TOP+1
+	ld (VS_VAT_LOW),hl
+	ld hl,ARC_BASE
+	ld (VS_ARC_NEXT),hl
+	ret
+
+; Out: HL = free bytes, which the reserve a test sets aside does not count in. Destroys AF, DE.
+vs_free:
+	ld hl,(VS_VAT_LOW)
+	ld de,(VS_HEAP_END)
+	or a
+	sbc hl,de
+	jr c,vs_free_none
+	ld de,(VS_RESERVE)
+	or a
+	sbc hl,de
+	ret nc
+vs_free_none:
+	ld hl,0
+	ret
+
+; Out: C = length of the name in OP1 (zero-terminated, at most 8). Destroys AF, HL.
+vs_name_len:
+	ld hl,OP1+1
+	ld c,0
+vs_name_next:
+	ld a,c
+	cp 8
+	ret z
+	ld a,(hl)
+	or a
+	ret z
+	inc hl
+	inc c
+	jr vs_name_next
+
+; Out: carry set if OP1 names no variable, else HL = entry, DE = data pointer, B = page.
+; Destroys AF, C, IX.
+vs_find:
+	call vs_init
+	call vs_name_len
+	ld ix,VAT_TOP
+vs_find_next:
+	ld de,(VS_VAT_LOW)
+	push ix
+	pop hl
+	or a
+	sbc hl,de
+	jr c,vs_find_none
+	ld a,(OP1)
+	xor (ix+0)
+	and $1F
+	jr nz,vs_find_skip
+	ld a,(ix-5)
+	cp c
+	jr nz,vs_find_skip
+	push ix
+	pop hl
+	ld de,-7
+	add hl,de
+	ld de,OP1+1
+	ld b,c
+vs_find_chars:
+	ld a,b
+	or a
+	jr z,vs_find_hit
+	ld a,(de)
+	cp (hl)
+	jr nz,vs_find_skip
+	inc de
+	dec hl
+	dec b
+	jr vs_find_chars
+vs_find_hit:
+	push ix
+	pop hl
+	ld e,(ix-2)
+	ld d,(ix-3)
+	ld b,(ix-4)
+	or a
+	ret
+vs_find_skip:
+	ld a,(ix-5)
+	add a,7
+	neg
+	ld e,a
+	ld d,$FF
+	add ix,de
+	jr vs_find_next
+vs_find_none:
+	scf
+	ret
+
+; In: DE = threshold, BC = delta. Adds the delta to the data pointer of every RAM variable
+; whose pointer is at or above the threshold. Destroys AF, DE, HL, IX.
+vs_shift_ptrs:
+	ld (vs_t0),de
+	ld (vs_t1),bc
+	ld ix,VAT_TOP
+vs_sp_next:
+	ld de,(VS_VAT_LOW)
+	push ix
+	pop hl
+	or a
+	sbc hl,de
+	ret c
+	ld a,(ix-4)
+	or a
+	jr nz,vs_sp_skip
+	ld l,(ix-2)
+	ld h,(ix-3)
+	ld de,(vs_t0)
+	or a
+	sbc hl,de
+	jr c,vs_sp_skip
+	ld l,(ix-2)
+	ld h,(ix-3)
+	ld de,(vs_t1)
+	add hl,de
+	ld (ix-2),l
+	ld (ix-3),h
+vs_sp_skip:
+	ld a,(ix-5)
+	add a,7
+	neg
+	ld e,a
+	ld d,$FF
+	add ix,de
+	jr vs_sp_next
+
+; In: HL = where the new data goes, DE = its length. Opens the gap in the heap.
+vs_open_gap:
+	ld (vs_t2),hl
+	ld (vs_t3),de
+	ld hl,(VS_HEAP_END)
+	ld de,(vs_t2)
+	or a
+	sbc hl,de
+	ld b,h
+	ld c,l
+	ld a,b
+	or c
+	jr z,vs_og_moved
+	ld hl,(VS_HEAP_END)
+	dec hl
+	ld de,(vs_t3)
+	push hl
+	add hl,de
+	ex de,hl
+	pop hl
+	lddr
+vs_og_moved:
+	ld de,(vs_t2)
+	ld bc,(vs_t3)
+	call vs_shift_ptrs
+	ld hl,(VS_HEAP_END)
+	ld de,(vs_t3)
+	add hl,de
+	ld (VS_HEAP_END),hl
+	ret
+
+; In: HL = where the data is, DE = its length. Closes the gap in the heap.
+vs_close_gap:
+	ld (vs_t2),hl
+	ld (vs_t3),de
+	add hl,de
+	ex de,hl
+	ld hl,(VS_HEAP_END)
+	or a
+	sbc hl,de
+	ld b,h
+	ld c,l
+	ld a,b
+	or c
+	jr z,vs_cg_moved
+	ld hl,(vs_t2)
+	ex de,hl
+	ldir
+vs_cg_moved:
+	ld hl,(vs_t2)
+	inc hl
+	ex de,hl
+	ld hl,(vs_t3)
+	ld a,l
+	cpl
+	ld l,a
+	ld a,h
+	cpl
+	ld h,a
+	inc hl
+	ld b,h
+	ld c,l
+	call vs_shift_ptrs
+	ld hl,(VS_HEAP_END)
+	ld de,(vs_t3)
+	or a
+	sbc hl,de
+	ld (VS_HEAP_END),hl
+	ret
+
+; In: HL = entry. Closes the gap in the symbol table.
+vs_remove_entry:
+	ld (vs_t2),hl
+	push hl
+	pop ix
+	ld a,(ix-5)
+	add a,7
+	ld e,a
+	ld d,0
+	ld (vs_t3),de
+	ld hl,(vs_t2)
+	or a
+	sbc hl,de
+	push hl
+	ld de,(VS_VAT_LOW)
+	or a
+	sbc hl,de
+	inc hl
+	ld b,h
+	ld c,l
+	pop hl
+	ld de,(vs_t2)
+	ld a,b
+	or c
+	jr z,vs_re_moved
+	lddr
+vs_re_moved:
+	ld hl,(VS_VAT_LOW)
+	ld de,(vs_t3)
+	add hl,de
+	ld (VS_VAT_LOW),hl
+	ret
+
+; In: OP1 = name, HL = data pointer. Adds an entry for a RAM variable. Out: HL = the entry.
+vs_add_entry:
+	ld (vs_t2),hl
+	call vs_name_len
+	ld hl,(VS_VAT_LOW)
+	dec hl
+	push hl
+	pop ix
+	ld a,(OP1)
+	and $1F
+	ld (ix+0),a
+	ld (ix-1),0
+	ld de,(vs_t2)
+	ld (ix-2),e
+	ld (ix-3),d
+	ld (ix-4),0
+	ld (ix-5),c
+	ld (ix-6),0
+	push ix
+	pop hl
+	ld de,-7
+	add hl,de
+	ld de,OP1+1
+	ld b,c
+vs_ae_name:
+	ld a,b
+	or a
+	jr z,vs_ae_done
+	ld a,(de)
+	ld (hl),a
+	inc de
+	dec hl
+	dec b
+	jr vs_ae_name
+vs_ae_done:
+	inc hl
+	ld (VS_VAT_LOW),hl
+	push ix
+	pop hl
+	ret
+
+; In: OP1 = type and name. Out: HL = where a new variable's data goes: at the lowest RAM
+; variable of a later type, else at the end of the heap.
+vs_place:
+	ld a,(OP1)
+	and $1F
+	ld c,a
+	ld de,(VS_HEAP_END)
+	ld ix,VAT_TOP
+vp_next:
+	push de
+	ld de,(VS_VAT_LOW)
+	push ix
+	pop hl
+	or a
+	sbc hl,de
+	pop de
+	jr c,vp_done
+	ld a,(ix-4)
+	or a
+	jr nz,vp_skip
+	ld a,(ix+0)
+	cp c
+	jr c,vp_skip
+	jr z,vp_skip
+	ld l,(ix-2)
+	ld h,(ix-3)
+	push hl
+	or a
+	sbc hl,de
+	pop hl
+	jr nc,vp_skip
+	ex de,hl
+vp_skip:
+	ld a,(ix-5)
+	add a,7
+	neg
+	push de
+	ld e,a
+	ld d,$FF
+	add ix,de
+	pop de
+	jr vp_next
+vp_done:
+	ex de,hl
+	ret
+
+; In: OP1 = name, HL = data size. Out: carry set if it does not fit, else DE = data pointer.
+; The data is filled with A5h.
+vs_create:
+	ld (vs_size),hl
+	call vs_init
+	call vs_name_len
+	ld hl,(vs_size)
+	ld b,0
+	add hl,bc
+	ld de,9
+	add hl,de
+	push hl
+	call vs_free
+	pop de
+	or a
+	sbc hl,de
+	ret c
+	call vs_place
+	push hl
+	ld de,(vs_size)
+	inc de
+	inc de
+	call vs_open_gap
+	pop hl
+	push hl
+	ld de,(vs_size)
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	inc hl
+	ld a,d
+	or e
+	jr z,vs_cr_filled
+	ld b,d
+	ld c,e
+	ld (hl),$A5
+	ld d,h
+	ld e,l
+	inc de
+	dec bc
+	ld a,b
+	or c
+	jr z,vs_cr_filled
+	ldir
+vs_cr_filled:
+	pop hl
+	push hl
+	call vs_add_entry
+	pop de
+	or a
+	ret
+
+; Sets every register the service does not return, and the shadow set and IX, to junk;
+; the flags and the registers the caller loaded stay as they are.
+svc_scrub:
+	push hl
+	push af
+	ld hl,JUNK_AF2
+	push hl
+	pop af
+	ex af,af'
+	pop af
+	exx
+	ld bc,JUNK_BC2
+	ld de,JUNK_DE2
+	ld hl,JUNK_HL2
+	exx
+	pop hl
+	ld ix,JUNK_IX
+	ret
+
+; Ends the app the way an uncaught OS error does. A holds the error code.
+throw:
+	di
+fault_error:
+	halt
+	jr fault_error
+
+; In: HL = a size in bytes. Out: carry set if the heap and the symbol table cannot take that
+; many more bytes. Every other register is junk.
+enough_mem:
+	push hl
+	call vs_init
+	call vs_free
+	pop de
+	or a
+	sbc hl,de
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_HL
+	ld a,$5A
+	jp svc_scrub
+
+; In: OP1 = type and name. Out: carry set if absent; else carry reset, A = type, B = page
+; (0 in RAM), C = length of the name, DE = data pointer, HL = entry.
+chk_find_sym:
+	call vs_find
+	jr nc,cfs_found
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_HL
+	ld a,$5A
+	scf
+	jp svc_scrub
+cfs_found:
+	ld c,(ix-5)
+	ld a,(ix+0)
+	or a
+	jp svc_scrub
+
+; In: HL = size, OP1 = type and name. Out: BC = size, DE = data pointer, HL = entry. Throws
+; E_MEMORY when the data, its size word and the entry do not fit. The data is not cleared.
+create_app_var:
+	call vs_create
+	ld a,E_MEMORY
+	jp c,throw
+	ld bc,(vs_size)
+	xor a
+	jp svc_scrub
+
+; In: HL = entry, DE = data pointer, B = page, as chk_find_sym left them. A call with any
+; other value stops with E_BAD_CALL.
+del_var_arc:
+	ld (vs_ent),hl
+	push hl
+	pop ix
+	ld a,(ix-4)
+	cp b
+	jr nz,dva_bad
+	ld a,(ix-2)
+	cp e
+	jr nz,dva_bad
+	ld a,(ix-3)
+	cp d
+	jr nz,dva_bad
+	ld de,(VS_VAT_LOW)
+	or a
+	sbc hl,de
+	jr c,dva_bad
+	ld hl,VAT_TOP
+	ld de,(vs_ent)
+	or a
+	sbc hl,de
+	jr c,dva_bad
+	ld a,b
+	or a
+	jr nz,dva_entry
+	ld l,(ix-2)
+	ld h,(ix-3)
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	dec hl
+	inc de
+	inc de
+	call vs_close_gap
+dva_entry:
+	ld hl,(vs_ent)
+	call vs_remove_entry
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_HL
+	ld a,$5A
+	jp svc_scrub
+dva_bad:
+	ld a,E_BAD_CALL
+	jp throw
+
+; In: OP1 = type and name of a variable. Moves an archived variable into RAM, throwing
+; E_MEMORY when it does not fit. Archiving a RAM variable is not implemented.
+arc_unarc:
+	call vs_find
+	ld a,E_BAD_CALL
+	jp c,throw
+	ld a,b
+	or a
+	jr nz,au_arc
+	ld bc,_Arc_Unarc
+	jp bcall_missing
+au_arc:
+	ld (vs_ent),hl
+	ld a,b
+	ld (vs_page),a
+	ld a,(ix-5)
+	add a,10
+	ld c,a
+	ld b,0
+	ex de,hl
+	add hl,bc
+	ld (vs_src),hl
+	in a,(6)
+	ld (vs_port6),a
+	ld a,(vs_page)
+	out (6),a
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	ld a,(vs_port6)
+	out (6),a
+	ld (vs_size),de
+	inc de
+	inc de
+	push de
+	call vs_free
+	pop de
+	or a
+	sbc hl,de
+	ld a,E_MEMORY
+	jp c,throw
+	call vs_place
+	ld (vs_dst),hl
+	ld de,(vs_size)
+	inc de
+	inc de
+	call vs_open_gap
+	ld bc,(vs_size)
+	inc bc
+	inc bc
+	ld hl,(vs_src)
+	ld de,(vs_dst)
+	ld a,(vs_page)
+	out (6),a
+	ldir
+	ld a,(vs_port6)
+	out (6),a
+	ld hl,(vs_ent)
+	push hl
+	pop ix
+	ld (ix-4),0
+	ld hl,(vs_dst)
+	ld (ix-2),l
+	ld (ix-3),h
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_HL
+	ld a,$5A
+	jp svc_scrub
+
+; In: B = page, HL = an address in 4000h-7FFFh. Out: DE = the word at HL on that page, HL = HL
+; + 1, B kept. A and C are junk.
+load_de_ind_paged:
+	in a,(6)
+	ld c,a
+	ld a,b
+	out (6),a
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	ld a,c
+	out (6),a
+	ld c,$0B
+	ld a,$5A
+	jp svc_scrub
+
+; The entries below are run by the host, not by apps. Each ends in a HALT with interrupts off.
+; OP1 is set the way an app sets it.
+host_init:
+	call vs_init
+	halt
+
+; Out: as vs_find.
+host_find:
+	call vs_find
+	halt
+
+; In: HL, DE and B as chk_find_sym returned them.
+host_delete:
+	call del_var_arc
+	halt
+
+; In: HL = size. Out: as vs_create.
+host_create:
+	call vs_create
+	halt
+
+; In: HL = entry, DE = data pointer in RAM, BC = the length of the record the host has already
+; written to flash at VS_ARC_NEXT. Turns the variable into an archived one.
+host_archive:
+	ld (vs_ent),hl
+	ld (vs_len),bc
+	ex de,hl
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	dec hl
+	inc de
+	inc de
+	call vs_close_gap
+	ld hl,(vs_ent)
+	push hl
+	pop ix
+	ld (ix-4),ARC_PAGE
+	ld hl,(VS_ARC_NEXT)
+	ld (ix-2),l
+	ld (ix-3),h
+	ld de,(vs_len)
+	add hl,de
+	ld (VS_ARC_NEXT),hl
 	halt
