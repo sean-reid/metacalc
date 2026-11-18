@@ -6,6 +6,7 @@ OUT_PTR   = 0A000h
 OUT_SPEED = 0A002h
 OUT_AFTER = 0A003h
 OUT_BUF   = 0A010h
+OUT_IFF   = 0A004h
 IY_TEST   = 0B800h
 
 .org 4000h
@@ -23,6 +24,21 @@ main:
 	di
 	in a, (20h)
 	ld (OUT_AFTER), a
+	halt
+
+onbreak_entry:
+	xor a
+	out (3), a
+	di
+	ld iy, IY_TEST
+	call on_release_and_clear
+	ld a, i
+	ld a, 0
+	jp po, onbreak_off
+	inc a
+onbreak_off:
+	ld (OUT_IFF), a
+	di
 	halt
 
 ; Contract: A is one character. Destroys every register.

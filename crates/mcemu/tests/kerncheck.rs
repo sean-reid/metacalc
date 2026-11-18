@@ -349,3 +349,39 @@ fn the_pending_os_break_is_cleared_after_an_on_stop_and_nothing_else_is_touched(
         assert_eq!(result.len(), if press { 5 } else { 4 });
     }
 }
+
+#[test]
+fn the_wait_returns_with_interrupts_on_whether_or_not_on_was_down() {
+    let bytes = axioms(10);
+    for holds in [0usize, 3] {
+        let mut rig = Rig::new(&bytes, Speed::Mhz15);
+        rig.m.ram_page(1)[FLAGS] = 0xFF;
+        let entry = label("ONBREAK_ENTRY");
+        let mut pc = entry;
+        if holds > 0 {
+            rig.m.press_key(Machine::KEY_ON);
+        }
+        let halted_in_wait = label("ON_WAIT_HALTED");
+        let mut waits = 0;
+        loop {
+            let run = rig.m.run(pc, LIMIT);
+            assert_ne!(run.stop, Stop::Fault);
+            let at = rig.m.pc();
+            if at != halted_in_wait && at + 1 != halted_in_wait {
+                break;
+            }
+            pc = halted_in_wait;
+            waits += 1;
+            if waits == holds {
+                rig.m.release_key(Machine::KEY_ON);
+            }
+        }
+        assert_eq!(waits, holds);
+        assert_eq!(
+            rig.byte(0xA004),
+            1,
+            "interrupts on, ON held for {holds} polls"
+        );
+        assert_eq!(rig.m.ram_page(1)[FLAGS], 0xEF, "the break flag is cleared");
+    }
+}
