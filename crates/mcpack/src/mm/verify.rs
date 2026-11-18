@@ -65,8 +65,8 @@ impl<'a> Verifier<'a> {
                 b'A'..=b'T' => {
                     let index = high
                         .checked_mul(20)
-                        .ok_or(ProofError::MalformedCompressed)?
-                        + (c - b'A') as usize;
+                        .and_then(|n| n.checked_add((c - b'A') as usize))
+                        .ok_or(ProofError::MalformedCompressed)?;
                     high = 0;
                     if index < hyps.len() {
                         self.apply(hyps[index], proof)?;
@@ -82,9 +82,10 @@ impl<'a> Verifier<'a> {
                     }
                 }
                 b'U'..=b'Y' => {
-                    high = high.checked_mul(5).ok_or(ProofError::MalformedCompressed)?
-                        + (c - b'U') as usize
-                        + 1;
+                    high = high
+                        .checked_mul(5)
+                        .and_then(|n| n.checked_add((c - b'U') as usize + 1))
+                        .ok_or(ProofError::MalformedCompressed)?;
                 }
                 b'Z' => {
                     let Some(&top) = self.starts.last() else {

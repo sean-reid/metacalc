@@ -419,6 +419,9 @@ impl<'a> Parser<'a> {
                     Ok(id) if frame.hyps.contains(&id) => {
                         error.get_or_insert(ProofError::MandatoryHypothesisInLabelList);
                     }
+                    Ok(id) if labels.contains(&id) => {
+                        error.get_or_insert(ProofError::MalformedCompressed);
+                    }
                     Ok(id) => labels.push(id),
                     Err(e) => {
                         error.get_or_insert(e);

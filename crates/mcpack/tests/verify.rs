@@ -291,6 +291,55 @@ fn floating_hypothesis_from_a_closed_scope_is_rejected() {
     );
 }
 
+fn compressed(letters: &str) -> Result<(), ProofError> {
+    check(
+        &format!("th $p |- ( p -> ( q -> p ) ) $= ( ax-1 ) {letters} $."),
+        "th",
+    )
+}
+
+fn prefix_for(mut n: usize) -> String {
+    let mut digits = Vec::new();
+    while n > 0 {
+        let d = (n - 1) % 5;
+        digits.push(b'U' + d as u8);
+        n = (n - 1) / 5;
+    }
+    digits.reverse();
+    String::from_utf8(digits).unwrap()
+}
+
+#[test]
+fn save_after_a_pending_prefix_is_rejected() {
+    assert_eq!(compressed("ABUZC"), Err(ProofError::MalformedCompressed));
+}
+
+#[test]
+fn compressed_numbers_that_overflow_are_rejected() {
+    assert_eq!(
+        compressed(&format!("AB{}C", "Y".repeat(64))),
+        Err(ProofError::MalformedCompressed)
+    );
+    let wraps_on_add = format!("AB{}T", prefix_for(usize::MAX / 20));
+    assert_eq!(
+        compressed(&wraps_on_add),
+        Err(ProofError::MalformedCompressed)
+    );
+    let wraps_on_prefix = format!("AB{}YA", prefix_for(usize::MAX / 5));
+    assert_eq!(
+        compressed(&wraps_on_prefix),
+        Err(ProofError::MalformedCompressed)
+    );
+    let largest = format!("AB{}A", prefix_for(usize::MAX / 20));
+    assert_eq!(compressed(&largest), Err(ProofError::BadBackReference));
+}
+
+#[test]
+fn repeated_label_in_the_compressed_label_list_is_rejected() {
+    let tail = "th $p |- ( p -> ( q -> p ) ) $= ( ax-1 ax-1 ) ABC $.";
+    assert_eq!(check(tail, "th"), Err(ProofError::MalformedCompressed));
+}
+
 #[test]
 fn mandatory_hypotheses_follow_database_order() {
     let tail = "
