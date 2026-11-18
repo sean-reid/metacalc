@@ -39,7 +39,8 @@ expect packer "$crate" crates/mcpack/src/library/pack.rs
 expect font "$crate" crates/mcglyph/src/z80.rs
 expect harness "$crate" crates/mcemu/src/lib.rs
 expect crate-manifest "rust emu audit libraries site" crates/mcui/Cargo.toml
-expect new-crate "rust audit" crates/mcsend/src/main.rs
+expect sender "rust audit app" crates/mcsend/src/tifile.rs
+expect new-crate "rust audit" crates/mcnew/src/main.rs
 expect kernel "$z80" kernel/init.inc
 expect reader "$z80" lib/lib.z80
 expect drawing "$z80" ui/blit.inc

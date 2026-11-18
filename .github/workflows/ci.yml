@@ -106,7 +106,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       - uses: ./.github/actions/spasm
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: sh scripts/test-spasm.sh
       - run: make -C app check
       - run: seq 1 9000 | head -c 40000 > "$RUNNER_TEMP/lib.bin" && make -s -C app BUILD="$RUNNER_TEMP/app" LIBRARY="$RUNNER_TEMP/lib.bin" && MCSEND_APP="$RUNNER_TEMP/app/metacalc.8xk" MCSEND_LIBRARY="$RUNNER_TEMP/lib.bin" sh scripts/require-tests.sh 1 cargo test --locked -p mcsend --test tifile -- --ignored
