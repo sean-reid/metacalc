@@ -18,9 +18,11 @@ if [ "$(git -C "$dir" rev-parse -q --verify HEAD 2>/dev/null || true)" != "$rev"
 fi
 got=$(git -C "$dir" rev-parse HEAD)
 [ "$got" = "$rev" ] || { echo "fetch-metamath: got $got, want $rev" >&2; exit 1; }
-if [ ! -x "$dir/metamath" ]; then
+if [ ! -x "$dir/metamath" ] || [ "$(cat "$dir/metamath.rev" 2>/dev/null || true)" != "$rev" ]; then
 	command -v cc >/dev/null 2>&1 || { echo "fetch-metamath: no C compiler" >&2; exit 1; }
+	rm -f "$dir/metamath" "$dir/metamath.rev"
 	cc -O2 -o "$dir/metamath.part" "$dir"/*.c -lm >&2
 	mv "$dir/metamath.part" "$dir/metamath"
+	echo "$rev" >"$dir/metamath.rev"
 fi
 echo "$dir/metamath"
