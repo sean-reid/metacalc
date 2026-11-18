@@ -290,6 +290,32 @@ fn an_unused_dummy_entry_that_names_no_variable_is_read_but_not_exported() {
     }
 }
 
+const SPARE_PAIR: &str = "$c R wff |- $. $v x y z $.
+    vx $f wff x $. vy $f wff y $. vz $f wff z $.
+    ${ $d x y $. ax-d $a |- R x y $. $}
+    ax-n $a |- R $.
+    ${ $d x y $. $d x z $. t2 $p |- R x y $= ( ax-d vz ) ABC $. $}";
+
+#[test]
+fn a_pair_with_a_variable_the_block_has_no_float_for_is_written_and_verifies() {
+    let original = packed(SPARE_PAIR);
+    let refs = record(&original, 2).refs;
+    let entry = 1u16;
+    let bytes = patched(original, |b| {
+        b[refs + 2..][..2].copy_from_slice(&entry.to_le_bytes());
+    });
+    check(&bytes).expect("the kernel accepts a pair with a variable the proof never uses");
+    let library = decode(&bytes).unwrap();
+    assert_eq!(library.assertions[2].extra_disjoint.len(), 1);
+    assert_eq!(library.assertions[2].references.len(), 2);
+    let text = export(&bytes).expect("a $d needs only an active variable");
+    assert!(text.contains("  $d x z $.\n"), "{text}");
+    assert!(!text.contains(" $f wff z $."), "{text}");
+    let db = mm::parse(text.clone().into_bytes()).unwrap_or_else(|e| panic!("{e}\n{text}"));
+    let id = db.find("t2").unwrap();
+    assert_eq!(Verifier::new(&db).verify(id), Ok(()));
+}
+
 const MIXED: &str = "
 $c R wff |- ( ) -> $.
 $v x y z p q $.
