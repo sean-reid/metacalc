@@ -3,7 +3,7 @@ use crate::dv::{DvCond, Violation};
 use crate::error::Error;
 use crate::term::{Mark, MetaId, Peak, Store, TermId};
 use crate::vars::Vars;
-use mcpack::mm::{Database, Grammar, Kind, Proof, ProofError, StmtId, Sym, SyntaxError, Tree};
+use mcpack::mm::{Database, Grammar, Kind, Proof, ProofError, StmtId, Sym, Tree};
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -135,9 +135,6 @@ impl<'a> Session<'a> {
             peak: Sizes::default(),
             auto_nodes: 0,
         };
-        if parsed.hyps.len() != essential_count(db, theorem) {
-            return Err(Error::Syntax(SyntaxError::NoParse));
-        }
         let essentials = stmt
             .frame
             .hyps

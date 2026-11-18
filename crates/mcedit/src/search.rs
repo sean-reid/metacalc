@@ -38,8 +38,10 @@ impl Session<'_> {
     pub fn candidates(&mut self, goal: GoalId, limit: usize) -> Result<Candidates, Error> {
         self.open_goal(goal)?;
         let target = self.goals[goal as usize].term;
-        if matches!(self.store.head(target), Some(Head::Meta(_))) {
-            return Ok(Candidates::Unconstrained);
+        match self.store.head(target) {
+            Some(Head::Meta(_)) => return Ok(Candidates::Unconstrained),
+            Some(_) => {}
+            None => return Err(Error::Corrupt),
         }
         let mut found = Vec::new();
         for assertion in 0..self.theorem {

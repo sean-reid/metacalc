@@ -4,6 +4,9 @@ use crate::session::{Op, Session};
 use mcpack::mm::StmtId;
 use std::rc::Rc;
 
+/// The first byte of a saved session.
+const FORMAT: u8 = 1;
+
 fn put(out: &mut Vec<u8>, mut n: u32) {
     while n >= 0x80 {
         out.push(n as u8 | 0x80);
@@ -29,10 +32,10 @@ fn take(bytes: &mut &[u8]) -> Result<u32, Error> {
 }
 
 impl Session<'_> {
-    /// The theorem, whether new disjoint pairs are allowed and the operations in force, as bytes:
+    /// A format byte, the theorem, whether new disjoint pairs are allowed and the operations in force, as bytes:
     /// one tag and its numbers per operation.
     pub fn save(&self) -> Vec<u8> {
-        let mut out = Vec::new();
+        let mut out = vec![FORMAT];
         put(&mut out, self.theorem);
         out.push(u8::from(self.open_dv));
         for op in &self.ops {
@@ -53,6 +56,11 @@ impl Session<'_> {
 impl<'a> Session<'a> {
     /// Rebuilds a saved session by replaying its operations.
     pub fn restore(catalog: Rc<Catalog<'a>>, mut bytes: &[u8]) -> Result<Self, Error> {
+        let (&format, rest) = bytes.split_first().ok_or(Error::Corrupt)?;
+        bytes = rest;
+        if format != FORMAT {
+            return Err(Error::Corrupt);
+        }
         let theorem: StmtId = take(&mut bytes)?;
         let mut session = Session::start_in(catalog, theorem).map_err(|_| Error::Corrupt)?;
         let (&flag, rest) = bytes.split_first().ok_or(Error::Corrupt)?;
@@ -77,5 +85,34 @@ impl<'a> Session<'a> {
             session.run(op).map_err(|_| Error::Corrupt)?;
         }
         Ok(session)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_fifth_byte_of_a_varint_holds_four_bits() {
+        assert_eq!(take(&mut &[0xff, 0xff, 0xff, 0xff, 0x0f][..]), Ok(u32::MAX));
+        assert_eq!(take(&mut &[0x80, 0x80, 0x80, 0x80, 0x01][..]), Ok(1 << 28));
+        assert_eq!(
+            take(&mut &[0x80, 0x80, 0x80, 0x80, 0x10][..]),
+            Err(Error::Corrupt)
+        );
+        assert_eq!(
+            take(&mut &[0x80, 0x80, 0x80, 0x80, 0x80][..]),
+            Err(Error::Corrupt)
+        );
+        assert_eq!(take(&mut &[0x80][..]), Err(Error::Corrupt));
+    }
+
+    #[test]
+    fn numbers_survive_put_and_take() {
+        for n in [0, 1, 127, 128, 300, 1 << 21, u32::MAX] {
+            let mut out = Vec::new();
+            put(&mut out, n);
+            assert_eq!(take(&mut &out[..]), Ok(n));
+        }
     }
 }

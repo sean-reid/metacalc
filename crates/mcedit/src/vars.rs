@@ -1,6 +1,6 @@
 use mcpack::mm::{Database, Kind, StmtId, Sym};
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 
 /// The variables a proof of one theorem can use and the typecode of each.
 pub struct Vars {
@@ -30,7 +30,13 @@ impl Vars {
                 active.push((var, typecode));
             }
         }
-        declared.retain(|&v| db.var_active(v, theorem));
+        let in_force: HashSet<Sym> = db
+            .var_scopes
+            .iter()
+            .filter(|&&(_, from, to)| from <= theorem && theorem < to)
+            .map(|e| e.0)
+            .collect();
+        declared.retain(|v| in_force.contains(v));
         for (var, typecode) in active {
             types.insert(var, typecode);
         }

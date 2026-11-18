@@ -40,6 +40,7 @@ pub struct Finished {
 impl Session<'_> {
     /// The proof as an uncompressed label sequence, when nothing is open, unresolved or violated.
     pub fn export(&self) -> Result<Finished, Error> {
+        self.check_terms()?;
         let status = self.status();
         if !(status.open.is_empty() && status.metas.is_empty() && status.violations.is_empty()) {
             return Err(Error::Unfinished {
@@ -51,7 +52,7 @@ impl Session<'_> {
         let db = self.db();
         let mut proof = Vec::new();
         let mut dummies: Vec<Dummy> = Vec::new();
-        self.emit_goal(0, &mut proof, &mut dummies);
+        self.emit_goal(0, &mut proof, &mut dummies)?;
         let mut taken: Vec<String> = Vec::new();
         for dummy in &mut dummies {
             match active_float(db, dummy.var, self.theorem) {
@@ -86,9 +87,25 @@ impl Session<'_> {
         })
     }
 
-    fn emit_goal(&self, goal: GoalId, proof: &mut Vec<Label>, dummies: &mut Vec<Dummy>) {
+    /// Every term the session holds must be one the store knows.
+    fn check_terms(&self) -> Result<(), Error> {
+        let known = |t| self.store.head(t).is_some();
+        let goals = self.goals.iter().map(|g| g.term);
+        let conditions = self.dvs.iter().flat_map(|c| [c.a, c.b]);
+        match goals.chain(conditions).all(known) {
+            true => Ok(()),
+            false => Err(Error::Corrupt),
+        }
+    }
+
+    fn emit_goal(
+        &self,
+        goal: GoalId,
+        proof: &mut Vec<Label>,
+        dummies: &mut Vec<Dummy>,
+    ) -> Result<(), Error> {
         let db = self.db();
-        match self.goals[goal as usize].state {
+        match self.goals.get(goal as usize).ok_or(Error::Corrupt)?.state {
             GoalState::Closed { hyp } => proof.push(Label::Stmt(hyp)),
             GoalState::Applied {
                 assertion,
@@ -98,22 +115,27 @@ impl Session<'_> {
                 let (mut float, mut essential) = (0, 0);
                 for &h in &db.stmt(assertion).frame.hyps {
                     if db.stmt(h).kind == Kind::Float {
-                        if let Some(term) = self.store.meta_term(metas + float) {
-                            self.emit_term(term, proof, dummies);
-                        }
+                        let term = self.store.meta_term(metas + float).ok_or(Error::Corrupt)?;
+                        self.emit_term(term, proof, dummies)?;
                         float += 1;
                     } else {
-                        self.emit_goal(first + essential, proof, dummies);
+                        self.emit_goal(first + essential, proof, dummies)?;
                         essential += 1;
                     }
                 }
                 proof.push(Label::Stmt(assertion));
             }
-            GoalState::Open => unreachable!("export checked that no goal is open"),
+            GoalState::Open => return Err(Error::Corrupt),
         }
+        Ok(())
     }
 
-    fn emit_term(&self, term: TermId, proof: &mut Vec<Label>, dummies: &mut Vec<Dummy>) {
+    fn emit_term(
+        &self,
+        term: TermId,
+        proof: &mut Vec<Label>,
+        dummies: &mut Vec<Dummy>,
+    ) -> Result<(), Error> {
         match self.store.head(term) {
             Some(Head::Var(var)) => match self.vars.mandatory_float(var) {
                 Some(float) => proof.push(Label::Stmt(float)),
@@ -135,12 +157,13 @@ impl Session<'_> {
             },
             Some(Head::App(syntax)) => {
                 for &kid in self.store.children(term) {
-                    self.emit_term(kid, proof, dummies);
+                    self.emit_term(kid, proof, dummies)?;
                 }
                 proof.push(Label::Stmt(syntax));
             }
-            _ => unreachable!("export checked that every term is complete"),
+            _ => return Err(Error::Corrupt),
         }
+        Ok(())
     }
 }
 

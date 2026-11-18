@@ -16,7 +16,7 @@ type Ops = Vec<(u8, u32, u32)>;
 
 /// A saved session written by hand: the theorem, the flag and operations as (tag, a, b).
 fn bytes(theorem: u32, flag: u8, ops: &[(u8, u32, u32)]) -> Vec<u8> {
-    let mut out = Vec::new();
+    let mut out = vec![1];
     put(&mut out, theorem);
     out.push(flag);
     for &(tag, a, b) in ops {
@@ -75,13 +75,14 @@ fn stale_and_out_of_range_ids_are_answered_not_panicked_on() {
     s.apply(0, id(&db, "ax-mp")).unwrap();
     s.refine(0, id(&db, "wn")).unwrap();
     let stale_term = s.goal(1).unwrap().term;
+    assert_eq!(s.children(0), 1..3);
     assert!(s.show_goal(2).is_some());
     s.undo().unwrap();
     s.undo().unwrap();
+    assert_eq!(s.children(0), 0..0);
     assert_eq!(s.goal(1).map(|g| g.term), None);
     assert_eq!(s.show_goal(1), None);
     assert_eq!(s.children(1), 0..0);
-    assert_eq!(s.children(0), 0..0);
     assert_eq!(s.show(stale_term), None);
     for goal in [99, u32::MAX] {
         assert_eq!(s.show_goal(goal), None);
@@ -133,7 +134,7 @@ fn permission_to_add_pairs_survives_a_save() {
     let meta = s.status().metas[0];
     assert_eq!(s.assign(meta, sym(&db, "z")).unwrap().violations, []);
     let saved = s.save();
-    assert_eq!(saved[1], 1);
+    assert_eq!(saved[..3], [1, id(&db, "tdum") as u8, 1]);
     let back = Session::restore(catalog(&db, &g), &saved).unwrap();
     assert_eq!(back.status(), s.status());
     assert_eq!(back.status().violations, []);
@@ -141,9 +142,9 @@ fn permission_to_add_pairs_survives_a_save() {
     assert_eq!(back.save(), saved);
 
     let strict = session(&cat, "tdum");
-    assert_eq!(strict.save()[1], 0);
+    assert_eq!(strict.save()[2], 0);
     let mut flag = saved.clone();
-    flag[1] = 2;
+    flag[2] = 2;
     assert_eq!(
         Session::restore(catalog(&db, &g), &flag).err(),
         Some(Error::Corrupt)
@@ -284,7 +285,7 @@ fn a_session_starts_with_one_hypothesis_per_essential_hypothesis() {
     let g = grammar(&db);
     let cat: std::rc::Rc<Catalog> = catalog(&db, &g);
     let mut checked = 0;
-    for theorem in db.theorems() {
+    for theorem in db.theorems().filter(|&t| db.stmt(t).label != "tbad") {
         let s = Session::start_in(cat.clone(), theorem).unwrap();
         let frame = &db.stmt(theorem).frame.hyps;
         let essential: Vec<_> = frame
@@ -311,4 +312,71 @@ fn a_pair_waits_through_a_refine_for_the_assign_that_completes_it() {
     assert_eq!(s.status().violations, []);
     let out = s.assign(out.metas.start, sym(&db, "th")).unwrap();
     assert_eq!(out.violations.len(), 1);
+}
+
+#[test]
+fn a_theorem_whose_hypothesis_the_grammar_cannot_read_does_not_start() {
+    let db = db();
+    let g = grammar(&db);
+    assert_eq!(
+        Session::start(&db, &g, id(&db, "tbad")).err(),
+        Some(Error::Syntax(mcpack::mm::SyntaxError::NoParse))
+    );
+}
+
+#[test]
+fn a_variable_in_force_whose_only_float_comes_later_is_refused() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let q = sym(&db, "q");
+    let theorem = id(&db, "tnew");
+    assert!(db.var_active(q, theorem));
+    assert!(db.stmt(id(&db, "vq")).expr[1] == q && id(&db, "vq") > theorem);
+    let mut s = session(&cat, "tnew");
+    s.apply(0, id(&db, "axfree")).unwrap();
+    assert_eq!(s.store().meta_typecode(1), Some(sym(&db, "setvar")));
+    assert_eq!(s.assign(1, q), Err(Error::NotAVariable));
+    assert!(s.vars().of_typecode(sym(&db, "setvar")).all(|v| v != q));
+    assert!(s.assign(1, sym(&db, "y")).is_ok());
+}
+
+#[test]
+fn a_saved_session_starts_with_its_format_byte() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let s = session(&cat, "t1");
+    let saved = s.save();
+    assert_eq!(saved[0], 1);
+    assert!(Session::restore(cat.clone(), &saved).is_ok());
+    for version in [0, 2, 255] {
+        let mut other = saved.clone();
+        other[0] = version;
+        assert_eq!(
+            Session::restore(cat.clone(), &other).err(),
+            Some(Error::Corrupt)
+        );
+    }
+    assert_eq!(Session::restore(cat, &[]).err(), Some(Error::Corrupt));
+}
+
+#[test]
+fn stale_goal_ids_after_an_undo_are_refused_everywhere() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "t1");
+    s.apply(0, id(&db, "ax-mp")).unwrap();
+    s.undo().unwrap();
+    let (sizes, saved) = (s.sizes(), s.save());
+    for stale in [1, 2] {
+        assert_eq!(s.apply(stale, id(&db, "ax-mp")), Err(Error::NoSuchGoal));
+        assert_eq!(s.close(stale, id(&db, "t1.1")), Err(Error::NoSuchGoal));
+        assert_eq!(s.candidates(stale, 9), Err(Error::NoSuchGoal));
+        assert_eq!(s.auto(stale, 2, 50), None);
+        assert_eq!(s.children(stale), 0..0);
+        assert_eq!(s.show_goal(stale), None);
+    }
+    assert_eq!((s.sizes(), s.save()), (sizes, saved));
 }

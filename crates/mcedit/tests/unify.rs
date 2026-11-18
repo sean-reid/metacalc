@@ -114,6 +114,7 @@ fn unknown_ids_are_no_term_rather_than_a_panic() {
     assert!(!s.is_ground(99));
     assert_eq!(s.walk(99), 99);
     assert_eq!(s.unify(ph, 99), Err(Clash::Unknown));
+    assert_eq!(s.unify(99, 99), Err(Clash::Unknown));
     assert_eq!(s.bind(5, ph), Err(Clash::Unknown));
     let stale = s.var(sym(&db, "ps"));
     let mark = s.mark();

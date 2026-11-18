@@ -237,13 +237,13 @@ impl<'a> Store<'a> {
     /// First-order unification. On failure the bindings made so far stay; roll back to a mark.
     pub fn unify(&mut self, a: TermId, b: TermId) -> Result<(), Clash> {
         let (a, b) = (self.walk(a), self.walk(b));
-        if a == b {
-            return Ok(());
-        }
         let (Some(&na), Some(&nb)) = (self.nodes.get(a as usize), self.nodes.get(b as usize))
         else {
             return Err(Clash::Unknown);
         };
+        if a == b {
+            return Ok(());
+        }
         match (na.head, nb.head) {
             (Head::Meta(m), _) => self.bind(m, b),
             (_, Head::Meta(m)) => self.bind(m, a),

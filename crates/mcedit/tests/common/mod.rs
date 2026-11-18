@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 pub const SRC: &str = "
 $c ( ) -> -. wff |- A. setvar ~ $.
-$v ph ps ch th x y z w $.
+$v ph ps ch th x y z w q $.
 wph $f wff ph $.
 wps $f wff ps $.
 wch $f wff ch $.
@@ -117,6 +117,11 @@ ${
   tocc.1 $e |- ps $.
   tocc $p |- ps $= tocc.1 $.
 $}
+${
+  tbad.1 $e |- ( ph ) $.
+  tbad $p |- ps $= tbad.1 $.
+$}
+vq $f setvar q $.
 ";
 
 pub fn db() -> Database {

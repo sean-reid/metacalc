@@ -28,7 +28,7 @@ pub enum Error {
         metas: usize,
         violations: usize,
     },
-    /// The saved bytes are not a session of this theorem.
+    /// Saved bytes that are not a session of this version, or session state that breaks an invariant.
     Corrupt,
 }
 
