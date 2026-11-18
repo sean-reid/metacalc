@@ -88,8 +88,7 @@ jobs:
           path=$(sh scripts/fetch-setmm.sh)
           echo "path=$path" >> "$GITHUB_OUTPUT"
       - run: sh scripts/build-libraries.sh "${{ steps.setmm.outputs.path }}" "$RUNNER_TEMP/libraries" "$RUNNER_TEMP/pages"
-      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" cargo test --locked --release -p mcpack --test sections -- --ignored
-      - run: SET_MM="${{ steps.setmm.outputs.path }}" cargo test --locked --release -p mcui --test ring -- --ignored every_shipped
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked --release -p mcpack --test sections -- --ignored
       - uses: ./.github/actions/spasm
       - run: |
           for lib in "$RUNNER_TEMP"/libraries/*.mclib; do
@@ -118,7 +117,7 @@ jobs:
       - run: SETMM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test unicode_pin -- --ignored --exact the_spellings_match_the_althtmldef_entries_of_the_pinned_set_mm
       - run: SETMM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test notation_meanings -- --ignored --exact every_symbol_in_a_shipped_notation_table_has_a_meaning
       - run: MCUI_LIBS="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --release --locked -p mcui --test checking -- --ignored --exact stepping_through_a_real_library_is_quick --nocapture
-      - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 2 cargo test --release --locked -p mcui --test ring -- --ignored --nocapture
+      - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 3 cargo test --release --locked -p mcui --test ring -- --ignored --nocapture
       - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcglyph --test font -- --ignored --exact fixture_matches_the_ring_closure_of_set_mm
       - run: sh scripts/test-build-site.sh
       - run: sh scripts/test-require-tests.sh
