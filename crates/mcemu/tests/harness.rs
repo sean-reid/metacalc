@@ -108,16 +108,18 @@ fn run_app_with_a_limit_of_zero_returns_at_once() {
 }
 
 #[test]
-fn after_a_fault_the_core_has_reset_and_loaded_memory_is_gone() {
-    let marker = [0xA5, 0x5A, 0xA5, 0x5A];
+fn after_a_fault_the_core_has_reset_and_reads_flash_where_ram_was() {
+    let ram = [0xA5, 0x5A, 0xA5, 0x5A];
+    let flash = [0x11, 0x22, 0x33, 0x44];
     let mut m = boot();
     m.launch(0x30).expect("the launch setup runs");
-    m.load_ram(CODE, &marker);
-    assert_eq!(m.read_ram(CODE, 4), marker);
+    m.load_ram(CODE, &ram);
+    assert_eq!(m.read_ram(CODE, 4), ram);
+    m.load_flash(0x7F, usize::from(CODE - 0x8000), &flash);
     m.load_flash(0x20, 0, &[0x00, 0x76]);
     m.out_port(0x06, 0x20);
     assert_eq!(m.run(0x4000, 1000).stop, Stop::Fault);
-    assert_ne!(m.read_ram(CODE, 4), marker);
+    assert_eq!(m.read_ram(CODE, 4), flash);
 }
 
 const SUM_RAM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/sum_ram.bin"));
@@ -148,4 +150,67 @@ fn lcd_ram_shows_the_drawing_whatever_port_3_says() {
     }
     let mut fresh = boot();
     assert_eq!(fresh.lcd_ram().lit(), 0);
+}
+
+#[test]
+fn lcd_ram_applies_the_row_shift() {
+    let mut m = drawn_with_port_3(0x0B);
+    let mut wait = vec![0x00; 200];
+    wait.push(0x76);
+    m.load_ram(CODE, &wait);
+    assert_eq!(m.run(CODE, LIMIT).stop, Stop::Halted);
+    m.out_port(0x10, 0x40 + 3);
+    for (name, lcd) in [("lcd", m.lcd()), ("lcd_ram", m.lcd_ram())] {
+        assert_eq!(lcd.lit(), 8, "{name}");
+        assert!((0..8).all(|x| lcd.pixel(x, 61)), "{name}");
+    }
+}
+
+#[test]
+fn a_run_that_ends_at_its_limit_is_not_halted_so_port_3_does_not_blank_the_frame() {
+    let mut full = drawn_with_port_3(0x00);
+    assert_eq!(full.lcd().lit(), 0);
+    let total = {
+        let mut m = boot();
+        m.load_ram(CODE, SUM_RAM);
+        m.run(CODE, LIMIT).tstates
+    };
+    let mut m = boot();
+    m.out_port(0x03, 0x00);
+    m.load_ram(CODE, SUM_RAM);
+    let run = m.run(CODE, total - HALT);
+    assert_eq!(run.stop, Stop::Limit);
+    assert_eq!(m.lcd().lit(), 8);
+    assert_eq!(m.run(m.pc(), LIMIT).stop, Stop::Halted);
+    assert_eq!(m.lcd().lit(), 0);
+    assert_eq!(m.lcd_ram().lit(), 8);
+}
+
+#[test]
+fn an_indexed_bit_6_with_a_displacement_does_not_stop_the_run() {
+    for (prefix, disp, base) in [
+        (0xDD, 0x05, 0xA000u16),
+        (0xFD, 0xFE, 0xA010),
+        (0xDD, 0x80, 0xA080),
+    ] {
+        let [lo, hi] = base.to_le_bytes();
+        let middle = [prefix, 0x21, lo, hi, prefix, 0xCB, disp, 0x76];
+        let (stop, tstates, out) = run(&program(&middle, &[0x76]));
+        let want = DI + LD_IR_NN + BIT_IND + WRITE + HALT;
+        assert_eq!(
+            (stop, tstates, out),
+            (Stop::Halted, want, 0x55),
+            "{prefix:02X} {disp:02X}"
+        );
+    }
+}
+
+#[test]
+fn ed_76_is_im_1_and_does_not_stop_the_run() {
+    const ED_76: u32 = 8;
+    let (stop, tstates, out) = run(&program(&[0xED, 0x76], &[0x76]));
+    assert_eq!(
+        (stop, tstates, out),
+        (Stop::Halted, DI + ED_76 + WRITE + HALT, 0x55)
+    );
 }

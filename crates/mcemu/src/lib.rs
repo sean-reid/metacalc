@@ -223,9 +223,11 @@ impl Machine {
 
     /// The screen as the core renders it: all pixels off while the controller is off (its
     /// reset state, until the program sends the on command), and also while the CPU is
-    /// halted with bit 3 of port 3 clear. A run that ends at a HALT leaves the CPU halted, so
-    /// a program that masks port 3 reads blank here although it drew; `lcd_ram` does not
-    /// depend on either.
+    /// halted with bit 3 of port 3 clear. The CPU is halted from a HALT that executes until
+    /// an interrupt is taken or the next `run`, so a run that ends at a HALT leaves it halted
+    /// and a run that ends at its limit does not, unless the limit hit while the code waited
+    /// in a HALT with interrupts on. A program that masks port 3 and ends at a HALT reads
+    /// blank here although it drew; `lcd_ram` does not depend on either condition.
     pub fn lcd(&mut self) -> Lcd {
         let mut raw = vec![0u8; LCD_WIDTH * LCD_HEIGHT];
         assert!(

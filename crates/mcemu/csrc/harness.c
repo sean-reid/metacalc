@@ -180,17 +180,28 @@ int mcemu_lcd(TilemCalc *calc, uint8_t *out, int width, int height)
 	return bad;
 }
 
-/* The controller's memory as bits, 12 bytes a row, whatever the LCD-on flag and the halt state say; the row shift applies. */
-void mcemu_lcd_ram(TilemCalc *calc, uint8_t *out, int width, int height)
+/* The controller's memory as one byte per pixel, whatever the LCD-on flag and the halt state say; the row shift applies.
+   get_lcd writes lcdwidth/8 bytes for each of lcdheight rows; a canary after them catches an overrun.
+   Returns 0 on success, 1 when the size is not the core's, 2 when the core wrote past its rows. */
+int mcemu_lcd_ram(TilemCalc *calc, uint8_t *out, int width, int height)
 {
-	int x, y;
-	uint8_t *bits = calloc((size_t)(width / 8) * height, 1);
+	int stride = calc->hw.lcdwidth / 8;
+	size_t rows = (size_t)stride * calc->hw.lcdheight;
+	uint8_t *bits;
+	int x, y, i, overrun = 0;
 
+	if (width != calc->hw.lcdwidth || height != calc->hw.lcdheight)
+		return 1;
+	bits = malloc(rows + SLACK);
 	if (!bits)
 		abort();
+	memset(bits + rows, 0xA5, SLACK);
 	calc->hw.get_lcd(calc, bits);
-	for (y = 0; y < height; y++)
+	for (i = 0; i < SLACK; i++)
+		overrun |= bits[rows + i] != 0xA5;
+	for (y = 0; !overrun && y < height; y++)
 		for (x = 0; x < width; x++)
-			out[y * width + x] = bits[y * (width / 8) + x / 8] >> (7 - x % 8) & 1;
+			out[y * width + x] = bits[y * stride + x / 8] >> (7 - x % 8) & 1;
 	free(bits);
+	return overrun ? 2 : 0;
 }
