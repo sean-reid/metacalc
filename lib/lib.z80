@@ -30,20 +30,26 @@
 ; on the caller's stack, at most 16 bytes below the return address.
 ;
 ; Calling. Every routine returns its status in A, 0 meaning ok, and destroys all registers but
-; IX and IY, the shadow registers included. A call with interrupts on turns them off for the
-; two hops of a read, and on again before it returns; ports 5 and 7 and the interrupt state
-; are the caller's again on every exit, whatever the status. A read that is refused maps nothing.
+; IX and IY. lib_read puts values in the shadow registers only after it has turned interrupts
+; off, since an interrupt handler uses them, and leaves them destroyed. A call with interrupts on
+; turns them off for the two hops of a read, and on again before it returns; ports 5 and 7 and
+; the interrupt state are the caller's again on every exit, whatever the status. A read that is
+; refused maps nothing. The state, the saved ports and the interrupt flag are read back before
+; the last copy, so a destination can never change them, and the public reads refuse any
+; destination that touches the state block.
 ;
 ;   lib_read          in:  BC = byte count, 1 to 256; DE = destination, entirely in bank B
-;                          ($8000 to $BFFF); A:HL = 24-bit library offset, A the high byte
-;                     out: A = status. The bytes are in the destination only when it is 0.
+;                          ($8000 to $BFFF) and clear of the state block; A:HL = 24-bit library
+;                          offset, A the high byte
+;                     out: A = status, 4 until lib_open has returned 0. The bytes are in the
+;                          destination only when it is 0.
 ;                          The library may end in any chunk: a read that crosses into the next
 ;                          16 KB chunk continues on the next lower flash page. The library is
 ;                          read through its length field, so the bytes of any later section
 ;                          are readable too.
 ;   lib_open          in:  A = flash page of chunk 0; DE = scratch of 256 bytes in bank B, used
-;                          until the call returns
-;                     out: A = status. Checks the magic, the length against the pages there
+;                          until the call returns, clear of the state block
+;                     out: A = status, 2 for a scratch that is not allowed. Checks the magic, the length against the pages there
 ;                          are, the counts, the directory's place and alignment, and every
 ;                          symbol's typecode, and builds the symbol index. It does not check the
 ;                          CRC-32. A symbol name of 255 bytes is refused. The reader is closed
@@ -77,8 +83,11 @@
 ;                          with B = 0. Consecutive numbers of one assertion cost one step each.
 ; Statuses (LIB_ERR_*): 1 offset or length past the library, 2 a count or destination that is
 ; not allowed, 3 bytes the format forbids, 4 lib_open has not succeeded, 5 an assertion,
-; hypothesis or symbol number out of range. A lib_record that returns 3 leaves the descriptor
-; describing no assertion. Strings are at most 255 symbols by the format.
+; hypothesis or symbol number out of range. An accessor checks, in this order, that the reader is
+; open (4), that its buffer is 255 bytes in bank B clear of the state block (2, whatever the
+; string's length), and its numbers (5). A lib_record that fails for any reason leaves lr_dn at
+; FFFFh, describing no assertion, and so does lib_open. Strings are at most 255 symbols by the
+; format.
 
 #ifndef LIB_EMBEDDED
 .org $4000

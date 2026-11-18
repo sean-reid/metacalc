@@ -10,15 +10,19 @@ lib_open:
 	ld (lr_page),a
 	ld hl,0
 	ld (lr_open),hl
+	ld bc,256
+	call lr_chkbuf
+	ret nz
+	ld a,(lr_page)
 	cp $80
 	jp nc,lo_bad
-	ld hl,$FFFF
+	ld hl,20
 	ld (lr_length),hl
-	ld a,$FF
+	xor a
 	ld (lr_length+2),a
+	ld de,(lr_scratch)
 	ld bc,20
 	ld hl,0
-	xor a
 	call lr_rd
 	ret nz
 
@@ -43,9 +47,9 @@ lo_magic_loop:
 	ld a,(hl)
 	or a
 	jp nz,lo_bad
-	ld (lr_length),de
+	ld (lr_tr),de
 	ld a,c
-	ld (lr_length+2),a
+	ld (lr_tr+2),a
 	inc hl
 	ld a,(hl)
 	ld (lr_consts),a
@@ -77,8 +81,8 @@ lo_magic_loop:
 	ld a,(lr_dir)
 	and 3
 	jp nz,lo_bad
-	ld hl,(lr_length)
-	ld a,(lr_length+2)
+	ld hl,(lr_tr)
+	ld a,(lr_tr+2)
 	ld de,lo_hdr_len
 	call lr_cmp24
 	jp c,lo_bad
@@ -98,7 +102,7 @@ lo_magic_loop:
 	ld (lr_hdr),a
 	ld hl,(lr_hdr)
 	ld a,(lr_hdr+2)
-	ld de,lr_length
+	ld de,lr_tr
 	call lr_cmp24
 	jp c,lo_bad
 	ld hl,(lr_count)
@@ -114,11 +118,15 @@ lo_magic_loop:
 	adc a,c
 	ld (lr_hdr),hl
 	ld (lr_hdr+2),a
-	ld hl,(lr_length)
-	ld a,(lr_length+2)
+	ld hl,(lr_tr)
+	ld a,(lr_tr+2)
 	ld de,lr_hdr
 	call lr_cmp24
 	jp c,lo_bad
+	ld hl,(lr_tr)
+	ld (lr_length),hl
+	ld a,(lr_tr+2)
+	ld (lr_length+2),a
 
 	ld hl,0
 	ld (lr_sr),hl

@@ -6,8 +6,27 @@ lr_bad_arg:
 lr_bad_range:
 	ld a,LIB_ERR_RANGE
 	ret
+lr_not_open:
+	ld a,LIB_ERR_CLOSED
+	ret
 
+; The public entry: the reader is open and the destination stays clear of the state block.
 lib_read:
+	ld (lr_off),hl
+	ld (lr_off+2),a
+	ld a,(lr_open)
+	cp OPEN_MAGIC & $FF
+	jr nz,lr_not_open
+	ld a,(lr_open+1)
+	cp OPEN_MAGIC >> 8
+	jr nz,lr_not_open
+	call lr_overlap
+	ret nz
+	ld hl,(lr_off)
+	ld a,(lr_off+2)
+
+; The private entry, for reads into the state block and for the callers that checked their buffers.
+lr_read:
 	ld (lr_dest),de
 	ld (lr_off),hl
 	ld (lr_off+2),a
@@ -36,6 +55,8 @@ lib_read:
 	sbc a,(hl)
 	jr nc,lr_bad_range
 
+; From here to the DI nothing touches the shadow registers: an interrupt handler may use them.
+lr_checked:
 	ld hl,(lr_off)
 	ld a,h
 	rlca
@@ -78,14 +99,6 @@ lr_cross:
 	sub l
 	inc a
 	ld (lr_n2),a
-	exx
-	ld c,a
-	ld b,0
-	ld hl,(lr_n1)
-	ld de,LIB_BOUNCE
-	add hl,de
-	ex de,hl
-	exx
 	ld bc,(lr_n1)
 	ld hl,(lr_src)
 	ld de,LIB_BOUNCE
@@ -108,6 +121,18 @@ lr_enter:
 	ex af,af'
 	in a,(5)
 	ld (lr_old5),a
+	ld a,(lr_n2)
+	or a
+	jr z,lr_spare
+	exx
+	ld c,a
+	ld b,0
+	ld hl,(lr_n1)
+	ld de,LIB_BOUNCE
+	add hl,de
+	ex de,hl
+	exx
+lr_spare:
 	ld a,LIB_SPARE_PAGE
 lr_window:
 	out (5),a
@@ -129,22 +154,68 @@ lr_hop2:
 	ld c,l
 	ex af,af'
 	out (7),a
+	ld a,(lr_iff)
+	or a
+	ld a,(lr_old5)
 	ld de,(lr_dest)
 	ld hl,LIB_BOUNCE
 	ldir
-	ld a,(lr_old5)
 lr_window_end:
 	out (5),a
-	ld a,(lr_iff)
-	or a
 	ld a,LIB_OK
 	ret z
 	ei
 	ret
 
-; in: as lib_read. out: Z and A = LIB_OK, or NZ and A = LIB_ERR_BAD for any refusal. Destroys all but IX, IY.
+; in: DE = start, BC = length. out: Z, or NZ and A = LIB_ERR_ARG when [DE, DE + BC) touches the
+; state block. Destroys HL.
+lr_overlap:
+	ld hl,LIB_STATE+LIB_STATE_SIZE
+	or a
+	sbc hl,de
+	jr z,lro_clear
+	jr c,lro_clear
+	ld h,d
+	ld l,e
+	add hl,bc
+	jr c,lro_touch
+	push de
+	ld de,LIB_STATE
+	or a
+	sbc hl,de
+	pop de
+	jr z,lro_clear
+	jr c,lro_clear
+lro_touch:
+	ld a,LIB_ERR_ARG
+	or a
+	ret
+lro_clear:
+	xor a
+	ret
+
+; in: DE = start, BC = length, 1 to 256. out: Z, or NZ and A = LIB_ERR_ARG when the buffer is not
+; wholly in bank B or touches the state block. Destroys HL.
+lr_chkbuf:
+	ld a,d
+	cp $80
+	jr c,lro_touch
+	ld h,d
+	ld l,e
+	add hl,bc
+	jr c,lro_touch
+	ld a,h
+	cp $C0
+	jr c,lr_overlap
+	jr nz,lro_touch
+	ld a,l
+	or a
+	jr nz,lro_touch
+	jr lr_overlap
+
+; in: as lr_read. out: Z and A = LIB_OK, or NZ and A = LIB_ERR_BAD for any refusal. Destroys all but IX, IY.
 lr_rd:
-	call lib_read
+	call lr_read
 	or a
 	ret z
 	ld a,LIB_ERR_BAD

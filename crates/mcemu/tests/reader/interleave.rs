@@ -146,3 +146,46 @@ fn a_kernel_init_after_a_read_works_and_a_read_after_a_kernel_init_works() {
         assert_eq!(rig.read(id as u32, 1).0, ST_OK);
     }
 }
+
+fn padded(small: &[u8], length: usize) -> Vec<u8> {
+    let mut bytes = small.to_vec();
+    bytes.resize(length, 0);
+    bytes[8..12].copy_from_slice(&(length as u32).to_le_bytes());
+    let crc = mcpack::library::crc32(&bytes[8..]);
+    bytes[4..8].copy_from_slice(&crc.to_le_bytes());
+    bytes
+}
+
+#[test]
+fn a_read_between_the_calls_of_a_checksum_run_leaves_its_result_alone() {
+    let bytes = padded(&pack_all(&corpus("demo0.mm")), 3 * CHUNK + 100);
+    let want = mcpack::library::crc32(&bytes[8..]);
+    let chunks = bytes.len().div_ceil(CHUNK);
+    let more = constant_of(WITH_KERNEL.labels, "ST_CRC_MORE") as u8;
+    for with_reads in [false, true] {
+        let mut rig = Rig::with_image(WITH_KERNEL);
+        rig.load(&bytes);
+        assert_eq!(kernel_init(&mut rig), 0);
+        rig.open_ok();
+        assert_eq!(rig.call("KERNEL_CRC_BEGIN", Regs::default()).status(), 0);
+        let mut statuses = Vec::new();
+        let mut last = Out::default();
+        while statuses.len() < chunks + 2 {
+            if with_reads {
+                assert_eq!(rig.read(CHUNK as u32 - 3, 16).0, ST_OK);
+                assert_eq!(rig.label_of(0).0, ST_OK);
+                assert_eq!(rig.conclusion(0).0, ST_OK);
+            }
+            last = rig.call("KERNEL_CRC_CHUNK", Regs::default());
+            statuses.push(last.status());
+            if last.status() != more {
+                break;
+            }
+        }
+        let mut expected = vec![more; chunks - 1];
+        expected.push(0);
+        assert_eq!(statuses, expected, "reads between calls: {with_reads}");
+        let crc = u32::from(last.de) << 16 | u32::from(last.hl);
+        assert_eq!(crc, want, "reads between calls: {with_reads}");
+    }
+}

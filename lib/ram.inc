@@ -16,6 +16,19 @@ LIB_SPARE_PAGE      .equ 3
 #if LIB_BOUNCE + $100 > $10000
  .error "LIB_BOUNCE must leave 256 bytes below $10000"
 #endif
+#ifndef LIB_BOUNCE_ANYWHERE
+#if LIB_BOUNCE < $C500
+ .error "LIB_BOUNCE must lie inside the kernel regions, $C500 to $D6FF or $DF00 to $FEFF"
+#endif
+#if LIB_BOUNCE + $100 > $FF00
+ .error "LIB_BOUNCE must lie inside the kernel regions, $C500 to $D6FF or $DF00 to $FEFF"
+#endif
+#if LIB_BOUNCE + $100 > $D700
+#if LIB_BOUNCE < $DF00
+ .error "LIB_BOUNCE must lie inside the kernel regions, $C500 to $D6FF or $DF00 to $FEFF"
+#endif
+#endif
+#endif
 #if LIB_STATE < $8000
  .error "LIB_STATE must be in bank B"
 #endif
@@ -79,6 +92,7 @@ LIB_WINDOW          .equ 32
 lr_dcbase           .equ LIB_STATE+$80
 lr_q                .equ LIB_STATE+$82
 lr_dc               .equ LIB_STATE+$84
+lr_cn               .equ LIB_STATE+$A4
 
 LIB_OK              .equ 0
 LIB_ERR_RANGE       .equ 1

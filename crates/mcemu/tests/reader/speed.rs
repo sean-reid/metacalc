@@ -102,17 +102,17 @@ fn measure() -> Times {
 /// Ceilings in T-states, about 10 percent above what each takes. The count does not depend on the
 /// clock, since the wait-state ports are the same at both speeds.
 const CEILINGS: Times = Times {
-    open: 14_300,
-    label: 6_950,
-    five: 22_400,
-    record: 15_800,
-    conclusion: 14_850,
-    cold: 30_500,
-    typical_cold: 17_100,
-    constant: 1_870,
-    variable: 2_950,
-    read1: 990,
-    read256: 14_500,
+    open: 14_650,
+    label: 7_300,
+    five: 23_950,
+    record: 16_000,
+    conclusion: 15_350,
+    cold: 31_000,
+    typical_cold: 17_700,
+    constant: 2_110,
+    variable: 3_230,
+    read1: 1_270,
+    read256: 14_750,
 };
 
 #[test]

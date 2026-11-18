@@ -147,6 +147,42 @@ impl Rig {
 
     /// Runs the routine `target` once with `regs` and returns what it left behind.
     pub fn call(&mut self, target: &str, regs: Regs) -> Out {
+        self.prepare(target, regs);
+        let run = self.m.run(self.label("CALL_ENTRY"), RUN_LIMIT);
+        assert_eq!(run.stop, Stop::Halted, "{target} did not halt");
+        self.outcome(run.tstates)
+    }
+
+    /// Like `call`, with the ON key pressed after `after` T-states, so that an interrupt arrives
+    /// in the middle of the routine if interrupts are on there. Returns the outcome and how many
+    /// interrupts the handler took.
+    pub fn call_interrupted(&mut self, target: &str, regs: Regs, after: u32) -> (Out, u8) {
+        self.prepare(target, regs);
+        self.poke(self.label("TEST_MASK"), &[1]);
+        self.poke(self.label("IRQ_COUNT"), &[0]);
+        let mut run = self.m.run(self.label("CALL_ENTRY"), after);
+        if run.stop == Stop::Limit {
+            self.m.press_key(Machine::KEY_ON);
+            run = self.m.run_app(RUN_LIMIT);
+            self.m.release_key(Machine::KEY_ON);
+        }
+        assert_eq!(run.stop, Stop::Halted, "{target} did not halt");
+        let taken = self.peek(self.label("IRQ_COUNT"), 1)[0];
+        self.poke(self.label("TEST_MASK"), &[0]);
+        (self.outcome(run.tstates), taken)
+    }
+
+    /// Puts the interrupt handler in RAM and points the interrupt vector at it.
+    pub fn install_handler(&mut self) {
+        let start = usize::from(self.label("IRQ_BODY_START") - 0x4000);
+        let end = usize::from(self.label("IRQ_BODY_END") - 0x4000);
+        let code = self.image.code[start..end].to_vec();
+        self.poke(self.label("IRQ_HANDLER"), &code);
+        let at = self.label("IRQ_HANDLER").to_le_bytes();
+        self.m.load_flash(0, 0x38, &[0xC3, at[0], at[1]]);
+    }
+
+    fn prepare(&mut self, target: &str, regs: Regs) {
         let word = |value: u16| value.to_le_bytes();
         let image = self.image;
         let at = |name: &str| label_in(image, name);
@@ -154,6 +190,7 @@ impl Rig {
             ("TEST_TARGET", word(at(target)).to_vec()),
             ("TEST_SP", word(self.sp).to_vec()),
             ("TEST_EI", vec![u8::from(self.ei)]),
+            ("TEST_MASK", vec![0]),
             ("IN_A", vec![regs.a]),
             ("IN_BC", word(regs.bc).to_vec()),
             ("IN_DE", word(regs.de).to_vec()),
@@ -164,8 +201,10 @@ impl Rig {
         for (name, bytes) in writes {
             self.poke(at(name), &bytes);
         }
-        let run = self.m.run(at("CALL_ENTRY"), RUN_LIMIT);
-        assert_eq!(run.stop, Stop::Halted, "{target} did not halt");
+    }
+
+    fn outcome(&mut self, tstates: u32) -> Out {
+        let at = |name: &str| label_in(self.image, name);
         let out = self.peek(at("OUT_AF"), 0x0F);
         let w = |i: usize| u16::from_le_bytes([out[i], out[i + 1]]);
         Out {
@@ -178,7 +217,7 @@ impl Rig {
             iff: out[12],
             port5: out[13],
             port7: out[14],
-            tstates: run.tstates,
+            tstates,
         }
     }
 

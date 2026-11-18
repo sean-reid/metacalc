@@ -22,12 +22,15 @@ OUT_IFF		.equ $A01C
 OUT_P5		.equ $A01D
 OUT_P7		.equ $A01E
 TEST_BUF	.equ $A100
+TEST_MASK	.equ $A01F
+IRQ_COUNT	.equ $A5F0
+IRQ_HANDLER	.equ $A600
 
 .org $4000
 	jp call_entry
 
 call_entry:
-	xor a
+	ld a,(TEST_MASK)
 	out (3),a
 	ld sp,(TEST_SP)
 	ld hl,call_done
@@ -49,6 +52,32 @@ call_load:
 
 call_nop:
 	ret
+
+; Runs from RAM at IRQ_HANDLER: acknowledges the interrupt as the stub does and leaves the shadow
+; registers holding junk, as the interrupt handler of the OS does.
+irq_body_start:
+	push af
+	in a,(3)
+	push af
+	xor a
+	out (3),a
+	pop af
+	out (3),a
+	ld a,(IRQ_COUNT)
+	inc a
+	ld (IRQ_COUNT),a
+	exx
+	ld bc,$BAD0
+	ld de,$BAD1
+	ld hl,$BAD2
+	exx
+	ex af,af'
+	ld a,$A5
+	ex af,af'
+	pop af
+	ei
+	reti
+irq_body_end:
 
 call_done:
 	ld (OUT_HL),hl

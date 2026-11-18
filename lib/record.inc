@@ -95,8 +95,13 @@ lre_hit:
 
 lib_label:
 	ld (lr_bufp),de
+	ld (lr_cn),hl
 	call lr_need
 	ret nz
+	ld bc,255
+	call lr_chkbuf
+	ret nz
+	ld hl,(lr_cn)
 	call lr_recoff
 	ret nz
 	ld (lr_tr),hl
@@ -127,6 +132,16 @@ llb_done:
 lib_record:
 	call lr_need
 	ret nz
+	ld bc,(lr_count)
+	push hl
+	or a
+	sbc hl,bc
+	pop hl
+	jr c,lrc_in_range
+	ld hl,$FFFF
+	ld (lr_dn),hl
+	jp lr_bad_index
+lrc_in_range:
 	ld de,(lr_dn)
 	push hl
 	or a
@@ -231,6 +246,13 @@ lrc_pairs:
 
 lib_conclusion:
 	ld (lr_bufp),de
+	ld (lr_cn),hl
+	call lr_need
+	ret nz
+	ld bc,255
+	call lr_chkbuf
+	ret nz
+	ld hl,(lr_cn)
 	call lib_record
 	ret nz
 	ld a,(lr_dclen)
@@ -251,8 +273,15 @@ lcn_done:
 
 lib_hypothesis:
 	ld (lr_bufp),de
+	ld (lr_cn),hl
 	ld a,b
 	ld (lr_k),a
+	call lr_need
+	ret nz
+	ld bc,255
+	call lr_chkbuf
+	ret nz
+	ld hl,(lr_cn)
 	call lib_record
 	ret nz
 	ld a,(lr_k)

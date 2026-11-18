@@ -3,9 +3,9 @@ use crate::support::*;
 /// T-state ceilings per library for every label, record and conclusion, 10 percent above the
 /// measured cost.
 const CEILINGS: [(&str, u64); 3] = [
-    ("prop", 12_800_000),
-    ("pred", 18_800_000),
-    ("ring", 52_300_000),
+    ("prop", 13_500_000),
+    ("pred", 19_900_000),
+    ("ring", 55_400_000),
 ];
 
 #[test]

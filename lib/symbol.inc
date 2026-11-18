@@ -5,6 +5,9 @@ lib_symbol_name:
 	ld (lr_id),a
 	call lr_need
 	ret nz
+	ld bc,255
+	call lr_chkbuf
+	ret nz
 	ld a,(lr_nsyms)
 	ld hl,lr_id
 	cp (hl)
