@@ -140,6 +140,7 @@ impl Rig {
             assert_ne!(run.stop, Stop::Fault);
             pc = self.m.pc();
             if pc != halted_in_wait && pc + 1 != halted_in_wait {
+                assert_eq!(run.stop, Stop::Halted, "the routine did not reach its end");
                 return waits;
             }
             pc = halted_in_wait;
@@ -152,14 +153,13 @@ impl Rig {
 
     /// Runs in steps of `step` T-states, from the start, until the trace holds `marker`.
     pub fn run_until_trace_has(&mut self, marker: &str, step: u32) -> u16 {
-        let mut pc = ENTRY;
+        let mut run = self.m.run(ENTRY, step);
         for _ in 0..100_000 {
-            let run = self.m.run(pc, step);
             assert_eq!(run.stop, Stop::Limit, "the run ended before {marker:?}");
-            pc = self.m.pc();
             if String::from_utf8_lossy(&self.trace()).contains(marker) {
-                return pc;
+                return self.m.pc();
             }
+            run = self.m.resume(step);
         }
         panic!("no {marker:?} in the trace");
     }

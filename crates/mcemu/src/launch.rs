@@ -68,7 +68,7 @@ impl Machine {
         for (port, value) in ports {
             self.calc.out_port_unlocked(port, value);
         }
-        let [lo, hi] = stub::APP_EXIT.to_le_bytes();
+        let [lo, hi] = stub::APP_RETURN.to_le_bytes();
         self.load_ram(APP_STACK, &[lo, hi]);
         self.calc.set_regs(&Regs {
             af: 0x0044,
@@ -91,16 +91,8 @@ impl Machine {
         Ok(())
     }
 
-    /// Runs the launched app on from where it is, interrupts as it left them, until it exits,
-    /// halts with interrupts off, makes an unsupported OS call, or `limit` T-states pass.
-    /// A `limit` of 0 returns `Stop::Limit` with 0 T-states and runs nothing. After
-    /// `Stop::Fault` the core has reset the machine: see `Stop::Fault`.
+    /// Runs the launched app on from where it is, as `resume` does.
     pub fn run_app(&mut self, limit: u32) -> Run {
-        if limit == 0 {
-            return Run::NO_TIME;
-        }
-        let limit = i32::try_from(limit).expect("limit fits in i32");
-        let (reason, tstates) = self.calc.resume(limit);
-        self.stopped(reason, tstates)
+        self.resume(limit)
     }
 }

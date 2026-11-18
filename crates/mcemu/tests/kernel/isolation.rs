@@ -394,3 +394,36 @@ fn a_caller_already_on_the_spare_page_keeps_everything_outside_the_regions() {
         assert_eq!(first_outside_not(&page, image, 0x6B), None);
     }
 }
+
+/// Pages 82h to 87h are one page, so only the value written to port 5 shows which one the kernel
+/// selects: the documented spare page, 3, and nothing else but the caller's own page.
+#[test]
+fn the_kernel_selects_the_documented_spare_page_and_no_other_through_the_ports() {
+    let bytes = pack_all(&corpus("demo0.mm"));
+    let (_, want) = model_statuses(&bytes, ASKED_UNBOUNDED);
+    for (layout, image) in LAYOUTS {
+        let mut device = primed(image, &bytes);
+        run_all(&mut device, want.len());
+        let written = device.m.banks_written();
+        let values = |port: u8| -> Vec<u8> {
+            written
+                .iter()
+                .filter(|&&(p, _)| p == port)
+                .map(|&(_, v)| v)
+                .collect()
+        };
+        let port5 = values(5);
+        assert!(port5.contains(&SPARE_PAGE), "{layout}: {port5:x?}");
+        assert!(
+            port5.iter().all(|&v| v == SPARE_PAGE || v == 0),
+            "{layout}: port 5 got {port5:x?}"
+        );
+        let port7 = values(7);
+        assert!(!port7.is_empty(), "{layout}: the library is never mapped");
+        assert!(
+            port7.iter().all(|&v| v == 0x81 || v < 0x80),
+            "{layout}: port 7 got {port7:x?}"
+        );
+        assert!(values(6).is_empty(), "{layout}: the kernel wrote port 6");
+    }
+}

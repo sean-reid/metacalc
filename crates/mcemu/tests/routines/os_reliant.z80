@@ -7,4 +7,5 @@
 	bcall(_GetCSC)
 	ld a, c
 	ld (RESULT), a
+	di
 	halt
