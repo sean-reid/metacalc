@@ -1,5 +1,6 @@
+use super::check::{Rejected, check_each};
 use super::read::{Assertion, Hypothesis, Library, Reference, Step, decode};
-use super::{CheckError, ReadError, check};
+use super::{CheckError, KernelError, ReadError};
 use crate::mm::shown;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -64,13 +65,36 @@ impl From<ReadError> for ExportError {
     }
 }
 
+/// The database a library exports to when the kernel's rejections do not stop it.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Export {
+    pub text: String,
+    /// The assertions the kernel rejects and why, in library order. Each is written with its
+    /// statement and, for a theorem, the unknown proof `?`.
+    pub rejected: Vec<(String, KernelError)>,
+}
+
 /// Writes a packed library the kernel accepts as a Metamath database, using nothing but its bytes.
 ///
 /// Every variable's float is declared once after `$v`, in an order that gives each record its
 /// floats in the order it stores them, and each assertion gets a block for its `$d` and `$e`.
 pub fn export(bytes: &[u8]) -> Result<String, ExportError> {
-    check(bytes)?;
+    let (count, rejected) = check_each(bytes, false)?;
+    debug_assert!(rejected.is_empty());
+    write(bytes, count, &rejected)
+}
+
+/// `export` for a library in which the kernel rejects some assertions. A rejected theorem keeps
+/// its statement and its proof is `?`; everything else is written as `export` writes it.
+pub fn export_accepted(bytes: &[u8]) -> Result<Export, ExportError> {
+    let (count, rejected) = check_each(bytes, true)?;
+    let text = write(bytes, count, &rejected)?;
+    Ok(Export { text, rejected })
+}
+
+fn write(bytes: &[u8], count: usize, rejected: &Rejected) -> Result<String, ExportError> {
     let library = decode(bytes)?;
+    debug_assert_eq!(library.assertions.len(), count);
     let mut reserved = HashSet::new();
     for name in library
         .constants
@@ -103,9 +127,13 @@ pub fn export(bytes: &[u8]) -> Result<String, ExportError> {
         records.push(record_floats(assertion, &index)?);
     }
     let order = float_order(&library, &records)?;
+    let unproved: Vec<bool> = library
+        .assertions
+        .iter()
+        .map(|a| rejected.iter().any(|(label, _)| *label == a.label))
+        .collect();
 
     let mut out = String::new();
-    let count = library.assertions.len();
     out += &format!("$( Exported from a metacalc library of {count} assertions. $)\n");
     declaration(&mut out, "$c", &library.constants);
     let variables: Vec<String> = library.variables.iter().map(|v| v.name.clone()).collect();
@@ -120,7 +148,7 @@ pub fn export(bytes: &[u8]) -> Result<String, ExportError> {
         writer.float(var);
     }
     for (at, floats) in records.iter().enumerate() {
-        writer.block(at, floats, &index)?;
+        writer.block(at, floats, &index, unproved[at])?;
     }
     Ok(writer.out)
 }
@@ -289,6 +317,7 @@ impl Writer<'_> {
         position: usize,
         floats: &[usize],
         index: &HashMap<&str, usize>,
+        unproved: bool,
     ) -> Result<(), ExportError> {
         let library = self.library;
         let assertion = &library.assertions[position];
@@ -305,7 +334,7 @@ impl Writer<'_> {
 
         let mut dummies: Vec<usize> = Vec::new();
         let mut proof_labels: Vec<String> = Vec::new();
-        for reference in &assertion.references {
+        for reference in assertion.references.iter().filter(|_| !unproved) {
             let name = match reference {
                 Reference::Dummy(var) => {
                     let at = *index
@@ -349,12 +378,12 @@ impl Writer<'_> {
             lines.token("$.");
             lines.finish();
         }
-        self.assertion(assertion, &proof_labels);
+        self.assertion(assertion, &proof_labels, unproved);
         self.out += "$}\n";
         Ok(())
     }
 
-    fn assertion(&mut self, assertion: &Assertion, labels: &[String]) {
+    fn assertion(&mut self, assertion: &Assertion, labels: &[String], unproved: bool) {
         let mut lines = Lines::new(&mut self.out, 2);
         lines.token(&assertion.label);
         lines.token(if assertion.theorem { "$p" } else { "$a" });
@@ -365,6 +394,12 @@ impl Writer<'_> {
             return;
         }
         lines.token("$=");
+        if unproved {
+            lines.token("?");
+            lines.token("$.");
+            lines.finish();
+            return;
+        }
         lines.token("(");
         labels.iter().for_each(|t| lines.token(t));
         lines.token(")");

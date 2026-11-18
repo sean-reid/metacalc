@@ -75,7 +75,7 @@ mod read;
 mod sections;
 
 pub use check::{CheckError, HOST_LIMITS, check};
-pub use export::{ExportError, export};
+pub use export::{Export, ExportError, export, export_accepted};
 pub use kernel::{Kernel, KernelError, Limits, WORK_LIMIT};
 pub use pack::{PackError, pack, pack_kernel};
 pub use read::{
