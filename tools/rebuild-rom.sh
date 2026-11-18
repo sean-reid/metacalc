@@ -17,15 +17,24 @@ case "${1:-}" in
 	;;
 esac
 
+unset CDPATH GIT_DIR GIT_WORK_TREE
 dir=${1:-$HOME/ti84-rom}
+case $dir in
+/*) ;;
+*) dir=$PWD/$dir ;;
+esac
 
 probe=$dir
 while [ ! -d "$probe" ]; do
 	probe=$(dirname "$probe")
 done
-if git -C "$probe" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-	die "$dir is inside a git work tree; pick a directory outside any repository"
-fi
+probe=$(cd -- "$probe" && pwd -P)
+while :; do
+	[ ! -e "$probe/.git" ] ||
+		die "$dir is inside the repository at $probe; pick a directory outside any repository"
+	[ "$probe" != / ] || break
+	probe=$(dirname "$probe")
+done
 
 say "Checking prerequisites"
 missing=
@@ -40,26 +49,26 @@ fi
 [ -z "$missing" ] || die "missing prerequisites:$missing"
 
 mkdir -p "$dir"
-dir=$(cd "$dir" && pwd -P)
-cd "$dir"
+dir=$(cd -- "$dir" && pwd -P)
+cd -- "$dir"
 
 say "Fetching and building rom8x"
-if [ -x rom8x ]; then
+if [ ! -e rom8x-src ]; then
+	git init -q rom8x-src
+	git -C rom8x-src fetch -q --depth 1 "$ROM8X_URL" "$ROM8X_COMMIT"
+	git -C rom8x-src checkout -q FETCH_HEAD
+fi
+[ "$(git -C rom8x-src rev-parse HEAD 2>/dev/null)" = "$ROM8X_COMMIT" ] ||
+	die "$dir/rom8x-src is not rom8x at $ROM8X_COMMIT; remove it and rerun"
+if [ -x rom8x ] && [ ! rom8x-src/rom8x.c -nt rom8x ]; then
 	echo "rom8x already built, skipping"
 else
-	if [ ! -f rom8x-src/rom8x.c ]; then
-		rm -rf rom8x-src
-		git init -q rom8x-src
-		git -C rom8x-src fetch -q --depth 1 "$ROM8X_URL" "$ROM8X_COMMIT"
-		git -C rom8x-src checkout -q FETCH_HEAD
-	fi
-	[ "$(git -C rom8x-src rev-parse HEAD)" = "$ROM8X_COMMIT" ] ||
-		die "rom8x-src is not at $ROM8X_COMMIT; remove it and rerun"
-	cc -Wall -Wextra -Os -o rom8x rom8x-src/rom8x.c
+	cc -Wall -Wextra -Os -o rom8x.tmp rom8x-src/rom8x.c
+	mv rom8x.tmp rom8x
 fi
 
 say "Checking for the boot page dumps"
-if [ ! -f D84PSE1.8xv ] || [ ! -f D84PSE2.8xv ]; then
+if [ ! -s D84PSE1.8xv ] || [ ! -s D84PSE2.8xv ]; then
 	cat >&2 <<MSG
 D84PSE1.8xv and D84PSE2.8xv are not in $dir.
 They come from your own calculator:
@@ -76,7 +85,7 @@ os=
 n=0
 for f in ./*.8xu ./*.8Xu ./*.8XU ./*.8xU; do
 	[ -f "$f" ] || continue
-	os=${f#./}
+	os=$f
 	n=$((n + 1))
 done
 if [ "$n" -eq 0 ]; then
@@ -87,12 +96,18 @@ fi
 say "Building the ROM"
 set -- 84PSE_v*.rom
 if [ -f "$1" ]; then
+	[ "$#" -eq 1 ] || die "found $# ROM images in $dir; leave only the one to keep"
 	echo "$1 already exists, skipping"
 else
-	./rom8x 84PSE -1 D84PSE1.8xv -2 D84PSE2.8xv -u "$os"
+	rm -rf rom-build
+	mkdir rom-build
+	(cd rom-build && ../rom8x 84PSE -1 ../D84PSE1.8xv -2 ../D84PSE2.8xv -u "../$os")
+	set -- rom-build/84PSE_v*.rom
+	[ "$#" -eq 1 ] && [ -s "$1" ] || die "rom8x produced no ROM"
+	mv "$1" .
+	rmdir rom-build
 	set -- 84PSE_v*.rom
 fi
-[ -f "$1" ] || die "rom8x produced no ROM"
 rom=$1
 
 if command -v sha256sum >/dev/null 2>&1; then
