@@ -87,6 +87,13 @@ jobs:
           path=$(sh scripts/fetch-setmm.sh)
           echo "path=$path" >> "$GITHUB_OUTPUT"
       - run: sh scripts/build-libraries.sh "${{ steps.setmm.outputs.path }}" "$RUNNER_TEMP/libraries" "$RUNNER_TEMP/pages"
+      - uses: actions/cache@v6
+        with:
+          path: .metamath
+          key: metamath-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-metamath.sh') }}
+      - run: sh scripts/fetch-metamath.sh
+      - run: sh scripts/verify-exports.sh "$RUNNER_TEMP/libraries"
+      - run: sh scripts/test-verify-exports.sh
       - run: sh scripts/replay-libraries.sh "$RUNNER_TEMP/libraries"
       - run: sh scripts/worked-examples.sh check "${{ steps.setmm.outputs.path }}"
       - run: SETMM="${{ steps.setmm.outputs.path }}" cargo test --locked -p mcpack --test unicode_pin -- --ignored
