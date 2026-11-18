@@ -1,3 +1,4 @@
+use mcglyph::{Bitmap, Font, png};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -88,4 +89,86 @@ fn a_statement_past_one_screen_is_written_as_numbered_files() {
     assert!(!png.exists());
     let listed = String::from_utf8(out.stdout).unwrap();
     assert!(listed.starts_with(&format!("{}\n{}\n", first.display(), second.display())));
+}
+
+#[test]
+fn the_keys_font_draws_each_label_as_an_inverted_box() {
+    let dir = temp("cli-keys");
+    let png = dir.join("k.png");
+    let out = run(&[
+        "--font",
+        "keys",
+        "--scale",
+        "1",
+        "-o",
+        png.to_str().unwrap(),
+        "Open",
+        "Go",
+    ]);
+    assert_eq!(out.status.code(), Some(0));
+    let mut want = Bitmap::new(96, 64);
+    for (row, label) in ["Open", "Go"].iter().enumerate() {
+        let ink = Font::keys().text(label);
+        for y in 0..8 {
+            for x in 0..ink.width() + 4 {
+                want.set(x, row * 8 + y, true);
+            }
+        }
+        for y in 0..ink.height() {
+            for x in 0..ink.width() {
+                if ink.get(x, y) {
+                    want.set(2 + x, row * 8 + 1 + y, false);
+                }
+            }
+        }
+    }
+    assert!(want.get(0, 0) && !want.get(2, 2) && !want.get(40, 0) && !want.get(0, 16));
+    assert_eq!(std::fs::read(&png).unwrap(), png::encode(&want, 1));
+}
+
+#[test]
+fn the_keys_font_rejects_labels_it_cannot_draw() {
+    let dir = temp("cli-keys-bad");
+    let png = dir.join("k.png");
+    let out = run(&["--font", "keys", "-o", png.to_str().unwrap(), "no way"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(!png.exists());
+}
+
+#[test]
+fn the_main_font_flag_gives_the_same_output_as_no_flag() {
+    let dir = temp("cli-main");
+    let (plain, flagged) = (dir.join("a.png"), dir.join("b.png"));
+    let tokens = ["|-", "(", "ph", "->", "ps", ")"];
+    let mut args = vec!["-o", plain.to_str().unwrap()];
+    args.extend(tokens);
+    assert_eq!(run(&args).status.code(), Some(0));
+    let mut args = vec!["--font", "main", "-o", flagged.to_str().unwrap()];
+    args.extend(tokens);
+    assert_eq!(run(&args).status.code(), Some(0));
+    assert_eq!(
+        std::fs::read(&plain).unwrap(),
+        std::fs::read(&flagged).unwrap()
+    );
+}
+
+#[test]
+fn a_font_flag_without_a_name_or_with_an_unknown_one_is_a_usage_error() {
+    let dir = temp("cli-font-bad");
+    let png = dir.join("a.png");
+    let path = png.to_str().unwrap();
+    for args in [
+        vec!["-o", path, "ph", "--font"],
+        vec!["--font", "tiny", "-o", path, "ph"],
+    ] {
+        let out = run(&args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert!(
+            String::from_utf8(out.stderr)
+                .unwrap()
+                .starts_with("usage: mcglyph"),
+            "{args:?}"
+        );
+    }
+    assert!(!png.exists());
 }

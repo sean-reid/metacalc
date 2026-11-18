@@ -9,10 +9,10 @@ use crate::proofs::SavedProof;
 use mcedit::GoalId;
 
 /// The word on the first key of the outline when the highlighted goal can be jumped to.
-const SEE: &str = "See";
+pub(crate) const GO: &str = "Go";
 
-/// The words on the five keys; the font has no room for Aply, Auto, Undo and Tree in a key.
-const KEYS: [&str; 5] = ["Apl", "Hyp", "Aut", "Und", "Tre"];
+/// The words on the five keys.
+pub(crate) const KEYS: [&str; 5] = ["Aply", "Hyp", "Auto", "Undo", "Tree"];
 
 /// Rows the current goal may take before it is folded.
 const GOAL_ROWS: usize = 2;
@@ -376,12 +376,12 @@ impl Proving {
             _ => self.draw_lists(canvas),
         }
         let [_, _, _, undo, tree] = KEYS;
-        let see = match self.tree_list.get(self.tree.at) {
-            Some(node) if node.standing == Standing::Open => SEE,
+        let go = match self.tree_list.get(self.tree.at) {
+            Some(node) if node.standing == Standing::Open => GO,
             _ => "",
         };
         canvas.soft_keys(match (self.view, self.snap.goal) {
-            (View::Tree, _) => [see, "", "", undo, tree],
+            (View::Tree, _) => [go, "", "", undo, tree],
             (_, None) => ["", "", "", undo, tree],
             _ => KEYS,
         });
@@ -408,19 +408,5 @@ impl Proving {
             steps: self.saved.steps,
             replayed: self.editor.replayed(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::KEYS;
-    use crate::canvas::{soft_key_room, text_width};
-
-    #[test]
-    fn every_key_label_fits_its_key() {
-        for (i, label) in KEYS.iter().enumerate() {
-            assert!(text_width(label) <= soft_key_room(i), "{label}");
-        }
-        assert!(text_width(super::SEE) <= soft_key_room(0));
     }
 }

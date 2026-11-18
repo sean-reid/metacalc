@@ -4,6 +4,9 @@ use crate::fold::{Fit, Layout, fit, layout};
 use crate::key::Key;
 use crate::status::Mark;
 
+/// The labels of the five keys.
+pub(crate) const KEYS: [&str; 5] = ["Open", "Find", "Kind", "Try", ""];
+
 /// Rows of labels the list shows.
 const LIST_ROWS: usize = 5;
 const PREVIEW_ROW: usize = LIST_ROWS + 1;
@@ -202,7 +205,7 @@ impl List {
                 PREVIEW_ROW as isize..PREVIEW_ROW as isize + 1,
             );
         }
-        canvas.soft_keys(["See", "Find", "Kind", "Try", ""]);
+        canvas.soft_keys(KEYS);
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {
