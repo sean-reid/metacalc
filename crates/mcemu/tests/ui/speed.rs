@@ -6,8 +6,12 @@ use std::io::Write;
 /// A cursor move must redraw within 50 ms.
 const BUDGET_MS: u32 = 50;
 
-/// T-states the typical frame alone may take, about 10 percent above what it takes.
+/// Ceilings in T-states, about 10 percent above what each takes. The count of a drawing
+/// routine does not depend on the clock, since the wait-state ports are the same at both speeds,
+/// so one ceiling serves both.
 const FRAME_CEILING: u32 = 158_000;
+const TEXT_CEILING: u32 = 14_100;
+const KEYS_CEILING: u32 = 25_700;
 
 /// Printed straight to stderr so a passing run shows it.
 fn report(line: String) {
@@ -91,11 +95,16 @@ fn a_typical_frame_and_its_blit_redraw_within_50_ms_at_both_speeds() {
         );
         line("blit", t.blit);
         line("typical frame and blit", t.frame + t.blit);
-        assert!(
-            t.frame < FRAME_CEILING,
-            "{name}: the typical frame took {} T-states against a ceiling of {FRAME_CEILING}",
-            t.frame
-        );
+        for (what, took, ceiling) in [
+            ("the typical frame", t.frame, FRAME_CEILING),
+            ("one row of 16 characters", t.text, TEXT_CEILING),
+            ("the soft key row", t.keys, KEYS_CEILING),
+        ] {
+            assert!(
+                took < ceiling,
+                "{name}: {what} took {took} T-states against a ceiling of {ceiling}"
+            );
+        }
         let whole = t.frame + t.blit;
         assert!(
             whole < BUDGET_MS * mhz,
