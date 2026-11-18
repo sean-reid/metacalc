@@ -2,6 +2,9 @@ use super::{Ctx, Nav, State};
 use crate::canvas::{Canvas, TEXT_WIDTH, truncate};
 use crate::key::Key;
 
+/// The word on the one key; the font has no room for Stop in a key.
+const STOP: &str = "Stp";
+
 /// A library being checked. Progress lives in the library's status table, so closing the screen
 /// loses nothing and opening it again carries on.
 pub struct Checking {
@@ -45,7 +48,7 @@ impl Checking {
         if next.is_some() {
             canvas.text_centered(6, "ON pauses");
         }
-        canvas.soft_keys(["Stop", "", "", "", ""]);
+        canvas.soft_keys([STOP, "", "", "", ""]);
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {
@@ -57,5 +60,16 @@ impl Checking {
             failed: lib.failed(),
             finished: lib.next_unchecked().is_none(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::STOP;
+    use crate::canvas::{soft_key_room, text_width};
+
+    #[test]
+    fn the_stop_label_fits_its_key() {
+        assert!(text_width(STOP) <= soft_key_room(0));
     }
 }
