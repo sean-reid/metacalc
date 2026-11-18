@@ -89,3 +89,16 @@ fn a_statement_past_one_screen_is_written_as_numbered_files() {
     let listed = String::from_utf8(out.stdout).unwrap();
     assert!(listed.starts_with(&format!("{}\n{}\n", first.display(), second.display())));
 }
+
+#[test]
+fn z80_writes_the_glyph_table_include() {
+    let dir = temp("cli-z80");
+    let inc = dir.join("font.inc");
+    let out = run(&["z80", inc.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0));
+    let text = std::fs::read_to_string(&inc).unwrap();
+    assert_eq!(text, mcglyph::z80::Table::builtin().include("ui_font"));
+    assert!(text.contains("\nui_font:\n"));
+    assert_eq!(run(&["z80"]).status.code(), Some(2));
+    assert_eq!(run(&["z80", "a", "b"]).status.code(), Some(2));
+}
