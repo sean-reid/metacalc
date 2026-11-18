@@ -16,12 +16,11 @@ main:
 	halt
 
 putchar:
-	push hl
 	ld hl, (OUT_PTR)
 	ld (hl), a
 	inc hl
 	ld (OUT_PTR), hl
-	pop hl
+	ld hl, 0FFFFh
 	ld bc, 0FFFFh
 	ld de, 0FFFFh
 	ret

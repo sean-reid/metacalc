@@ -23,9 +23,8 @@ main:
 	ld (OUT_AFTER), a
 	halt
 
-; Contract: A is one character. Destroys everything but HL, which the driver relies on.
+; Contract: A is one character. Destroys every register.
 putchar:
-	push hl
 	ld hl, (OUT_PTR)
 	ld (hl), a
 	inc hl
@@ -35,7 +34,7 @@ putchar:
 	in a, (20h)
 	ld (OUT_SPEED), a
 putchar_done:
-	pop hl
+	ld hl, 0FFFFh
 	ld bc, 0FFFFh
 	ld de, 0FFFFh
 	ld ix, 0FFFFh

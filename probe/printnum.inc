@@ -1,15 +1,20 @@
-; Contract: the including file defines putchar (A = character; HL survives it), P_TMP (2 bytes) and
-; P_TMP2 (1 byte) as scratch outside the registers, and the stack is usable.
+; Contract: the including file defines putchar (A = character; it may destroy every register),
+; P_TMP (2 bytes), P_TMP2 (1 byte) and P_STR (2 bytes) as scratch outside the registers, and the
+; stack is usable.
 
 ; Contract: HL points at a zero-terminated string in the app page, which a bcall swaps out, so it
-; is read here and passed on one character at a time.
+; is read here and passed on one character at a time, with the pointer kept in scratch.
 putstr:
+	ld (P_STR), hl
+putstr_next:
+	ld hl, (P_STR)
 	ld a, (hl)
 	or a
 	ret z
-	call putchar
 	inc hl
-	jr putstr
+	ld (P_STR), hl
+	call putchar
+	jr putstr_next
 
 ; Prints HL as five decimal digits.
 putdec:

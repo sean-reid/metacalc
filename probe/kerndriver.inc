@@ -1,5 +1,5 @@
 ; Contract: the including file defines putchar (A = character; 0Ah new line, 0Dh back to the
-; start of the line, 0Ch clear the screen and home; HL survives it, the other registers do not),
+; start of the line, 0Ch clear the screen and home; it may destroy every register),
 ; includes the kernel and equates.inc, and calls kernchk_run with interrupts on, from the page
 ; and port 6 value the app was entered with, and with a usable stack. Scratch is in bank B, which
 ; the kernel restores after every call; the parameter block for kernel_init is its first nine bytes.
@@ -31,7 +31,8 @@ K_STOP_AT    = K_PARAMS + 28
 K_SPEED      = K_PARAMS + 30
 P_TMP        = K_PARAMS + 31
 P_TMP2       = K_PARAMS + 33
-K_END        = K_PARAMS + 34
+P_STR        = K_PARAMS + 34
+K_END        = K_PARAMS + 36
 
 CRC_NONE    = 0
 CRC_OK      = 1

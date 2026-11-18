@@ -51,6 +51,7 @@ lost:
 
 P_TMP  = S_WFIRST
 P_TMP2 = S_WLAST
+P_STR  = S_TPTR
 #include "printnum.inc"
 
 title:
