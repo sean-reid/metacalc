@@ -9,6 +9,8 @@ const INLINE: usize = 127;
 pub const AXIOM_CAPACITY: usize = INLINE + 256;
 /// Variables a library's trees can use; a library has fewer symbols than this.
 pub const VARIABLE_CAPACITY: usize = INLINE + 256;
+/// The typecode of a provable statement and the typecode its tree's root has.
+pub(crate) const PROVABLE: (&str, &str) = ("|-", "wff");
 const AXIOM_ESCAPE: u8 = 0x7F;
 const VARIABLE: u8 = 0x80;
 const VARIABLE_ESCAPE: u8 = 0xFF;
@@ -110,7 +112,7 @@ pub(super) fn prepare(
     local_stmt: &HashMap<StmtId, u16>,
     constants: usize,
 ) -> Result<Option<Prepared>, PackError> {
-    let Ok(grammar) = Grammar::new(db, &[("|-", "wff")]) else {
+    let Ok(grammar) = Grammar::new(db, &[PROVABLE]) else {
         return Ok(None);
     };
     let mut parsed: Vec<Vec<Option<std::rc::Rc<Parsed>>>> = Vec::with_capacity(assertions.len());
@@ -246,8 +248,11 @@ fn syntax_parts(assertion: &Assertion) -> Option<Vec<Part>> {
             Some(slot) => Part::Child(slot),
             None => Part::Token(token.clone()),
         })
-        .collect();
-    Some(parts)
+        .collect::<Vec<Part>>();
+    let uses = |slot: usize| parts.iter().filter(|&p| *p == Part::Child(slot)).count();
+    (0..floats.len())
+        .all(|slot| uses(slot) == 1)
+        .then_some(parts)
 }
 
 fn tree(bytes: &[u8], syntax: &[SyntaxAxiom], ctx: &Ctx) -> Option<Tree> {
@@ -282,9 +287,19 @@ pub(super) fn decode(bytes: &[u8], entry: &Entry, ctx: &Ctx) -> Result<Trees, Se
     let bad = SectionError::Trees;
     let end = entry.offset + entry.length;
     let mut cur = Cursor::new(bytes, entry.offset, end);
-    let mut syntax = Vec::new();
-    for _ in 0..cur.u16().ok_or(bad)? {
+    let count = cur.u16().ok_or(bad)?;
+    if count > AXIOM_CAPACITY {
+        return Err(bad);
+    }
+    let mut syntax: Vec<SyntaxAxiom> = Vec::with_capacity(count);
+    for _ in 0..count {
         let assertion = cur.u16().ok_or(bad)?;
+        if syntax
+            .last()
+            .is_some_and(|last| last.assertion >= assertion)
+        {
+            return Err(bad);
+        }
         let arity = cur.u8().ok_or(bad)?;
         let source = ctx.assertions.get(assertion).ok_or(bad)?;
         let parts = syntax_parts(source).ok_or(bad)?;

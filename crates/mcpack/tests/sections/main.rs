@@ -111,6 +111,46 @@ fn a_kernel_only_library_has_no_trailer_and_reports_no_sections() {
     let bytes = pack_kernel(&db, &closure(&db)).unwrap();
     assert_ne!(&bytes[bytes.len() - 4..], TRAILER_MAGIC);
     assert_eq!(decode(&bytes).unwrap().sections, None);
+    library::check(&bytes).expect("a library with no sections passes the check");
+}
+
+#[test]
+fn a_section_that_lies_inside_the_records_does_not_decode() {
+    let db = db();
+    let bytes = pack(&db, &closure(&db)).unwrap();
+    let titles = section(&bytes, library::TITLES);
+    let count = bytes[bytes.len() - TRAILER_LEN] as usize;
+    let first = bytes.len() - TRAILER_LEN - count * ENTRY_LEN;
+    let row = (first..bytes.len() - TRAILER_LEN)
+        .step_by(ENTRY_LEN)
+        .find(|&row| bytes[row] == library::TITLES)
+        .unwrap();
+    let empty = (library::HEADER_LEN..titles.offset)
+        .step_by(4)
+        .rev()
+        .find(|&at| bytes[at..at + 2] == [0, 0])
+        .expect("two zero bytes in the records, an empty titles section");
+    let moved = |offset: usize| {
+        let mut moved = bytes.clone();
+        moved[row + 1..row + 5].copy_from_slice(&(offset as u32).to_le_bytes());
+        moved[row + 5..row + 9].copy_from_slice(&2u32.to_le_bytes());
+        reseal(&mut moved);
+        moved
+    };
+    let mut emptied = bytes.clone();
+    emptied[titles.offset..titles.offset + 2].fill(0);
+    let at_home = {
+        let mut kept = emptied.clone();
+        kept[row + 5..row + 9].copy_from_slice(&2u32.to_le_bytes());
+        reseal(&mut kept);
+        kept
+    };
+    assert_eq!(
+        decode(&at_home).unwrap().sections.unwrap().titles,
+        Some(Vec::new()),
+        "an empty titles section decodes where the packer put it"
+    );
+    assert!(decode(&moved(empty)).is_err());
 }
 
 #[test]

@@ -45,6 +45,8 @@ pub(crate) struct Ctx<'a> {
     /// Every symbol's name by id, constants first.
     pub names: &'a [String],
     pub constants: usize,
+    /// Where the symbol table, the directory and the last record have all ended.
+    pub records_end: usize,
 }
 
 /// A bounded reader over a file range, which every section decoder reads through.
@@ -90,6 +92,12 @@ pub(crate) fn read(bytes: &[u8], ctx: &Ctx) -> Result<Option<Sections>, SectionE
     let Some(table) = table(bytes)? else {
         return Ok(None);
     };
+    if table
+        .iter()
+        .any(|entry| entry.offset < ctx.records_end || entry.offset % 4 != 0)
+    {
+        return Err(SectionError::Table);
+    }
     let find = |id: u8| table.iter().find(|entry| entry.id == id);
     let titles = find(TITLES)
         .map(|entry| titles::decode(bytes, entry, ctx.assertions.len()))

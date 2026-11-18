@@ -13,7 +13,8 @@ pub struct Entry {
 pub enum SectionError {
     /// The last bytes carry the trailer magic but not a trailer this reader knows.
     Trailer,
-    /// The section table is cut short, repeats an id, or points outside the file or into itself.
+    /// The section table is cut short, repeats an id, or points outside the file, into itself,
+    /// into the records or off a multiple of four.
     Table,
     Titles,
     Glyphs,

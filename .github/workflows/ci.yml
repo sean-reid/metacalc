@@ -118,7 +118,7 @@ jobs:
       - run: SETMM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test notation_meanings -- --ignored --exact every_symbol_in_a_shipped_notation_table_has_a_meaning
       - run: MCUI_LIBS="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --release --locked -p mcui --test checking -- --ignored --exact stepping_through_a_real_library_is_quick --nocapture
       - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 3 cargo test --release --locked -p mcui --test ring -- --ignored --nocapture
-      - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcglyph --test font -- --ignored --exact fixture_matches_the_ring_closure_of_set_mm
+      - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test font_symbols -- --ignored --exact font_fixture_matches_the_ring_closure_of_set_mm
       - run: sh scripts/test-build-site.sh
       - run: sh scripts/test-require-tests.sh
       - run: sh scripts/test-script-paths.sh

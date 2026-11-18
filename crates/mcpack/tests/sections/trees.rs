@@ -445,3 +445,74 @@ fn escaped_node_bytes_survive_a_hostile_byte_too() {
         }
     }
 }
+
+/// The file offset of the tree item of the assertion `label`.
+fn item_at(bytes: &[u8], label: &str) -> usize {
+    let library = decode(bytes).unwrap();
+    let n = library
+        .assertions
+        .iter()
+        .position(|a| a.label == label)
+        .unwrap();
+    let start = section(bytes, TREES).offset;
+    let count = usize::from(u16::from_le_bytes([bytes[start], bytes[start + 1]]));
+    let at = start + 2 + 3 * count + 4 * n;
+    u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize
+}
+
+#[test]
+fn a_syntax_table_that_repeats_or_reorders_an_axiom_does_not_decode() {
+    let db = db();
+    let bytes = pack(&db, &closure(&db)).unwrap();
+    let start = section(&bytes, TREES).offset;
+    assert_eq!(&bytes[start..start + 2], [2, 0], "wi and wal");
+    let (wi, wal) = (start + 2, start + 5);
+    assert_eq!(bytes[wi + 2], bytes[wal + 2], "both have two children");
+
+    let mut repeated = bytes.clone();
+    repeated.copy_within(wi..wi + 3, wal);
+    reseal(&mut repeated);
+    assert!(decode(&repeated).is_err());
+
+    let mut reordered = bytes.clone();
+    reordered[wi..wi + 3].copy_from_slice(&bytes[wal..wal + 3]);
+    reordered[wal..wal + 3].copy_from_slice(&bytes[wi..wi + 3]);
+    reseal(&mut reordered);
+    assert!(decode(&reordered).is_err());
+}
+
+#[test]
+fn a_tree_with_the_statements_tokens_and_the_wrong_typecode_fails_the_check() {
+    let db = parse(
+        "$c |- wff set ( ) $.\n$v ph x $.\nwph $f wff ph $.\nvx $f set x $.\n\
+         wp $a wff ( ph ) $.\nws $a wff ( x ) $.\nax-p $a |- ( ph ) $.\nax-s $a |- ( x ) $.\n",
+    );
+    let mut bytes = pack_everything(&db).unwrap();
+    library::check(&bytes).unwrap();
+    let at = item_at(&bytes, "ax-s");
+    assert_eq!(bytes[at], 2, "a node and a leaf");
+    assert_eq!(bytes[at + 1], 1, "ws is the second syntax axiom");
+    bytes[at + 1] = 0;
+    reseal(&mut bytes);
+    decode(&bytes).expect("wp has one child too");
+    assert!(matches!(
+        library::check(&bytes),
+        Err(CheckError::Sections(_))
+    ));
+}
+
+#[test]
+fn a_syntax_axiom_that_repeats_its_variable_does_not_decode() {
+    let db =
+        parse("$c |- wff - $.\n$v ph $.\nwph $f wff ph $.\nwn $a wff - ph $.\nax $a |- - ph $.\n");
+    let mut bytes = pack_everything(&db).unwrap();
+    library::check(&bytes).unwrap();
+    let directory = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
+    let record = u32::from_le_bytes(bytes[directory..directory + 4].try_into().unwrap()) as usize;
+    assert_eq!(&bytes[record + 2..record + 4], b"wn");
+    let conclusion = record + 4 + 1 + 2 + 2;
+    assert_eq!(bytes[conclusion], 3, "wff - ph");
+    bytes[conclusion + 2] = bytes[conclusion + 3];
+    reseal(&mut bytes);
+    assert!(decode(&bytes).is_err());
+}

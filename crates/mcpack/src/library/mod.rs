@@ -30,7 +30,8 @@
 //! reader that knows the length from the header finds the trailer in the last bytes of the file.
 //!
 //! ```text
-//! section    starts at a multiple of four; no item of it crosses a multiple of CHUNK, so every
+//! section    starts at a multiple of four, after the symbol table, the directory and every
+//!            record; no item of it crosses a multiple of CHUNK, so every
 //!            item can be read through one mapped page; only an index of fixed-size entries
 //!            may cross, and the padding that keeps an item whole is zero bytes
 //! table      one row per section: id (u8), offset (u32), length (u32), the rows right
@@ -46,7 +47,7 @@
 //!            before, 1 gap after, 2 gap beside another var, 3 no gap after), glyph count (u8),
 //!            the glyph codes of the main display font
 //! trees      id 3: syntax axiom count (u16), per axiom its assertion number (u16) and its arity
-//!            (u8), one u32 file offset per assertion, then per assertion a tree for each
+//!            (u8), assertion numbers rising and each of its variables once in its statement, one u32 file offset per assertion, then per assertion a tree for each
 //!            essential hypothesis in record order and one for the conclusion; a tree is its
 //!            length in bytes (u8, FEh for no tree, FFh then a u16) and its nodes in preorder:
 //!            00h..7Eh is a syntax table index, 7Fh then n is index 127 + n, and the arity of
