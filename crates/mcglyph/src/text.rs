@@ -10,7 +10,7 @@ pub const ELLIPSIS: char = '\u{2026}';
 /// Blank columns a space occupies, before the glyph gap.
 pub const SPACE_WIDTH: usize = 2;
 
-fn glyph_name(c: char) -> Cow<'static, str> {
+pub(crate) fn glyph_name(c: char) -> Cow<'static, str> {
     Cow::Borrowed(match c {
         '.' => "period",
         ',' => "comma",

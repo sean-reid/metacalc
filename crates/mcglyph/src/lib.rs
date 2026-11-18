@@ -8,6 +8,7 @@ mod font;
 mod layout;
 pub mod png;
 mod text;
+pub mod z80;
 
 pub use bitmap::Bitmap;
 pub use font::{Font, FontError, FontErrorKind, MAX_GLYPH_WIDTH, Pad};
