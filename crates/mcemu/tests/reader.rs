@@ -1,3 +1,5 @@
+#[path = "reader/branches.rs"]
+mod branches;
 #[path = "reader/damaged.rs"]
 mod damaged;
 #[path = "reader/differential.rs"]
@@ -8,6 +10,8 @@ mod escapes;
 mod flags;
 #[path = "reader/guards.rs"]
 mod guards;
+#[path = "reader/inside.rs"]
+mod inside;
 #[path = "reader/interleave.rs"]
 mod interleave;
 #[path = "reader/interrupts.rs"]

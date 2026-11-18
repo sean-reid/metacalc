@@ -162,3 +162,42 @@ fn the_reader_calls_the_theorem_list_makes_stay_inside_their_ceilings() {
     }
     assert!(list < LIST_BUDGET, "{list} T-states");
 }
+
+/// Where lib_open's T-states go: the whole call, the same library without a trailer, the stage
+/// that reads the sections, and within that stage the walk of the last record and the three
+/// section headers. The rest of the stage is the trailer and table reads and the row checks.
+fn open_split(bytes: &[u8], name: &str) {
+    let regs = Regs {
+        a: LIB_PAGE,
+        de: SCRATCH,
+        ..Regs::default()
+    };
+    let mut rig = Rig::with_library(bytes);
+    let whole = rig.cost("LIB_OPEN", regs);
+    rig.open_ok();
+    let stage = rig.cost("LSX_OPEN", Regs::default());
+    let walk = rig.cost("LSX_RECORDS_END", Regs::default());
+    let headers = rig.cost("LSX_HEADERS", Regs::default());
+    let library = mcpack::library::decode(bytes).expect("it decodes");
+    let db_less = whole - stage;
+    report(format!(
+        "{name}: lib_open {whole}: header and symbols {db_less}, sections {stage} of which \
+         last-record walk {walk}, section headers {headers}, trailer, table and rows {} ({} \
+         assertions)",
+        stage - walk - headers,
+        library.assertions.len()
+    ));
+    assert!(walk + headers < stage && stage < whole);
+}
+
+#[test]
+fn the_cost_of_opening_a_library_splits_into_the_stages_of_the_call() {
+    let (bytes, ..) = list_library();
+    open_split(&bytes, "speed library");
+    if let Ok(dir) = std::env::var("MC_LIBRARIES") {
+        for name in ["prop", "pred", "ring"] {
+            let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
+            open_split(&bytes, name);
+        }
+    }
+}

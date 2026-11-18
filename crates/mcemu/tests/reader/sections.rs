@@ -95,6 +95,17 @@ pub fn check_sections(
     what: &str,
     order: &dyn Fn(usize) -> Vec<usize>,
 ) {
+    check_sections_with(rig, bytes, what, order, true);
+}
+
+/// `check_sections`, with the glyph entries left out when the library's map is for another font.
+pub fn check_sections_with(
+    rig: &mut Rig,
+    bytes: &[u8],
+    what: &str,
+    order: &dyn Fn(usize) -> Vec<usize>,
+    glyphs: bool,
+) {
     let library = decoded(bytes);
     let Some(sections) = library.sections.as_ref() else {
         assert_eq!(rig.sections(), (ST_OK, 0), "{what}");
@@ -114,7 +125,9 @@ pub fn check_sections(
         }
     }
     check_titles(rig, &library, sections, what, order);
-    check_glyphs(rig, &library, sections, what, order);
+    if glyphs {
+        check_glyphs(rig, &library, sections, what, order);
+    }
     check_trees(rig, &library, sections, what, order);
 }
 

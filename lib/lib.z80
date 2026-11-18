@@ -113,7 +113,7 @@
 ;   lib_title_count   out: HL = titles. 9 without a titles section.
 ;   lib_title         in:  HL = title number; DE = buffer of 255 bytes
 ;                     out: HL = the number of the first assertion under it, B = text length,
-;                          C = depth, 1 to 4; the text is in the buffer
+;                          C = depth, 1 to 4; the text, ASCII, is in the buffer
 ;   lib_title_for     in:  HL = assertion number
 ;                     out: HL = the number of the last title whose assertion number is at or
 ;                          before it, by binary search; 9 with HL = 0 when none is

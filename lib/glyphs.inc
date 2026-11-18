@@ -60,6 +60,9 @@ lib_glyph:
 	ld bc,2
 	call lr_rd
 	ret nz
+	ld a,(lr_hdr)
+	and $F0
+	jp nz,lr_bad
 	ld a,(lr_hdr+1)
 	ld c,a
 	ld b,0

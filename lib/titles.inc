@@ -86,6 +86,15 @@ lib_title:
 	ld de,(lr_bufp)
 	call lr_rd
 	ret nz
+	ld a,(lr_hdr+3)
+	ld b,a
+	ld hl,(lr_bufp)
+ltl_ascii:
+	ld a,(hl)
+	rlca
+	jp c,lr_bad
+	inc hl
+	djnz ltl_ascii
 ltl_done:
 	ld hl,(lr_hdr)
 	ld a,(lr_hdr+3)
