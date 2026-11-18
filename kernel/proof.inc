@@ -349,7 +349,7 @@ vb_loop:
 	ld (kv_proof_ptr),hl
 	ld e,a
 	ld d,0
-	jp vb_dispatch
+	jr vb_dispatch
 vb_wide:
 	sub $F0
 	ld b,a

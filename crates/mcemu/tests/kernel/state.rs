@@ -3,43 +3,49 @@ use mcpack::mm::{Kind, Verifier};
 
 #[test]
 fn the_kernel_restores_bank_b_and_writes_only_its_own_regions() {
-    let (db, bytes) = small_library();
-    let count = assertions(&db).len();
-    let marker = *b"flash page marker";
-    for entry_page in [RAM_PAGE, 0x50] {
-        let mut device = Device::with_library(&bytes);
-        device.m.load_flash(0x50, 0, &marker);
-        let ram_pattern = vec![0xA5; PAGE];
-        device.m.load_ram(0x8000, &ram_pattern);
-        fill_outside(device.m.ram_page(SPARE_PAGE), DEFAULT, 0x5A);
-        let stack = usize::from(label("KSTACK_TOP") - label("KSTACK"));
-        device.kram_write(label("KSTACK"), &vec![0xCC; stack]);
-        let mut deepest = stack;
-        for id in 0..count {
-            device.m.out_port(PORT_BANK_B, entry_page);
-            device.verify(id, ASKED_UNBOUNDED);
-            let bank = device.m.read_ram(0x8000, marker.len());
-            if entry_page == RAM_PAGE {
-                assert_eq!(bank, vec![0xA5; marker.len()], "bank B after {id}");
-            } else {
-                assert_eq!(bank, marker, "bank B after {id}");
+    for (layout, image) in LAYOUTS {
+        let (db, bytes) = small_library();
+        let count = assertions(&db).len();
+        let marker = *b"flash page marker";
+        for entry_page in [RAM_PAGE, 0x50] {
+            let mut device = Device::with_image_library(image, &bytes);
+            device.m.load_flash(0x50, 0, &marker);
+            let ram_pattern = vec![0xA5; PAGE];
+            device.m.load_ram(0x8000, &ram_pattern);
+            fill_outside(device.m.ram_page(SPARE_PAGE), image, 0x5A);
+            let stack = usize::from(label_in(image, "KSTACK_TOP") - label_in(image, "KSTACK"));
+            device.kram_write(label_in(image, "KSTACK"), &vec![0xCC; stack]);
+            let mut deepest = stack;
+            for id in 0..count {
+                device.m.out_port(PORT_BANK_B, entry_page);
+                device.verify(id, ASKED_UNBOUNDED);
+                let bank = device.m.read_ram(0x8000, marker.len());
+                if entry_page == RAM_PAGE {
+                    assert_eq!(bank, vec![0xA5; marker.len()], "bank B after {id}");
+                } else {
+                    assert_eq!(bank, marker, "bank B after {id}");
+                }
+                let page = device.m.ram_page(SPARE_PAGE);
+                assert_eq!(
+                    first_outside_not(page, image, 0x5A),
+                    None,
+                    "{layout}: after {id}"
+                );
+                let used = device.kram(label_in(image, "KSTACK"), stack);
+                deepest = deepest.min(used.iter().position(|&b| b != 0xCC).unwrap_or(stack));
             }
-            let page = device.m.ram_page(SPARE_PAGE);
-            assert_eq!(first_outside_not(page, DEFAULT, 0x5A), None, "after {id}");
-            let used = device.kram(label("KSTACK"), stack);
-            deepest = deepest.min(used.iter().position(|&b| b != 0xCC).unwrap_or(stack));
+            device.m.out_port(PORT_BANK_B, RAM_PAGE);
+            assert_eq!(
+                device.m.read_ram(0x8000, PAGE),
+                ram_pattern,
+                "RAM page of bank B"
+            );
+            println!("kernel stack: {} of {stack} bytes used", stack - deepest);
+            assert!(
+                deepest >= 128,
+                "the kernel stack comes within 128 bytes of its end"
+            );
         }
-        device.m.out_port(PORT_BANK_B, RAM_PAGE);
-        assert_eq!(
-            device.m.read_ram(0x8000, PAGE),
-            ram_pattern,
-            "RAM page of bank B"
-        );
-        println!("kernel stack: {} of {stack} bytes used", stack - deepest);
-        assert!(
-            deepest >= 128,
-            "the kernel stack comes within 128 bytes of its end"
-        );
     }
 }
 

@@ -399,6 +399,8 @@ fn assemble_kernel(out: &Path) {
             Some("WORK_LIMIT must be at least"),
         ),
         (&["WORK_LIMIT=1"][..], Some("WORK_LIMIT must be at least")),
+        (&["WORK_LIMIT=130816"][..], None),
+        (&["WORK_LIMIT=16777215"][..], None),
         (&["WORK_LIMIT=16777216"][..], Some("WORK_LIMIT must fit")),
     ] {
         match (assemble(defines), refusal) {

@@ -161,6 +161,7 @@ ST_INTERRUPTED      .equ 14
 ST_LOOSE_REF        .equ 15
 ST_CRC_MORE         .equ $FF
 
+; the differential tests build the default value only
 #ifndef WORK_LIMIT
 WORK_LIMIT          .equ 131072
 #endif
