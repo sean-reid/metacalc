@@ -1,6 +1,7 @@
 //! The reference page of a packed library.
 
 mod notation;
+mod sections;
 mod unicode;
 
 use crate::library::{self, Assertion, Hypothesis, Library, ReadError};
@@ -309,6 +310,11 @@ pub fn table(mut libraries: Vec<(Manifest, Vec<u8>)>) -> Result<String, String> 
 pub fn render(manifest: &Manifest, pin: &Pin, library: &[u8]) -> Result<String, ReadError> {
     let decoded = library::decode(library)?;
     let counts = tally(&decoded.assertions);
+    let titles = decoded
+        .sections
+        .as_ref()
+        .and_then(|s| s.titles.as_deref())
+        .unwrap_or_default();
     let mut out = String::new();
     let _ = writeln!(
         out,
@@ -374,7 +380,11 @@ pub fn render(manifest: &Manifest, pin: &Pin, library: &[u8]) -> Result<String, 
             counted(count, kind.noun()),
             kind.explanation()
         );
-        for a in decoded.assertions.iter().filter(|a| Kind::of(a) == kind) {
+        let anchor = kind.heading().to_lowercase().replace(' ', "-");
+        let mut headings = sections::Headings::new(titles, &anchor);
+        let of_kind = decoded.assertions.iter().enumerate();
+        for (i, a) in of_kind.filter(|(_, a)| Kind::of(a) == kind) {
+            headings.before(&mut out, i);
             entry(&mut out, a);
         }
     }

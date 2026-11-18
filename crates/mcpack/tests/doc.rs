@@ -350,3 +350,79 @@ fn doc_refuses_a_library_that_loads_but_fails_the_kernel() {
     );
     assert!(!page.exists());
 }
+
+fn section(depth: usize, text: &str) -> String {
+    let pattern = ["##", "#*", "=-", "-."][depth - 1];
+    let rule = pattern.repeat(40)[..79].to_string();
+    format!("$(\n{rule}\n  {text}\n{rule}\n$)\n")
+}
+
+fn titled() -> String {
+    let mut src = String::from(
+        "$c ( ) -> wff |- $.\n$v ph ps $.\nwph $f wff ph $.\nwps $f wff ps $.\nwi $a wff ( ph -> ps ) $.\n",
+    );
+    src.push_str(&section(1, "Logic"));
+    src.push_str(&section(2, "Axioms of *logic* <&> more"));
+    src.push_str("ax-1 $a |- ( ph -> ( ps -> ph ) ) $.\n");
+    src.push_str(&section(2, "Rules"));
+    src.push_str("ax-2 $a |- ( ph -> ph ) $.\n");
+    src.push_str(&section(3, "Deep"));
+    src.push_str("th1 $p |- ( ph -> ph ) $= wph ax-2 $.\n");
+    src.push_str(&section(1, "Last"));
+    src.push_str("th2 $p |- ( ph -> ph ) $= wph ax-2 $.\n");
+    src
+}
+
+fn headings(text: &str) -> Vec<&str> {
+    text.lines().filter(|l| l.starts_with("###")).collect()
+}
+
+#[test]
+fn a_page_shows_each_section_title_above_its_first_assertion_at_a_level_following_its_depth() {
+    let text = render(&titled());
+    assert_eq!(
+        headings(&text),
+        [
+            "### Logic {#page:axioms-section-0}",
+            "#### Axioms of \\*logic\\* &lt;&amp;&gt; more {#page:axioms-section-1}",
+            "#### Rules {#page:axioms-section-2}",
+            "### Logic {#page:theorems-section-0}",
+            "#### Rules {#page:theorems-section-2}",
+            "##### Deep {#page:theorems-section-3}",
+            "### Last {#page:theorems-section-4}",
+        ]
+    );
+    let at = |needle: &str| text.find(needle).unwrap_or_else(|| panic!("{needle}"));
+    let axioms = at("## Axioms {#page:axioms}");
+    assert!(axioms < at("### Logic {#page:axioms-section-0}"));
+    assert!(at("#page:axioms-section-0") < at("#page:axioms-section-1"));
+    assert!(at("#page:axioms-section-1") < at("id=\"ax-1\""));
+    assert!(at("id=\"ax-1\"") < at("#page:axioms-section-2"));
+    assert!(at("#page:axioms-section-2") < at("id=\"ax-2\""));
+    assert!(at("id=\"ax-2\"") < at("## Theorems {#page:theorems}"));
+    assert!(at("#page:theorems-section-3") < at("id=\"th1\""));
+    assert!(at("id=\"th1\"") < at("#page:theorems-section-4"));
+    assert!(at("#page:theorems-section-4") < at("id=\"th2\""));
+}
+
+#[test]
+fn section_headings_never_repeat_an_id_or_take_one_a_label_could() {
+    let text = render(&titled());
+    let mut ids: Vec<&str> = text
+        .split("{#")
+        .skip(1)
+        .filter_map(|rest| rest.split('}').next())
+        .collect();
+    let count = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), count);
+    assert!(ids.iter().all(|id| id.starts_with("page:")));
+}
+
+#[test]
+fn a_library_without_titles_has_a_page_with_no_section_headings() {
+    let text = render(MIXED);
+    assert!(headings(&text).is_empty());
+    assert!(!text.contains("-section-"));
+}
