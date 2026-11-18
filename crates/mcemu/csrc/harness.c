@@ -6,6 +6,7 @@
 
 #include "scancodes.h"
 #include "tilem.h"
+#include "xz/xz.h"
 
 void *tilem_malloc(size_t s) { void *p = malloc(s); if (!p) abort(); return p; }
 void *tilem_malloc0(size_t s) { void *p = calloc(1, s); if (!p) abort(); return p; }
@@ -58,6 +59,76 @@ static int halt_stops(TilemCalc *calc, dword op, void *data)
 	return !calc->z80.r.iff1 || (uint16_t)(calc->z80.r.pc.w.l - 1) < STUB_END;
 }
 
+/* The calculator has one spare RAM page for 82h to 87h; the core models six. */
+#define SPARE_FIRST 0x82
+#define SPARE_LAST 0x87
+
+static void alias_spare_pages(TilemCalc *calc)
+{
+	int i;
+
+	for (i = 1; i < 4; i++)
+		if (calc->mempagemap[i] > SPARE_FIRST && calc->mempagemap[i] <= SPARE_LAST)
+			calc->mempagemap[i] = SPARE_FIRST;
+}
+
+/* The core holds the LCD busy for a fixed count of CPU clocks, 50 at 6 MHz. The controller takes a fixed time, so the count scales with the clock. */
+#define LCD_BUSY_BASE_KHZ 6000
+
+static dword lcd_busy_expiry(TilemCalc *calc)
+{
+	if (!calc->lcd.busy)
+		return 0;
+	return calc->z80.clock + tilem_z80_get_timer_clocks(calc, TILEM_TIMER_LCD_DELAY);
+}
+
+static void scale_lcd_busy(TilemCalc *calc, dword before)
+{
+	dword after = lcd_busy_expiry(calc);
+
+	if (after == before || calc->z80.clockspeed == LCD_BUSY_BASE_KHZ)
+		return;
+	tilem_z80_set_timer(calc, TILEM_TIMER_LCD_DELAY,
+			    (after - calc->z80.clock) * calc->z80.clockspeed / LCD_BUSY_BASE_KHZ, 0, 0);
+}
+
+static int is_lcd_port(dword port)
+{
+	return (port & 0xff & 0xfc) == 0x10;
+}
+
+/* The values written to ports 5, 6 and 7 since the last run began, for the calling thread. */
+static _Thread_local uint8_t bank_writes[3][32];
+
+static void note_bank_write(dword port, byte value)
+{
+	port &= 0xff;
+	if (port >= 5 && port <= 7)
+		bank_writes[port - 5][value >> 3] |= 1 << (value & 7);
+}
+
+static void out_aliased(TilemCalc *calc, dword port, byte value)
+{
+	dword before = lcd_busy_expiry(calc);
+
+	note_bank_write(port, value);
+
+	xz_z80_out(calc, port, value);
+	alias_spare_pages(calc);
+	if (is_lcd_port(port))
+		scale_lcd_busy(calc, before);
+}
+
+static byte in_scaled(TilemCalc *calc, dword port)
+{
+	dword before = lcd_busy_expiry(calc);
+	byte value = xz_z80_in(calc, port);
+
+	if (is_lcd_port(port))
+		scale_lcd_busy(calc, before);
+	return value;
+}
+
 typedef struct {
 	uint16_t af, bc, de, hl, ix, iy, sp, pc, af2, bc2, de2, hl2;
 	uint8_t i, iff1, iff2, im;
@@ -85,6 +156,9 @@ TilemCalc *mcemu_new(const uint8_t *rom, size_t len)
 		tilem_calc_free(calc);
 		return NULL;
 	}
+	calc->hw.z80_out = out_aliased;
+	calc->hw.z80_in = in_scaled;
+	alias_spare_pages(calc);
 	calc->z80.emuflags |= TILEM_Z80_BREAK_EXCEPTIONS;
 	tilem_z80_add_breakpoint(calc, TILEM_BREAK_EXECUTE, OP_HALT, OP_HALT, OP_MASK, halt_stops, NULL);
 	return calc;
@@ -96,6 +170,8 @@ size_t mcemu_rom_size(const TilemCalc *calc) { return calc->hw.romsize; }
 size_t mcemu_ram_size(const TilemCalc *calc) { return calc->hw.ramsize; }
 uint32_t mcemu_ltop(TilemCalc *calc, uint32_t addr) { return calc->hw.mem_ltop(calc, addr); }
 void mcemu_out(TilemCalc *calc, uint8_t port, uint8_t value) { calc->hw.z80_out(calc, port, value); }
+uint8_t mcemu_in(TilemCalc *calc, uint8_t port) { return calc->hw.z80_in(calc, port); }
+int mcemu_khz(const TilemCalc *calc) { return calc->z80.clockspeed; }
 /* Writes a port with the flash protection open, as the OS does for the protected ones. */
 void mcemu_out_unlocked(TilemCalc *calc, uint8_t port, uint8_t value)
 {
@@ -141,6 +217,7 @@ uint32_t mcemu_run(TilemCalc *calc, uint16_t pc, int limit, uint32_t *elapsed)
 	uint32_t start;
 	uint32_t reason;
 
+	memset(bank_writes, 0, sizeof bank_writes);
 	calc->z80.r.iff1 = calc->z80.r.iff2 = 0;
 	calc->z80.halted = 0;
 	calc->z80.r.pc.d = pc;
@@ -159,11 +236,16 @@ uint16_t mcemu_pc(const TilemCalc *calc)
 uint32_t mcemu_resume(TilemCalc *calc, int limit, uint32_t *elapsed)
 {
 	uint32_t start = calc->z80.clock;
-	uint32_t reason = tilem_z80_run(calc, limit, NULL);
+	uint32_t reason;
 
+	memset(bank_writes, 0, sizeof bank_writes);
+	reason = tilem_z80_run(calc, limit, NULL);
 	*elapsed = calc->z80.clock - start;
 	return reason;
 }
+
+/* Copies the bit sets of values written to ports 5, 6 and 7 during the last run or resume. */
+void mcemu_banks(uint8_t out[3][32]) { memcpy(out, bank_writes, sizeof bank_writes); }
 
 /* One byte per pixel, 1 when lit; the core leaves the frame untouched while the LCD is off, so it starts zeroed. Returns 0 on success. */
 int mcemu_lcd(TilemCalc *calc, uint8_t *out, int width, int height)

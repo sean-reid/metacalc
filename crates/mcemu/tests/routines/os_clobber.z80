@@ -19,7 +19,17 @@
 	ld hl, 9ABCh
 	ld ix, 0DEF0h
 	ld iy, 0BEEFh
+#ifdef INTERRUPT
+	ld hl, 0C6A9h
+	push hl
+	pop af
+	ld hl, 9ABCh
+	ei
+	halt
+	di
+#else
 	bcall(SERVICE)
+#endif
 	ld (RESULT + 6), hl
 	push af
 	pop hl
@@ -40,4 +50,5 @@
 	push af
 	pop hl
 	ld (RESULT + 20), hl
+	di
 	halt

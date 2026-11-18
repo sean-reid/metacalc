@@ -9,6 +9,30 @@ const CLR_LCD_FULL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd
 const CLOBBER_GETCSC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_clobber_getcsc.bin"));
 const CLOBBER_CLR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_clobber_clr_lcd_full.bin"));
 const CLOBBER_GR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_clobber_gr_buf_cpy.bin"));
+const CLOBBER_PUT_C: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_clobber_put_c.bin"));
+const CLOBBER_INTERRUPT: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_clobber_interrupt.bin"));
+const GETCSC_BLIND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_getcsc_blind.bin"));
+const IFF_GETCSC_OFF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_iff_getcsc_off.bin"));
+const IFF_GETCSC_ON: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_iff_getcsc_on.bin"));
+const IFF_PUT_C_OFF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_iff_put_c_off.bin"));
+const IFF_PUT_C_ON: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_iff_put_c_on.bin"));
+const IFF_CLR_OFF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_iff_clr_lcd_full_off.bin"));
+const IFF_CLR_ON: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_iff_clr_lcd_full_on.bin"));
+const IFF_GR_ON: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_iff_gr_buf_cpy_on.bin"));
+const IFF_GR_OFF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_iff_gr_buf_cpy_off.bin"));
+const GR_BUF_CPY_MODE4: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_gr_buf_cpy_mode4.bin"));
+const GR_BUF_CPY_MODE6: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_gr_buf_cpy_mode6.bin"));
+const GR_BUF_CPY_MODE7: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_gr_buf_cpy_mode7.bin"));
+const CLR_LCD_FULL_MODE4: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full_mode4.bin"));
+const CLR_LCD_FULL_MODE6: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full_mode6.bin"));
+const CLR_LCD_FULL_MODE7: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full_mode7.bin"));
 const RELIANT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_reliant.bin"));
 
 const ENTRY: u16 = 0x9000;
@@ -74,6 +98,7 @@ const ON: u8 = 0x29;
 fn machine_with(code: &[u8]) -> Machine {
     let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
     m.load_ram(ENTRY, code);
+    m.out_port(0x03, 0x0B);
     m
 }
 
@@ -207,9 +232,20 @@ fn getcsc_reports_a_second_key_once_the_first_is_released_whichever_code_is_lowe
     }
 }
 
-/// AF, BC, DE, HL, IX, IY, SP after the call, then BC', DE', HL', AF', then SP before it.
+/// AF, BC, DE, HL, IX, IY, SP after the call, then BC', DE', HL', AF', then SP before it. The
+/// interrupt sources are masked, so only the call itself changes anything.
 fn registers_after(code: &[u8]) -> Vec<u16> {
     let mut m = machine_with(code);
+    m.out_port(0x03, 0);
+    recorded(&mut m)
+}
+
+/// The same with the sources on, for a program that waits for an interrupt.
+fn registers_after_interrupt(code: &[u8]) -> Vec<u16> {
+    recorded(&mut machine_with(code))
+}
+
+fn recorded(m: &mut Machine) -> Vec<u16> {
     assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::Halted);
     m.read_ram(RESULT, 26)
         .chunks(2)
@@ -232,8 +268,8 @@ fn getcsc_returns_the_scan_code_and_destroys_the_other_main_registers() {
 }
 
 #[test]
-fn clr_lcd_full_and_gr_buf_cpy_destroy_every_register_but_ix_iy_and_sp() {
-    for code in [CLOBBER_CLR, CLOBBER_GR] {
+fn clr_lcd_full_gr_buf_cpy_and_put_c_destroy_every_register_but_ix_iy_and_sp() {
+    for code in [CLOBBER_CLR, CLOBBER_GR, CLOBBER_PUT_C] {
         let w = registers_after(code);
         assert_eq!(w[0..4], [0xAF5A, 0xBC0B, 0xDE0D, 0xA11A], "AF, BC, DE, HL");
         assert_eq!(w[4..6], [0xDEF0, 0xBEEF], "IX and IY");
@@ -308,6 +344,29 @@ fn gr_buf_cpy_puts_the_graph_buffer_on_the_lcd_at_both_speeds() {
     }
 }
 
+/// The controller drops a write inside its busy window, which is 125 clocks at 15 MHz. Every byte
+/// differs from its neighbours, so a dropped write shows. With port 2Fh at 0 the core's
+/// separate wait is 48 clocks at 15 MHz, so the stub has to wait on the busy bit itself.
+#[test]
+fn gr_buf_cpy_loses_no_byte_at_either_speed_whatever_port_2f_says() {
+    let buf: Vec<u8> = (0..768)
+        .map(|i| (i as u8).wrapping_mul(37) ^ 0x5A)
+        .collect();
+    for speed in [Speed::Mhz6, Speed::Mhz15] {
+        for port_2f in [0x00, 0x4B] {
+            let mut m = machine_with(GR_BUF_CPY);
+            m.out_port(0x2F, port_2f);
+            m.set_speed(speed);
+            m.load_ram(PLOT_S_SCREEN, &buf);
+            assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::Halted);
+            assert!(
+                lcd_matches(&m.lcd_ram(), &buf),
+                "{speed:?}, port 2F {port_2f:02X}: the LCD memory differs from the buffer"
+            );
+        }
+    }
+}
+
 #[test]
 fn clr_lcd_full_blanks_the_lcd_and_leaves_the_graph_buffer() {
     let buf = vec![0xFF; 768];
@@ -321,5 +380,99 @@ fn clr_lcd_full_blanks_the_lcd_and_leaves_the_graph_buffer() {
         assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::Halted);
         assert_eq!(m.lcd().lit(), 0, "{speed:?}");
         assert_eq!(m.read_ram(PLOT_S_SCREEN, buf.len()), buf, "{speed:?}");
+    }
+}
+
+#[test]
+fn an_interrupt_leaves_the_main_registers_ix_and_iy_and_changes_the_shadow_set() {
+    let w = registers_after_interrupt(CLOBBER_INTERRUPT);
+    assert_eq!(w[0..4], [0xC6A9, 0x1234, 0x5678, 0x9ABC], "AF, BC, DE, HL");
+    assert_eq!(w[4..6], [0xDEF0, 0xBEEF], "IX and IY");
+    assert_eq!(w[6], w[12], "SP");
+    // The scan leaves B at 0, C at 7Fh after seven rotations, E at 56 and L at 0, with H as it was, and A and
+    // the flags as OR A leaves them with no key down.
+    assert_eq!(
+        w[7..11],
+        [0x007F, 0x0038, 0x3300, 0x0044],
+        "BC', DE', HL', AF'"
+    );
+}
+
+#[test]
+fn getcsc_sees_no_key_while_interrupts_stay_off() {
+    let mut m = machine_with(GETCSC_BLIND);
+    m.press_key(0x09);
+    assert_eq!(getcsc(&mut m), 0);
+    m.load_ram(ENTRY, GETCSC);
+    assert_eq!(
+        getcsc(&mut m),
+        0x09,
+        "the key was waiting for the first call to ask"
+    );
+}
+
+/// Whether the service returned with interrupts on: bit 2 of the flags LD A,I left.
+fn returns_with_interrupts_on(code: &[u8]) -> bool {
+    let mut m = machine_with(code);
+    assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::Halted);
+    m.read_ram(RESULT, 1)[0] & 4 != 0
+}
+
+/// TI-OS 2.43 and 2.55MP return from these four with the same interrupt state whatever it was
+/// on entry, measured on the real ROM.
+#[test]
+fn services_return_with_the_interrupt_state_the_real_os_leaves() {
+    assert!(
+        returns_with_interrupts_on(IFF_GETCSC_OFF),
+        "GetCSC from off"
+    );
+    assert!(returns_with_interrupts_on(IFF_GETCSC_ON), "GetCSC from on");
+    assert!(
+        returns_with_interrupts_on(IFF_CLR_OFF),
+        "ClrLCDFull from off"
+    );
+    assert!(returns_with_interrupts_on(IFF_CLR_ON), "ClrLCDFull from on");
+    assert!(returns_with_interrupts_on(IFF_GR_OFF), "GrBufCpy from off");
+    assert!(returns_with_interrupts_on(IFF_GR_ON), "GrBufCpy from on");
+    assert!(!returns_with_interrupts_on(IFF_PUT_C_OFF), "PutC from off");
+    assert!(!returns_with_interrupts_on(IFF_PUT_C_ON), "PutC from on");
+}
+
+/// Each LCD service from increment mode 4, 5, 6 and 7. The status byte shows only the low two
+/// bits of the mode: 60h to 63h. Whether TI-OS also restores the mode it found was measured from
+/// mode 5 only.
+#[test]
+fn the_lcd_services_leave_the_controller_in_the_mode_they_found_it() {
+    let services: [(&str, [&[u8]; 4]); 2] = [
+        (
+            "_GrBufCpy",
+            [
+                GR_BUF_CPY_MODE4,
+                GR_BUF_CPY,
+                GR_BUF_CPY_MODE6,
+                GR_BUF_CPY_MODE7,
+            ],
+        ),
+        (
+            "_ClrLCDFull",
+            [
+                CLR_LCD_FULL_MODE4,
+                CLR_LCD_FULL,
+                CLR_LCD_FULL_MODE6,
+                CLR_LCD_FULL_MODE7,
+            ],
+        ),
+    ];
+    for (name, codes) in services {
+        for (mode, code) in (4u8..).zip(codes) {
+            let mut m = machine_with(code);
+            assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::Halted);
+            let status = 0x60 | (mode & 3);
+            assert_eq!(
+                m.read_ram(RESULT, 2),
+                [status, status],
+                "{name} from {mode}"
+            );
+        }
     }
 }

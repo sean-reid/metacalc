@@ -122,7 +122,7 @@ pub fn press_on_during(device: &mut Device, id: usize, press_at: u32) -> (u16, u
     assert_eq!(first.stop, Stop::Limit, "the run ended before ON went down");
     let pc = device.m.pc();
     device.m.press_key(Machine::KEY_ON);
-    let rest = device.m.run(pc, RUN_LIMIT);
+    let rest = device.m.resume(RUN_LIMIT);
     assert_eq!(rest.stop, Stop::Halted);
     (pc, rest.tstates)
 }
@@ -212,11 +212,11 @@ fn the_longest_stretch_without_a_poll_is_one_scan_of_the_longest_pair_list() {
     device.m.run(device.label("ENTRY_ONE"), 500_000);
     let scan = (label("PAIR_SCAN"), label("APPLY"));
     while !(scan.0..scan.1).contains(&device.m.pc()) {
-        let run = device.m.run(device.m.pc(), 500);
+        let run = device.m.resume(500);
         assert_eq!(run.stop, Stop::Limit, "the call ended before a scan began");
     }
     device.m.press_key(Machine::KEY_ON);
-    let rest = device.m.run(device.m.pc(), RUN_LIMIT);
+    let rest = device.m.resume(RUN_LIMIT);
     assert_eq!(rest.stop, Stop::Halted);
     println!(
         "{pairs} pairs: ON seen {} T-states after it went down, {:.3} s at 6 MHz",

@@ -26,6 +26,8 @@ pub const LCD_HEIGHT: usize = 64;
 const PORT_SPEED: u8 = 0x20;
 const FLASH_PAGE_SIZE: usize = 0x4000;
 pub const RAM_PAGE_SIZE: usize = 0x4000;
+/// The one spare page the calculator has: 82h to 87h all reach it.
+const FIRST_SPARE_PAGE: u8 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Speed {
@@ -44,8 +46,13 @@ pub enum Stop {
     /// reset one: `read_ram` reads flash, nothing loaded is where it was, and the machine
     /// is not to be used again.
     Fault,
-    /// The app left through `_JForceCmdNoChar`.
+    /// The app left through `_JForceCmdNoChar` with the machine as the OS needs it: port 5 at
+    /// 0, port 7 at 81h, 6 MHz and interrupt mode 1.
     Exited,
+    /// The app left through `_JForceCmdNoChar` with the machine in another state.
+    BadExit(ExitState),
+    /// The app returned from its entry point instead of leaving through `_JForceCmdNoChar`.
+    Returned,
     /// The app made a `bcall` the stub does not implement; the address is the one called.
     UnsupportedBcall(u16),
     /// The app made a `bjump` the stub does not implement.
@@ -53,6 +60,25 @@ pub enum Stop {
     /// An OS call raised an error the app did not catch, as TI-OS does with ERR:MEMORY; the
     /// code is the one in A.
     OsError(u8),
+}
+
+/// What the machine looked like when the app left.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExitState {
+    pub port5: u8,
+    pub port7: u8,
+    pub speed: Speed,
+    pub im: u8,
+}
+
+impl ExitState {
+    /// What TI-OS needs: RAM page 0 in bank C, RAM page 1 in bank B, 6 MHz and interrupt mode 1.
+    pub const CLEAN: ExitState = ExitState {
+        port5: 0,
+        port7: 0x81,
+        speed: Speed::Mhz6,
+        im: 1,
+    };
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,12 +177,21 @@ impl Machine {
             .collect()
     }
 
-    /// RAM page `n`, the one that bank C shows after a write of `n` to port 5.
+    /// RAM page `n`, the one that bank C shows after a write of `n` to port 5. Pages 2 to 7
+    /// are one page, as on the calculator, so any `n` from 2 to 7 returns the same bytes.
     pub fn ram_page(&mut self, n: u8) -> &mut [u8] {
+        assert!(n < 8, "RAM page out of range");
+        let n = n.min(FIRST_SPARE_PAGE);
         let start = self.calc.rom_size() + usize::from(n) * RAM_PAGE_SIZE;
         let mem = self.calc.mem_mut();
-        assert!(start + RAM_PAGE_SIZE <= mem.len(), "RAM page out of range");
         &mut mem[start..start + RAM_PAGE_SIZE]
+    }
+
+    /// The values written to ports 5, 6 and 7 since the last `run` or `resume` began, as
+    /// (port, value) pairs in order. Pages 82h to 87h are one page, so these are the only
+    /// record of which page number the code selected.
+    pub fn banks_written(&self) -> Vec<(u8, u8)> {
+        self.calc.banks_written()
     }
 
     pub fn out_port(&mut self, port: u8, value: u8) {
@@ -199,13 +234,45 @@ impl Machine {
         self.stopped(reason, tstates)
     }
 
-    fn stopped(&self, reason: u32, tstates: u32) -> Run {
+    /// Runs on from where the last run stopped, registers and interrupt state as the code left
+    /// them, until a HALT executes with interrupts off or `limit` T-states pass. After a run
+    /// that hit its limit this continues it, where `run(pc, ..)` would turn interrupts off. After
+    /// `Stop::Halted` the CPU stays halted and only an interrupt wakes it, so a run that halted
+    /// with interrupts off goes on with `run`. A `limit` of 0 returns `Stop::Limit` with 0
+    /// T-states and runs nothing.
+    pub fn resume(&mut self, limit: u32) -> Run {
+        if limit == 0 {
+            return Run::NO_TIME;
+        }
+        let limit = i32::try_from(limit).expect("limit fits in i32");
+        let (reason, tstates) = self.calc.resume(limit);
+        self.stopped(reason, tstates)
+    }
+
+    fn exit_state(&mut self) -> ExitState {
+        ExitState {
+            port5: self.calc.in_port(0x05),
+            port7: self.calc.in_port(0x07),
+            speed: if self.calc.khz() == 15000 {
+                Speed::Mhz15
+            } else {
+                Speed::Mhz6
+            },
+            im: self.calc.regs().im,
+        }
+    }
+
+    fn stopped(&mut self, reason: u32, tstates: u32) -> Run {
         let stop = match reason {
             0 => Stop::Limit,
             1 => {
                 let r = self.calc.regs();
                 match r.pc {
-                    stub::APP_EXIT => Stop::Exited,
+                    stub::APP_EXIT => match self.exit_state() {
+                        ExitState::CLEAN => Stop::Exited,
+                        left => Stop::BadExit(left),
+                    },
+                    stub::APP_RETURN => Stop::Returned,
                     stub::FAULT_BCALL => Stop::UnsupportedBcall(r.bc),
                     stub::FAULT_BJUMP => Stop::UnsupportedBjump(r.bc),
                     stub::FAULT_ERROR => Stop::OsError((r.af >> 8) as u8),

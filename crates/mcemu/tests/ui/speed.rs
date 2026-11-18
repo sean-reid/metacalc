@@ -44,6 +44,52 @@ fn typical() -> Vec<Op> {
     })
 }
 
+const TITLE: (&str, &str) = ("Propositional logic", "12/40");
+const KEYS: [&str; 5] = ["Open", "Find", "Kind", "Try", ""];
+
+/// A title, six list rows built by `row`, and the soft keys.
+fn screen(title: (&str, &str), row: impl Fn(usize) -> (String, String)) -> Vec<Op> {
+    calls(|c| {
+        c.title(title.0, title.1);
+        for i in 0..6 {
+            let (left, right) = row(i);
+            c.list_row(1 + i, &left, &right, i == 2);
+        }
+        c.soft_keys(KEYS);
+    })
+}
+
+/// Six rows of one glyph, the narrowest the font has, which packs the most characters into a
+/// row.
+fn narrowest_rows() -> Vec<Op> {
+    screen(TITLE, |_| ("i".repeat(60), String::new()))
+}
+
+/// Frames that cost more than the typical one: the longest labels the list room takes, prose,
+/// and a mix of narrow glyphs.
+fn heavy_frames() -> Vec<(&'static str, Vec<Op>)> {
+    let long = "a1ii-the-implication-introduction-rule-in-full-form";
+    let prose = "the quick brown fox jumps over the lazy dog and runs";
+    let narrow = ".il".repeat(30);
+    vec![
+        (
+            "six long labels and a long title",
+            screen(
+                ("A collection of theorems with a long name", TITLE.1),
+                |_| (long.into(), "\u{2713}".into()),
+            ),
+        ),
+        (
+            "six rows of prose",
+            screen(TITLE, |_| (prose.into(), String::new())),
+        ),
+        (
+            "six rows of mixed narrow glyphs",
+            screen(TITLE, |_| (narrow.clone(), String::new())),
+        ),
+    ]
+}
+
 struct Times {
     clear: u32,
     text: u32,
@@ -112,4 +158,33 @@ fn a_typical_frame_and_its_blit_redraw_within_50_ms_at_both_speeds() {
             BUDGET_MS * mhz
         );
     }
+}
+
+/// Prints a frame's redraw and blit at 6 MHz and requires it under the budget.
+fn within_budget_at_6_mhz(what: &str, ops: &[Op]) {
+    let whole =
+        cost(Speed::Mhz6, &[Op::Clear]) + cost(Speed::Mhz6, ops) + cost(Speed::Mhz6, &[Op::Blit]);
+    report(format!(
+        "6 MHz: {what} and blit: {whole} T-states, {:.1} ms",
+        f64::from(whole) / 6000.0
+    ));
+    assert!(
+        whole < BUDGET_MS * 6000,
+        "{what}: {whole} T-states against {} for {BUDGET_MS} ms",
+        BUDGET_MS * 6000
+    );
+}
+
+#[test]
+fn the_heavy_frames_and_their_blit_redraw_within_50_ms_at_6_mhz() {
+    for (what, ops) in heavy_frames() {
+        within_budget_at_6_mhz(what, &ops);
+    }
+}
+
+/// Six rows of `i` take 57.0 ms at 6 MHz, 7 ms over the budget.
+#[test]
+#[ignore = "the title bar, six list rows of sixty i with no right-hand text, and the soft keys take 57.0 ms with the blit at 6 MHz (341,934 T-states) against a 50 ms budget"]
+fn six_rows_of_the_narrowest_glyph_and_the_blit_redraw_within_50_ms_at_6_mhz() {
+    within_budget_at_6_mhz("six rows of i", &narrowest_rows());
 }

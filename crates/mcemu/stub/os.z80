@@ -6,6 +6,7 @@ _GetCSC           .equ $4018
 _JForceCmdNoChar  .equ $4027
 _ClrLCDFull       .equ $4540
 _GrBufCpy         .equ $486A
+_PutC             .equ $4504
 _ChkFindSym       .equ $42F1
 _EnoughMem        .equ $42FD
 _CreateAppVar     .equ $4E6A
@@ -19,6 +20,7 @@ E_MEMORY          .equ $8E
 E_BAD_CALL        .equ $FF
 
 kbdScanCode       .equ $843F
+kbdKey            .equ $8445
 plotSScreen       .equ $9340
 
 PORT_KEYS         .equ $01
@@ -60,18 +62,64 @@ JUNK_HL2          .equ $A127
 	jp $4000
 
 ; Acknowledges the timer and keypad sources the way the hardware needs: the mask on port 3
-; written as zero and then again.
+; written as zero and then again. Scans the keys, so a key is only seen while interrupts are
+; on. Keeps the main registers and IX and IY; the shadow set is left changed.
 isr:
-	push af
+	ex af,af'
+	exx
 	in a,(PORT_MASK)
 	push af
 	xor a
 	out (PORT_MASK),a
 	pop af
 	out (PORT_MASK),a
-	pop af
+	call scan_keys
+	exx
+	ex af,af'
 	ei
 	reti
+
+; Sets kbdScanCode to the one key that is down if it is not the one taken last, tracked in
+; kbdKey. Two or more keys down change nothing until one is up; no key down forgets the last.
+scan_keys:
+	ld de,0
+	ld l,0
+	ld c,$FE
+scan_group:
+	ld a,c
+	out (PORT_KEYS),a
+	in a,(PORT_KEYS)
+	cpl
+	ld b,8
+scan_bit:
+	inc e
+	rra
+	jr nc,scan_up
+	inc d
+	ld l,e
+scan_up:
+	djnz scan_bit
+	rlc c
+	ld a,e
+	cp 56
+	jr nz,scan_group
+	ld a,$FF
+	out (PORT_KEYS),a
+	ld a,d
+	or a
+	jr z,scan_idle
+	dec a
+	ret nz
+	ld a,(kbdKey)
+	cp l
+	ret z
+	ld a,l
+	ld (kbdKey),a
+	ld (kbdScanCode),a
+	ret
+scan_idle:
+	ld (kbdKey),a
+	ret
 
 ; rst 28h: the two bytes after the call site name the entry point. Registers survive except
 ; the ones the service returns.
@@ -172,6 +220,7 @@ bcall_table:
 	.dw _GetCSC, get_csc
 	.dw _ClrLCDFull, clr_lcd_full
 	.dw _GrBufCpy, gr_buf_cpy
+	.dw _PutC, put_c
 	.dw _ChkFindSym, chk_find_sym
 	.dw _EnoughMem, enough_mem
 	.dw _CreateAppVar, create_app_var
@@ -192,57 +241,36 @@ app_exit:
 	halt
 	jr app_exit
 
-; A returns the scan code of the one key that is down if it is not the one reported last, else 0,
-; and the flags, BC, DE and HL are junk. Two or more keys down report nothing until one is
-; up; no key down forgets the last one reported.
+; The app returned to the address the launcher put on its stack. A HALT in the stub always
+; ends the run, so the machine stops as the app left it, interrupts included.
+app_return:
+	halt
+	jr app_return
+
+; A returns the key the interrupt handler found and clears it, 0 if none. The flags, BC, DE and
+; HL are junk. Returns with interrupts on.
 get_csc:
-	ld de,0
-	ld l,0
-	ld c,$FE
-get_csc_group:
-	ld a,c
-	out (PORT_KEYS),a
-	in a,(PORT_KEYS)
-	cpl
-	ld b,8
-get_csc_bit:
-	inc e
-	rra
-	jr nc,get_csc_up
-	inc d
-	ld l,e
-get_csc_up:
-	djnz get_csc_bit
-	rlc c
-	ld a,e
-	cp 56
-	jr nz,get_csc_group
-	ld a,$FF
-	out (PORT_KEYS),a
-	ld a,d
-	or a
-	jr z,get_csc_idle
-	dec a
-	jr nz,get_csc_none
+	di
 	ld a,(kbdScanCode)
-	cp l
-	jr z,get_csc_none
-	ld a,l
-	ld (kbdScanCode),a
-	jr get_csc_return
-get_csc_idle:
-	ld (kbdScanCode),a
-get_csc_none:
-	xor a
-get_csc_return:
+	ld hl,kbdScanCode
+	ld (hl),0
 	ld bc,JUNK_BC
 	ld de,JUNK_DE
 	ld hl,JUNK_HL
 	cp $FF
+	ei
+	ret
+
+; Draws one character's worth of nothing. Destroys every register but IX, IY and SP and
+; returns with interrupts off.
+put_c:
+	call junk_all
+	di
 	ret
 
 ; Both services write the 12 columns of each of the 64 rows, waiting on the LCD between
-; accesses, whatever the CPU speed. They destroy every register but IX, IY and SP.
+; accesses, whatever the CPU speed. They destroy every register but IX, IY and SP and return
+; with interrupts on.
 clr_lcd_full:
 	ld hl,zero
 	ld de,0
@@ -254,6 +282,11 @@ gr_buf_cpy:
 	ld de,1
 	call lcd_blit
 lcd_done:
+	call junk_all
+	ei
+	ret
+
+junk_all:
 	exx
 	ld bc,JUNK_BC2
 	ld de,JUNK_DE2
@@ -271,8 +304,13 @@ lcd_done:
 	ld hl,JUNK_HL
 	ret
 
-; In: HL = the first byte, DE = how far HL moves after each byte.
+; In: HL = the first byte, DE = how far HL moves after each byte. Leaves the controller in the
+; increment mode it was in, kept in AF' meanwhile.
 lcd_blit:
+	in a,(PORT_LCD_CMD)
+	and 3
+	or 4
+	ex af,af'
 	ld a,$07
 	call lcd_command
 	ld c,$80
@@ -292,7 +330,8 @@ lcd_byte:
 	ld a,c
 	cp $C0
 	jr nz,lcd_row
-	ret
+	ex af,af'
+	jp lcd_command
 
 lcd_command:
 	push af
@@ -301,10 +340,16 @@ lcd_command:
 	out (PORT_LCD_CMD),a
 	ret
 
+; Waits for the CPU-side LCD wait and then for the controller's own busy bit, which drops a
+; write made inside its window.
 lcd_wait:
 	in a,(PORT_STATUS)
 	and LCD_READY
 	jr z,lcd_wait
+lcd_busy:
+	in a,(PORT_LCD_CMD)
+	rla
+	jr c,lcd_busy
 	ret
 
 zero:
@@ -327,6 +372,7 @@ os_init:
 	call lcd_command
 	xor a
 	ld (kbdScanCode),a
+	ld (kbdKey),a
 	halt
 
 #include "vars.z80"

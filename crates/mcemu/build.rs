@@ -26,7 +26,62 @@ const OS_ROUTINES: &[(&str, &str, &[&str])] = &[
     (
         "os_call.z80",
         "os_getcsc.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GetCSC", "WAIT=2"],
+    ),
+    (
+        "os_call.z80",
+        "os_getcsc_blind.bin",
         &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GetCSC"],
+    ),
+    (
+        "os_iff.z80",
+        "os_iff_getcsc_off.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GetCSC"],
+    ),
+    (
+        "os_iff.z80",
+        "os_iff_getcsc_on.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GetCSC", "ON"],
+    ),
+    (
+        "os_iff.z80",
+        "os_iff_put_c_off.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_PutC"],
+    ),
+    (
+        "os_iff.z80",
+        "os_iff_put_c_on.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_PutC", "ON"],
+    ),
+    (
+        "os_iff.z80",
+        "os_iff_clr_lcd_full_off.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_ClrLCDFull"],
+    ),
+    (
+        "os_iff.z80",
+        "os_iff_gr_buf_cpy_off.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GrBufCpy"],
+    ),
+    (
+        "os_iff.z80",
+        "os_iff_clr_lcd_full_on.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_ClrLCDFull", "ON"],
+    ),
+    (
+        "os_iff.z80",
+        "os_iff_gr_buf_cpy_on.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GrBufCpy", "ON"],
+    ),
+    (
+        "os_clobber.z80",
+        "os_clobber_interrupt.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "INTERRUPT"],
+    ),
+    (
+        "os_clobber.z80",
+        "os_clobber_put_c.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_PutC"],
     ),
     (
         "os_call.z80",
@@ -36,6 +91,7 @@ const OS_ROUTINES: &[(&str, &str, &[&str])] = &[
             "RESULT=$A000",
             "SERVICE=_JForceCmdNoChar",
             "JUMP",
+            "IM1",
         ],
     ),
     (
@@ -51,12 +107,57 @@ const OS_ROUTINES: &[(&str, &str, &[&str])] = &[
     (
         "os_lcd.z80",
         "os_gr_buf_cpy.bin",
-        &["ENTRY=$9000", "SERVICE=_GrBufCpy"],
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GrBufCpy"],
     ),
     (
         "os_lcd.z80",
         "os_clr_lcd_full.bin",
-        &["ENTRY=$9000", "SERVICE=_ClrLCDFull"],
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_ClrLCDFull"],
+    ),
+    (
+        "os_lcd.z80",
+        "os_gr_buf_cpy_mode4.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GrBufCpy", "MODE=4"],
+    ),
+    (
+        "os_lcd.z80",
+        "os_gr_buf_cpy_mode6.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GrBufCpy", "MODE=6"],
+    ),
+    (
+        "os_lcd.z80",
+        "os_gr_buf_cpy_mode7.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GrBufCpy", "MODE=7"],
+    ),
+    (
+        "os_lcd.z80",
+        "os_clr_lcd_full_mode4.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_ClrLCDFull",
+            "MODE=4",
+        ],
+    ),
+    (
+        "os_lcd.z80",
+        "os_clr_lcd_full_mode6.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_ClrLCDFull",
+            "MODE=6",
+        ],
+    ),
+    (
+        "os_lcd.z80",
+        "os_clr_lcd_full_mode7.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_ClrLCDFull",
+            "MODE=7",
+        ],
     ),
     (
         "os_service.z80",
@@ -292,6 +393,7 @@ fn main() {
 fn write_stub_labels(labels: &Path, out: &Path) {
     const WANTED: &[&str] = &[
         "APP_EXIT",
+        "APP_RETURN",
         "FAULT_BCALL",
         "FAULT_BJUMP",
         "FAULT_ERROR",
