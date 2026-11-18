@@ -29,8 +29,9 @@ $}
 ";
 
 fn manifest(roots: &str, before: &str) -> Manifest {
-    let text =
-        format!("name = \"t\"\ntitle = \"T\"\ndescription = \"d\"\nroots = [{roots}]\n{before}");
+    let text = format!(
+        "name = \"t\"\ntitle = \"T\"\ndescription = \"d\"\norder = 1\nroots = [{roots}]\n{before}"
+    );
     Manifest::parse(&text).expect("manifest parses")
 }
 
@@ -44,6 +45,7 @@ fn manifest_reads_every_field() {
     assert_eq!(m.name, "t");
     assert_eq!(m.title, "T");
     assert_eq!(m.description, "d");
+    assert_eq!(m.order, 1);
     assert_eq!(m.roots, ["a", "b"]);
     assert_eq!(m.before.as_deref(), Some("c"));
     assert_eq!(manifest("\"a\"", "").before, None);
@@ -53,11 +55,15 @@ fn manifest_reads_every_field() {
 fn manifest_without_a_field_is_refused() {
     let err = Manifest::parse("name = \"t\"\ntitle = \"T\"\nroots = [\"a\"]\n").unwrap_err();
     assert!(err.to_string().contains("missing field `description`"));
+    let err =
+        Manifest::parse("name = \"t\"\ntitle = \"T\"\ndescription = \"d\"\nroots = [\"a\"]\n")
+            .unwrap_err();
+    assert!(err.to_string().contains("missing field `order`"));
 }
 
 #[test]
 fn manifest_with_an_unknown_field_is_refused() {
-    let text = "name = \"t\"\ntitle = \"T\"\ndescription = \"d\"\nroots = [\"a\"]\nbefor = \"c\"\n";
+    let text = "name = \"t\"\ntitle = \"T\"\ndescription = \"d\"\norder = 1\nroots = [\"a\"]\nbefor = \"c\"\n";
     let err = Manifest::parse(text).unwrap_err();
     assert!(err.to_string().contains("unknown field `befor`"));
 }
@@ -68,6 +74,14 @@ fn the_checked_in_manifests_parse() {
     for name in ["prop", "pred", "ring"] {
         let m = Manifest::load(&dir.join(format!("{name}.toml"))).expect("manifest loads");
         assert_eq!(m.name, name);
+        assert_eq!(
+            m.order,
+            ["prop", "pred", "ring"]
+                .iter()
+                .position(|n| *n == name)
+                .unwrap() as u32
+                + 1
+        );
         assert_eq!(m.roots, ["ringlz", "ringnegl", "ringcom"]);
     }
     assert!(mcpack::manifest::Pin::load(&dir.join("ring.toml")).is_ok());
@@ -166,8 +180,7 @@ fn corpus(name: &str) -> PathBuf {
         .join(name)
 }
 
-const DEMO: &str =
-    "name = \"demo\"\ntitle = \"Demo\"\ndescription = \"One theorem.\"\nroots = [\"th1\"]\n";
+const DEMO: &str = "name = \"demo\"\ntitle = \"Demo\"\ndescription = \"One theorem.\"\norder = 1\nroots = [\"th1\"]\n";
 
 /// Writes a manifest for demo0.mm and a pin with the given digest into a fresh directory.
 fn workspace(name: &str, sha256: &str) -> PathBuf {
@@ -256,32 +269,65 @@ fn doc_writes_the_page_of_a_built_library() {
     assert_eq!(out.status.code(), Some(0));
     let page = std::fs::read_to_string(&page).unwrap();
     let lines: Vec<&str> = page.lines().collect();
-    assert_eq!(lines[0], "# Demo");
+    assert_eq!(lines[0], "# Demo {#page:title}");
     assert_eq!(lines[2], "One theorem.");
     assert_eq!(
         lines[4],
-        "- Source: `demo0.mm` in [example.org/demo](https://example.org/demo/tree/abc123) at commit `abc123`"
+        "- Contents: 4 syntax rules, 3 other unproved assertions, 1 theorem"
     );
-    assert_eq!(lines[5], "- Axioms: 7");
-    assert_eq!(lines[6], "- Theorems: 1");
     assert_eq!(
-        lines[7],
-        format!("- Size: {} bytes in 1 pages of 16384 bytes", bytes.len())
+        lines[5],
+        format!(
+            "- Size: {} bytes in 1 flash pages of 16,384 bytes",
+            bytes.len()
+        )
     );
-    assert_eq!(lines[9], "## Assertions");
     assert_eq!(
-        lines[11..],
-        [
-            "- <span id=\"tze\"></span>**tze** (axiom): `term 0`",
-            "- <span id=\"tpl\"></span>**tpl** (axiom): `term ( t + r )`",
-            "- <span id=\"weq\"></span>**weq** (axiom): `wff t = r`",
-            "- <span id=\"wim\"></span>**wim** (axiom): `wff ( P -> Q )`",
-            "- <span id=\"a1\"></span>**a1** (axiom): `|- ( t = r -> ( t = s -> r = s ) )`",
-            "- <span id=\"a2\"></span>**a2** (axiom): `|- ( t + 0 ) = t`",
-            "- <span id=\"mp\"></span>**mp** (axiom) given `|- P`, `|- ( P -> Q )`: `|- Q`",
-            "- <span id=\"th1\"></span>**th1** (theorem): `|- t = t`",
-        ]
+        lines[6],
+        "- Source: `demo0.mm` in [example.org/demo](https://example.org/demo) at commit [abc123](https://example.org/demo/commit/abc123)"
     );
+    for label in ["tze", "tpl", "weq", "wim", "a1", "a2", "mp", "th1"] {
+        assert!(
+            page.contains(&format!("<div class=\"mm\" id=\"{label}\">")),
+            "{label}"
+        );
+    }
+}
+
+#[test]
+fn summary_prints_the_index_table_of_built_libraries() {
+    let real = sha256_hex(&std::fs::read(corpus("demo0.mm")).unwrap());
+    let dir = workspace("row", &real);
+    let library = build_demo(&dir);
+    let bytes = std::fs::read(&library).unwrap();
+    let out = mcpack(&[Path::new("summary"), &dir, &dir.join("demo.toml")]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        text(out.stdout),
+        format!(
+            "| Library | Covers | Axioms | Theorems | Size (bytes) | Flash pages |\n\
+             | --- | --- | ---: | ---: | ---: | ---: |\n\
+             | [Demo](demo.md) | One theorem. | 0 | 1 | {} | 1 |\n",
+            bytes.len()
+        )
+    );
+}
+
+#[test]
+fn summary_refuses_two_manifests_with_the_same_order() {
+    let real = sha256_hex(&std::fs::read(corpus("demo0.mm")).unwrap());
+    let dir = workspace("row-twice", &real);
+    build_demo(&dir);
+    std::fs::copy(dir.join("demo.mclib"), dir.join("copy.mclib")).unwrap();
+    std::fs::write(dir.join("copy.toml"), DEMO.replace("\"demo\"", "\"copy\"")).unwrap();
+    let out = mcpack(&[
+        Path::new("summary"),
+        &dir,
+        &dir.join("demo.toml"),
+        &dir.join("copy.toml"),
+    ]);
+    assert_eq!(out.status.code(), Some(2));
+    assert_eq!(text(out.stderr), "demo and copy have the same order, 1\n");
 }
 
 #[test]
@@ -422,7 +468,7 @@ fn a_manifest_with_no_roots_is_refused() {
     let dir = workspace_with(
         "no-roots",
         &"0".repeat(64),
-        "name = \"d\"\ntitle = \"D\"\ndescription = \"d\"\nroots = []\n",
+        "name = \"d\"\ntitle = \"D\"\ndescription = \"d\"\norder = 1\nroots = []\n",
     );
     let err = Manifest::load(&dir.join("demo.toml")).unwrap_err();
     assert_eq!(

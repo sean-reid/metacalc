@@ -10,6 +10,8 @@ pub struct Manifest {
     pub name: String,
     pub title: String,
     pub description: String,
+    /// Where the library comes in the index table: each library contains the ones before it.
+    pub order: u32,
     pub roots: Vec<String>,
     /// The closure stops before the statement with this label.
     pub before: Option<String>,

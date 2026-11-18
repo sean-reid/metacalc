@@ -63,6 +63,16 @@ enum Command {
         /// Where to write the Markdown page
         #[arg(short, long)]
         output: PathBuf,
+        /// Fail, writing nothing, when a symbol of the library has no Unicode spelling
+        #[arg(long)]
+        require_unicode: bool,
+    },
+    /// Print the index table of the library pages, one row per manifest in manifest order
+    Summary {
+        /// The directory holding the libraries written by `build`, as NAME.mclib
+        libdir: PathBuf,
+        #[arg(required = true)]
+        manifests: Vec<PathBuf>,
     },
     /// Write a packed library back out as a Metamath database
     Export {
@@ -99,7 +109,9 @@ fn main() -> ExitCode {
             manifest,
             library,
             output,
-        } => cmd::doc(&manifest, &library, &output),
+            require_unicode,
+        } => cmd::doc(&manifest, &library, &output, require_unicode),
+        Command::Summary { libdir, manifests } => cmd::summary(&manifests, &libdir),
         Command::Export { library, output } => cmd::export(&library, &output),
     }
     .unwrap_or_else(|code| code)
