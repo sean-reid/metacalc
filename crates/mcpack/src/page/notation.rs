@@ -54,7 +54,9 @@ pub fn meaning(token: &str) -> Option<&'static str> {
         "dom" => "domain",
         "ran" => "range",
         "`" => "function value: ( F ` A ) is F applied to A",
-        "," => "separator between the parts of a pair, a listed set or an argument list, as in { A , B }, <. A , B >. and rec ( F , I )",
+        "," => {
+            "separator between the parts of a pair, a listed set or an argument list, as in { A , B }, <. A , B >. and rec ( F , I )"
+        }
         "0" => "the number zero",
         "1" => "the number one",
         "2" => "the number two",
