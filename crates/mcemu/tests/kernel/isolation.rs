@@ -10,17 +10,17 @@ const APP_PAGE: u8 = 1;
 const PARAMS: u16 = 0x8100;
 const STACK_BYTES: usize = 64;
 
-fn pattern(page: u8, at: usize) -> u8 {
+pub fn pattern(page: u8, at: usize) -> u8 {
     ((at.wrapping_mul(31) ^ (at >> 8).wrapping_mul(7)) as u8) ^ page.wrapping_mul(0x55) ^ 0xA7
 }
 
-fn offset(addr: u16) -> usize {
+pub fn offset(addr: u16) -> usize {
     usize::from(addr - 0xC000)
 }
 
 /// A device with the library loaded and RAM pages 80h, 81h and 83h filled with known patterns,
 /// the parameter block for init in bank B where an app keeps its data.
-fn primed(image: Image, bytes: &[u8]) -> Device {
+pub fn primed(image: Image, bytes: &[u8]) -> Device {
     let mut device = Device::with_image(image);
     device.load(bytes);
     for page in [OS_PAGE, APP_PAGE, SPARE_PAGE] {
@@ -45,7 +45,7 @@ fn test_own(device: &Device, statuses: usize) -> Vec<Range<usize>> {
 }
 
 /// Every byte the run changed that it had no right to, as (page, address).
-fn stray_writes(
+pub fn stray_writes(
     device: &mut Device,
     statuses: usize,
     expected_regions: [(u16, usize); 2],
@@ -80,11 +80,11 @@ fn stray_writes(
 }
 
 /// The two gaps TI-OS leaves on the spare page, written out here and not read from the kernel.
-fn expected() -> [(u16, usize); 2] {
+pub fn expected() -> [(u16, usize); 2] {
     [(0xC500, 0x1200), (0xDF00, 0x2000)]
 }
 
-fn run_all(device: &mut Device, count: usize) -> (u8, Vec<u8>) {
+pub fn run_all(device: &mut Device, count: usize) -> (u8, Vec<u8>) {
     device
         .m
         .load_ram(device.label("TEST_COUNT"), &(count as u16).to_le_bytes());
@@ -93,7 +93,7 @@ fn run_all(device: &mut Device, count: usize) -> (u8, Vec<u8>) {
     (device.byte("TEST_INIT_STATUS"), statuses)
 }
 
-fn run_one(device: &mut Device, id: usize) -> (u8, u8) {
+pub fn run_one(device: &mut Device, id: usize) -> (u8, u8) {
     device
         .m
         .load_ram(device.label("TEST_ASSERTION"), &(id as u16).to_le_bytes());

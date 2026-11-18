@@ -1,5 +1,7 @@
 #[path = "kernel/app.rs"]
 mod app;
+#[path = "kernel/capacity.rs"]
+mod capacity;
 #[path = "kernel/crc.rs"]
 mod crc;
 #[path = "kernel/edges.rs"]
@@ -12,6 +14,8 @@ mod launch;
 mod libraries;
 #[path = "kernel/limits.rs"]
 mod limits;
+#[path = "kernel/sources.rs"]
+mod sources;
 #[path = "common/stackfree.rs"]
 mod stackfree;
 #[path = "kernel/state.rs"]
