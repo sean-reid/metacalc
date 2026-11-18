@@ -337,10 +337,10 @@ fn a_library_packed_without_sections_opens_and_reads_as_before() {
         let library = decode(&bytes).unwrap();
         assert!(library.sections.is_none());
         assert_eq!(rig.counts().1 as usize, library.assertions.len(), "{name}");
-        for n in 0..library.assertions.len() {
+        for (n, assertion) in library.assertions.iter().enumerate() {
             let (status, label) = rig.label_of(n as u16);
             assert_eq!(status, ST_OK);
-            assert_eq!(label, library.assertions[n].label.as_bytes());
+            assert_eq!(label, assertion.label.as_bytes());
         }
         assert_eq!(rig.read(0, 4).1, b"MCL1", "{name}");
     }
