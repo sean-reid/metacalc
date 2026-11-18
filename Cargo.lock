@@ -216,6 +216,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcglyph"
+version = "0.1.0"
+dependencies = [
+ "mcpack",
+]
+
+[[package]]
 name = "mcpack"
 version = "0.1.0"
 dependencies = [

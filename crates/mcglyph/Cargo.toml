@@ -1,0 +1,11 @@
+[package]
+name = "mcglyph"
+description = "Bitmap font and token typesetting for the metacalc display"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dev-dependencies]
+mcpack = { path = "../mcpack" }
