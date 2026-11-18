@@ -134,7 +134,10 @@ impl Lib {
             installed: status,
             assertions,
             names,
-            titles: sections.titles.unwrap_or_default(),
+            titles: sections
+                .titles
+                .filter(|titles| library::titles_in_order(titles).is_ok())
+                .unwrap_or_default(),
             trees: sections.trees,
             source: OnceCell::new(),
             statements: RefCell::default(),

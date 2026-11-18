@@ -1,5 +1,5 @@
 use super::trees::PROVABLE;
-use super::{GlyphMap, Node, Part, Tree, Trees};
+use super::{GlyphMap, Node, Part, Title, Tree, Trees};
 use crate::library::{Hypothesis, Library};
 use std::fmt;
 
@@ -15,19 +15,25 @@ impl fmt::Display for SectionCheckError {
 
 impl std::error::Error for SectionCheckError {}
 
+/// Checks that no title names an earlier assertion than the title before it.
+pub fn titles_in_order(titles: &[Title]) -> Result<(), SectionCheckError> {
+    match titles.windows(2).find(|w| w[0].assertion > w[1].assertion) {
+        Some(pair) => Err(SectionCheckError(format!(
+            "title {:?} comes before {:?} but names a later assertion",
+            pair[1].text, pair[0].text
+        ))),
+        None => Ok(()),
+    }
+}
+
 /// Checks every section of a decoded library against its records; a library without sections
 /// passes.
 pub fn verify_sections(library: &Library) -> Result<(), SectionCheckError> {
     let Some(sections) = &library.sections else {
         return Ok(());
     };
-    if let Some(titles) = &sections.titles
-        && let Some(pair) = titles.windows(2).find(|w| w[0].assertion > w[1].assertion)
-    {
-        return Err(SectionCheckError(format!(
-            "title {:?} comes before {:?} but names a later assertion",
-            pair[1].text, pair[0].text
-        )));
+    if let Some(titles) = &sections.titles {
+        titles_in_order(titles)?;
     }
     if let Some(map) = &sections.glyphs {
         let names: Vec<&str> = library
