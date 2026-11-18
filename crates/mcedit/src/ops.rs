@@ -1,4 +1,4 @@
-use crate::dv::{DvCond, Violation};
+use crate::dv::DvCond;
 use crate::error::Error;
 use crate::session::{GoalId, GoalState, Op, Outcome, Session, Undo};
 use crate::term::{MetaId, TermId};
@@ -50,7 +50,7 @@ impl Session<'_> {
     pub fn apply(&mut self, goal: GoalId, assertion: StmtId) -> Result<Outcome, Error> {
         self.open_goal(goal)?;
         let parsed = self.usable(assertion)?;
-        let before = self.dv_report().violations;
+        let before = self.broken();
         let undo = self.checkpoint(Some(goal));
         if let Err(e) = self.apply_unchecked(goal, assertion, &parsed) {
             self.rollback_to(undo);
@@ -115,7 +115,7 @@ impl Session<'_> {
             .iter()
             .find(|h| h.0 == hyp)
             .ok_or(Error::NotAHypothesis)?;
-        let before = self.dv_report().violations;
+        let before = self.broken();
         let undo = self.checkpoint(Some(goal));
         let target = self.goals[goal as usize].term;
         if let Err(e) = self.store.unify(target, term) {
@@ -143,7 +143,7 @@ impl Session<'_> {
         if !self.vars.of_typecode(typecode).any(|v| v == var) {
             return Err(Error::NotAVariable);
         }
-        let before = self.dv_report().violations;
+        let before = self.broken();
         let undo = self.checkpoint(None);
         let term = self.store.var(var);
         if let Err(e) = self.store.bind(meta, term) {
@@ -165,7 +165,7 @@ impl Session<'_> {
         if syntax >= self.theorem {
             return Err(Error::Forward);
         }
-        let before = self.dv_report().violations;
+        let before = self.broken();
         let undo = self.checkpoint(None);
         let kids: Vec<u32> = stmt
             .frame
@@ -192,16 +192,11 @@ impl Session<'_> {
         }
     }
 
-    fn commit(&mut self, op: Op, undo: Undo, before: &[Violation]) -> Outcome {
+    fn commit(&mut self, op: Op, undo: Undo, before: &[bool]) -> Outcome {
         let outcome = Outcome {
             goals: undo.goals..self.goals.len() as GoalId,
             metas: undo.metas..self.store.meta_count() as MetaId,
-            violations: self
-                .dv_report()
-                .violations
-                .into_iter()
-                .filter(|v| !before.contains(v))
-                .collect(),
+            violations: self.newly_broken(before),
         };
         self.ops.push(op);
         self.undo.push(undo);

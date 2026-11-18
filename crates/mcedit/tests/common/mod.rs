@@ -121,6 +121,22 @@ ${
   tbad.1 $e |- ( ph ) $.
   tbad $p |- ps $= tbad.1 $.
 $}
+${
+  $d x ph $.
+  axq $a |- ( A. x ph -> ph ) $.
+$}
+${
+  axpair.1 $e |- ph $.
+  axpair.2 $e |- ps $.
+  axpair $a |- ( ph -> ps ) $.
+$}
+${
+  tdup $p |- ( ( A. y ps -> ps ) -> ( A. y ps -> ps ) ) $= wps vy wal wps wi wps vy wal wps wi wps vy axq wps vy axq axpair $.
+$}
+${
+  $d y ps $.
+  tdup-ok $p |- ( ( A. y ps -> ps ) -> ( A. y ps -> ps ) ) $= wps vy wal wps wi wps vy wal wps wi wps vy axq wps vy axq axpair $.
+$}
 vq $f setvar q $.
 ";
 
