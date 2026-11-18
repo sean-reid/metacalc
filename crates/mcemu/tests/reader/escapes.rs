@@ -199,7 +199,11 @@ fn trees_of_every_length_to_507_bytes_copy_255_and_give_the_offset_of_the_rest()
         rig.poke(after, &[0xA5]);
         let got = rig.tree(at, 0xFF);
         assert_eq!((got.status, got.len), (ST_OK, len), "{label}");
-        assert_eq!(rig.peek(after, 1), [0xA5], "{label}: nothing past the tree is copied");
+        assert_eq!(
+            rig.peek(after, 1),
+            [0xA5],
+            "{label}: nothing past the tree is copied"
+        );
         assert_eq!(got.bytes.len(), usize::from(len.min(255)), "{label}");
         let file = &bytes[got.offset as usize..got.offset as usize + usize::from(len)];
         assert_eq!(got.bytes, file[..file.len().min(255)], "{label}");
