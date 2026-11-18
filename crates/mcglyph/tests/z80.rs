@@ -2,6 +2,7 @@ use mcglyph::z80::{ROWS, SLOT, SPACE_CODE, TALL, Table};
 use mcglyph::{Font, SPACE_WIDTH};
 
 const WIDE: &str = include_str!("fixtures/wide.font");
+const FLAGS: &str = include_str!("fixtures/flags.font");
 
 fn decode(include: &str) -> Vec<u8> {
     include
@@ -30,6 +31,7 @@ fn check(font: &Font) {
     assert_eq!(bytes.len(), equate(&include, "UI_FONT_GLYPHS") * SLOT);
     assert_eq!(bytes.len(), table.slots().len() * SLOT);
     assert_eq!(&bytes[..SLOT], [SPACE_WIDTH as u8, 0, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(bytes[0] & TALL, 0, "the space slot is never flagged");
     for (name, code) in table.glyphs() {
         let glyph = font.glyph(name).unwrap();
         let slot = &bytes[(usize::from(code) - 1) * SLOT..];
@@ -68,6 +70,25 @@ fn a_glyph_nine_wide_takes_a_second_slot() {
     let table = Table::new(&font).unwrap();
     let (a, b) = (table.glyph("a").unwrap(), table.glyph("b").unwrap());
     assert_eq!(b, a + 2);
+}
+
+#[test]
+fn the_flag_follows_the_ninth_column_of_the_last_two_rows() {
+    let font = Font::parse(FLAGS, "").unwrap();
+    check(&font);
+    let table = Table::new(&font).unwrap();
+    let bytes = decode(&table.include("ui_font"));
+    let width = |name: &str| bytes[(usize::from(table.glyph(name).unwrap()) - 1) * SLOT];
+    assert_eq!(width("ninth"), 9 | TALL);
+    assert_eq!(width("blank9"), 9);
+}
+
+#[test]
+fn the_flag_is_checked_on_the_key_font_and_no_space_slot_carries_it() {
+    check(Font::keys());
+    for table in [Table::builtin(), Table::keys()] {
+        assert_eq!(table.slots()[0][0] & TALL, 0);
+    }
 }
 
 #[test]

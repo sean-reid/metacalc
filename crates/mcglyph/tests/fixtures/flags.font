@@ -1,0 +1,29 @@
+; test font with glyphs nine wide whose descender flag depends on the ninth column
+height 7
+
+glyph ninth
+.........
+.........
+.........
+.........
+.........
+.........
+........#
+
+glyph blank9
+#########
+#.......#
+#.......#
+#.......#
+#.......#
+.........
+.........
+
+glyph question
+.##.
+#..#
+..#.
+.#..
+.#..
+....
+.#..
