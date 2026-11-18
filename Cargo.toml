@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["crates/mcpack", "crates/mcemu", "crates/mcglyph"]
-default-members = ["crates/mcpack", "crates/mcglyph"]
+members = ["crates/mcpack", "crates/mcemu", "crates/mcglyph", "crates/mcedit"]
+default-members = ["crates/mcpack", "crates/mcglyph", "crates/mcedit"]
 
 [workspace.package]
 version = "0.1.0"

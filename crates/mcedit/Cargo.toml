@@ -1,0 +1,11 @@
+[package]
+name = "mcedit"
+description = "Proof editor model for metacalc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+mcpack = { path = "../mcpack" }
