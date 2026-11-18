@@ -528,12 +528,12 @@ fn on_down_before_the_run_stops_the_real_init_and_the_next_run_checks_the_librar
     assert_eq!(rig.byte(label("K_STOPPED")), 0);
 }
 
-/// ON goes down and up between the leading clear and the kernel's own poll in kernel_init, which
-/// reads only the key's level, so the kernel misses the tap and the latch on port 4 stays up. The
-/// interrupt is taken where the driver turns interrupts on after init.
+/// ON goes down after the leading clear and is held through kernel_init, which reads the key only
+/// in the comparison of symbol names. The OS handler runs where the driver turns interrupts on after
+/// init and sets the break flag, so the driver has to poll before it prints.
 #[test]
-fn an_on_tap_the_init_missed_stops_the_run_before_any_text_is_printed() {
-    let bytes = axioms(300);
+fn an_on_hold_the_init_missed_stops_the_run_before_any_text_is_printed() {
+    let bytes = single_symbol_axioms(300);
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     let mut pc = ENTRY;
     while pc != label("KERNEL_INIT") {
@@ -541,8 +541,7 @@ fn an_on_tap_the_init_missed_stops_the_run_before_any_text_is_printed() {
         pc = rig.m.pc();
     }
     rig.m.press_key(Machine::KEY_ON);
-    rig.m.release_key(Machine::KEY_ON);
-    rig.finish(pc, 0);
+    rig.finish(pc, 3);
     let (_, result) = screens(&rig.trace());
     assert_eq!(result, INIT_STOPPED);
     assert_eq!(rig.byte(label("K_INIT")), 0);
@@ -560,10 +559,10 @@ fn an_on_tap_the_init_missed_stops_the_run_before_any_text_is_printed() {
 }
 
 /// The driver prints after a kernel call and before its next poll, which is safe only while
-/// interrupts stay off from the call to the print. Taps at offsets through both phases leave the
-/// latch for the poll, and no text call sees the flag.
+/// interrupts stay off from the call to the print. ON goes down at offsets through both phases and
+/// stays down, so an interrupt taken at any print would set the flag there.
 #[test]
-fn taps_through_the_checksum_and_verification_never_reach_a_text_call() {
+fn a_hold_through_the_checksum_and_verification_never_reaches_a_text_call() {
     let bytes = axioms(2000);
     for (marker, step, stopped) in [("\rcrc 00002/", 100_000, 1), ("\rchk 00064/", 5_000, 2)] {
         for offset in (0..40_000).step_by(331) {
@@ -574,11 +573,31 @@ fn taps_through_the_checksum_and_verification_never_reach_a_text_call() {
                 pc = rig.m.pc();
             }
             rig.m.press_key(Machine::KEY_ON);
-            rig.m.release_key(Machine::KEY_ON);
-            rig.finish(pc, 0);
             let msg = format!("{marker:?} +{offset}");
+            rig.finish(pc, 2);
             assert_eq!(rig.byte(label("K_STOPPED")), stopped, "{msg}");
             assert_eq!(rig.byte(OUT_FLAGGED), 0, "{msg}: flagged text call");
         }
+    }
+}
+
+/// The progress line is rewritten after every 16th assertion, straight after the kernel call that
+/// finished it. ON goes down during that call.
+#[test]
+fn a_hold_during_the_call_before_a_progress_print_never_reaches_a_text_call() {
+    let bytes = axioms(2000);
+    for last in [79u16, 95, 143] {
+        let mut rig = Rig::new(&bytes, Speed::Mhz15);
+        let mut pc = rig.run_until_trace_has("\rchk 00064/", 5_000);
+        while rig.word("K_DONE") != last {
+            assert_eq!(rig.m.run(pc, 40).stop, Stop::Limit);
+            pc = rig.m.pc();
+        }
+        assert_eq!(rig.m.run(pc, 600).stop, Stop::Limit);
+        pc = rig.m.pc();
+        rig.m.press_key(Machine::KEY_ON);
+        rig.finish(pc, 2);
+        assert_eq!(rig.byte(label("K_STOPPED")), 2, "assertion {last}");
+        assert_eq!(rig.byte(OUT_FLAGGED), 0, "assertion {last}: flagged text");
     }
 }

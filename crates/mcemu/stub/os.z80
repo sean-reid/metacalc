@@ -25,7 +25,9 @@ plotSScreen       .equ $9340
 
 PORT_KEYS         .equ $01
 PORT_STATUS       .equ $02
-PORT_INT_STATUS    .equ $04
+PORT_INT_STATUS   .equ $04
+ON_LATCH          .equ $01
+ON_LEVEL          .equ $08
 onFlags           .equ 9
 onInterrupt       .equ 4
 PORT_MASK         .equ $03
@@ -64,16 +66,18 @@ JUNK_HL2          .equ $A127
 	ld sp,$FFFF
 	jp $4000
 
-; Sets the OS break flag when the ON latch on port 4 is up, through IY as the OS does. Acknowledges
-; the timer and keypad sources the way the hardware needs: the mask on port 3 written as zero and
-; then again. Scans the keys, so a key is only seen while interrupts are on. Keeps the main
-; registers and IX and IY; the shadow set is left changed.
+; Sets the OS break flag through IY when the ON latch on port 4 is up and ON is still down; a tap
+; over before the handler runs sets nothing. Acknowledges the timer and keypad sources the way the
+; hardware needs: the mask on port 3 written as zero and then again. Scans the keys, so a key is
+; only seen while interrupts are on. Keeps the main registers and IX and IY; the shadow set is
+; left changed.
 isr:
 	ex af,af'
 	exx
 	in a,(PORT_INT_STATUS)
-	rra
-	jr nc,isr_no_on
+	and ON_LATCH | ON_LEVEL
+	cp ON_LATCH
+	jr nz,isr_no_on
 	set onInterrupt,(iy+onFlags)
 isr_no_on:
 	in a,(PORT_MASK)

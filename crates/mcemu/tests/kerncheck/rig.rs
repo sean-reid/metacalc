@@ -19,6 +19,11 @@ const TIMER_PERIOD_US: u32 = 1953;
 /// T-states in two timer periods at 15 MHz, five at 6 MHz: every slice spans an interrupt, so the
 /// halt in the wait wakes at least once in it. A wait is a slice that ended in the loop, not a poll.
 pub const SLICE: u32 = 2 * TIMER_PERIOD_US * 15;
+/// A slice that ends inside the OS's interrupt handler is carried on in steps of `OS_NUDGE`
+/// T-states, so that it is judged where the code has come back to; slices are a whole number of
+/// timer periods, and would otherwise end at the same place in the handler every time.
+const OS_NUDGE: u32 = 37;
+const OS_NUDGES: usize = 200;
 /// The most slices any rig loop runs before it gives up: about 20 times the longest legitimate run.
 pub const MAX_SLICES: usize = 40_000;
 
@@ -160,10 +165,16 @@ impl Rig {
     /// comes back as `Waiting(restart)`: the wait is a loop that starts with `ei`, so starting it
     /// again is the same as going on, and the halt in it wakes on the timer interrupt.
     pub fn step(&mut self, from: Option<u16>) -> Step {
-        let run = match from {
+        let mut run = match from {
             Some(pc) => self.m.run(pc, SLICE),
             None => self.m.resume(SLICE),
         };
+        for _ in 0..OS_NUDGES {
+            if run.stop != Stop::Limit || self.m.pc() >= ENTRY {
+                break;
+            }
+            run = self.m.resume(OS_NUDGE);
+        }
         match run.stop {
             Stop::Halted => Step::Done,
             Stop::Limit if self.in_wait() => Step::Waiting(label("ON_RELEASE_AND_CLEAR")),

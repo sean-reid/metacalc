@@ -1,7 +1,7 @@
 //! The check app on the reference OS: the real _PutC, the real interrupt handler, the real flags.
 
 use crate::realos::*;
-use crate::rig::axioms;
+use crate::rig::{axioms, single_symbol_axioms};
 use mcemu::Machine;
 use std::path::{Path, PathBuf};
 
@@ -14,6 +14,12 @@ struct Check {
 
 impl Check {
     fn start(name: &str, library: &[u8]) -> Check {
+        let mut c = Check::boot(name, library);
+        c.os.launch();
+        c
+    }
+
+    fn boot(name: &str, library: &[u8]) -> Check {
         let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
         std::fs::create_dir_all(&dir).unwrap();
         let lib = dir.join("library.mclib");
@@ -24,8 +30,7 @@ impl Check {
             &[format!("LIBRARY={}", lib.display()), "kernchk".into()],
         );
         let app = std::fs::read(build.join("kernchk.8xk")).unwrap();
-        let mut os = RealOs::boot(&app);
-        os.launch();
+        let os = RealOs::boot(&app);
         Check {
             os,
             lab: build.join("kernchk.lab"),
@@ -192,4 +197,43 @@ fn a_held_on_stops_the_check_and_the_report_waits_for_the_key_to_come_up() {
         );
         assert!(reruns_to_the_end(&mut c, 6000), "{msg}: the next run");
     }
+}
+
+/// ON goes down after kernel_init's last call into the OS and is held through its return. The
+/// library has one symbol, so init never reads the key, and the OS sets its break flag where the
+/// kernel turns interrupts back on. The driver must stop before it prints, or the OS breaks out of
+/// the app at its next text call.
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn an_on_hold_the_init_missed_stops_the_check_before_any_text_is_printed() {
+    let lib = single_symbol_axioms(6000);
+    let mut c = Check::boot("kernchk-os-init-hold", &lib);
+    let (from, to) = (
+        label_in(&c.lab, "INIT_SYMBOLS_DONE"),
+        label_in(&c.lab, "INIT_NAMES_DONE"),
+    );
+    c.os.tap(KEY_APPS, 150, 600);
+    c.os.m.press_key(KEY_2);
+    for n in 0..100_000 {
+        assert!(n < 99_999, "never reached the end of kernel_init");
+        let pc = c.os.m.pc();
+        if c.os.m.in_port(6) == BASE && (from..to).contains(&pc) {
+            break;
+        }
+        c.os.run_us(5);
+    }
+    c.os.m.press_key(Machine::KEY_ON);
+    c.os.m.release_key(KEY_2);
+    c.os.run_ms(300);
+    assert!(
+        !report_shown(&mut c),
+        "nothing is reported while ON is down"
+    );
+    c.os.m.release_key(Machine::KEY_ON);
+    c.os.run_ms(1500);
+    assert_eq!(c.byte("K_STOPPED"), 3, "stopped as an init stop");
+    assert_eq!(c.os.m.in_port(4) & 1, 0, "the ON interrupt latch is clear");
+    assert_eq!(c.os.on_flags() & ON_INTERRUPT, 0, "the flag is clear");
+    assert!(report_shown(&mut c), "the report is on the screen");
+    assert!(runs_again_to_the_end(&mut c, 6000), "the next run");
 }
