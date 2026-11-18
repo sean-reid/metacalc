@@ -1,0 +1,184 @@
+; metacalc proof kernel for the TI-84 Plus SE. Checks a library in format MCL1
+; (crates/mcpack/src/library/mod.rs) and accepts or refuses exactly what the host
+; model mcpack::library::Kernel does. CRC-32 checking is out of scope here.
+;
+; Code runs from flash in bank A and is position dependent. Assembling this file
+; alone places it at $4000; an including file defines KERNEL_EMBEDDED first and
+; places the code itself.
+;
+; Calling: DI, map library pages at $8000 through port 7, restore port 7 and the
+; interrupt state on return. Preserves IY and the shadow registers, destroys the
+; rest. The kernel runs on its own stack inside bank C. Nothing else is written.
+;
+;   kernel_init     in:  KERNEL_LIB_PAGE and the four KERNEL_LIMIT_* filled in
+;                   out: A = status
+;   kernel_verify   in:  HL = assertion number, kernel_init returned 0
+;                   out: A = status, 0 meaning accepted
+;
+; Limits above a buffer's capacity are clamped to it when kernel_init runs.
+; The library must lie in flash pages KERNEL_LIB_PAGE..$7F; a longer one is refused.
+;
+; Status    0 ok               1 Malformed        2 BadRecord
+;           3 NotATheorem (never returned)        4 ForwardReference
+;           5 OutOfMemory      6 StackUnderflow   7 BadBackReference
+;           8 TypecodeMismatch 9 HypothesisMismatch
+;          10 DisjointViolation 11 StackNotSingleton 12 WrongConclusion
+;
+; RAM, bank C, $C000-$EDFF (KERNEL_RAM_END is the first free byte):
+;   $C000  9     parameters: lib page (1), stack syms, stack entries,
+;                saved syms, saved entries (2 each, little endian)
+;   $C010  $F0   private state and the two record descriptors
+;   $C100  256   typecode of each symbol id, $FF for a constant
+;   $C200  256   float marks of the record being checked
+;   $C300  256   kernel stack, growing down from $C400
+;   $C400  1024  one bit per assertion: known to pass the record rules (ids below 8192)
+;   $C800  2048  substitution, 8 bytes per variable: start, end, apply serial
+;   $D000  512   stack entry starts, 256 entries
+;   $D200  1024  saved entry starts, 512 entries
+;   $D600  3072  stack symbols, scratch included
+;   $E200  3072  saved symbols
+; Free for the caller: $EE00-$FFFF.
+
+#ifndef KERNEL_EMBEDDED
+.org $4000
+#endif
+
+#include "ram.inc"
+
+kernel_init:
+	ld hl,init_body
+	jr kernel_enter
+
+kernel_verify:
+	ld (kv_arg_id),hl
+	ld hl,verify_body
+
+kernel_enter:
+	ld a,i
+	jp pe,ke_on
+	ld a,i
+	jp pe,ke_on
+	xor a
+	jr ke_save
+ke_on:
+	ld a,1
+ke_save:
+	ld (kv_saved_iff),a
+	di
+	in a,(7)
+	ld (kv_saved_bank),a
+	ld (kv_saved_sp),sp
+	ld sp,KSTACK_TOP
+	ld de,exit_ok
+	push de
+	jp (hl)
+
+exit_ok:
+	xor a
+leave:
+	ld sp,(kv_saved_sp)
+	ld c,a
+	ld a,(kv_saved_bank)
+	out (7),a
+	ld a,(kv_saved_iff)
+	or a
+	ld a,c
+	ret z
+	ei
+	ret
+
+fail_malformed:
+	ld a,ST_MALFORMED
+	jr leave
+fail_bad_record:
+	ld a,ST_BAD_RECORD
+	jr leave
+fail_forward:
+	ld a,ST_FORWARD_REF
+	jr leave
+fail_oom:
+	ld a,ST_OUT_OF_MEMORY
+	jr leave
+fail_underflow:
+	ld a,ST_STACK_UNDERFLOW
+	jr leave
+fail_back:
+	ld a,ST_BAD_BACK_REF
+	jr leave
+fail_typecode:
+	ld a,ST_TYPECODE
+	jr leave
+fail_hyp_mismatch:
+	ld a,ST_HYP_MISMATCH
+	jr leave
+fail_disjoint:
+	ld a,ST_DISJOINT
+	jr leave
+fail_not_singleton:
+	ld a,ST_NOT_SINGLETON
+	jr leave
+fail_wrong:
+	ld a,ST_WRONG_CONCLUSION
+	jr leave
+
+; in: HL = source, DE = destination, BC = count (may be 0)
+; out: HL, DE advanced past the copy. Destroys AF BC.
+copy_bc:
+	ld a,b
+	or c
+	ret z
+	ldir
+	ret
+
+; in: HL, DE = sources, BC = count (may be 0). out: Z if equal. Destroys AF BC DE HL.
+mem_equal:
+	ld a,b
+	or c
+	ret z
+mem_equal_loop:
+	ld a,(de)
+	inc de
+	cpi
+	ret nz
+	jp pe,mem_equal_loop
+	ret
+
+; in: HL += A. Destroys AF.
+add_hl_a:
+	add a,l
+	ld l,a
+	ret nc
+	inc h
+	ret
+
+; in: HL, DE point at two little-endian 24-bit values a and b.
+; out: C if a < b, Z if equal. Destroys AF BC DE HL.
+cmp24:
+	ld bc,2
+	add hl,bc
+	ex de,hl
+	add hl,bc
+	ex de,hl
+	ld a,(hl)
+	ex de,hl
+	cp (hl)
+	ex de,hl
+	ret nz
+	dec hl
+	dec de
+	ld a,(hl)
+	ex de,hl
+	cp (hl)
+	ex de,hl
+	ret nz
+	dec hl
+	dec de
+	ld a,(hl)
+	ex de,hl
+	cp (hl)
+	ret
+
+#include "init.inc"
+#include "record.inc"
+#include "proof.inc"
+#include "apply.inc"

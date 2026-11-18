@@ -213,6 +213,7 @@ name = "mcemu"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "mcpack",
 ]
 
 [[package]]
