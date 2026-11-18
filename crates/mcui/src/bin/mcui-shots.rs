@@ -67,6 +67,25 @@ impl Shots {
         }
     }
 
+    /// Moves the highlight of the candidates to `label`.
+    fn select(&mut self, label: &str) {
+        for _ in 0..400 {
+            if matches!(self.ui.state(), State::Proving { candidate: Some(ref c), .. } if c == label)
+            {
+                return;
+            }
+            self.ui.press(Key::Down);
+        }
+        panic!("no candidate {label}");
+    }
+
+    /// Runs the check on the open checking screen to its end.
+    fn check_all(&mut self) {
+        while !matches!(self.ui.state(), State::Checking { finished: true, .. }) {
+            self.ui.step_check();
+        }
+    }
+
     fn shot(&self, name: &str) {
         let path = self.out.join(format!("{name}.png"));
         fs::write(&path, png::encode(&self.ui.frame(), SCALE)).expect("write frame");
@@ -181,11 +200,65 @@ fn main() {
     s.shot("20-proof-ringlz-subgoal");
 
     s.home();
-    s.press(&[Key::Down, Key::Down, Key::Enter, Key::F4]);
+    s.times(Key::Down, 3);
+    s.press(&[Key::Enter]);
     s.shot("21-not-available");
     s.home();
     s.press(&[Key::F3]);
     s.shot("22-about");
-    s.press(&[Key::Clear, Key::F2]);
-    s.shot("23-verify-not-available");
+    s.press(&[Key::Clear, Key::Down, Key::Down, Key::Down, Key::F2]);
+    s.shot("23-verify-needs-a-library");
+
+    s.theorem(0, "a1i");
+    s.press(&[Key::F4]);
+    s.shot("24-proving-a1i-root");
+    s.select("ax-mp");
+    s.press(&[Key::F1]);
+    s.shot("25-proving-a1i-after-apply");
+    s.press(&[Key::F5]);
+    s.shot("26-proving-a1i-tree");
+    s.press(&[Key::Clear]);
+    s.select("ax-1");
+    s.press(&[Key::F1, Key::F2]);
+    s.shot("27-proving-a1i-hyps");
+    s.press(&[Key::F1]);
+    s.shot("28-proving-a1i-finished");
+    s.press(&[Key::F4]);
+    s.press(&[Key::F4]);
+    s.shot("29-proving-a1i-after-undo");
+
+    s.theorem(0, "syl");
+    s.press(&[Key::F4]);
+    s.shot("30-proving-syl-root");
+    s.press(&[Key::F2]);
+    s.shot("31-proving-syl-hyps");
+    s.press(&[Key::Clear]);
+    s.times(Key::Down, 5);
+    s.shot("32-proving-syl-candidates-scrolled");
+    s.select("mpd");
+    s.press(&[Key::F1, Key::F5]);
+    s.shot("33-proving-syl-tree");
+    s.press(&[Key::Clear, Key::F3]);
+    s.shot("34-proving-auto-refused");
+
+    s.theorem(0, "ax-mp");
+    s.press(&[Key::F4]);
+    s.shot("35-proving-axiom-refused");
+
+    s.home();
+    s.press(&[Key::F2]);
+    s.shot("36-checking-prop-start");
+    for _ in 0..20 {
+        s.ui.step_check();
+    }
+    s.shot("37-checking-prop-midway");
+    s.press(&[Key::F1]);
+    s.shot("38-checking-paused-libraries");
+    s.press(&[Key::F2]);
+    s.check_all();
+    s.shot("39-checking-prop-finished");
+    s.press(&[Key::Clear]);
+    s.shot("40-checking-finished-libraries");
+    s.press(&[Key::Down, Key::Down, Key::F2]);
+    s.shot("41-checking-ring-with-failure");
 }
