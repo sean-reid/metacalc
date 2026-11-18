@@ -44,9 +44,14 @@ ${
   th-m $p |- ps $= wph wps th-m.1 th-m.2 ax-m $.
 $}
 ${
-  $d ps y $.
-  th-k.1 $e |- ( ( ps -> A. y ps ) -> ph ) $.
-  th-k $p |- ph $= wps wps vy wal wi wph wps vy ax-g th-k.1 ax-m $.
+  $( A comment may hold th-c.1 $e |- ps $. and ${ and
+     run over lines. $)
+  th-k.1 $e |- ( ( ps -> A. y ps )
+    -> ph ) $.
+  ${
+    $d ps y $.
+    th-k $p |- ph $= wps wps vy wal wi wph wps vy ax-g th-k.1 ax-m $.
+  $}
 $}
 DB
 
@@ -157,9 +162,11 @@ Then:\
 harmless bullet-after-blank-ignored '/^- `|- ( ph -> ps )`$/a\
 \
 - `|- ( ph -> ph )`'
-harmless bullet-after-link-ignored '/^\[`th-m`\]/a\
+damaged hypothesis-spurious "the hypotheses listed for th-g differ from the database" '/^!\[th-g\]/a\
 \
-- `|- ( ph -> ph )`'
+Hypotheses:\
+\
+- `|- ph`'
 damaged link-label-differs "the link names th-g but the marker names th-m" 's/^\[`th-m`\](\.\.\/libraries\/tiny\.md#th-m)/[`th-g`](..\/libraries\/tiny.md#th-g)/'
 damaged link-anchor-differs "the link text th-m and its anchor th-g differ" 's/#th-m)/#th-g)/'
 damaged link-target-missing "docs/src/libraries/gone.md, which does not exist" 's/tiny\.md#th-m/gone.md#th-m/'

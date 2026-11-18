@@ -30,8 +30,8 @@ block() {
 }
 
 # Prints a message to stderr for each numbered section that lacks its link, image, marker or block,
-# or whose label differs between them, and writes tab-separated "label hypothesis" and "FILE file"
-# lines to the file $1.
+# or whose label differs between them, and writes tab-separated "HYPS label", "HYP label hypothesis"
+# and "FILE file" lines to the file $1.
 structure() {
 	awk -v out="$1" '
 		function bad(msg) { print "worked-examples: " msg > "/dev/stderr"; failed = 1 }
