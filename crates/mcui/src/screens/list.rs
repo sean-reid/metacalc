@@ -4,10 +4,10 @@ use crate::fold::{Fit, Layout, fit, layout};
 use crate::key::Key;
 use crate::status::Mark;
 
-/// Rows of labels the list shows.
 /// The labels of the five keys.
 pub(crate) const KEYS: [&str; 5] = ["Open", "Find", "Kind", "Try", ""];
 
+/// Rows of labels the list shows.
 const LIST_ROWS: usize = 5;
 const PREVIEW_ROW: usize = LIST_ROWS + 1;
 

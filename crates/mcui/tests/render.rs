@@ -111,14 +111,6 @@ fn every_used_soft_key_is_its_own_inverted_box_with_the_label_centred_inside() {
 }
 
 #[test]
-fn a_soft_key_label_wider_than_its_box_is_cut() {
-    let mut canvas = Canvas::default();
-    canvas.soft_keys(["Prove it now", "", "", "", ""]);
-    let frame = canvas.into_bitmap();
-    assert!(ink_columns(&frame, 56..64).iter().all(|&x| x < 18));
-}
-
-#[test]
 fn a_list_row_has_its_mark_at_the_right_margin_and_a_selected_row_is_inverted() {
     let mut plain = Canvas::default();
     plain.list_row(2, "ringcom", &CHECK.to_string(), false);

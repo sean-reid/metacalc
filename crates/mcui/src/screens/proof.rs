@@ -7,10 +7,10 @@ use crate::fold::{Folds, Layout, fit_one, fitted, layout};
 use crate::key::Key;
 use crate::status::Mark;
 
-/// Rows the goal may take before it is folded.
 /// The labels of the five keys.
 pub(crate) const KEYS: [&str; 5] = ["Fold", "Up", "Thm", "", ""];
 
+/// Rows the goal may take before it is folded.
 const GOAL_ROWS: usize = 3;
 
 /// One node of a theorem's goal tree: the goal, how it was proved, and its subgoals.

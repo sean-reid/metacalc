@@ -97,17 +97,18 @@ pub fn key_text_width(text: &str) -> usize {
     key_font().text_width(text)
 }
 
-/// `text` cut after as many characters as fit in `limit` pixels; the key font has no ellipsis.
+/// `text` cut after as many characters as fit in `limit` pixels, or before the first character
+/// the key font cannot draw, with trailing spaces dropped; the key font has no ellipsis.
 fn key_cut(text: &str, limit: usize) -> &str {
     let mut end = 0;
     for (at, c) in text.char_indices() {
         let next = at + c.len_utf8();
-        if key_text_width(&text[..next]) > limit {
+        if !(c.is_ascii_alphanumeric() || c == ' ') || key_text_width(&text[..next]) > limit {
             break;
         }
         end = next;
     }
-    &text[..end]
+    text[..end].trim_end_matches(' ')
 }
 
 /// Pixels a label of soft key `i` may use.
@@ -209,7 +210,9 @@ impl Canvas {
                 continue;
             }
             let (from, to) = soft_key_box(i);
-            let label = key_cut(label, soft_key_room(i));
+            let cut = key_cut(label, soft_key_room(i));
+            debug_assert_eq!(cut, *label, "label {label:?} does not fit key {i}");
+            let label = cut;
             let ink = key_font().text(label);
             let x = from + (to - from - ink.width()).div_ceil(2);
             self.blit(&ink, x, CONTENT_ROWS + 1);
@@ -300,5 +303,52 @@ fn piece_bitmap(piece: &Piece) -> Bitmap {
             .token_bitmap(token)
             .unwrap_or_else(|| font().text(token)),
         Piece::Ellipsis => font().text(&ELLIPSIS.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_label_is_cut_to_the_letters_that_fit() {
+        for limit in 0..40 {
+            let cut = key_cut("Prove it now", limit);
+            assert!(key_text_width(cut) <= limit, "{cut:?} at {limit}");
+            assert!("Prove it now".starts_with(cut));
+            assert!(!cut.ends_with(' '), "{cut:?} at {limit}");
+        }
+        assert_eq!(key_cut("Prove it now", 16), "Prov");
+        assert_eq!(key_cut("Prove it now", 22), "Prove");
+        assert_eq!(key_cut("Open", 16), "Open");
+    }
+
+    #[test]
+    fn a_label_is_cut_at_the_first_character_the_key_font_lacks() {
+        assert_eq!(key_cut("A?", 16), "A");
+        assert_eq!(key_cut("\u{dc}n\u{ef}", 16), "");
+        assert_eq!(key_cut("Go\u{2026}", 16), "Go");
+        assert_eq!(key_cut("a b", 16), "a b");
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn soft_keys_draw_a_cut_label_without_panicking_on_odd_text() {
+        let mut canvas = Canvas::default();
+        canvas.soft_keys(["A?", "\u{dc}n\u{ef}", "Prove it now", "", ""]);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "does not fit key 0")]
+    fn a_label_that_does_not_fit_trips_the_debug_assertion() {
+        Canvas::default().soft_keys(["Prove it now", "", "", "", ""]);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "does not fit key 0")]
+    fn a_label_with_an_undrawable_character_trips_the_debug_assertion() {
+        Canvas::default().soft_keys(["A?", "", "", "", ""]);
     }
 }
