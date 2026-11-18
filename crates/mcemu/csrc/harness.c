@@ -102,6 +102,11 @@ uint32_t mcemu_run(TilemCalc *calc, uint16_t pc, int limit, uint32_t *elapsed)
 	return reason;
 }
 
+uint16_t mcemu_pc(const TilemCalc *calc)
+{
+	return calc->z80.r.pc.w.l;
+}
+
 /* One byte per pixel, 1 when lit; the core leaves the frame untouched while the LCD is off, so it starts zeroed. Returns 0 on success. */
 int mcemu_lcd(TilemCalc *calc, uint8_t *out, int width, int height)
 {

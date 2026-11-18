@@ -15,6 +15,7 @@ const ROUTINES: &[(&str, &str, &[&str])] = &[
     ("lcd_busy.z80", "lcd_wait.bin", &["WAIT"]),
     ("keys.z80", "keys.bin", &["RESULT=$A000"]),
     ("count.z80", "count.bin", &["ENTRY=$9000"]),
+    ("on_key.z80", "on_key.bin", &["RESULT=$A000"]),
 ];
 
 fn fail(msg: &str) -> ! {

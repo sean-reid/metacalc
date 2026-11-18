@@ -1,0 +1,6 @@
+.org $9000
+	di
+	in a,($04)
+	and $08
+	ld (RESULT),a
+	halt
