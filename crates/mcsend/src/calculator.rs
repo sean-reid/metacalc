@@ -2,8 +2,9 @@
 
 use crate::error::Error;
 use crate::message::{
-    ATTR_VAR_TYPE, PARAM_FREE_FLASH, PARAM_PRODUCT_NAME, PARAM_PRODUCT_NUMBER, TYPE_APP, be_number,
-    dir_request, param_request, parse_params, parse_var_header, request_to_send_app,
+    ATTR_ARCHIVED, ATTR_VAR_SIZE, ATTR_VAR_TYPE, PARAM_FREE_FLASH, PARAM_PRODUCT_NAME,
+    PARAM_PRODUCT_NUMBER, TYPE_APP, be_number, dir_request, param_request, parse_params,
+    parse_var_header, request_to_send_app,
 };
 use crate::packet::vtype;
 use crate::session::{Session, into_expected};
@@ -52,7 +53,7 @@ pub fn info<T: Transport>(session: &mut Session<T>) -> Result<Info, Error> {
 pub fn installed_apps<T: Transport>(session: &mut Session<T>) -> Result<Vec<String>, Error> {
     session.send_virtual(
         vtype::DIR_REQUEST,
-        &dir_request(&[ATTR_VAR_TYPE]),
+        &dir_request(&[ATTR_VAR_SIZE, ATTR_VAR_TYPE, ATTR_ARCHIVED]),
         &mut |_| {},
     )?;
     let mut apps = Vec::new();
