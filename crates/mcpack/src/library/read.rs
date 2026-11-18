@@ -1,0 +1,135 @@
+use super::{HEADER_LEN, MAGIC};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadError;
+
+impl std::fmt::Display for ReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the library is cut short or points outside itself")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Hypothesis {
+    Float { typecode: String, variable: String },
+    Essential(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Assertion {
+    pub theorem: bool,
+    pub label: String,
+    pub hypotheses: Vec<Hypothesis>,
+    pub disjoint: Vec<(String, String)>,
+    pub conclusion: Vec<String>,
+}
+
+struct Cursor<'a> {
+    bytes: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Cursor<'a> {
+    fn take(&mut self, len: usize) -> Result<&'a [u8], ReadError> {
+        let end = self.pos.checked_add(len).ok_or(ReadError)?;
+        let slice = self.bytes.get(self.pos..end).ok_or(ReadError)?;
+        self.pos = end;
+        Ok(slice)
+    }
+
+    fn u8(&mut self) -> Result<usize, ReadError> {
+        Ok(self.take(1)?[0] as usize)
+    }
+
+    fn u16(&mut self) -> Result<usize, ReadError> {
+        let b = self.take(2)?;
+        Ok(u16::from_le_bytes([b[0], b[1]]) as usize)
+    }
+
+    fn u32(&mut self) -> Result<usize, ReadError> {
+        let b = self.take(4)?;
+        Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+    }
+
+    fn text(&mut self, len: usize) -> Result<String, ReadError> {
+        let bytes = self.take(len)?;
+        std::str::from_utf8(bytes)
+            .map(str::to_owned)
+            .map_err(|_| ReadError)
+    }
+}
+
+/// Every assertion of a packed library, spelled with the library's own symbol table.
+pub fn read(bytes: &[u8]) -> Result<Vec<Assertion>, ReadError> {
+    let mut cur = Cursor { bytes, pos: 0 };
+    if cur.take(4)? != MAGIC {
+        return Err(ReadError);
+    }
+    cur.take(4)?;
+    if cur.u32()? != bytes.len() {
+        return Err(ReadError);
+    }
+    let symbols = cur.u8()? + cur.u8()?;
+    let count = cur.u16()?;
+    let directory = cur.u32()?;
+    debug_assert_eq!(cur.pos, HEADER_LEN);
+
+    let mut names = Vec::with_capacity(symbols);
+    let mut typecodes = Vec::with_capacity(symbols);
+    for _ in 0..symbols {
+        typecodes.push(cur.u8()?);
+        let len = cur.u8()?;
+        names.push(cur.text(len)?);
+    }
+    let name = |id: usize| names.get(id).cloned().ok_or(ReadError);
+    let expression = |cur: &mut Cursor| -> Result<Vec<String>, ReadError> {
+        let len = cur.u8()?;
+        (0..len).map(|_| name(cur.u8()?)).collect()
+    };
+
+    let mut table = Cursor {
+        bytes,
+        pos: directory,
+    };
+    let mut out = Vec::with_capacity(count);
+    for _ in 0..count {
+        let offset = table.u32()?;
+        let mut cur = Cursor { bytes, pos: offset };
+        let theorem = match cur.u8()? {
+            0 => false,
+            1 => true,
+            _ => return Err(ReadError),
+        };
+        let len = cur.u8()?;
+        let label = cur.text(len)?;
+        let mut hypotheses = Vec::new();
+        for _ in 0..cur.u8()? {
+            hypotheses.push(match cur.u8()? {
+                0 => {
+                    let var = cur.u8()?;
+                    let typecode = *typecodes.get(var).ok_or(ReadError)?;
+                    Hypothesis::Float {
+                        typecode: name(typecode)?,
+                        variable: name(var)?,
+                    }
+                }
+                1 => Hypothesis::Essential(expression(&mut cur)?),
+                _ => return Err(ReadError),
+            });
+        }
+        let mut disjoint = Vec::new();
+        for _ in 0..cur.u16()? {
+            let (a, b) = (cur.u8()?, cur.u8()?);
+            disjoint.push((name(a)?, name(b)?));
+        }
+        let conclusion = expression(&mut cur)?;
+        out.push(Assertion {
+            theorem,
+            label,
+            hypotheses,
+            disjoint,
+            conclusion,
+        });
+    }
+    Ok(out)
+}

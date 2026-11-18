@@ -27,11 +27,15 @@
 //! pair in its first list names two different variables that both have one, and every pair in a
 //! theorem's second list names two different variables of which at least one has none.
 
+mod check;
 mod kernel;
 mod pack;
+mod read;
 
+pub use check::{CheckError, check};
 pub use kernel::{Kernel, KernelError, Limits};
 pub use pack::{PackError, pack};
+pub use read::{Assertion, Hypothesis, ReadError, read};
 
 pub const MAGIC: &[u8; 4] = b"MCL1";
 pub const CHUNK: usize = 1 << 14;
