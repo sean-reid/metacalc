@@ -1,6 +1,6 @@
 #include "equates.inc"
 
-VERSION    = 1
+VERSION    = 2
 BANKC_PORT = 05h
 
 S_PORT5  = appBackUpScreen
@@ -35,8 +35,8 @@ ALIAS_BASE = 88h
 	.db 80h, 7Fh, 0, 0, 0, 0
 	.fill 4080h - $, 0
 
-; Contract: from DI to the final port 5 write nothing uses the stack, CALL, RST, PUSH or POP,
-; because the stack lives in bank C. Scratch lives in bank B, which port 5 does not touch.
+; Contract: entered with interrupts on, DI to the final port 5 write, then EI. In between nothing uses
+; the stack, CALL, RST, PUSH or POP, because the stack lives in bank C. Scratch is in bank B.
 ; Per page p (2..7) and test address a, in order:
 ;   1. survey: map every page q, store the byte at a in S_PRE[q]
 ;   2. map p, E = byte at a, V = complement of E, or 55h when that is 00h or FFh
@@ -46,8 +46,6 @@ ALIAS_BASE = 88h
 ;   6. map p, write E to a and the saved byte to a+1, read both back; a mismatch is BAD
 ; Result per page, max over addresses: 0 OK, 88h-q alias of q, RES_NONE, RES_BAD.
 start:
-	ld a, i
-	push af
 	di
 	in a, (BANKC_PORT)
 	ld (S_PORT5), a
@@ -196,8 +194,6 @@ kept:
 
 	ld a, (S_PORT5)
 	out (BANKC_PORT), a
-	pop af
-	jp po, show
 	ei
 
 ; Contract: the stack and the OS are usable again; prints one line per page, then waits for a key.
