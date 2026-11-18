@@ -4,27 +4,10 @@ use common::*;
 use mcedit::{Catalog, Clash, Error, Session, Vars};
 use mcpack::mm::Kind;
 
-fn put(out: &mut Vec<u8>, mut n: u32) {
-    while n >= 0x80 {
-        out.push(n as u8 | 0x80);
-        n >>= 7;
-    }
-    out.push(n as u8);
-}
-
 type Ops = Vec<(u8, u32, u32)>;
 
-/// A saved session written by hand: the theorem, the flag and operations as (tag, a, b).
 fn bytes(theorem: u32, flag: u8, ops: &[(u8, u32, u32)]) -> Vec<u8> {
-    let mut out = vec![1];
-    put(&mut out, theorem);
-    out.push(flag);
-    for &(tag, a, b) in ops {
-        out.push(tag);
-        put(&mut out, a);
-        put(&mut out, b);
-    }
-    out
+    saved_bytes(theorem, flag, ops)
 }
 
 #[test]
@@ -56,7 +39,7 @@ fn a_theorem_id_outside_the_database_is_an_error() {
     let cat = catalog(&db, &g);
     for theorem in [db.stmts.len() as u32, 9999, u32::MAX] {
         assert_eq!(
-            Session::start(&db, &g, theorem).err(),
+            Session::start_in(catalog(&db, &g), theorem).err(),
             Some(Error::NotATheorem)
         );
         assert_eq!(
@@ -109,19 +92,28 @@ fn a_varint_with_bits_beyond_thirty_two_is_corrupt() {
     let db = db();
     let g = grammar(&db);
     let ax_mp = id(&db, "ax-mp");
-    let mut tampered = bytes(id(&db, "t1"), 0, &[]);
-    tampered.push(0);
+    let body = |tail: &[u8]| {
+        let mut body = Vec::new();
+        put(&mut body, id(&db, "t1"));
+        body.push(0);
+        body.extend(tail);
+        wrap(LIBRARY, &body)
+    };
+    let mut apply = vec![0, 0];
+    put(&mut apply, ax_mp);
+    let mut tampered = vec![0];
     tampered.extend([0x80, 0x80, 0x80, 0x80, 0x10]);
     put(&mut tampered, ax_mp);
+    let tampered = body(&tampered);
     assert_eq!(
         Session::restore(catalog(&db, &g), &tampered).err(),
         Some(Error::Corrupt)
     );
-    let mut valid = bytes(id(&db, "t1"), 0, &[(0, 0, ax_mp)]);
-    assert!(Session::restore(catalog(&db, &g), &valid).is_ok());
-    valid.extend([0, 0x80, 0x80, 0x80, 0x80, 0x01]);
+    assert!(Session::restore(catalog(&db, &g), &body(&apply)).is_ok());
+    let mut wide = apply.clone();
+    wide.extend([0, 0x80, 0x80, 0x80, 0x80, 0x01]);
     assert_eq!(
-        Session::restore(catalog(&db, &g), &valid).err(),
+        Session::restore(catalog(&db, &g), &body(&wide)).err(),
         Some(Error::Corrupt)
     );
 }
@@ -139,7 +131,7 @@ fn permission_to_add_pairs_survives_a_save() {
     let meta = s.status().metas[0];
     assert_eq!(s.assign(meta, sym(&db, "z")).unwrap().violations, []);
     let saved = s.save();
-    assert_eq!(saved[..3], [1, id(&db, "tdum") as u8, 1]);
+    assert_eq!(saved[6..8], [id(&db, "tdum") as u8, 1]);
     let back = Session::restore(catalog(&db, &g), &saved).unwrap();
     assert_eq!(back.status(), s.status());
     assert_eq!(back.status().violations, []);
@@ -147,9 +139,8 @@ fn permission_to_add_pairs_survives_a_save() {
     assert_eq!(back.save(), saved);
 
     let strict = session(&cat, "tdum");
-    assert_eq!(strict.save()[2], 0);
-    let mut flag = saved.clone();
-    flag[2] = 2;
+    assert_eq!(strict.save()[7], 0);
+    let flag = bytes(id(&db, "tdum"), 2, &[]);
     assert_eq!(
         Session::restore(catalog(&db, &g), &flag).err(),
         Some(Error::Corrupt)
@@ -324,7 +315,7 @@ fn a_theorem_whose_hypothesis_the_grammar_cannot_read_does_not_start() {
     let db = db();
     let g = grammar(&db);
     assert_eq!(
-        Session::start(&db, &g, id(&db, "tbad")).err(),
+        Session::start_in(catalog(&db, &g), id(&db, "tbad")).err(),
         Some(Error::Syntax(mcpack::mm::SyntaxError::NoParse))
     );
 }
@@ -353,9 +344,9 @@ fn a_saved_session_starts_with_its_format_byte() {
     let cat = catalog(&db, &g);
     let s = session(&cat, "t1");
     let saved = s.save();
-    assert_eq!(saved[0], 1);
+    assert_eq!(saved[0], 2);
     assert!(Session::restore(cat.clone(), &saved).is_ok());
-    for version in [0, 2, 255] {
+    for version in [0, 1, 3, 255] {
         let mut other = saved.clone();
         other[0] = version;
         assert_eq!(

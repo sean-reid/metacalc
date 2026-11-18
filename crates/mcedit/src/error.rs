@@ -22,12 +22,16 @@ pub enum Error {
     /// The statement is not a syntax axiom of the metavariable's typecode.
     NotSyntax,
     NothingToUndo,
+    /// The step would make a term larger or deeper than the editor allows.
+    TooLarge,
     /// The proof is unfinished: goals still open, metavariables unresolved or conditions violated.
     Unfinished {
         open: usize,
         metas: usize,
         violations: usize,
     },
+    /// Saved bytes from a session on another library.
+    WrongLibrary,
     /// Saved bytes that are not a session of this version, or session state that breaks an invariant.
     Corrupt,
 }

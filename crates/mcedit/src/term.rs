@@ -61,6 +61,11 @@ pub struct Peak {
     pub metas: usize,
 }
 
+/// The most nodes a term may expand to, counting every occurrence of a shared subterm.
+pub const MAX_TERM_NODES: usize = 4096;
+/// The most levels a term may nest.
+pub const MAX_TERM_DEPTH: usize = 128;
+
 /// Terms with metavariables, kept in append-only arenas so that rolling back is a truncation.
 pub struct Store<'a> {
     db: &'a Database,
@@ -257,6 +262,30 @@ impl<'a> Store<'a> {
                 Ok(())
             }
             _ => Err(Clash::Constructor),
+        }
+    }
+
+    /// Whether `term` expands to at most `MAX_TERM_NODES` nodes within `MAX_TERM_DEPTH` levels. The
+    /// walk stops at the first excess, so it takes at most `MAX_TERM_NODES` steps whatever the sharing.
+    pub fn in_bounds(&self, term: TermId) -> bool {
+        let mut budget = MAX_TERM_NODES;
+        self.bounded(term, 1, &mut budget)
+    }
+
+    fn bounded(&self, term: TermId, depth: usize, budget: &mut usize) -> bool {
+        if depth > MAX_TERM_DEPTH || *budget == 0 {
+            return false;
+        }
+        *budget -= 1;
+        let term = self.walk(term);
+        match self.nodes.get(term as usize) {
+            Some(Node {
+                head: Head::App(_), ..
+            }) => self
+                .children(term)
+                .iter()
+                .all(|&k| self.bounded(k, depth + 1, budget)),
+            _ => true,
         }
     }
 

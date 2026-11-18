@@ -6,7 +6,7 @@ use mcpack::mm::{self, Database, Grammar, StmtId, Sym};
 use std::rc::Rc;
 
 pub const SRC: &str = "
-$c ( ) -> -. wff |- A. setvar ~ $.
+$c ( ) -> -. wff |- A. setvar ~ Q $.
 $v ph ps ch th x y z w q $.
 wph $f wff ph $.
 wps $f wff ps $.
@@ -121,6 +121,41 @@ ${
   tbad.1 $e |- ( ph ) $.
   tbad $p |- ps $= tbad.1 $.
 $}
+${
+  $d x ph $.
+  axq $a |- ( A. x ph -> ph ) $.
+$}
+${
+  axpair.1 $e |- ph $.
+  axpair.2 $e |- ps $.
+  axpair $a |- ( ph -> ps ) $.
+$}
+${
+  tdup $p |- ( ( A. y ps -> ps ) -> ( A. y ps -> ps ) ) $= wps vy wal wps wi wps vy wal wps wi wps vy axq wps vy axq axpair $.
+$}
+${
+  $d y ps $.
+  tdup-ok $p |- ( ( A. y ps -> ps ) -> ( A. y ps -> ps ) ) $= wps vy wal wps wi wps vy wal wps wi wps vy axq wps vy axq axpair $.
+$}
+${
+  $d x ph $.
+  wq $a wff Q x ph $.
+$}
+${
+  tq.1 $e |- ( Q y ch -> ps ) $.
+  tq.2 $e |- Q y ch $.
+  tq $p |- ps $= wch vy wq wps tq.2 tq.1 ax-mp $.
+$}
+${
+  $d y ch $.
+  tq-ok.1 $e |- ( Q y ch -> ps ) $.
+  tq-ok.2 $e |- Q y ch $.
+  tq-ok $p |- ps $= wch vy wq wps tq-ok.2 tq-ok.1 ax-mp $.
+$}
+axd $a |- ( ( ps -> ps ) -> ps ) $.
+${
+  tbig $p |- ps $= ? $.
+$}
 vq $f setvar q $.
 ";
 
@@ -143,8 +178,42 @@ pub fn sym(db: &Database, name: &str) -> Sym {
         .unwrap_or_else(|| panic!("no {name}")) as Sym
 }
 
+/// The identity the fixture's catalogs carry.
+pub const LIBRARY: u32 = 0x4d43_4c31;
+
 pub fn catalog<'a>(db: &'a Database, grammar: &'a Grammar<'a>) -> Rc<Catalog<'a>> {
-    Catalog::new(db, grammar)
+    Catalog::new(db, grammar, LIBRARY)
+}
+
+pub fn put(out: &mut Vec<u8>, mut n: u32) {
+    while n >= 0x80 {
+        out.push(n as u8 | 0x80);
+        n >>= 7;
+    }
+    out.push(n as u8);
+}
+
+/// Saved bytes written by hand from the format: `body` between the header and the checksum.
+pub fn wrap(library: u32, body: &[u8]) -> Vec<u8> {
+    let mut out = vec![2];
+    out.extend(library.to_le_bytes());
+    put(&mut out, body.len() as u32);
+    out.extend(body);
+    out.extend(mcpack::library::crc32(&out).to_le_bytes());
+    out
+}
+
+/// A saved session written by hand: the theorem, the flag and operations as (tag, a, b).
+pub fn saved_bytes(theorem: u32, flag: u8, ops: &[(u8, u32, u32)]) -> Vec<u8> {
+    let mut body = Vec::new();
+    put(&mut body, theorem);
+    body.push(flag);
+    for &(tag, a, b) in ops {
+        body.push(tag);
+        put(&mut body, a);
+        put(&mut body, b);
+    }
+    wrap(LIBRARY, &body)
 }
 
 pub fn session<'a>(cat: &Rc<Catalog<'a>>, theorem: &str) -> Session<'a> {
