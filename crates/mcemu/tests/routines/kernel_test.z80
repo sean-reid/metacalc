@@ -11,6 +11,10 @@ TEST_ASSERTION2		.equ $FF08
 TEST_STATUSES		.equ $F200
 TEST_REGS		.equ $FF10
 TEST_IFF_IN		.equ $FF1A
+TEST_CRC_BEGIN		.equ $FF0B
+TEST_CRC_CALLS		.equ $FF0C
+TEST_BUF_LEN		.equ $FF1C
+TEST_BUF		.equ $F300
 
 .org $4000
 	jp entry_one
@@ -128,6 +132,120 @@ entry_iff:
 	call iff_flag
 	di
 	halt
+
+entry_crc:
+	di
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	call crc_run
+	halt
+
+entry_crc_raw:
+	di
+	call crc_run
+	halt
+
+entry_crc_reinit:
+	di
+	call kernel_init
+	call kernel_crc_begin
+	call kernel_crc_chunk
+	ld (TEST_STATUSES),a
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	call kernel_crc_chunk
+	ld (TEST_STATUSES+1),a
+	halt
+
+entry_crc_again:
+	di
+	call kernel_init
+	call crc_run
+	call kernel_crc_chunk
+	ld (TEST_VERIFY_STATUS),a
+	halt
+
+entry_crc_restart:
+	di
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	call kernel_crc_begin
+	call kernel_crc_chunk
+	call crc_run
+	halt
+
+entry_crc_env:
+	xor a
+	out (3),a
+	ld a,(TEST_IFF_IN)
+	or a
+	jr z,crc_env_go
+	ei
+crc_env_go:
+	nop
+	ld iy,$1357
+	ld bc,$2468
+	push bc
+	pop af
+	ex af,af'
+	exx
+	ld bc,$369C
+	ld de,$48AE
+	ld hl,$5AC0
+	exx
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	call crc_run
+	call iff_flag
+	ld (TEST_REGS),iy
+	ex af,af'
+	push af
+	pop bc
+	ld (TEST_REGS+2),bc
+	exx
+	ld (TEST_REGS+4),bc
+	ld (TEST_REGS+6),de
+	ld (TEST_REGS+8),hl
+	di
+	halt
+
+entry_crc_vector:
+	di
+	call crc_table_build
+	ld hl,$FFFF
+	ld (KERNEL_CRC),hl
+	ld (KERNEL_CRC+2),hl
+	ld hl,(TEST_BUF_LEN)
+	ld de,TEST_BUF
+	add hl,de
+	ex de,hl
+	call crc_update
+	halt
+
+crc_run:
+	call kernel_crc_begin
+	ld (TEST_CRC_BEGIN),a
+	xor a
+	ld (TEST_CRC_CALLS),a
+crc_next:
+	ld a,(TEST_CRC_CALLS)
+	ld hl,TEST_COUNT
+	cp (hl)
+	ret nc
+	call kernel_crc_chunk
+	ld c,a
+	ld a,(TEST_CRC_CALLS)
+	ld e,a
+	ld d,0
+	ld hl,TEST_STATUSES
+	add hl,de
+	ld (hl),c
+	inc a
+	ld (TEST_CRC_CALLS),a
+	ld a,c
+	cp ST_CRC_MORE
+	jr z,crc_next
+	ret
 
 iff_flag:
 	ld a,i

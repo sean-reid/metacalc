@@ -1,6 +1,7 @@
 ; metacalc proof kernel for the TI-84 Plus SE. Checks a library in format MCL1
 ; (crates/mcpack/src/library/mod.rs) and accepts or refuses exactly what the host
-; model mcpack::library::Kernel does. CRC-32 checking is out of scope here.
+; model mcpack::library::Kernel does, except that the CRC-32 in the header is checked by
+; kernel_crc_begin and kernel_crc_chunk, not by kernel_init.
 ;
 ; Code runs from flash in bank A and is position dependent. Assembling this file
 ; alone places it at $4000; an including file defines KERNEL_EMBEDDED first and
@@ -16,6 +17,12 @@
 ;                   out: A = status
 ;   kernel_verify   in:  HL = assertion number, kernel_init returned 0
 ;                   out: A = status, 0 meaning accepted
+;   kernel_crc_begin  in:  kernel_init returned 0
+;                     out: A = status, 0 or Malformed
+;   kernel_crc_chunk  in:  kernel_crc_begin returned 0
+;                     out: A = ST_CRC_MORE until the last chunk, then 0 if the CRC-32 of the
+;                          library bytes from offset 8 to its end equals the header's, else
+;                          Malformed
 ;
 ; kernel_verify returns Malformed unless a kernel_init on the same RAM block succeeded and no
 ; later kernel_init failed. It may be called any number of times after that init. Limits above a
@@ -25,12 +32,22 @@
 ; KERNEL_LIB_PAGE + 1 chunks; one that ends exactly at page 0 is accepted. The page is copied
 ; at init, so changing KERNEL_LIB_PAGE afterwards has no effect until the next kernel_init.
 ;
+; The checksum runs in 16 KB steps so the app can poll keys between calls. kernel_crc_begin
+; builds a 1 KB table (306,000 T-states, 51 ms at 6 MHz) and starts a run. Each kernel_crc_chunk
+; reads the next chunk: at most 2,030,000 T-states from flash, 0.34 s at 6 MHz, 0.14 s at
+; 15 MHz, 124 T-states per byte. A library of 369,178 bytes takes 23 calls, 46 million T-states,
+; 7.7 s at 6 MHz. Call chunk until it does not return ST_CRC_MORE. A chunk call refuses (returns
+; 1) without a begin since the last kernel_init, and after the run has ended; kernel_crc_begin
+; restarts. KERNEL_CRC is the CRC-32, least significant byte first, final once chunk has returned
+; 0 or 1 and a running value before that; the app can key its status cache on it.
+;
 ; Status (ST_* in ram.inc)
 ;           0 ok               1 Malformed        2 BadRecord
 ;           3 NotATheorem (never returned)        4 ForwardReference
 ;           5 OutOfMemory      6 StackUnderflow   7 BadBackReference
 ;           8 TypecodeMismatch 9 HypothesisMismatch
 ;          10 DisjointViolation 11 StackNotSingleton 12 WrongConclusion
+;         255 ST_CRC_MORE (kernel_crc_chunk only)
 ;
 ; RAM, bank C, shown for the default base (KERNEL_RAM_END is the first free byte):
 ;   $C000  9     parameters: lib page (1), stack syms, stack entries,
@@ -45,6 +62,8 @@
 ;   $D200  1024  saved entry starts, 512 entries
 ;   $D600  3072  stack symbols, scratch included
 ;   $E200  3072  saved symbols
+;   $EE00  1024  CRC-32 table, four planes of 256 bytes, built by kernel_crc_begin
+;   $C0A8  4     KERNEL_CRC, the CRC-32 (inside the private state, which runs to $C0FF)
 ; Everything above KERNEL_RAM_END is free for the caller.
 
 #ifndef KERNEL_EMBEDDED
@@ -190,3 +209,4 @@ cmp24:
 #include "record.inc"
 #include "proof.inc"
 #include "apply.inc"
+#include "crc.inc"

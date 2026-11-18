@@ -17,6 +17,14 @@ kv_saved_sp         .equ KERNEL_RAM+$10
 kv_saved_bank       .equ KERNEL_RAM+$12
 kv_saved_iff        .equ KERNEL_RAM+$13
 kv_ready            .equ KERNEL_RAM+$A0
+kv_crc_state        .equ KERNEL_RAM+$A2
+kv_crc_chunk        .equ KERNEL_RAM+$A4
+kv_crc_last         .equ KERNEL_RAM+$A5
+kv_crc_end          .equ KERNEL_RAM+$A6
+KERNEL_CRC          .equ KERNEL_RAM+$A8
+kv_crc_stop         .equ KERNEL_RAM+$AC
+kv_crc_rem          .equ KERNEL_RAM+$AE
+kv_crc_bits         .equ KERNEL_RAM+$AF
 READY_MAGIC         .equ $5AA5
 kv_arg_id           .equ KERNEL_RAM+$15
 kv_constants        .equ KERNEL_RAM+$17
@@ -87,7 +95,8 @@ STARTS_BUF          .equ KERNEL_RAM+$1000
 SAVED_STARTS_BUF    .equ KERNEL_RAM+$1200
 STACK_BUF           .equ KERNEL_RAM+$1600
 SAVED_BUF           .equ KERNEL_RAM+$2200
-KERNEL_RAM_END      .equ KERNEL_RAM+$2E00
+CRC_TABLE           .equ KERNEL_RAM+$2E00
+KERNEL_RAM_END      .equ KERNEL_RAM+$3200
 #if KERNEL_RAM_END > $10000
  .error "the kernel RAM block does not fit below $10000"
 #endif
@@ -111,3 +120,4 @@ ST_HYP_MISMATCH     .equ 9
 ST_DISJOINT         .equ 10
 ST_NOT_SINGLETON    .equ 11
 ST_WRONG_CONCLUSION .equ 12
+ST_CRC_MORE         .equ $FF
