@@ -23,6 +23,22 @@ fn inverting_rectangles_at_every_alignment_of_both_edges() {
 }
 
 #[test]
+fn inverting_eight_scanlines_at_every_alignment_and_clipped_at_the_bottom() {
+    let widths = [1usize, 7, 8, 9, 16, 18, 19, 33, 96];
+    for y in [56usize, 60, 0, 13] {
+        for x in (0..=17usize).chain(80..96) {
+            agree(&format!("eight rows at x {x} y {y}"), |c| {
+                filled(c);
+                for &w in &widths {
+                    c.invert(x, y, w, 8);
+                }
+                c.invert(x, y, 20, 8);
+            });
+        }
+    }
+}
+
+#[test]
 fn inverting_up_to_the_edge_and_the_full_width() {
     for x in 0..96usize {
         agree(&format!("to the edge from {x}"), |c| {

@@ -18,12 +18,18 @@ uc_go:
 	ld (ui_sp),sp
 	ld sp,UI_FRAME+UI_FRAME_SIZE
 	ld hl,0
-	ld b,UI_FRAME_SIZE/8
+	ld b,UI_FRAME_SIZE/32
 uc_loop:
+#macro PUSH4
 	push hl
 	push hl
 	push hl
 	push hl
+#endmacro
+	PUSH4
+	PUSH4
+	PUSH4
+	PUSH4
 	djnz uc_loop
 	ld sp,(ui_sp)
 	ld a,(ui_iff)
@@ -76,8 +82,9 @@ ui_invert_row:
 	call ui_row_addr
 	ld de,-UI_STRIDE
 	add hl,de
-	ld b,UI_ROW*UI_STRIDE/4
+	ld b,UI_ROW*UI_STRIDE/16
 ir_loop:
+#macro CPL4
 	ld a,(hl)
 	cpl
 	ld (hl),a
@@ -94,6 +101,11 @@ ir_loop:
 	cpl
 	ld (hl),a
 	inc hl
+#endmacro
+	CPL4
+	CPL4
+	CPL4
+	CPL4
 	djnz ir_loop
 	ret
 
@@ -186,40 +198,66 @@ iv_wide:
 	dec a
 iv_set:
 	ld (ui_mid),a
-iv_row:
 	ld hl,(ui_dst)
 	ld a,(ui_mid)
 	inc a
-	jr z,iv_single
+	jr z,iv_one
 	ld a,(ui_lm)
-	xor (hl)
-	ld (hl),a
-	inc hl
+	ld c,a
+	call iv_col
 	ld a,(ui_mid)
 	or a
 	jr z,iv_last
-	ld b,a
-iv_mid:
-	ld a,(hl)
-	cpl
-	ld (hl),a
-	inc hl
-	djnz iv_mid
+	ld c,$FF
+iv_mids:
+	push af
+	call iv_col
+	pop af
+	dec a
+	jr nz,iv_mids
 iv_last:
 	ld a,(ui_rm)
-	jr iv_flip
-iv_single:
+	ld c,a
+	jr iv_col
+iv_one:
 	ld a,(ui_lm)
-iv_flip:
-	xor (hl)
-	ld (hl),a
-	ld hl,(ui_dst)
+	ld c,a
+
+; Flips one byte column of ui_rows scanlines with mask C; HL = its first byte in, the first
+; byte of the next column out. Destroys AF B DE.
+iv_col:
+	push hl
+	ld a,(ui_rows)
 	ld de,UI_STRIDE
+	cp UI_ROW
+	jr nz,iv_some
+#macro FLIP
+	ld a,(hl)
+	xor c
+	ld (hl),a
 	add hl,de
-	ld (ui_dst),hl
-	ld hl,ui_rows
-	dec (hl)
-	jr nz,iv_row
+#endmacro
+	FLIP
+	FLIP
+	FLIP
+	FLIP
+	FLIP
+	FLIP
+	FLIP
+	FLIP
+	pop hl
+	inc hl
+	ret
+iv_some:
+	ld b,a
+iv_cl:
+	ld a,(hl)
+	xor c
+	ld (hl),a
+	add hl,de
+	djnz iv_cl
+	pop hl
+	inc hl
 	ret
 
 ; HL = HL + A

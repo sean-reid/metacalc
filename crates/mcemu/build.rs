@@ -349,4 +349,10 @@ fn assemble_ui(out: &Path) {
             "overlapping canvas blocks gave {other:?}, not an overlap error"
         )),
     }
+    match assemble(&["UI_WIDTH=250"], &out.join("ui_probe.bin")) {
+        Err(why) if why.contains("whole bytes between") => {}
+        other => fail(&format!(
+            "soft key boxes too wide for the flip gave {other:?}, not a box error"
+        )),
+    }
 }

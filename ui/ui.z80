@@ -15,7 +15,8 @@
 ;
 ; Fonts: every routine that draws or measures text reads the table given to ui_set_font. A
 ; table is what mcglyph z80 writes: a slot of 8 bytes per glyph, the width then seven row
-; bytes; a glyph nine wide takes a second slot of its ninth pixels. Strings are glyph codes
+; bytes, with bit 7 of the width set when row 5 or 6 has a pixel; a glyph nine wide takes a
+; second slot of its ninth pixels. The space slot, code 1, is never flagged. Strings are glyph codes
 ; ended by 0 and code 1 is the space. The soft key row sets the ui_key_font table itself and restores the font in use afterwards; its
 ; label strings use that table's codes, which differ from the main font's.
 ;

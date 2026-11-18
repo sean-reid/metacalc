@@ -78,18 +78,13 @@ sk_next:
 	ld b,UI_SOFT_ROW
 	call ui_text
 	ld hl,(ui_kb)
-	ld b,(hl)
 	inc hl
-	ld a,(hl)
-	sub b
-	ld d,a
-	ld c,UI_SOFT_ROW*UI_ROW
-	ld e,UI_ROW
-	call ui_invert
+	inc hl
+	call sk_flip
 sk_skip:
 	ld hl,(ui_kb)
-	inc hl
-	inc hl
+	ld de,SK_RECORD
+	add hl,de
 	ld (ui_kb),hl
 	ld hl,ui_kn
 	dec (hl)
@@ -98,9 +93,93 @@ sk_skip:
 	ld (ui_fontp),hl
 	ret
 
+; Flips a key's box from its record, HL = the record past its two x bytes: eight scanlines, with
+; one or two whole bytes between the edge bytes. Destroys AF BC DE HL.
+#macro FLIP3
+	ld a,(hl)
+	xor c
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	xor b
+	ld (hl),a
+	add hl,de
+#endmacro
+#macro FLIP4
+	ld a,(hl)
+	xor c
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	xor b
+	ld (hl),a
+	add hl,de
+#endmacro
+sk_flip:
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	ld c,(hl)
+	inc hl
+	ld a,(hl)
+	inc hl
+	ld b,(hl)
+	ex de,hl
+	dec a
+	jr nz,sk_flip4
+	ld de,UI_STRIDE-2
+	FLIP3
+	FLIP3
+	FLIP3
+	FLIP3
+	FLIP3
+	FLIP3
+	FLIP3
+	FLIP3
+	ret
+sk_flip4:
+	ld de,UI_STRIDE-3
+	FLIP4
+	FLIP4
+	FLIP4
+	FLIP4
+	FLIP4
+	FLIP4
+	FLIP4
+	FLIP4
+	ret
+
+; A key box record: its first and last column, the address of its top left byte in the frame,
+; the mask of the first byte, the number of whole bytes between, and the mask of the last. The
+; box is inverted up to the column before its last.
+SK_RECORD               .equ 7
+#macro BOX(a,b)
+#if (((b-1)>>3)-(a>>3)-1) < 1
+ .error "a soft key box must span one or two whole bytes between its edge bytes"
+#endif
+#if (((b-1)>>3)-(a>>3)-1) > 2
+ .error "a soft key box must span one or two whole bytes between its edge bytes"
+#endif
+	.db a,b
+	.dw UI_FRAME+(UI_SOFT_ROW*UI_ROW*UI_STRIDE)+(a>>3)
+	.db $FF>>(a&7),((b-1)>>3)-(a>>3)-1,($FF<<(7-((b-1)&7)))&$FF
+#endmacro
 sk_boxes:
-	.db (UI_WIDTH*0+2)/5,(UI_WIDTH*1+2)/5-1
-	.db (UI_WIDTH*1+2)/5,(UI_WIDTH*2+2)/5-1
-	.db (UI_WIDTH*2+2)/5,(UI_WIDTH*3+2)/5-1
-	.db (UI_WIDTH*3+2)/5,(UI_WIDTH*4+2)/5-1
-	.db (UI_WIDTH*4+2)/5,(UI_WIDTH*5+2)/5-1
+	BOX((UI_WIDTH*0+2)/5,(UI_WIDTH*1+2)/5-1)
+	BOX((UI_WIDTH*1+2)/5,(UI_WIDTH*2+2)/5-1)
+	BOX((UI_WIDTH*2+2)/5,(UI_WIDTH*3+2)/5-1)
+	BOX((UI_WIDTH*3+2)/5,(UI_WIDTH*4+2)/5-1)
+	BOX((UI_WIDTH*4+2)/5,(UI_WIDTH*5+2)/5-1)

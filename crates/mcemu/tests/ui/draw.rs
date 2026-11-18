@@ -25,6 +25,47 @@ fn every_glyph_alone_at_all_eight_bit_alignments() {
     }
 }
 
+/// Every glyph of both fonts alone at all eight alignments on the first and last text row, in
+/// the middle of the frame and at the last bytes.
+#[test]
+fn every_glyph_of_both_fonts_at_every_alignment_on_the_first_and_last_row() {
+    for (font, table, keys) in [
+        (Font::builtin(), table(), false),
+        (Font::keys(), key_table(), true),
+    ] {
+        let flat: Vec<u8> = table.slots().iter().flatten().copied().collect();
+        for (name, code) in table.glyphs() {
+            if code == 1 {
+                continue;
+            }
+            let glyph = font.glyph(name).unwrap();
+            for row in [0usize, 7] {
+                for s in 0..8usize {
+                    let mut canvas = Canvas::default();
+                    let mut script = Vec::new();
+                    if keys {
+                        script.push(Op::SetFont(flat.clone()));
+                    }
+                    for x in [s, 24 + s, 48 + s, 72 + s, 80 + s, 88 + s] {
+                        canvas.blit(glyph, x, row);
+                        script.push(Op::Text {
+                            x,
+                            row,
+                            codes: vec![code, 0],
+                        });
+                    }
+                    let got = run(REAL, &script);
+                    same_frame(
+                        &format!("{name} row {row} shift {s}"),
+                        &got.frame,
+                        &pack(&canvas.into_bitmap()),
+                    );
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn strings_mixing_spaces_and_marks() {
     let texts = [
@@ -135,6 +176,32 @@ fn text_returns_the_x_after_it() {
     let got = run(REAL, &script);
     let got: Vec<usize> = got.results.iter().map(|&r| usize::from(r)).collect();
     assert_eq!(got, want);
+}
+
+#[test]
+fn a_long_mixed_string_at_every_x_on_every_row() {
+    let text = "Wgj, (pqy) MW 0123 [i|l] {a~b} \u{2713}\u{2717}\u{2026} Quick brown fox; jumps!";
+    let codes = table().encode(text);
+    for row in 0..=8usize {
+        for x in 0..=100usize {
+            let mut canvas = Canvas::default();
+            let want = x + canvas.text(x, row, text);
+            let got = run(
+                REAL,
+                &[Op::Text {
+                    x,
+                    row,
+                    codes: codes.clone(),
+                }],
+            );
+            same_frame(
+                &format!("row {row} at {x}"),
+                &got.frame,
+                &pack(&canvas.into_bitmap()),
+            );
+            assert_eq!(usize::from(got.results[0]), want, "row {row} at {x}");
+        }
+    }
 }
 
 #[test]
