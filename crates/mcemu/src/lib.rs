@@ -15,6 +15,7 @@ pub const LCD_HEIGHT: usize = 64;
 
 const PORT_SPEED: u8 = 0x20;
 const FLASH_PAGE_SIZE: usize = 0x4000;
+pub const RAM_PAGE_SIZE: usize = 0x4000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Speed {
@@ -111,6 +112,14 @@ impl Machine {
                 self.calc.mem_mut()[p]
             })
             .collect()
+    }
+
+    /// RAM page `n`, the one that bank C shows after a write of `n` to port 5.
+    pub fn ram_page(&mut self, n: u8) -> &mut [u8] {
+        let start = self.calc.rom_size() + usize::from(n) * RAM_PAGE_SIZE;
+        let mem = self.calc.mem_mut();
+        assert!(start + RAM_PAGE_SIZE <= mem.len(), "RAM page out of range");
+        &mut mem[start..start + RAM_PAGE_SIZE]
     }
 
     pub fn out_port(&mut self, port: u8, value: u8) {
