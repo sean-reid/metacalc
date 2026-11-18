@@ -139,7 +139,7 @@ impl Session<'_> {
     /// Instantiates a metavariable with a variable the database declares for its typecode.
     pub fn assign(&mut self, meta: MetaId, var: Sym) -> Result<Outcome, Error> {
         self.unbound(meta)?;
-        let typecode = self.store.meta_typecode(meta);
+        let typecode = self.store.meta_typecode(meta).ok_or(Error::NoSuchMeta)?;
         if !self.vars.of_typecode(typecode).any(|v| v == var) {
             return Err(Error::NotAVariable);
         }
@@ -158,9 +158,12 @@ impl Session<'_> {
         self.unbound(meta)?;
         let db = self.db();
         let stmt = db.stmts.get(syntax as usize).ok_or(Error::NotSyntax)?;
-        let typecode = self.store.meta_typecode(meta);
+        let typecode = self.store.meta_typecode(meta).ok_or(Error::NoSuchMeta)?;
         if stmt.kind != Kind::Axiom || stmt.expr[0] != typecode {
             return Err(Error::NotSyntax);
+        }
+        if syntax >= self.theorem {
+            return Err(Error::Forward);
         }
         let before = self.dv_report().violations;
         let undo = self.checkpoint(None);
@@ -171,7 +174,7 @@ impl Session<'_> {
             .map(|&h| self.store.new_meta(db.stmt(h).expr[0]))
             .collect();
         let term = self.store.app(syntax, &kids);
-        let target = self.store.meta_term(meta);
+        let target = self.store.meta_term(meta).ok_or(Error::NoSuchMeta)?;
         if let Err(e) = self.store.unify(target, term) {
             self.rollback_to(undo);
             return Err(Error::Unify(e));

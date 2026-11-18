@@ -59,7 +59,7 @@ fn a_pair_with_an_unknown_term_waits_for_the_step_that_resolves_it() {
     let mut s = session(&cat, "tdv");
     let out = s.apply(0, id(&db, "axdv")).unwrap();
     assert_eq!(out.violations, []);
-    assert_eq!(s.show_goal(1), "|- ( ps -> ?1 )");
+    assert_eq!(s.show_goal(1).unwrap(), "|- ( ps -> ?1 )");
     let out = s.close(1, id(&db, "tdv.1")).unwrap();
     assert_eq!(
         out.violations,

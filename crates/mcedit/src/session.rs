@@ -3,7 +3,7 @@ use crate::dv::{DvCond, Violation};
 use crate::error::Error;
 use crate::term::{Mark, MetaId, Peak, Store, TermId};
 use crate::vars::Vars;
-use mcpack::mm::{Database, Grammar, Kind, Proof, ProofError, StmtId, Sym, Tree};
+use mcpack::mm::{Database, Grammar, Kind, Proof, ProofError, StmtId, Sym, SyntaxError, Tree};
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -107,7 +107,7 @@ impl<'a> Session<'a> {
     /// add the pairs a dummy variable needs; any other theorem keeps to the pairs it declares.
     pub fn start_in(catalog: Rc<Catalog<'a>>, theorem: StmtId) -> Result<Self, Error> {
         let db = catalog.db;
-        let stmt = db.stmt(theorem);
+        let stmt = db.stmts.get(theorem as usize).ok_or(Error::NotATheorem)?;
         if stmt.kind != Kind::Theorem {
             return Err(Error::NotATheorem);
         }
@@ -135,6 +135,9 @@ impl<'a> Session<'a> {
             peak: Sizes::default(),
             auto_nodes: 0,
         };
+        if parsed.hyps.len() != essential_count(db, theorem) {
+            return Err(Error::Syntax(SyntaxError::NoParse));
+        }
         let essentials = stmt
             .frame
             .hyps
@@ -187,24 +190,26 @@ impl<'a> Session<'a> {
         self.goals.len()
     }
 
-    /// The goals an applied goal produced.
+    /// The goals an applied goal produced, none for a goal that is not applied or does not exist.
+    /// Goal ids are invalidated by `undo`.
     pub fn children(&self, goal: GoalId) -> Range<GoalId> {
-        match self.goals[goal as usize].state {
-            GoalState::Applied {
+        match self.goals.get(goal as usize).map(|g| g.state) {
+            Some(GoalState::Applied {
                 assertion, first, ..
-            } => first..first + self.essential_count(assertion) as GoalId,
+            }) => first..first + self.essential_count(assertion) as GoalId,
             _ => 0..0,
         }
     }
 
-    pub fn show(&self, term: TermId) -> String {
+    pub fn show(&self, term: TermId) -> Option<String> {
         self.store.show(term)
     }
 
     /// The goal as a provable statement in Metamath notation.
-    pub fn show_goal(&self, goal: GoalId) -> String {
+    pub fn show_goal(&self, goal: GoalId) -> Option<String> {
         let name = &self.db().syms[self.provable as usize].name;
-        format!("{name} {}", self.store.show(self.goals[goal as usize].term))
+        let term = self.goals.get(goal as usize)?.term;
+        Some(format!("{name} {}", self.store.show(term)?))
     }
 
     /// The operations in force, oldest first.
@@ -248,13 +253,7 @@ impl<'a> Session<'a> {
     }
 
     pub(crate) fn essential_count(&self, assertion: StmtId) -> usize {
-        let db = self.db();
-        db.stmt(assertion)
-            .frame
-            .hyps
-            .iter()
-            .filter(|&&h| db.stmt(h).kind == Kind::Essential)
-            .count()
+        essential_count(self.db(), assertion)
     }
 
     /// Builds a term from a syntax tree; a variable in `subst` becomes its term and any other stays a variable.
@@ -293,4 +292,13 @@ impl<'a> Session<'a> {
             self.goals[goal as usize].state = GoalState::Open;
         }
     }
+}
+
+fn essential_count(db: &Database, assertion: StmtId) -> usize {
+    db.stmt(assertion)
+        .frame
+        .hyps
+        .iter()
+        .filter(|&&h| db.stmt(h).kind == Kind::Essential)
+        .count()
 }

@@ -33,6 +33,8 @@ pub enum Clash {
     Constructor,
     Occurs,
     Typecode,
+    /// A term or metavariable id the store does not hold.
+    Unknown,
 }
 
 /// A point to roll the store back to: terms, metavariables and bindings made after it are dropped.
@@ -134,12 +136,12 @@ impl<'a> Store<'a> {
         self.metas.len()
     }
 
-    pub fn meta_term(&self, meta: MetaId) -> TermId {
-        self.metas[meta as usize].node
+    pub fn meta_term(&self, meta: MetaId) -> Option<TermId> {
+        self.metas.get(meta as usize).map(|m| m.node)
     }
 
-    pub fn meta_typecode(&self, meta: MetaId) -> Sym {
-        self.metas[meta as usize].typecode
+    pub fn meta_typecode(&self, meta: MetaId) -> Option<Sym> {
+        self.metas.get(meta as usize).map(|m| m.typecode)
     }
 
     pub fn is_unbound(&self, meta: MetaId) -> bool {
@@ -171,9 +173,16 @@ impl<'a> Store<'a> {
     }
 
     /// Follows bound metavariables to the term they stand for.
+    ///
+    /// Term and metavariable ids are invalidated by `rollback`; the accessors treat an unknown id as
+    /// no term rather than panic.
     pub fn walk(&self, mut term: TermId) -> TermId {
-        while let Head::Meta(m) = self.nodes[term as usize].head {
-            match self.metas[m as usize].bound {
+        while let Some(Node {
+            head: Head::Meta(m),
+            ..
+        }) = self.nodes.get(term as usize)
+        {
+            match self.metas[*m as usize].bound {
                 Some(next) => term = next,
                 None => break,
             }
@@ -181,36 +190,41 @@ impl<'a> Store<'a> {
         term
     }
 
-    pub fn head(&self, term: TermId) -> Head {
-        self.nodes[self.walk(term) as usize].head
+    pub fn head(&self, term: TermId) -> Option<Head> {
+        self.nodes.get(self.walk(term) as usize).map(|n| n.head)
     }
 
     /// The subterms of a term; its metavariables are not resolved.
     pub fn children(&self, term: TermId) -> &[TermId] {
-        let node = self.nodes[self.walk(term) as usize];
-        &self.args[node.start as usize..(node.start + node.len) as usize]
+        match self.nodes.get(self.walk(term) as usize) {
+            Some(n) => &self.args[n.start as usize..(n.start + n.len) as usize],
+            None => &[],
+        }
     }
 
-    pub fn typecode(&self, term: TermId) -> Sym {
-        match self.head(term) {
-            Head::Var(v) => self.var_types[&v],
+    pub fn typecode(&self, term: TermId) -> Option<Sym> {
+        Some(match self.head(term)? {
+            Head::Var(v) => *self.var_types.get(&v)?,
             Head::Meta(m) => self.metas[m as usize].typecode,
             Head::App(s) => self.db.stmt(s).expr[0],
-        }
+        })
     }
 
     fn occurs(&self, meta: MetaId, term: TermId) -> bool {
         let term = self.walk(term);
-        match self.nodes[term as usize].head {
-            Head::Meta(m) => m == meta,
-            Head::Var(_) => false,
-            Head::App(_) => self.children(term).iter().any(|&k| self.occurs(meta, k)),
+        match self.head(term) {
+            Some(Head::Meta(m)) => m == meta,
+            Some(Head::App(_)) => self.children(term).iter().any(|&k| self.occurs(meta, k)),
+            _ => false,
         }
     }
 
     pub fn bind(&mut self, meta: MetaId, term: TermId) -> Result<(), Clash> {
-        if self.metas[meta as usize].typecode != self.typecode(term) {
-            return Err(Clash::Typecode);
+        let wanted = self.meta_typecode(meta).ok_or(Clash::Unknown)?;
+        match self.typecode(term) {
+            None => return Err(Clash::Unknown),
+            Some(t) if t != wanted => return Err(Clash::Typecode),
+            Some(_) => {}
         }
         if self.occurs(meta, term) {
             return Err(Clash::Occurs);
@@ -226,7 +240,10 @@ impl<'a> Store<'a> {
         if a == b {
             return Ok(());
         }
-        let (na, nb) = (self.nodes[a as usize], self.nodes[b as usize]);
+        let (Some(&na), Some(&nb)) = (self.nodes.get(a as usize), self.nodes.get(b as usize))
+        else {
+            return Err(Clash::Unknown);
+        };
         match (na.head, nb.head) {
             (Head::Meta(m), _) => self.bind(m, b),
             (_, Head::Meta(m)) => self.bind(m, a),
@@ -245,38 +262,38 @@ impl<'a> Store<'a> {
 
     pub fn is_ground(&self, term: TermId) -> bool {
         let term = self.walk(term);
-        match self.nodes[term as usize].head {
-            Head::Meta(_) => false,
-            Head::Var(_) => true,
-            Head::App(_) => self.children(term).iter().all(|&k| self.is_ground(k)),
+        match self.head(term) {
+            Some(Head::Var(_)) => true,
+            Some(Head::App(_)) => self.children(term).iter().all(|&k| self.is_ground(k)),
+            _ => false,
         }
     }
 
     /// Adds the variables of a term to `out`, once each.
     pub fn variables(&self, term: TermId, out: &mut Vec<Sym>) {
         let term = self.walk(term);
-        match self.nodes[term as usize].head {
-            Head::Var(v) => {
+        match self.head(term) {
+            Some(Head::Var(v)) => {
                 if !out.contains(&v) {
                     out.push(v);
                 }
             }
-            Head::Meta(_) => {}
-            Head::App(_) => {
+            Some(Head::App(_)) => {
                 for &k in self.children(term) {
                     self.variables(k, out);
                 }
             }
+            _ => {}
         }
     }
 
     /// The term as symbols, a syntax axiom written out with its subterms in place of its variables.
     pub fn pieces(&self, term: TermId, out: &mut Vec<Piece>) {
         let term = self.walk(term);
-        match self.nodes[term as usize].head {
-            Head::Var(v) => out.push(Piece::Sym(v)),
-            Head::Meta(m) => out.push(Piece::Meta(m)),
-            Head::App(s) => {
+        match self.head(term) {
+            Some(Head::Var(v)) => out.push(Piece::Sym(v)),
+            Some(Head::Meta(m)) => out.push(Piece::Meta(m)),
+            Some(Head::App(s)) => {
                 let stmt = self.db.stmt(s);
                 let kids = self.children(term).to_vec();
                 for &sym in &stmt.expr[1..] {
@@ -294,11 +311,13 @@ impl<'a> Store<'a> {
                     }
                 }
             }
+            None => {}
         }
     }
 
-    /// The term in Metamath notation with unbound metavariables written `?n`.
-    pub fn show(&self, term: TermId) -> String {
+    /// The term in Metamath notation with unbound metavariables written `?n`; nothing for an unknown id.
+    pub fn show(&self, term: TermId) -> Option<String> {
+        self.head(term)?;
         let mut pieces = Vec::new();
         self.pieces(term, &mut pieces);
         let words: Vec<String> = pieces
@@ -308,6 +327,6 @@ impl<'a> Store<'a> {
                 Piece::Meta(m) => format!("?{m}"),
             })
             .collect();
-        words.join(" ")
+        Some(words.join(" "))
     }
 }

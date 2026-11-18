@@ -17,9 +17,10 @@ fn take(bytes: &mut &[u8]) -> Result<u32, Error> {
     for shift in (0..35).step_by(7) {
         let (&b, rest) = bytes.split_first().ok_or(Error::Corrupt)?;
         *bytes = rest;
-        n |= u32::from(b & 0x7f)
-            .checked_shl(shift)
-            .ok_or(Error::Corrupt)?;
+        if shift == 28 && b > 0x0f {
+            return Err(Error::Corrupt);
+        }
+        n |= u32::from(b & 0x7f) << shift;
         if b < 0x80 {
             return Ok(n);
         }
@@ -28,10 +29,12 @@ fn take(bytes: &mut &[u8]) -> Result<u32, Error> {
 }
 
 impl Session<'_> {
-    /// The theorem and the operations in force, as bytes: one tag and its numbers per operation.
+    /// The theorem, whether new disjoint pairs are allowed and the operations in force, as bytes:
+    /// one tag and its numbers per operation.
     pub fn save(&self) -> Vec<u8> {
         let mut out = Vec::new();
         put(&mut out, self.theorem);
+        out.push(u8::from(self.open_dv));
         for op in &self.ops {
             let (tag, a, b) = match *op {
                 Op::Apply { goal, assertion } => (0, goal, assertion),
@@ -52,6 +55,12 @@ impl<'a> Session<'a> {
     pub fn restore(catalog: Rc<Catalog<'a>>, mut bytes: &[u8]) -> Result<Self, Error> {
         let theorem: StmtId = take(&mut bytes)?;
         let mut session = Session::start_in(catalog, theorem).map_err(|_| Error::Corrupt)?;
+        let (&flag, rest) = bytes.split_first().ok_or(Error::Corrupt)?;
+        bytes = rest;
+        if flag > 1 {
+            return Err(Error::Corrupt);
+        }
+        session.open_dv = flag == 1;
         while let Some((&tag, rest)) = bytes.split_first() {
             bytes = rest;
             let (a, b) = (take(&mut bytes)?, take(&mut bytes)?);

@@ -5,7 +5,7 @@ use std::collections::hash_map::Entry;
 /// The variables a proof of one theorem can use and the typecode of each.
 pub struct Vars {
     types: HashMap<Sym, Sym>,
-    /// Variables that have a floating hypothesis before the theorem, in declaration order.
+    /// Variables whose `$v` is in force at the theorem and that have a floating hypothesis before it, in declaration order.
     declared: Vec<Sym>,
     /// The theorem's mandatory floating hypotheses.
     mandatory: Vec<(Sym, StmtId)>,
@@ -30,6 +30,7 @@ impl Vars {
                 active.push((var, typecode));
             }
         }
+        declared.retain(|&v| db.var_active(v, theorem));
         for (var, typecode) in active {
             types.insert(var, typecode);
         }
@@ -50,6 +51,10 @@ impl Vars {
 
     pub fn types(&self) -> HashMap<Sym, Sym> {
         self.types.clone()
+    }
+
+    pub fn typecode(&self, var: Sym) -> Sym {
+        self.types[&var]
     }
 
     pub fn is_mandatory(&self, var: Sym) -> bool {

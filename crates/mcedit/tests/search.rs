@@ -27,7 +27,7 @@ fn candidates_come_in_database_order_with_their_goal_counts() {
     let g = grammar(&db);
     let cat = catalog(&db, &g);
     let mut s = session(&cat, "tfwd");
-    assert_eq!(s.show_goal(0), "|- ( ps -> ph )");
+    assert_eq!(s.show_goal(0).unwrap(), "|- ( ps -> ph )");
     let found = s.candidates(0, 99).unwrap();
     assert_eq!(
         list(found),
@@ -101,7 +101,7 @@ fn a_bare_metavariable_is_unconstrained() {
     let cat = catalog(&db, &g);
     let mut s = session(&cat, "t1");
     s.apply(0, id(&db, "ax-mp")).unwrap();
-    assert_eq!(s.show_goal(1), "|- ?0");
+    assert_eq!(s.show_goal(1).unwrap(), "|- ?0");
     assert_eq!(s.candidates(1, 3).unwrap(), Candidates::Unconstrained);
     assert!(matches!(s.candidates(2, 99).unwrap(), Candidates::List(_)));
 }

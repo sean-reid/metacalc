@@ -98,8 +98,9 @@ impl Session<'_> {
                 let (mut float, mut essential) = (0, 0);
                 for &h in &db.stmt(assertion).frame.hyps {
                     if db.stmt(h).kind == Kind::Float {
-                        let term = self.store.meta_term(metas + float);
-                        self.emit_term(term, proof, dummies);
+                        if let Some(term) = self.store.meta_term(metas + float) {
+                            self.emit_term(term, proof, dummies);
+                        }
                         float += 1;
                     } else {
                         self.emit_goal(first + essential, proof, dummies);
@@ -114,7 +115,7 @@ impl Session<'_> {
 
     fn emit_term(&self, term: TermId, proof: &mut Vec<Label>, dummies: &mut Vec<Dummy>) {
         match self.store.head(term) {
-            Head::Var(var) => match self.vars.mandatory_float(var) {
+            Some(Head::Var(var)) => match self.vars.mandatory_float(var) {
                 Some(float) => proof.push(Label::Stmt(float)),
                 None => {
                     let at = match dummies.iter().position(|d| d.var == var) {
@@ -122,7 +123,7 @@ impl Session<'_> {
                         None => {
                             dummies.push(Dummy {
                                 var,
-                                typecode: self.store.typecode(term),
+                                typecode: self.vars.typecode(var),
                                 label: String::new(),
                                 declared: false,
                             });
@@ -132,13 +133,13 @@ impl Session<'_> {
                     proof.push(Label::Dummy(at));
                 }
             },
-            Head::App(syntax) => {
+            Some(Head::App(syntax)) => {
                 for &kid in self.store.children(term) {
                     self.emit_term(kid, proof, dummies);
                 }
                 proof.push(Label::Stmt(syntax));
             }
-            Head::Meta(_) => unreachable!("export checked that no metavariable is unbound"),
+            _ => unreachable!("export checked that every term is complete"),
         }
     }
 }

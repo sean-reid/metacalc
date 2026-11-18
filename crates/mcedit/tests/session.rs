@@ -9,17 +9,17 @@ fn modus_ponens_leaves_a_metavariable_that_a_close_resolves() {
     let g = grammar(&db);
     let cat = catalog(&db, &g);
     let mut s = session(&cat, "t1");
-    assert_eq!(s.show_goal(0), "|- ps");
+    assert_eq!(s.show_goal(0).unwrap(), "|- ps");
     let out = s.apply(0, id(&db, "ax-mp")).unwrap();
     assert_eq!(out.goals, 1..3);
     assert_eq!(out.metas, 0..2);
-    assert_eq!(s.show_goal(1), "|- ?0");
-    assert_eq!(s.show_goal(2), "|- ( ?0 -> ps )");
+    assert_eq!(s.show_goal(1).unwrap(), "|- ?0");
+    assert_eq!(s.show_goal(2).unwrap(), "|- ( ?0 -> ps )");
     assert_eq!(s.status().open, [1, 2]);
     assert_eq!(s.status().metas, [0]);
 
     s.close(2, id(&db, "t1.2")).unwrap();
-    assert_eq!(s.show_goal(1), "|- ph");
+    assert_eq!(s.show_goal(1).unwrap(), "|- ph");
     assert!(s.status().metas.is_empty());
     assert_eq!(s.status().open, [1]);
     s.close(1, id(&db, "t1.1")).unwrap();
@@ -43,7 +43,7 @@ fn a_failed_apply_changes_nothing() {
     );
     assert_eq!(s.sizes(), sizes);
     assert_eq!(s.save(), saved);
-    assert_eq!(s.show_goal(0), "|- ( ps -> A. y ps )");
+    assert_eq!(s.show_goal(0).unwrap(), "|- ( ps -> A. y ps )");
     assert!(matches!(s.goal(0).unwrap().state, GoalState::Open));
     assert!(s.apply(0, id(&db, "ax-5")).is_ok());
 }
@@ -96,7 +96,7 @@ fn assign_picks_a_declared_variable_of_the_right_typecode() {
     assert_eq!(s.assign(0, sym(&db, "x")), Err(Error::NotAVariable));
     assert_eq!(s.assign(0, sym(&db, "->")), Err(Error::NotAVariable));
     s.assign(0, sym(&db, "th")).unwrap();
-    assert_eq!(s.show_goal(1), "|- th");
+    assert_eq!(s.show_goal(1).unwrap(), "|- th");
     assert_eq!(s.assign(0, sym(&db, "ph")), Err(Error::AlreadyBound));
 }
 
@@ -133,7 +133,7 @@ fn undo_reverses_every_kind_of_operation() {
         s.run(op).unwrap();
         snapshots.push((s.save(), s.status(), s.sizes()));
     }
-    assert_eq!(s.show_goal(1), "|- ( ph -> ps )");
+    assert_eq!(s.show_goal(1).unwrap(), "|- ( ph -> ps )");
     for (bytes, status, sizes) in snapshots.iter().rev().skip(1) {
         s.undo().unwrap();
         assert_eq!(&s.save(), bytes);
@@ -141,7 +141,7 @@ fn undo_reverses_every_kind_of_operation() {
         assert_eq!(&s.sizes(), sizes);
     }
     assert_eq!(s.undo(), Err(Error::NothingToUndo));
-    assert_eq!(s.show_goal(0), "|- ps");
+    assert_eq!(s.show_goal(0).unwrap(), "|- ps");
     s.play(&steps).unwrap();
     assert_eq!(s.ops(), steps);
 }
@@ -186,7 +186,7 @@ fn a_session_round_trips_through_its_bytes() {
     assert_eq!(back.sizes(), s.sizes());
     assert_eq!(back.save(), bytes);
     for goal in 0..s.goal_count() as u32 {
-        assert_eq!(back.show_goal(goal), s.show_goal(goal));
+        assert_eq!(back.show_goal(goal).unwrap(), s.show_goal(goal).unwrap());
     }
     assert!(bytes.len() < 24, "{} bytes", bytes.len());
     for cut in 0..bytes.len() {

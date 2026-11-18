@@ -29,16 +29,16 @@ impl Session<'_> {
             return true;
         }
         match self.store.head(goal) {
-            Head::App(syntax) => syntax == tree.stmt,
-            Head::Var(_) => false,
-            Head::Meta(_) => true,
+            Some(Head::App(syntax)) => syntax == tree.stmt,
+            Some(Head::Var(_)) => false,
+            _ => true,
         }
     }
 
     pub fn candidates(&mut self, goal: GoalId, limit: usize) -> Result<Candidates, Error> {
         self.open_goal(goal)?;
         let target = self.goals[goal as usize].term;
-        if matches!(self.store.head(target), Head::Meta(_)) {
+        if matches!(self.store.head(target), Some(Head::Meta(_))) {
             return Ok(Candidates::Unconstrained);
         }
         let mut found = Vec::new();
