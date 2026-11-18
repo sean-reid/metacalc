@@ -111,6 +111,7 @@ jobs:
           key: tilem-${{ hashFiles('scripts/fetch-tilem.sh') }}
       - run: sh scripts/fetch-tilem.sh
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" cargo test --locked -p mcemu --test kernel -- --ignored the_shipped_libraries --nocapture
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" cargo test --locked -p mcemu --test reader -- --ignored the_shipped_libraries --nocapture
       - run: sh scripts/worked-examples.sh check "${{ steps.setmm.outputs.path }}"
       - run: SETMM="${{ steps.setmm.outputs.path }}" cargo test --locked -p mcpack --test unicode_pin -- --ignored
       - run: SETMM="${{ steps.setmm.outputs.path }}" cargo test --locked -p mcpack --test notation_meanings -- --ignored
