@@ -1,5 +1,5 @@
 use crate::support::*;
-use mcemu::Speed;
+use mcemu::{STUB_ROM, Speed};
 use mcui::canvas::{Call, Canvas};
 
 /// Speed and whether the TI-OS wait states are programmed. Without them the LCD controller's
@@ -147,5 +147,65 @@ fn a_busy_flag_stuck_set_costs_pixels_not_a_hang() {
             blit > 1_000_000,
             "{settings:?}: the waits did not run: {blit}"
         );
+    }
+}
+
+/// The stub with an interrupt handler that also sends the LCD command that puts the row counter
+/// back at the top, as a handler that draws a cursor or an indicator would.
+fn lcd_writing_rom() -> Vec<u8> {
+    let mut rom = STUB_ROM.to_vec();
+    assert_eq!(rom[0x38], 0xC3, "jp isr");
+    assert!(
+        rom[0x3B..0x50].iter().all(|&b| b == 0xFF),
+        "room for a handler"
+    );
+    rom[0x39..0x3B].copy_from_slice(&[0x3B, 0x00]);
+    let isr = [
+        0xF5, 0xDB, 0x03, 0xF5, 0xAF, 0xD3, 0x03, 0xF1, 0xD3,
+        0x03, // acknowledge as the stub does
+        0x3E, 0x80, 0xD3, 0x10, // ld a,80h; out (10h),a
+        0xF1, 0xFB, 0xED, 0x4D,
+    ];
+    rom[0x3B..0x3B + isr.len()].copy_from_slice(&isr);
+    rom
+}
+
+#[test]
+fn a_handler_that_writes_the_lcd_cannot_tear_the_frame_during_a_blit() {
+    let (frame, calls) = busy_frame();
+    let mut script = ops(&calls);
+    script.extend([Op::Interrupts(true), Op::Blit, Op::Interrupts(false)]);
+    let rom = lcd_writing_rom();
+    for settings in SETTINGS {
+        let got = run_code_on(&rom, REAL, REAL.code, settings, &script, true);
+        assert!(lcd_equals(&frame, &got.lcd), "{settings:?}");
+    }
+
+    // the same run with the blit's di removed tears it, so the handler does reach the LCD
+    let mut code = REAL.code.to_vec();
+    let start = usize::from(label(REAL, "ui_blit")) - 0x4000;
+    let di = (start..start + 24)
+        .find(|&at| code[at] == 0xF3)
+        .expect("the di");
+    code[di] = 0x00;
+    let got = run_code_on(&rom, REAL, &code, SETTINGS[0], &script, true);
+    assert!(
+        !lcd_equals(&frame, &got.lcd),
+        "the handler never wrote the LCD"
+    );
+}
+
+#[test]
+fn a_blit_gives_back_the_interrupt_state_it_was_called_with() {
+    let (_, calls) = busy_frame();
+    let draw = ops(&calls);
+    for on in [true, false] {
+        let mut script = draw.clone();
+        script.extend([Op::Interrupts(on), Op::Blit, Op::Iff, Op::Interrupts(false)]);
+        for settings in SETTINGS {
+            let got = run_code(REAL, REAL.code, settings, &script, true);
+            let iff = got.results.last().unwrap() & 0x04 != 0;
+            assert_eq!(iff, on, "{settings:?}: called with interrupts on: {on}");
+        }
     }
 }

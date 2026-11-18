@@ -4,7 +4,9 @@
 ;           up after UI_BUSY_LIMIT polls, 8,925 T-states against a busy window of 50 clocks in the
 ;           emulator, and writes anyway, so a flag stuck busy costs pixels, not a hang, but each
 ;           blit then takes about 7.1 million T-states, 1.2 s at 6 MHz. The controller is left
-;           in 8 bit mode with increment mode 5.
+;           in 8 bit mode with increment mode 5. Interrupts are off for the whole call and come
+;           back as the caller had them: a handler that wrote the LCD mid-column would put
+;           the rest of the column elsewhere.
 ;           destroys AF BC DE HL
 
 #macro WAIT
@@ -25,6 +27,17 @@
 #endmacro
 
 ui_blit:
+	ld a,i
+	jp pe,bl_on
+	ld a,i
+	jp pe,bl_on
+	xor a
+	jr bl_go
+bl_on:
+	ld a,1
+bl_go:
+	ld (ui_iff),a
+	di
 	ld c,LCD_CMD
 	WAIT
 	ld a,$01
@@ -66,5 +79,9 @@ bl_block:
 	ld (ui_cnt),a
 	cp $20+UI_STRIDE
 	jp nz,bl_col
+	ld a,(ui_iff)
+	or a
+	ret z
+	ei
 	ret
 ui_blit_end:
