@@ -2,7 +2,8 @@
 //!
 //! All integers are little-endian. A library is a header, a symbol table, a directory and one
 //! record per assertion. Nothing but the directory crosses a multiple of `CHUNK`, so every
-//! record can be read through one mapped 16 KB flash page.
+//! record can be read through one mapped 16 KB flash page. The symbol table ends inside the
+//! first chunk.
 //!
 //! ```text
 //! header     "MCL1", crc32 of everything after it (u32), length (u32),
@@ -59,14 +60,16 @@
 //!            per use, and storing them once would save about 17.6 KB in the ring library
 //! ```
 //!
-//! A record is only usable if its float hypotheses name distinct variables, each of its
-//! expressions starts with a constant and uses no variable without a float hypothesis, every
+//! A record is only usable if its float hypotheses come before its essential ones and name
+//! distinct variables that its essential hypotheses and conclusion use, each of its expressions
+//! starts with a constant and uses no variable without a float hypothesis, every
 //! pair in its first list names two different variables that both have one, and every pair in a
 //! theorem's second list names two different variables of which at least one has none.
 
 mod check;
 mod export;
 mod kernel;
+mod labels;
 mod pack;
 mod read;
 mod sections;

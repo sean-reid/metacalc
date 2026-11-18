@@ -131,7 +131,7 @@ fn the_cpu_runs_at_15_mhz_and_returns_to_the_speed_it_had() {
 
 #[test]
 fn on_held_before_the_run_stops_it_in_the_checksum() {
-    let bytes = axioms(300);
+    let bytes = single_symbol_axioms(300);
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     rig.m.press_key(Machine::KEY_ON);
     assert_eq!(rig.finish(ENTRY, 3), 3);
@@ -295,7 +295,7 @@ const FLAGS: usize = 0x3800 + 9;
 
 #[test]
 fn after_an_on_stop_the_report_waits_for_the_key_to_come_up() {
-    let bytes = axioms(300);
+    let bytes = single_symbol_axioms(300);
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     rig.m.press_key(Machine::KEY_ON);
     let halted_in_wait = label("ON_WAIT_HALTED");
@@ -333,7 +333,7 @@ fn after_an_on_stop_the_report_waits_for_the_key_to_come_up() {
 
 #[test]
 fn the_pending_os_break_is_cleared_after_an_on_stop_and_nothing_else_is_touched() {
-    let bytes = axioms(300);
+    let bytes = single_symbol_axioms(300);
     for (press, want) in [(true, 0xEFu8), (false, 0xFF)] {
         let mut rig = Rig::new(&bytes, Speed::Mhz15);
         rig.m.ram_page(1)[FLAGS] = 0xFF;

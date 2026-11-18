@@ -5,7 +5,7 @@
 ; trusted: the model requires it to equal the library's real size, the kernel requires it to be
 ; at least the header, below 2^24 and within the flash pages left, and reads no further than it.
 ; Limits above a buffer's capacity are clamped to it, where the model takes them as given.
-; kernel_verify can return ST_INTERRUPTED, which the model never does.
+; kernel_init and kernel_verify can return ST_INTERRUPTED, which the model never does.
 ;
 ; Code runs from flash in bank A and is position dependent. Assembling this file
 ; alone places it at $4000; an including file defines KERNEL_EMBEDDED first and
@@ -66,6 +66,15 @@
 ; ended, is refused (1); kernel_crc_begin restarts. The call that ends the run on a match
 ; returns the CRC-32 in DE:HL, which the app can key its status cache on.
 ;
+; Symbols. kernel_init refuses with BadSymbol a name that is empty, has a byte outside $21 to $7E
+; or a $, or equals another name, constants and variables together, once every Malformed rule has
+; passed. The symbol table must end inside the first chunk. Labels are the host's check
+; (mcpack::library::check): the kernel refers to assertions by index, so a repeated label changes
+; nothing it proves.
+;
+; Records. A record is refused with BadRecord unless its float hypotheses all come before its
+; essential ones and name distinct variables that an essential hypothesis or the conclusion uses.
+;
 ; Reference list. The entries of a theorem's list appear in the order its proof first uses
 ; them, every entry is used, no two entries are equal, and no dummy entry names a variable the
 ; theorem has a float hypothesis for. A counter at kv_next ($B6, two bytes, in the private state)
@@ -112,14 +121,23 @@
 ; leaving the ready mark valid. The assertion has no verdict; call it again. The model never
 ; produces this status.
 ;
+; kernel_init reads ON as well, once at the top of each outer iteration of its comparison of
+; symbol names, and returns ST_INTERRUPTED with ON down. The ready mark is then clear, as when
+; init never ran, so kernel_verify refuses with Malformed until a kernel_init succeeds; the
+; caller treats the status as a stop and not as a damaged library. An outer iteration costs at
+; most 0.91 million T-states (255 names of 62 bytes sharing 60, 0.15 s at 6 MHz), and ON held from
+; the start stops init within 2.0 million, 0.33 s at 6 MHz, because the symbol loop and the byte
+; checks before the comparison do not read it. That library takes 117.9 million T-states to
+; initialise, 19.6 s at 6 MHz. The model's init is not interruptible.
+;
 ; Status (ST_* in ram.inc)
 ;           0 ok               1 Malformed        2 BadRecord
 ;           3 NotATheorem (never returned)        4 ForwardReference
 ;           5 OutOfMemory      6 StackUnderflow   7 BadBackReference
 ;           8 TypecodeMismatch 9 HypothesisMismatch
 ;          10 DisjointViolation 11 StackNotSingleton 12 WrongConclusion
-;          13 WorkLimit         14 Interrupted (kernel_verify only)
-;          15 LooseReference
+;          13 WorkLimit         14 Interrupted (kernel_verify, and kernel_init)
+;          15 LooseReference  16 BadSymbol (kernel_init only)
 ;         255 ST_CRC_MORE (kernel_crc_chunk only)
 ;
 ; RAM, bank C of page KERNEL_RAM_PAGE, shown for the default bases:
@@ -246,6 +264,9 @@ fail_interrupted:
 	jr leave
 fail_loose:
 	ld a,ST_LOOSE_REF
+	jr leave
+fail_bad_symbol:
+	ld a,ST_BAD_SYMBOL
 	jr leave
 
 ; in: HL = source, DE = destination, BC = count (may be 0)

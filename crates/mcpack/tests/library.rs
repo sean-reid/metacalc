@@ -1,5 +1,11 @@
+#[path = "cases/raw.rs"]
+mod raw;
+#[path = "cases/records.rs"]
+mod records;
 #[path = "cases/references.rs"]
 mod references;
+#[path = "cases/symbols.rs"]
+mod symbols;
 
 use mcpack::library::{self, Kernel, KernelError, Limits, PackError, Reference, Step, crc32, pack};
 use mcpack::mm::{self, Database, Kind, StmtId, Verifier};
@@ -396,7 +402,7 @@ fn a_mandatory_pair_needs_hypotheses_for_both_variables() {
 }
 
 #[test]
-fn an_essential_hypothesis_listed_before_its_variables_reads_this_use_only() {
+fn an_essential_hypothesis_listed_before_its_variables_is_refused_wherever_it_is_used() {
     let db = db(DB);
     let (axiom, dummy) = (number(&db, "ax-m"), number(&db, "dummy"));
     let mut bytes = pack(&db, &everything(&db)).unwrap();
@@ -410,10 +416,27 @@ fn an_essential_hypothesis_listed_before_its_variables_reads_this_use_only() {
     bytes[hyps..hyps + 6].copy_from_slice(&essential);
     bytes[hyps + 6..hyps + 10].copy_from_slice(&floats);
     reseal(&mut bytes);
-    let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).unwrap();
-    assert_eq!(kernel.verify(number(&db, "good")), Ok(()));
-    assert_eq!(kernel.verify(axiom), Ok(()));
-    assert_eq!(kernel.verify(dummy), Err(KernelError::TypecodeMismatch));
+    assert_eq!(check(&bytes, number(&db, "good")), Ok(()));
+    assert_eq!(check(&bytes, axiom), Err(KernelError::BadRecord));
+    assert_eq!(check(&bytes, dummy), Err(KernelError::BadRecord));
+}
+
+#[test]
+fn a_float_for_a_variable_the_assertion_never_uses_is_refused_wherever_it_is_used() {
+    let db = db(DB);
+    let (axiom, good) = (number(&db, "ax-d"), number(&db, "good"));
+    let mut bytes = pack(&db, &everything(&db)).unwrap();
+    let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+    let next = u32_at(u32_at(16) + 4 * (axiom + 1));
+    assert_eq!(
+        bytes[next - 1],
+        bytes[next - 2] + 1,
+        "the conclusion ends in y"
+    );
+    bytes[next - 1] = bytes[next - 2];
+    reseal(&mut bytes);
+    assert_eq!(check(&bytes, axiom), Err(KernelError::BadRecord));
+    assert_eq!(check(&bytes, good), Err(KernelError::BadRecord));
 }
 
 #[test]

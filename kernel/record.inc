@@ -217,20 +217,31 @@ check_record:
 	call fill_bytes
 	ld a,(ix+D_NHYPS)
 	or a
-	jr z,cr_floats_done
+	jr z,cr_conclusion
 	ld b,a
 	ld l,(ix+D_HYPS)
 	ld h,(ix+D_HYPS+1)
-cr_float_pass:
+	ld e,0
+cr_hyp:
 	ld a,(hl)
 	inc hl
 	or a
 	jr z,cr_float
-	ld a,(hl)
+	ld e,1
+	ld c,(hl)
 	inc hl
+	push hl
+	push bc
+	call check_expr
+	pop bc
+	pop hl
+	ld a,c
 	call add_hl_a
-	jr cr_float_next
+	jr cr_hyp_next
 cr_float:
+	ld a,e
+	or a
+	jp nz,fail_bad_record
 	ld a,(hl)
 	inc hl
 	push hl
@@ -245,39 +256,40 @@ cr_float:
 	jp nz,fail_bad_record
 	ld (hl),1
 	pop hl
-cr_float_next:
-	djnz cr_float_pass
-cr_floats_done:
-	ld a,(ix+D_NHYPS)
-	or a
-	jr z,cr_conclusion
-	ld b,a
-	ld l,(ix+D_HYPS)
-	ld h,(ix+D_HYPS+1)
-cr_essential_pass:
-	ld a,(hl)
-	inc hl
-	or a
-	jr nz,cr_essential
-	inc hl
-	jr cr_essential_next
-cr_essential:
-	ld c,(hl)
-	inc hl
-	push hl
-	push bc
-	call check_expr
-	pop bc
-	pop hl
-	ld a,c
-	call add_hl_a
-cr_essential_next:
-	djnz cr_essential_pass
+cr_hyp_next:
+	djnz cr_hyp
 cr_conclusion:
 	ld l,(ix+D_CONC)
 	ld h,(ix+D_CONC+1)
 	ld c,(ix+D_NCONC)
 	call check_expr
+	ld a,(ix+D_NHYPS)
+	or a
+	jr z,cr_used_done
+	ld b,a
+	ld l,(ix+D_HYPS)
+	ld h,(ix+D_HYPS+1)
+cr_used:
+	ld a,(hl)
+	inc hl
+	or a
+	jr z,cr_used_float
+	ld a,(hl)
+	inc hl
+	call add_hl_a
+	jr cr_used_next
+cr_used_float:
+	ld a,(hl)
+	inc hl
+	push hl
+	ld h,FLOATS>>8
+	ld l,a
+	bit 1,(hl)
+	jp z,fail_bad_record
+	pop hl
+cr_used_next:
+	djnz cr_used
+cr_used_done:
 	xor a
 	ld (kv_mode),a
 	ld l,(ix+D_DV)
@@ -294,7 +306,7 @@ cr_conclusion:
 	jp check_pairs
 
 ; in: HL = expression, C = length. out: returns if it is not empty, starts with a constant and
-; uses only constants and variables with a float mark.
+; uses only constants and variables with a float mark, whose bit 1 it sets as used.
 check_expr:
 	ld a,c
 	or a
@@ -314,9 +326,10 @@ ce_symbol:
 	ld h,FLOATS>>8
 	ld l,a
 	ld a,(hl)
-	pop hl
 	or a
 	jp z,fail_bad_record
+	set 1,(hl)
+	pop hl
 ce_known:
 	djnz ce_symbol
 	ret
@@ -352,6 +365,7 @@ cp_next:
 	ld a,(hl)
 	ld l,e
 	and (hl)
+	and 1
 	pop hl
 	ld d,a
 	ld a,(kv_mode)

@@ -103,8 +103,17 @@ fn refused(bytes: &[u8]) -> ExportError {
     export(bytes).expect_err("the export refuses it")
 }
 
-fn assertion_error(label: &str, why: &'static str) -> ExportError {
-    ExportError::Assertion(label.into(), why)
+fn unchecked(bytes: &[u8]) -> ExportError {
+    export(bytes).expect_err("the check refuses it")
+}
+
+fn bad_record(label: &str) -> ExportError {
+    let failed = CheckError::Assertions(vec![(label.into(), KernelError::BadRecord)]);
+    ExportError::Check(failed)
+}
+
+fn bad_label(label: &str) -> ExportError {
+    ExportError::Check(CheckError::Label(label.into()))
 }
 
 #[test]
@@ -112,18 +121,19 @@ fn a_symbol_that_cannot_be_a_math_symbol_is_refused() {
     let original = packed(LABELS);
     let name = |id| symbol(&original, id) + 1;
     let (wff, r, x) = (1, 2, 3);
+    let bad = ExportError::Check(CheckError::Load(KernelError::BadSymbol));
     let dollar = patched(original.clone(), |b| b[name(wff)] = b'$');
-    assert_eq!(refused(&dollar), ExportError::Symbol("$ff".into()));
+    assert_eq!(unchecked(&dollar), bad);
     let control = patched(original.clone(), |b| b[name(0)] = 1);
-    assert_eq!(refused(&control), ExportError::Symbol("\u{1}-".into()));
+    assert_eq!(unchecked(&control), bad);
     let repeat = patched(original.clone(), |b| b[name(x)] = b'R');
-    assert_eq!(refused(&repeat), ExportError::Symbol("R".into()));
+    assert_eq!(unchecked(&repeat), bad);
     let empty = patched(original.clone(), |b| {
         b[name(r) - 1] = 0;
         b.remove(name(r));
         b.insert(u32_at(&original, 16) - 1, 0);
     });
-    assert_eq!(refused(&empty), ExportError::Symbol(String::new()));
+    assert_eq!(unchecked(&empty), bad);
 }
 
 #[test]
@@ -131,15 +141,15 @@ fn a_label_that_cannot_be_a_unique_label_is_refused() {
     let original = packed(LABELS);
     let label = |id| record(&original, id).start + 2;
     let invalid = patched(original.clone(), |b| b[label(0) + 1] = b'$');
-    assert_eq!(refused(&invalid), ExportError::Label("o$e".into()));
+    assert_eq!(unchecked(&invalid), bad_label("o$e"));
     let repeat = patched(original.clone(), |b| {
         b.copy_within(label(0)..label(0) + 3, label(1))
     });
-    assert_eq!(refused(&repeat), ExportError::Label("one".into()));
+    assert_eq!(unchecked(&repeat), bad_label("one"));
     let symbol = patched(original.clone(), |b| {
         b[label(2)..label(2) + 3].copy_from_slice(b"wff")
     });
-    assert_eq!(refused(&symbol), ExportError::Label("wff".into()));
+    assert_eq!(unchecked(&symbol), bad_label("wff"));
     let empty = patched(original.clone(), |b| {
         let at = record(&original, 2).start;
         b[at + 1] = 0;
@@ -147,7 +157,7 @@ fn a_label_that_cannot_be_a_unique_label_is_refused() {
         let length = b.len() as u32;
         b[8..12].copy_from_slice(&length.to_le_bytes());
     });
-    assert_eq!(refused(&empty), ExportError::Label(String::new()));
+    assert_eq!(unchecked(&empty), bad_label(""));
 }
 
 #[test]
@@ -155,16 +165,14 @@ fn a_float_for_a_variable_the_assertion_does_not_use_is_refused() {
     let original = packed(UNUSED);
     let conclusion = record(&original, 0).conclusion;
     let bytes = patched(original, |b| b[conclusion + 3] = b[conclusion + 2]);
-    let why = "a floating hypothesis names a variable the assertion does not use";
-    assert_eq!(refused(&bytes), assertion_error("ax-d", why));
+    assert_eq!(unchecked(&bytes), bad_record("ax-d"));
 }
 
 #[test]
 fn an_essential_hypothesis_before_a_float_is_refused() {
     let original = packed(ESSENTIAL);
     let bytes = swapped_essential(original);
-    let why = "an essential hypothesis comes before a floating hypothesis";
-    assert_eq!(refused(&bytes), assertion_error("ax-m", why));
+    assert_eq!(unchecked(&bytes), bad_record("ax-m"));
 }
 
 fn swapped_essential(original: Vec<u8>) -> Vec<u8> {
@@ -268,7 +276,8 @@ fn a_label_that_is_not_utf8_cannot_be_read() {
     let original = packed(LABELS);
     let at = record(&original, 0).start + 2;
     let bytes = patched(original, |b| b[at] = 0xFF);
-    assert_eq!(refused(&bytes), ExportError::Read(ReadError));
+    assert_eq!(decode(&bytes), Err(ReadError));
+    assert_eq!(unchecked(&bytes), bad_label("\u{FFFD}ne"));
 }
 
 #[test]
@@ -288,7 +297,7 @@ fn a_proof_that_ends_inside_a_step_number_cannot_be_read() {
 }
 
 #[test]
-fn the_command_names_the_assertion_the_exporter_refuses() {
+fn the_command_names_the_assertion_the_kernel_refuses() {
     let dir = temp("export-refused");
     let (library, output) = (dir.join("ess.mclib"), dir.join("ess.mm"));
     std::fs::write(&library, swapped_essential(packed(ESSENTIAL))).unwrap();
@@ -297,7 +306,7 @@ fn the_command_names_the_assertion_the_exporter_refuses() {
     assert_eq!(
         stderr,
         format!(
-            "{}: ax-m: an essential hypothesis comes before a floating hypothesis\n",
+            "{}: ax-m: BadRecord\n1 assertions failed the kernel check\n",
             library.display()
         )
     );

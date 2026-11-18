@@ -17,7 +17,7 @@ fn no_byte_of_a_reference_list_or_proof_makes_the_kernel_disagree() {
     let base = cases::base();
     let replacements = [0u8, 1, 2, 3, 4, 5, 6, 7, 8, 0x7F, 0x80, 0xFF];
     let mut device = Device::new();
-    let mut seen = [0usize; 16];
+    let mut seen = [0usize; 17];
     for id in [cases::TH, cases::TH2, cases::TH3] {
         let spot = cases::spot(&base, id);
         let len = u16::from_le_bytes([base[spot.proof - 2], base[spot.proof - 1]]) as usize;

@@ -159,6 +159,7 @@ ST_WRONG_CONCLUSION .equ 12
 ST_WORK_LIMIT       .equ 13
 ST_INTERRUPTED      .equ 14
 ST_LOOSE_REF        .equ 15
+ST_BAD_SYMBOL       .equ 16
 ST_CRC_MORE         .equ $FF
 
 ; the differential tests build the default value only
