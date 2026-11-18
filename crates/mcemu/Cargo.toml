@@ -1,0 +1,11 @@
+[package]
+name = "mcemu"
+description = "Test-only TI-84 Plus SE emulator harness over the TilEm core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[build-dependencies]
+cc = "1"

@@ -1,0 +1,21 @@
+; Boot page. The core starts here at $8000.
+; Port 14 unlocks only when the bytes 00 00 ED 56 F3 D3 14 are read from this page.
+.org $8000
+	di
+	ld a,$01
+	nop
+	nop
+	im 1
+	di
+	out ($14),a
+	ld a,$40
+	out ($22),a
+	ld a,$6F
+	out ($23),a
+	xor a
+	nop
+	nop
+	im 1
+	di
+	out ($14),a
+	jp $0100
