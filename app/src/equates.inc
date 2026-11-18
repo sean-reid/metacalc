@@ -18,6 +18,7 @@ curCol           = 844Ch
 _NewLine         = 452Eh
 OP1              = 8478h
 OP2              = 8483h
+OP3              = 848Eh
 appVarObj        = 15h
 plotSScreen      = 9340h
 appBackUpScreen  = 9872h
