@@ -22,7 +22,7 @@ struct Cli {
     /// Seconds to wait for the calculator on each packet
     #[arg(long, value_name = "SECONDS", default_value_t = 120, value_parser = clap::value_parser!(u64).range(1..=3600))]
     timeout: u64,
-    /// Print every raw packet in hex on stderr, with the calculator ID and certificates masked
+    /// Print every raw packet in hex on stderr, with the payload of parameter data masked
     #[arg(long)]
     trace: bool,
 }
@@ -42,8 +42,10 @@ fn run(cli: &Cli) -> Result<String, Error> {
     let result = transfer(&mut session, &app, &mut progress, &mut std::io::stdout());
     progress.finish();
     let note = match result? {
-        Sent::Confirmed => "",
-        Sent::NotConfirmed => ", not confirmed",
+        Sent::Confirmed => String::new(),
+        Sent::NotConfirmed(reason) => {
+            format!(", not confirmed: {reason}; check the calculator's APPS menu")
+        }
     };
     let secs = started.elapsed().as_secs();
     Ok(format!(

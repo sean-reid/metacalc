@@ -75,7 +75,7 @@ fn a_three_page_app_is_sent_on_one_connection_and_confirmed_by_the_listing() {
     assert_eq!(o.peer.rts_name.as_deref(), Some("metacalc"));
     assert_eq!(
         o.stdout,
-        "found TI-84 Plus Silver Edition, 1536 KB flash free\n"
+        "found TI-84 Plus Silver Edition, 1536 KB flash free\napp sent, asking the calculator to confirm it\n"
     );
     assert_eq!(
         o.progress,
@@ -85,7 +85,10 @@ fn a_three_page_app_is_sent_on_one_connection_and_confirmed_by_the_listing() {
 
 #[test]
 fn a_calculator_that_cannot_be_asked_afterwards_leaves_the_send_unconfirmed() {
-    for after in [After::Silent, After::Gone] {
+    for (after, reason) in [
+        (After::Silent, "stopped answering for 120 s"),
+        (After::Gone, "disconnected"),
+    ] {
         let o = run(
             Calc {
                 after_send: after,
@@ -94,7 +97,15 @@ fn a_calculator_that_cannot_be_asked_afterwards_leaves_the_send_unconfirmed() {
             120,
             &sample_pages(1, 100),
         );
-        assert_eq!(o.result.unwrap(), Sent::NotConfirmed);
+        assert!(
+            matches!(o.result, Ok(Sent::NotConfirmed(ref r)) if r.contains(reason)),
+            "{:?}",
+            o.result
+        );
+        assert!(
+            o.stdout
+                .ends_with("app sent, asking the calculator to confirm it\n")
+        );
     }
 }
 
@@ -298,7 +309,39 @@ fn a_refusal_of_the_request_to_send_says_to_delete_the_app() {
         text.contains("metacalc") && text.contains("Mem Mgmt/Del"),
         "{text}"
     );
-    assert!(text.contains("unplug and replug"), "{text}");
+    assert!(!text.contains("replug"), "{text}");
+}
+
+#[test]
+fn a_delay_packet_after_the_end_of_transmission_does_not_derail_the_confirmation() {
+    let cfg = Calc {
+        late_delay: true,
+        ..Calc::default()
+    };
+    let o = run(cfg, 120, &sample_pages(1, 100));
+    assert_eq!(o.result.unwrap(), Sent::Confirmed);
+}
+
+#[test]
+fn names_padded_with_nuls_in_the_listing_still_match() {
+    let dup = Calc {
+        apps: vec!["metacalc".into()],
+        pad_listing: 2,
+        ..Calc::default()
+    };
+    assert!(matches!(
+        run(dup, 120, &sample_pages(1, 100)).result,
+        Err(Error::Duplicate(_))
+    ));
+    let o = run(
+        Calc {
+            pad_listing: 3,
+            ..Calc::default()
+        },
+        120,
+        &sample_pages(1, 100),
+    );
+    assert_eq!(o.result.unwrap(), Sent::Confirmed);
 }
 
 #[test]
@@ -359,5 +402,68 @@ fn progress_rewrites_one_line_on_a_terminal() {
     assert_eq!(
         text,
         "\rsending 25% (0/2 pages)\rsending 50% (1/2 pages)\rsending 100% (2/2 pages)\n"
+    );
+}
+
+#[test]
+fn finishing_the_progress_line_twice_ends_it_once() {
+    let mut out = Vec::new();
+    {
+        let mut p = Progress::new(&mut out, true, 1);
+        p.update(PAGE);
+        p.finish();
+        p.finish();
+    }
+    assert_eq!(
+        String::from_utf8(out).unwrap(),
+        "\rsending 100% (1/1 pages)\n"
+    );
+}
+
+#[test]
+fn a_failure_before_any_app_byte_does_not_ask_for_a_replug() {
+    let cfg = Calc {
+        drop_rts_ack: true,
+        ..Calc::default()
+    };
+    let o = run(cfg, 120, &sample_pages(1, 100));
+    let err = o.result.unwrap_err();
+    assert!(matches!(err, Error::Disconnected), "{err}");
+    assert!(!err.to_string().contains("replug"));
+}
+
+#[derive(Clone, Default)]
+struct Shared(std::rc::Rc<std::cell::RefCell<Vec<u8>>>);
+
+impl std::io::Write for Shared {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.borrow_mut().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// On a terminal the percentage line is ended before the line about asking for confirmation.
+#[test]
+fn the_confirmation_line_starts_on_a_line_of_its_own_on_a_terminal() {
+    let file = build_8xk(
+        "metacalc",
+        &sample_pages(1, 100),
+        0x73,
+        0x24,
+        Signature::Valid,
+    );
+    let app = App::parse(&file).unwrap();
+    let mut peer = Peer::new(Calc::default());
+    let shared = Shared::default();
+    let mut session = Session::new(&mut peer, Duration::from_secs(120));
+    let mut progress = Progress::new(shared.clone(), true, app.page_count());
+    transfer(&mut session, &app, &mut progress, &mut shared.clone()).unwrap();
+    let text = String::from_utf8(shared.0.borrow().clone()).unwrap();
+    assert!(
+        text.contains("100% (1/1 pages)\napp sent, asking the calculator to confirm it\n"),
+        "{text:?}"
     );
 }

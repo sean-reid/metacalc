@@ -3,7 +3,7 @@
 
 use mcsend::error::Error;
 use mcsend::packet::{RawKind, encode_raw, encode_virtual, vtype};
-use mcsend::session::{MAX_DELAY, MAX_DELAYS, MAX_EMPTY_READS, Session};
+use mcsend::session::Session;
 use mcsend::transport::Transport;
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -134,24 +134,67 @@ fn a_delay_payload_that_is_not_four_bytes_is_a_protocol_error() {
     }
 }
 
-fn delays_then_ack(count: usize) -> Result<Vec<u8>, Error> {
-    let mut events = vec![(Duration::ZERO, packet(vtype::DELAY_ACK, &[0, 0, 0, 0])); count];
+fn delay_event(after: Duration, micros: u32) -> (Duration, Vec<u8>) {
+    (after, packet(vtype::DELAY_ACK, &micros.to_be_bytes()))
+}
+
+/// A calculator that asks for 0.4 s more every 0.4 s for two minutes sends 300 delay packets,
+/// and that is a wait worth keeping.
+#[test]
+fn a_long_wait_made_of_many_short_delays_is_kept() {
+    let mut events: Vec<_> = (0..300)
+        .map(|_| delay_event(Duration::from_millis(400), 400_000))
+        .collect();
     events.push((Duration::ZERO, ack_packet()));
-    Session::new(Timed::new(events), secs(120)).expect(vtype::DATA_ACK)
+    let mut session = Session::new(Timed::new(events), secs(120));
+    session.expect(vtype::DATA_ACK).unwrap();
+    assert!(session.into_transport().clock >= secs(120));
 }
 
+/// One awaited packet may take ten timeouts in all, however many delays keep it alive.
 #[test]
-fn at_most_50_delay_packets_are_accepted_for_one_awaited_packet() {
-    assert!(delays_then_ack(50).is_ok());
-    let err = delays_then_ack(51).unwrap_err();
-    assert!(err.to_string().contains("too many delay packets"), "{err}");
+fn the_whole_wait_for_one_packet_is_bounded_at_ten_timeouts() {
+    let mut events: Vec<_> = (0..9).map(|_| delay_event(secs(100), 60_000_000)).collect();
+    events.push((secs(100), ack_packet()));
+    let mut session = Session::new(Timed::new(events), secs(120));
+    session.expect(vtype::DATA_ACK).unwrap();
+
+    let events = (0..30)
+        .map(|_| delay_event(secs(100), 60_000_000))
+        .collect();
+    let mut session = Session::new(Timed::new(events), secs(120));
+    let err = session.expect(vtype::DATA_ACK).unwrap_err();
+    assert!(
+        matches!(err, Error::Stalled(d) if d >= secs(1100) && d <= secs(1300)),
+        "{err}"
+    );
+    assert!(err.to_string().contains("raise --timeout"), "{err}");
+    assert!(session.into_transport().clock <= secs(1300));
 }
 
+/// Delay packets that take no time cannot go on for ever either.
 #[test]
-fn the_caps_are_what_the_tests_above_assume() {
-    assert_eq!(MAX_DELAYS, 50);
-    assert_eq!(MAX_DELAY, secs(60));
-    assert_eq!(MAX_EMPTY_READS, 64);
+fn a_flood_of_delay_packets_that_takes_no_time_is_stopped() {
+    let events = vec![delay_event(Duration::ZERO, 0); 150_000];
+    let mut session = Session::new(Timed::new(events), secs(120));
+    let err = session.expect(vtype::DATA_ACK).unwrap_err();
+    assert!(matches!(err, Error::Stalled(_)), "{err}");
+    assert!(session.into_transport().reads <= 100_010);
+}
+
+/// A 60 s delay at the start and a 0 delay 30 s in leave the deadline at 180 s, not 150 s.
+#[test]
+fn a_later_delay_never_shortens_the_wait() {
+    let run = |ack_at: u64| {
+        let events = vec![
+            delay_event(Duration::ZERO, 60_000_000),
+            delay_event(secs(30), 0),
+            (secs(ack_at), ack_packet()),
+        ];
+        Session::new(Timed::new(events), secs(120)).expect(vtype::DATA_ACK)
+    };
+    assert!(run(149).is_ok());
+    assert!(matches!(run(151), Err(Error::Timeout(d)) if d == secs(180)));
 }
 
 /// Every read is given what is left of the one deadline, not a fresh timeout.
@@ -175,4 +218,31 @@ fn a_transport_that_overshoots_still_hits_the_deadline() {
     let err = session.recv_virtual().unwrap_err();
     assert!(err.to_string().contains("middle of a packet"), "{err}");
     assert_eq!(session.into_transport().clock, secs(200));
+}
+
+/// When the delays stop and the wait runs into its bound, the error says the calculator kept
+/// asking for time, not that it went silent.
+#[test]
+fn a_wait_that_runs_into_its_bound_is_reported_as_stalled() {
+    let events = (0..11)
+        .map(|_| delay_event(secs(100), 60_000_000))
+        .collect();
+    let mut session = Session::new(Timed::new(events), secs(120));
+    let err = session.expect(vtype::DATA_ACK).unwrap_err();
+    assert!(matches!(err, Error::Stalled(d) if d == secs(1200)), "{err}");
+}
+
+/// A delay packet where the buffer allocation was due is acknowledged and waited out.
+#[test]
+fn a_delay_packet_before_the_buffer_allocation_extends_that_wait() {
+    let events = vec![
+        delay_event(Duration::ZERO, 30_000_000),
+        (
+            secs(140),
+            encode_raw(RawKind::BufferAllocation, &250u32.to_be_bytes()),
+        ),
+        (Duration::ZERO, encode_raw(RawKind::Ack, &[0xE0, 0x00])),
+        (Duration::ZERO, packet(vtype::MODE_ACK, &[0, 0, 0x07, 0xD0])),
+    ];
+    Session::new(Timed::new(events), secs(120)).begin().unwrap();
 }

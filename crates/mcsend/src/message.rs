@@ -134,7 +134,9 @@ pub fn parse_var_header(data: &[u8]) -> Result<VarHeader, Error> {
         attrs.push(Attr { id, value });
     }
     Ok(VarHeader {
-        name: String::from_utf8_lossy(&name).into_owned(),
+        name: String::from_utf8_lossy(&name)
+            .trim_end_matches('\0')
+            .to_string(),
         attrs,
     })
 }

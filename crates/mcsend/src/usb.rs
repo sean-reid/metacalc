@@ -52,19 +52,21 @@ impl Drop for UsbTransport {
 
 impl Transport for UsbTransport {
     fn send(&mut self, data: &[u8], timeout: Duration) -> Result<(), Error> {
-        let mut sent = 0;
-        while sent < data.len() {
-            sent += self
-                .handle
-                .write_bulk(ENDPOINT_OUT, &data[sent..], timeout)
-                .map_err(|e| map_timed(e, timeout))?;
-        }
-        Ok(())
+        let started = self.started;
+        write_all(
+            |chunk, wait| self.handle.write_bulk(ENDPOINT_OUT, chunk, wait),
+            || started.elapsed(),
+            data,
+            timeout,
+        )
     }
 
     fn recv(&mut self, timeout: Duration) -> Result<Vec<u8>, Error> {
         let mut buf = [0u8; MAX_PACKET];
-        match self.handle.read_bulk(ENDPOINT_IN, &mut buf, timeout) {
+        match self
+            .handle
+            .read_bulk(ENDPOINT_IN, &mut buf, libusb_wait(timeout))
+        {
             Ok(n) => Ok(buf[..n].to_vec()),
             Err(e) => Err(map_timed(e, timeout)),
         }
@@ -73,6 +75,38 @@ impl Transport for UsbTransport {
     fn elapsed(&self) -> Duration {
         self.started.elapsed()
     }
+}
+
+/// What libusb is given for a wait. rusb passes `timeout.as_millis()` on (device_handle.rs, in
+/// `read_bulk` and `write_bulk`), and libusb takes 0 ms as no timeout at all, so a remainder
+/// under a millisecond would block for ever.
+pub fn libusb_wait(wait: Duration) -> Duration {
+    wait.max(Duration::from_millis(1))
+}
+
+/// Writes all of `data` within one `timeout`. `write` returns the bytes taken and `now` is the
+/// clock the deadline is measured on. A write that takes nothing is an error, not a retry.
+pub fn write_all(
+    mut write: impl FnMut(&[u8], Duration) -> rusb::Result<usize>,
+    now: impl Fn() -> Duration,
+    data: &[u8],
+    timeout: Duration,
+) -> Result<(), Error> {
+    let deadline = now() + timeout;
+    let mut sent = 0;
+    while sent < data.len() {
+        let at = now();
+        if at >= deadline {
+            return Err(Error::Timeout(timeout));
+        }
+        let taken =
+            write(&data[sent..], libusb_wait(deadline - at)).map_err(|e| map_timed(e, timeout))?;
+        if taken == 0 {
+            return Err(Error::Io);
+        }
+        sent += taken;
+    }
+    Ok(())
 }
 
 /// Maps a libusb error from a transfer that waited `timeout`.

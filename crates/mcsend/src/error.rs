@@ -10,6 +10,8 @@ pub enum Error {
     Io,
     Disconnected,
     Timeout(Duration),
+    /// The calculator kept asking for more time and never finished.
+    Stalled(Duration),
     Usb(String),
     Protocol(String),
     Calculator(u16),
@@ -70,6 +72,11 @@ impl fmt::Display for Error {
                 f,
                 "the calculator stopped answering for {} s; check the cable and the home screen, then run again, or raise --timeout",
                 wait.as_secs()
+            ),
+            Error::Stalled(spent) => write!(
+                f,
+                "the calculator kept asking for more time for {} s without finishing; look at its screen and run again, or raise --timeout",
+                spent.as_secs()
             ),
             Error::Usb(message) => write!(f, "USB error: {message}"),
             Error::Protocol(message) => write!(f, "unexpected answer from the calculator: {message}"),

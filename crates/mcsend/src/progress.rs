@@ -9,6 +9,7 @@ pub struct Progress<W: Write> {
     pages: usize,
     total: usize,
     shown: usize,
+    line_open: bool,
 }
 
 impl<W: Write> Progress<W> {
@@ -19,6 +20,7 @@ impl<W: Write> Progress<W> {
             pages,
             total: pages * PAGE,
             shown: 0,
+            line_open: false,
         }
     }
 
@@ -36,6 +38,7 @@ impl<W: Write> Progress<W> {
                     self.pages
                 );
                 let _ = self.out.flush();
+                self.line_open = true;
             }
         } else {
             let done = sent / PAGE;
@@ -48,8 +51,9 @@ impl<W: Write> Progress<W> {
 
     /// Ends the in-place line.
     pub fn finish(&mut self) {
-        if self.tty && self.shown > 0 {
+        if self.line_open {
             let _ = writeln!(self.out);
+            self.line_open = false;
         }
     }
 }

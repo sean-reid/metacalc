@@ -10,8 +10,8 @@ use std::io::Write;
 pub enum Sent {
     /// The app is in the calculator's app list.
     Confirmed,
-    /// The data went across but the app list could not be read afterwards.
-    NotConfirmed,
+    /// The data went across but the app list could not be read afterwards, for this reason.
+    NotConfirmed(String),
 }
 
 /// Checks the calculator and the app against each other, sends the app on one connection, and
@@ -41,12 +41,13 @@ pub fn transfer<T: Transport, W: Write>(
     if calculator::installed_apps(session)?.contains(&app.name) {
         return Err(Error::Duplicate(app.name.clone()));
     }
-    calculator::send_app(session, app, &mut |sent| progress.update(sent))
-        .map_err(|e| Error::Send(Box::new(e)))?;
+    calculator::send_app(session, app, &mut |sent| progress.update(sent))?;
+    progress.finish();
+    let _ = writeln!(out, "app sent, asking the calculator to confirm it");
     match confirm(session, &app.name) {
         Ok(true) => Ok(Sent::Confirmed),
         Ok(false) => Err(Error::Send(Box::new(Error::NotInstalled(app.name.clone())))),
-        Err(_) => Ok(Sent::NotConfirmed),
+        Err(e) => Ok(Sent::NotConfirmed(e.to_string())),
     }
 }
 

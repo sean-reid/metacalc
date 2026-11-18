@@ -17,6 +17,8 @@ use std::time::Duration;
 enum Step {
     Expect(Vec<u8>),
     Reply(Vec<u8>),
+    /// A reply that comes after this much silence.
+    After(Duration, Vec<u8>),
 }
 
 type Steps = Rc<RefCell<VecDeque<Step>>>;
@@ -24,6 +26,7 @@ type Steps = Rc<RefCell<VecDeque<Step>>>;
 struct Script {
     steps: Steps,
     waits: Vec<Duration>,
+    clock: Duration,
 }
 
 impl Script {
@@ -31,13 +34,14 @@ impl Script {
         Script {
             steps: Rc::new(RefCell::new(steps.into())),
             waits: Vec::new(),
+            clock: Duration::ZERO,
         }
     }
 }
 
 impl Transport for Script {
     fn elapsed(&self) -> Duration {
-        Duration::ZERO
+        self.clock
     }
 
     fn send(&mut self, data: &[u8], _timeout: Duration) -> Result<(), Error> {
@@ -52,6 +56,14 @@ impl Transport for Script {
         self.waits.push(timeout);
         match self.steps.borrow_mut().pop_front() {
             Some(Step::Reply(bytes)) => Ok(bytes),
+            Some(Step::After(silence, bytes)) => {
+                if silence > timeout {
+                    self.clock += timeout;
+                    return Err(Error::Timeout(timeout));
+                }
+                self.clock += silence;
+                Ok(bytes)
+            }
             _ => panic!("the sender read where the script expects a write"),
         }
     }
@@ -222,11 +234,17 @@ fn request_to_send_matches_the_guide() {
 fn a_delay_packet_from_the_guide_extends_the_next_wait_by_120_milliseconds() {
     let ack = vec![0, 0, 0, 2, 0x05, 0xE0, 0x00];
     let script = Script::new(vec![
-        Step::Reply(vec![
-            0, 0, 0, 0x0A, 0x04, 0, 0, 0, 4, 0xBB, 0x00, 0x00, 0x01, 0xD4, 0xC0,
-        ]),
+        Step::After(
+            Duration::from_secs(10),
+            vec![
+                0, 0, 0, 0x0A, 0x04, 0, 0, 0, 4, 0xBB, 0x00, 0x00, 0x01, 0xD4, 0xC0,
+            ],
+        ),
         Step::Expect(ack.clone()),
-        Step::Reply(vec![0, 0, 0, 0x07, 0x04, 0, 0, 0, 1, 0xAA, 0x00, 0x01]),
+        Step::After(
+            Duration::from_millis(60_100),
+            vec![0, 0, 0, 0x07, 0x04, 0, 0, 0, 1, 0xAA, 0x00, 0x01],
+        ),
         Step::Expect(ack),
     ]);
     let mut session = Session::new(script, Duration::from_secs(60));
@@ -448,4 +466,22 @@ fn begin_discards_stray_bytes_left_by_an_earlier_exchange() {
         Step::Expect(vec![0, 0, 0, 2, 0x05, 0xE0, 0x00]),
     ]);
     session.begin().unwrap();
+}
+
+/// One buffer and one byte of packet goes out as a full raw packet with continuation and a last
+/// one of a single byte.
+#[test]
+fn a_packet_of_one_buffer_and_one_byte_is_a_full_packet_and_a_one_byte_last() {
+    let ack = vec![0, 0, 0, 2, 0x05, 0xE0, 0x00];
+    let (mut session, steps) = negotiated(0xFA);
+    let payload = vec![3u8; 245];
+    let bytes = encode_virtual(0xAA00, &payload);
+    assert_eq!(bytes.len(), 251);
+    steps.borrow_mut().extend(vec![
+        Step::Expect(encode_raw(RawKind::Data, &bytes[..250])),
+        Step::Reply(ack.clone()),
+        Step::Expect(encode_raw(RawKind::DataLast, &bytes[250..])),
+        Step::Reply(ack),
+    ]);
+    session.send_virtual(0xAA00, &payload, &mut |_| {}).unwrap();
 }

@@ -14,14 +14,18 @@ pub const REQUESTED_BUFFER: u32 = 0x400;
 const MIN_BUFFER: u32 = 16;
 /// A delay the calculator announces, in microseconds, is honoured up to this long.
 pub const MAX_DELAY: Duration = Duration::from_secs(60);
-/// Delay packets accepted while one packet is awaited.
-pub const MAX_DELAYS: usize = 50;
+/// One awaited packet may take this many timeouts in all, however many delays it is promised.
+pub const MAX_WAIT_FACTOR: u32 = 10;
+/// Delay packets accepted while one packet is awaited, a guard against a flood that takes no time.
+pub const MAX_DELAYS: usize = 100_000;
 /// Empty reads in a row accepted while one packet is awaited.
 pub const MAX_EMPTY_READS: usize = 64;
 
 /// The deadline of one awaited packet. Every read draws on it, and a delay packet moves it.
 struct Wait {
+    start: Duration,
     deadline: Duration,
+    limit: Duration,
     total: Duration,
     delays: usize,
     empty: usize,
@@ -62,7 +66,19 @@ impl<T: Transport> Session<T> {
         self.pending.clear();
         self.send_raw(RawKind::BufferRequest, &REQUESTED_BUFFER.to_be_bytes())?;
         let mut wait = self.wait();
-        let raw = self.recv_raw(&mut wait)?;
+        let raw = loop {
+            let raw = self.recv_raw(&mut wait)?;
+            if !matches!(raw.kind, RawKind::Data | RawKind::DataLast) {
+                break raw;
+            }
+            let packet = self.recv_one_virtual(Some(raw), &mut wait)?;
+            if packet.kind != vtype::DELAY_ACK {
+                return Err(Error::Protocol(
+                    "a packet before the buffer allocation".into(),
+                ));
+            }
+            self.extend(&mut wait, &packet)?;
+        };
         if raw.kind != RawKind::BufferAllocation || raw.data.len() != 4 {
             return Err(Error::Protocol("no buffer size allocation".into()));
         }
@@ -128,30 +144,38 @@ impl<T: Transport> Session<T> {
 
     fn wait(&mut self) -> Wait {
         self.write_wait = self.timeout;
+        let start = self.transport.elapsed();
         Wait {
-            deadline: self.transport.elapsed() + self.timeout,
+            start,
+            deadline: start + self.timeout,
+            limit: start + self.timeout * MAX_WAIT_FACTOR,
             total: self.timeout,
             delays: 0,
             empty: 0,
         }
     }
 
-    /// Takes a delay packet into account: the calculator is alive, so the wait restarts from now
-    /// and lasts the timeout plus what the packet announces.
+    /// Takes a delay packet into account: the calculator is alive, so the wait lasts until the
+    /// timeout plus what the packet announces from now, unless an earlier delay set a later
+    /// deadline. The whole wait never passes `limit`.
     fn extend(&mut self, wait: &mut Wait, packet: &Virtual) -> Result<(), Error> {
         let micros = match packet.data[..] {
             [a, b, c, d] => u32::from_be_bytes([a, b, c, d]),
             _ => return Err(Error::Protocol("delay packet is not four bytes".into())),
         };
         wait.delays += 1;
-        if wait.delays > MAX_DELAYS {
-            return Err(Error::Protocol("too many delay packets".into()));
+        let now = self.transport.elapsed();
+        if wait.delays > MAX_DELAYS || now >= wait.limit {
+            return Err(Error::Stalled(now - wait.start));
         }
         let announced = Duration::from_micros(micros as u64).min(MAX_DELAY);
-        wait.total = self.timeout + announced;
-        wait.deadline = self.transport.elapsed() + wait.total;
+        wait.deadline = wait
+            .deadline
+            .max(now + self.timeout + announced)
+            .min(wait.limit);
+        wait.total = wait.deadline - wait.start;
         wait.empty = 0;
-        self.write_wait = wait.total;
+        self.write_wait = self.timeout + announced;
         Ok(())
     }
 
@@ -248,7 +272,11 @@ impl<T: Transport> Session<T> {
 
     fn timed_out(&self, wait: &Wait) -> Error {
         if self.pending.is_empty() {
-            Error::Timeout(wait.total)
+            if wait.delays > 0 && self.transport.elapsed() >= wait.limit {
+                Error::Stalled(wait.limit - wait.start)
+            } else {
+                Error::Timeout(wait.total)
+            }
         } else {
             Error::Protocol("the calculator went quiet in the middle of a packet".into())
         }

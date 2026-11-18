@@ -62,6 +62,12 @@ pub struct Calc {
     /// Holds before the acknowledgement of one content packet.
     pub holds: Vec<Hold>,
     pub after_send: After,
+    /// NUL bytes after each name in the directory listing, counted in its length.
+    pub pad_listing: usize,
+    /// A delay packet the calculator sends right after the end of transmission.
+    pub late_delay: bool,
+    /// The connection drops instead of acknowledging the request to send.
+    pub drop_rts_ack: bool,
     pub silent_after_content: Option<Duration>,
     pub error_at_content_packet: Option<(usize, u16)>,
     pub disconnect_at_content_packet: Option<usize>,
@@ -101,6 +107,9 @@ impl Default for Calc {
             delays: Vec::new(),
             holds: Vec::new(),
             after_send: After::Lists,
+            pad_listing: 0,
+            late_delay: false,
+            drop_rts_ack: false,
             silent_after_content: None,
             error_at_content_packet: None,
             disconnect_at_content_packet: None,
@@ -225,8 +234,10 @@ impl Peer {
                     listing.push((self.rts_name.clone().unwrap(), 0x24));
                 }
                 for (name, kind) in listing {
+                    let mut name = name.into_bytes();
+                    name.extend(std::iter::repeat_n(0, self.cfg.pad_listing));
                     let mut h = vec![0, name.len() as u8];
-                    h.extend_from_slice(name.as_bytes());
+                    h.extend_from_slice(&name);
                     h.extend_from_slice(&[0, 0, 1, 0, 2, 0, 0, 4, 0xF0, 0x07, 0, kind]);
                     self.queue(0x000A, &h);
                 }
@@ -275,6 +286,9 @@ impl Peer {
                     "end of transmission before the content"
                 );
                 self.sent_done = true;
+                if self.cfg.late_delay {
+                    self.queue(0xBB00, &1000u32.to_be_bytes());
+                }
             }
             other => panic!("virtual packet {other:#06x} was not expected"),
         }
@@ -335,9 +349,21 @@ impl Transport for Peer {
                         payload.len() < self.cfg.alloc as usize,
                         "the last of several raw packets is not short"
                     );
+                    let total = self.vbuf.len() + payload.len();
+                    assert!(
+                        !payload.is_empty()
+                            || (total % self.cfg.alloc as usize == 0
+                                && total > self.cfg.alloc as usize),
+                        "an empty last raw packet after an uneven split"
+                    );
                 }
                 self.raws_in_vpkt += 1;
                 self.vbuf.extend_from_slice(payload);
+                if self.cfg.drop_rts_ack && self.vbuf.len() >= 6 && self.vbuf[4..6] == [0x00, 0x0B]
+                {
+                    self.out.push_back(Out::Disconnect);
+                    return Ok(());
+                }
                 if self.vbuf.len() >= 6 && self.vbuf[4..6] == [0x00, 0x0D] {
                     self.content_raw += 1;
                     if self.cfg.error_at_content_packet.map(|(n, _)| n) == Some(self.content_raw) {

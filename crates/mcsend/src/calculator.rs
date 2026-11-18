@@ -75,6 +75,7 @@ pub fn installed_apps<T: Transport>(session: &mut Session<T>) -> Result<Vec<Stri
 }
 
 /// Sends the app and stops after the end of transmission, as the calculator says nothing more.
+/// A failure from the first content packet on is wrapped in `Error::Send`.
 /// The session must have begun. `progress` gets the bytes of the app image acknowledged so far.
 pub fn send_app<T: Transport>(
     session: &mut Session<T>,
@@ -91,7 +92,10 @@ pub fn send_app<T: Transport>(
         },
         other => other,
     })?;
-    session.send_virtual(vtype::VAR_CONTENT, &image, progress)?;
-    session.expect(vtype::DATA_ACK)?;
-    session.send_virtual(vtype::EOT, &[], &mut |_| {})
+    let mut content = || {
+        session.send_virtual(vtype::VAR_CONTENT, &image, progress)?;
+        session.expect(vtype::DATA_ACK)?;
+        session.send_virtual(vtype::EOT, &[], &mut |_| {})
+    };
+    content().map_err(|e| Error::Send(Box::new(e)))
 }
