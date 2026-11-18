@@ -1,9 +1,16 @@
 #!/bin/sh
-# Usage: check-8xk.sh app.8xk [name]
+# Usage: check-8xk.sh [-l library] app.8xk [name]
+# With -l, pages 1 onward must hold the library's 16 KB chunks, then only zero padding and the signature.
 set -eu
 export LC_ALL=C
 
-f=${1:?usage: check-8xk.sh app.8xk [name]}
+PAGE=16384
+library=
+if [ "${1:-}" = -l ]; then
+	library=${2:?usage: check-8xk.sh [-l library] app.8xk [name]}
+	shift 2
+fi
+f=${1:?usage: check-8xk.sh [-l library] app.8xk [name]}
 want=${2:-metacalc}
 hexname=$(printf %s "$want" | od -An -tx1 | tr -d ' \n' | tr a-f A-F)
 fail() { echo "check-8xk: $f: $*" >&2; exit 1; }
@@ -33,4 +40,65 @@ sig=$(printf '%s' "$body" | grep -oE '022D40[0-9A-F]{128}(00|01[0-9A-F]{2})F*$' 
 [ -n "$sig" ] || fail "no signature field"
 [ -n "$(printf '%s' "$sig" | tr -d '0')" ] || fail "signature is all zero"
 
-echo "check-8xk: ok: $f ($(wc -c < "$f" | tr -d ' ') bytes, name $name, 64-byte signature)"
+# Pages 8081 nn field of the header against the 02 records that start each page.
+declared=$(printf '%s' "$body" | sed -nE "s/^800F[0-9A-F]{0,80}8048${hexname}8081(..).*/\1/p")
+[ -n "$declared" ] || fail "app header has no page count"
+declared=$((0x$declared))
+
+dir=$(mktemp -d)
+trap 'rm -rf "$dir"' EXIT
+grep -a -o -E ':[0-9A-F]{8}[0-9A-F]*' "$f" | awk -v dir="$dir" '
+	function hex(s,   i, n) {
+		n = 0
+		for (i = 1; i <= length(s); i++) n = n * 16 + index("0123456789ABCDEF", substr(s, i, 1)) - 1
+		return n
+	}
+	{
+		len = hex(substr($0, 2, 2)); type = substr($0, 8, 2)
+		if (length($0) != 11 + 2 * len) { print "a record has the wrong length"; exit 1 }
+		if (type == "02") {
+			if (hex(substr($0, 10, 4)) != pages) { print "page records are out of order"; exit 1 }
+			pages++
+			file = dir "/page." pages
+			printf "" > file
+		} else if (type == "00") {
+			if (!pages) { print "data before the first page record"; exit 1 }
+			printf "%s", substr($0, 10, 2 * len) >> file
+			close(file)
+		}
+	}
+	END { print pages + 0 > (dir "/count") }
+' || fail "malformed Intel hex stream"
+pages=$(cat "$dir/count")
+[ "$pages" = "$declared" ] || fail "header declares $declared pages, the file has $pages"
+
+n=1
+while [ "$n" -lt "$pages" ]; do
+	[ "$(wc -c < "$dir/page.$n" | tr -d ' ')" = $((PAGE * 2)) ] || fail "page $((n - 1)) is not $PAGE bytes"
+	n=$((n + 1))
+done
+[ "$(wc -c < "$dir/page.$pages" | tr -d ' ')" -le $((PAGE * 2)) ] || fail "the last page is over $PAGE bytes"
+
+if [ -n "$library" ]; then
+	len=$(wc -c < "$library" | tr -d ' ')
+	[ "$len" -gt 0 ] || fail "library is empty"
+	want_pages=$(((PAGE + len + 96 + PAGE - 1) / PAGE))
+	[ "$pages" = "$want_pages" ] || fail "$pages pages for a $len byte library, want $want_pages"
+	c=0
+	while [ $((c * PAGE)) -lt "$len" ]; do
+		want_chunk=$(dd if="$library" bs=$PAGE skip=$c count=1 2>/dev/null | od -An -v -tx1 | tr -d ' \n' | tr a-f A-F)
+		got=$(cut -c1-${#want_chunk} "$dir/page.$((c + 2))")
+		[ "$got" = "$want_chunk" ] || fail "page $((c + 1)) is not chunk $c of the library"
+		c=$((c + 1))
+	done
+	n=1
+	while [ "$n" -le "$pages" ]; do
+		cat "$dir/page.$n"
+		n=$((n + 1))
+	done > "$dir/all"
+	tail=$(cut -c$(((PAGE + len) * 2 + 1))- "$dir/all")
+	[ "$(printf '%s' "$tail" | grep -cE '^(00)*022D40' || true)" = 1 ] ||
+		fail "bytes after the library are not zero padding then the signature"
+fi
+
+echo "check-8xk: ok: $f ($(wc -c < "$f" | tr -d ' ') bytes, $pages pages, name $name, 64-byte signature)"
