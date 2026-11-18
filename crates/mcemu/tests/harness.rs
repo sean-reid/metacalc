@@ -119,3 +119,33 @@ fn after_a_fault_the_core_has_reset_and_loaded_memory_is_gone() {
     assert_eq!(m.run(0x4000, 1000).stop, Stop::Fault);
     assert_ne!(m.read_ram(CODE, 4), marker);
 }
+
+const SUM_RAM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/sum_ram.bin"));
+
+fn drawn_with_port_3(value: u8) -> Machine {
+    let mut m = boot();
+    m.out_port(0x03, value);
+    m.load_ram(CODE, SUM_RAM);
+    assert_eq!(m.run(CODE, LIMIT).stop, Stop::Halted);
+    m
+}
+
+#[test]
+fn the_frame_is_blank_when_the_cpu_halts_with_port_3_bit_3_clear() {
+    let mut on = drawn_with_port_3(0x0B);
+    assert_eq!(on.lcd().lit(), 8);
+    let mut off = drawn_with_port_3(0x00);
+    assert_eq!(off.lcd().lit(), 0);
+}
+
+#[test]
+fn lcd_ram_shows_the_drawing_whatever_port_3_says() {
+    for value in [0x0B, 0x00] {
+        let mut m = drawn_with_port_3(value);
+        let ram = m.lcd_ram();
+        assert_eq!(ram.lit(), 8, "port 3 = {value:02X}");
+        assert!((0..8).all(|x| ram.pixel(x, 0)));
+    }
+    let mut fresh = boot();
+    assert_eq!(fresh.lcd_ram().lit(), 0);
+}

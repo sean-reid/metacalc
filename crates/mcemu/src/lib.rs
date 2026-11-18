@@ -84,6 +84,10 @@ impl std::error::Error for BootError {}
 pub struct Lcd(Vec<bool>);
 
 impl Lcd {
+    fn from_bytes(raw: Vec<u8>) -> Lcd {
+        Lcd(raw.into_iter().map(|p| p != 0).collect())
+    }
+
     pub fn pixel(&self, x: usize, y: usize) -> bool {
         self.0[y * LCD_WIDTH + x]
     }
@@ -217,12 +221,25 @@ impl Machine {
         self.calc.regs()
     }
 
+    /// The screen as the core renders it: all pixels off while the controller is off (its
+    /// reset state, until the program sends the on command), and also while the CPU is
+    /// halted with bit 3 of port 3 clear. A run that ends at a HALT leaves the CPU halted, so
+    /// a program that masks port 3 reads blank here although it drew; `lcd_ram` does not
+    /// depend on either.
     pub fn lcd(&mut self) -> Lcd {
         let mut raw = vec![0u8; LCD_WIDTH * LCD_HEIGHT];
         assert!(
             self.calc.lcd(&mut raw, LCD_WIDTH, LCD_HEIGHT),
             "unexpected LCD size"
         );
-        Lcd(raw.into_iter().map(|p| p != 0).collect())
+        Lcd::from_bytes(raw)
+    }
+
+    /// The controller's memory as the screen would show it, whatever the LCD-on state, the
+    /// halt state or port 3 say; the row shift (the Z address) still applies.
+    pub fn lcd_ram(&mut self) -> Lcd {
+        let mut raw = vec![0u8; LCD_WIDTH * LCD_HEIGHT];
+        self.calc.lcd_ram(&mut raw, LCD_WIDTH, LCD_HEIGHT);
+        Lcd::from_bytes(raw)
     }
 }

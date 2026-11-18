@@ -23,6 +23,7 @@ unsafe extern "C" {
     fn mcemu_run(calc: *mut Raw, pc: u16, limit: i32, elapsed: *mut u32) -> u32;
     fn mcemu_pc(calc: *const Raw) -> u16;
     fn mcemu_lcd(calc: *mut Raw, out: *mut u8, width: i32, height: i32) -> i32;
+    fn mcemu_lcd_ram(calc: *mut Raw, out: *mut u8, width: i32, height: i32);
 }
 
 /// The Z80 registers the tests set and read.
@@ -132,6 +133,20 @@ impl Calc {
                 width as i32,
                 height as i32,
             ) == 0
+        }
+    }
+
+    pub fn lcd_ram(&mut self, out: &mut [u8], width: usize, height: usize) {
+        assert_eq!(out.len(), width * height);
+        assert_eq!(width % 8, 0, "the LCD is whole bytes wide");
+        // SAFETY: `out` holds width * height bytes, which is all the C side writes.
+        unsafe {
+            mcemu_lcd_ram(
+                self.0.as_ptr(),
+                out.as_mut_ptr(),
+                width as i32,
+                height as i32,
+            )
         }
     }
 }
