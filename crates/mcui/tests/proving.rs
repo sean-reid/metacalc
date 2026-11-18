@@ -10,6 +10,11 @@ use mcui::Key::{self, *};
 use mcui::{SavedProof, State, Ui, View};
 use support::{bare_bytes, check_frame, index_of, open, press, proving_bytes, ui_over};
 
+/// The checksum in a library's header.
+fn library_crc(bytes: &[u8]) -> u32 {
+    u32::from_le_bytes(bytes[4..8].try_into().unwrap())
+}
+
 fn check(ui: &Ui, name: &str) {
     check_frame(&ui.frame(), name);
 }
@@ -173,8 +178,9 @@ impl Prover {
         let text = library::export(&self.bytes).expect("the library exports");
         let db = mm::parse(text.clone().into_bytes()).expect("the export parses");
         let grammar = Grammar::new(&db, &[("|-", "wff")]).expect("the grammar builds");
-        let session = Session::restore(Catalog::new(&db, &grammar), &self.saved().session)
-            .expect("the saved form restores");
+        let catalog = Catalog::new(&db, &grammar, library_crc(&self.bytes));
+        let session =
+            Session::restore(catalog, &self.saved().session).expect("the saved form restores");
         let finished = session.export().expect("the session exports");
         assert_eq!(finished.theorem, db.find(&self.label).unwrap());
         assert_eq!(
@@ -585,7 +591,8 @@ fn a_variable_a_distinct_variable_rule_refuses_is_passed_over() {
     let text = library::export(&p.bytes).unwrap();
     let db = mm::parse(text.into_bytes()).unwrap();
     let grammar = Grammar::new(&db, &[("|-", "wff")]).unwrap();
-    let session = Session::restore(Catalog::new(&db, &grammar), &saved.session).unwrap();
+    let catalog = Catalog::new(&db, &grammar, library_crc(&p.bytes));
+    let session = Session::restore(catalog, &saved.session).unwrap();
     let bound = session.ops().iter().find_map(|op| match op {
         mcedit::Op::Assign { var, .. } => Some(db.syms[*var as usize].name.clone()),
         _ => None,
@@ -627,14 +634,13 @@ fn crafted(bytes: &[u8], label: &str, apply: &[&str], groups: Vec<usize>) -> Sav
     let text = library::export(bytes).unwrap();
     let db = mm::parse(text.into_bytes()).unwrap();
     let grammar = Grammar::new(&db, &[("|-", "wff")]).unwrap();
-    let mut session =
-        Session::start_in(Catalog::new(&db, &grammar), db.find(label).unwrap()).unwrap();
+    let catalog = Catalog::new(&db, &grammar, library_crc(bytes));
+    let mut session = Session::start_in(catalog, db.find(label).unwrap()).unwrap();
     for (goal, name) in apply.iter().enumerate() {
         session.apply(goal as u32, db.find(name).unwrap()).unwrap();
     }
     SavedProof {
         library: 0,
-        crc: u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
         theorem: index_of(bytes, label),
         session: session.save(),
         goal: Some(0),
@@ -714,6 +720,26 @@ fn a_saved_proof_from_another_version_of_the_library_is_refused() {
         same.restore_proof(damaged),
         Err(mcui::RestoreError::Unreadable(_))
     ));
+}
+
+#[test]
+fn a_saved_proof_that_is_cut_short_or_changed_is_refused_on_the_way_back_in() {
+    let mut p = Prover::new(proving_bytes(), "a1i");
+    p.aply("ax-mp");
+    let saved = p.saved();
+    let mut same = ui_over(proving_bytes(), &[], &[]);
+    let damaged = Err(mcui::RestoreError::Unreadable("the saved proof is damaged"));
+    for cut in 0..saved.session.len() {
+        let mut short = saved.clone();
+        short.session.truncate(cut);
+        assert_eq!(same.restore_proof(short), damaged, "cut at {cut}");
+    }
+    for at in 0..saved.session.len() {
+        let mut changed = saved.clone();
+        changed.session[at] ^= 0x01;
+        assert!(same.restore_proof(changed).is_err(), "byte {at} changed");
+    }
+    assert_eq!(same.restore_proof(saved), Ok(()));
 }
 
 #[test]

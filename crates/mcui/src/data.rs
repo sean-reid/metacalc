@@ -234,7 +234,7 @@ impl Lib {
         let grammar = Grammar::new(db, &[(PROVABLE, "wff")])
             .ok()
             .map(|g| &*Box::leak(Box::new(g)));
-        let catalog = grammar.map(|g| Catalog::new(db, g));
+        let catalog = grammar.map(|g| Catalog::new(db, g, self.crc()));
         Some(Source {
             db,
             ids,

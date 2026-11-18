@@ -101,7 +101,7 @@ fn database(statement: &str) -> mm::Database {
 fn starts(statement: &str) -> Result<(), Error> {
     let db = database(statement);
     let g = Grammar::new(&db, &[("|-", "wff")]).unwrap();
-    Session::start(&db, &g, db.find("t").unwrap()).map(drop)
+    Session::start_in(catalog(&db, &g), db.find("t").unwrap()).map(drop)
 }
 
 #[test]

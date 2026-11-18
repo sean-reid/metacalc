@@ -178,8 +178,42 @@ pub fn sym(db: &Database, name: &str) -> Sym {
         .unwrap_or_else(|| panic!("no {name}")) as Sym
 }
 
+/// The identity the fixture's catalogs carry.
+pub const LIBRARY: u32 = 0x4d43_4c31;
+
 pub fn catalog<'a>(db: &'a Database, grammar: &'a Grammar<'a>) -> Rc<Catalog<'a>> {
-    Catalog::new(db, grammar)
+    Catalog::new(db, grammar, LIBRARY)
+}
+
+pub fn put(out: &mut Vec<u8>, mut n: u32) {
+    while n >= 0x80 {
+        out.push(n as u8 | 0x80);
+        n >>= 7;
+    }
+    out.push(n as u8);
+}
+
+/// Saved bytes written by hand from the format: `body` between the header and the checksum.
+pub fn wrap(library: u32, body: &[u8]) -> Vec<u8> {
+    let mut out = vec![2];
+    out.extend(library.to_le_bytes());
+    put(&mut out, body.len() as u32);
+    out.extend(body);
+    out.extend(mcpack::library::crc32(&out).to_le_bytes());
+    out
+}
+
+/// A saved session written by hand: the theorem, the flag and operations as (tag, a, b).
+pub fn saved_bytes(theorem: u32, flag: u8, ops: &[(u8, u32, u32)]) -> Vec<u8> {
+    let mut body = Vec::new();
+    put(&mut body, theorem);
+    body.push(flag);
+    for &(tag, a, b) in ops {
+        body.push(tag);
+        put(&mut body, a);
+        put(&mut body, b);
+    }
+    wrap(LIBRARY, &body)
 }
 
 pub fn session<'a>(cat: &Rc<Catalog<'a>>, theorem: &str) -> Session<'a> {

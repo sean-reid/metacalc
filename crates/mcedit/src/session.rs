@@ -3,7 +3,7 @@ use crate::dv::{DvCond, Violation};
 use crate::error::Error;
 use crate::term::{Mark, MetaId, Peak, Store, TermId};
 use crate::vars::Vars;
-use mcpack::mm::{Database, Grammar, Kind, Proof, ProofError, StmtId, Sym, Tree};
+use mcpack::mm::{Database, Kind, Proof, ProofError, StmtId, Sym, Tree};
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -93,14 +93,6 @@ pub struct Session<'a> {
 }
 
 impl<'a> Session<'a> {
-    pub fn start(
-        db: &'a Database,
-        grammar: &'a Grammar<'a>,
-        theorem: StmtId,
-    ) -> Result<Self, Error> {
-        Self::start_in(Catalog::new(db, grammar), theorem)
-    }
-
     /// Starts a session that shares the parsed assertions of `catalog` with others.
     ///
     /// A theorem without a usable proof has no scope to read disjoint pairs from, so the session may

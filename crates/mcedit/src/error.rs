@@ -30,6 +30,8 @@ pub enum Error {
         metas: usize,
         violations: usize,
     },
+    /// Saved bytes from a session on another library.
+    WrongLibrary,
     /// Saved bytes that are not a session of this version, or session state that breaks an invariant.
     Corrupt,
 }
