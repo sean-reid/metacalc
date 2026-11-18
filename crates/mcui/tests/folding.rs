@@ -243,13 +243,41 @@ fn several_statements_share_the_rows() {
 }
 
 #[test]
-fn when_even_one_row_each_does_not_fit_nothing_is_folded_at_the_root() {
-    let exprs = [chain(4), chain(4), chain(4)];
+fn when_even_one_row_each_does_not_fit_every_statement_takes_the_deepest_fit_of_one_row() {
+    let exprs = [chain(12), chain(14), chain(2)];
     let items: Vec<Fit> = exprs.iter().map(|e| Fit { expr: e, width: 94 }).collect();
     let folds = fit(&items, 2);
     for (expr, folds) in exprs.iter().zip(&folds) {
+        assert_eq!(rows(expr, folds, 94), 1);
+        assert_eq!(folds, &fit_one(expr, 94, 1));
         assert!(!folds.is_folded(0));
-        assert!(expr.children(0).iter().any(|&c| folds.is_folded(c)) || expr.len() < 3);
+    }
+    assert_eq!(folds[2], Folds::none(&exprs[2]));
+    let mut below_root = Folds::none(&exprs[0]);
+    for n in 1..exprs[0].len() {
+        below_root.toggle(&exprs[0], n);
+    }
+    assert_ne!(folds[0], below_root);
+}
+
+#[test]
+fn a_statement_that_takes_one_row_is_left_open_while_a_long_one_is_folded() {
+    let (short, long) = (chain(3), chain(14));
+    let items = [
+        Fit {
+            expr: &short,
+            width: 94,
+        },
+        Fit {
+            expr: &long,
+            width: 40,
+        },
+    ];
+    assert_eq!(rows(&short, &Folds::none(&short), 94), 1);
+    for want in 2..=4 {
+        let folds = fit(&items, want);
+        assert_eq!(folds[0], Folds::none(&short), "{want} rows");
+        assert!(rows(&long, &folds[1], 40) < want, "{want} rows");
     }
 }
 

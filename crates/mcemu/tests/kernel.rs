@@ -6,6 +6,8 @@ mod capacity;
 mod crc;
 #[path = "kernel/edges.rs"]
 mod edges;
+#[path = "kernel/init_on.rs"]
+mod init_on;
 #[path = "kernel/isolation.rs"]
 mod isolation;
 #[path = "kernel/launch.rs"]
@@ -16,6 +18,12 @@ mod layouts;
 mod libraries;
 #[path = "kernel/limits.rs"]
 mod limits;
+#[path = "kernel/names.rs"]
+mod names;
+#[path = "../../mcpack/tests/cases/raw.rs"]
+mod raw;
+#[path = "kernel/records.rs"]
+mod records;
 #[path = "kernel/references.rs"]
 mod references;
 #[path = "kernel/sources.rs"]
@@ -299,7 +307,7 @@ fn a_mandatory_pair_needs_hypotheses_for_both_variables() {
 }
 
 #[test]
-fn an_essential_hypothesis_listed_before_its_variables_reads_this_use_only() {
+fn an_essential_hypothesis_listed_before_its_variables_is_refused_wherever_it_is_used() {
     let db = parse(DB);
     let (axiom, dummy) = (number(&db, "ax-m"), number(&db, "dummy"));
     let mut bytes = pack_all(&db);
@@ -314,8 +322,26 @@ fn an_essential_hypothesis_listed_before_its_variables_reads_this_use_only() {
     bytes[hyps + 6..hyps + 10].copy_from_slice(&floats);
     reseal(&mut bytes);
     agree(&bytes, number(&db, "good"), Ok(()), "good");
-    agree(&bytes, axiom, Ok(()), "ax-m");
-    agree(&bytes, dummy, Err(KernelError::TypecodeMismatch), "dummy");
+    agree(&bytes, axiom, Err(KernelError::BadRecord), "ax-m");
+    agree(&bytes, dummy, Err(KernelError::BadRecord), "dummy");
+}
+
+#[test]
+fn a_float_for_a_variable_the_assertion_never_uses_is_refused_wherever_it_is_used() {
+    let db = parse(DB);
+    let (axiom, good) = (number(&db, "ax-d"), number(&db, "good"));
+    let mut bytes = pack_all(&db);
+    let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+    let next = u32_at(u32_at(16) + 4 * (axiom + 1));
+    assert_eq!(
+        bytes[next - 1],
+        bytes[next - 2] + 1,
+        "the conclusion ends in y"
+    );
+    bytes[next - 1] = bytes[next - 2];
+    reseal(&mut bytes);
+    agree(&bytes, axiom, Err(KernelError::BadRecord), "axiom");
+    agree(&bytes, good, Err(KernelError::BadRecord), "user");
 }
 
 #[test]

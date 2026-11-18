@@ -19,6 +19,7 @@ while IFS= read -r path; do
 	crates/mcpack/* | crates/mcglyph/* | crates/mcedit/* | crates/mcui/* | crates/mcemu/*)
 		rust=true emu=true libraries=true
 		;;
+	crates/mcsend/*) rust=true audit=true app=true ;;
 	crates/*) rust=true audit=true ;;
 	kernel/* | lib/* | ui/* | app/* | probe/*) emu=true app=true libraries=true ;;
 	libraries/*) rust=true libraries=true ;;

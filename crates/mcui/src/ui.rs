@@ -20,6 +20,11 @@ pub enum CheckStep {
     Finished,
 }
 
+/// The most screens open at once. A screen opened on a full stack pushes out the oldest one
+/// above the two at the bottom, so Clear walks back through the newest screens and then reaches
+/// the screen that was open second, the theorem list of a library.
+pub const MAX_DEPTH: usize = 8;
+
 pub struct Ui {
     libs: Vec<Lib>,
     proofs: Proofs,
@@ -56,7 +61,12 @@ impl Ui {
         let top = self.stack.last_mut().expect("a screen is always open");
         match top.press(&ctx, key) {
             Nav::Stay => {}
-            Nav::Push(screen) => self.stack.push(*screen),
+            Nav::Push(screen) => {
+                if self.stack.len() == MAX_DEPTH {
+                    self.stack.remove(2);
+                }
+                self.stack.push(*screen);
+            }
             Nav::Pop => {
                 if self.stack.len() > 1 {
                     self.stack.pop();

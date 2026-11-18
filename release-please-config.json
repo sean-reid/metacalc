@@ -12,6 +12,7 @@
         { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='mcemu')].version" },
         { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='mcglyph')].version" },
         { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='mcpack')].version" },
+        { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='mcsend')].version" },
         { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='mcui')].version" }
       ],
       "changelog-sections": [

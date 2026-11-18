@@ -140,7 +140,10 @@ pub(crate) fn item(font: &Font, piece: &Piece) -> Item {
             (Some(width), Some(pad)) => Item { width, pad },
             _ => Item {
                 width: font.text_width(token),
-                pad: Pad::default(),
+                pad: Pad {
+                    var: is_unknown(token),
+                    ..Pad::default()
+                },
             },
         },
         Piece::Ellipsis => Item {
@@ -151,6 +154,13 @@ pub(crate) fn item(font: &Font, piece: &Piece) -> Item {
             },
         },
     }
+}
+
+/// Whether `token` is the name of an unknown of a goal: a question mark and a number.
+fn is_unknown(token: &str) -> bool {
+    token
+        .strip_prefix('?')
+        .is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// Lays `expr` out in `width` pixels with the nodes `folds` marks replaced by an ellipsis.
@@ -206,14 +216,29 @@ fn total_rows(items: &[Fit], folds: &[Folds]) -> usize {
 }
 
 /// Folds `items` until together they fit in `rows` lines, deepest levels first. Each level of
-/// the trees is folded across the items in order, and the search stops at the first fold that
-/// fits. The last level is the whole statement, so a set that fits when everything is folded
-/// always fits. When even that is not enough every node below the root stays folded, the roots
-/// stay open and the view scrolls.
+/// the trees is folded across the items in order, skipping an item that already takes one line,
+/// and the search stops at the first fold that fits. The last level is the whole statement, so
+/// more items than `rows` is the only way for nothing to fit; every item is then fitted to a
+/// line of its own and the view scrolls.
 pub fn fit(items: &[Fit], rows: usize) -> Vec<Folds> {
     let mut folds: Vec<Folds> = items.iter().map(|i| Folds::none(i.expr)).collect();
-    if total_rows(items, &folds) <= rows {
+    if fold_levels(items, &mut folds, rows) {
         return folds;
+    }
+    items
+        .iter()
+        .map(|item| {
+            let mut one = vec![Folds::none(item.expr)];
+            fold_levels(std::slice::from_ref(item), &mut one, 1);
+            one.remove(0)
+        })
+        .collect()
+}
+
+/// Folds `folds` level by level until `items` take `rows` lines or fewer; whether they do.
+fn fold_levels(items: &[Fit], folds: &mut [Folds], rows: usize) -> bool {
+    if total_rows(items, folds) <= rows {
+        return true;
     }
     let deepest = items
         .iter()
@@ -222,21 +247,21 @@ pub fn fit(items: &[Fit], rows: usize) -> Vec<Folds> {
         .unwrap_or(0);
     for depth in (0..=deepest).rev() {
         for (at, item) in items.iter().enumerate() {
+            if layout(item.expr, &folds[at], item.width).rows() <= 1 {
+                continue;
+            }
             let mut changed = false;
             for node in (0..item.expr.len()).filter(|&n| item.expr.depth(n) == depth) {
                 if !folds[at].is_folded(node) {
                     changed |= folds[at].toggle(item.expr, node);
                 }
             }
-            if changed && total_rows(items, &folds) <= rows {
-                return folds;
+            if changed && total_rows(items, folds) <= rows {
+                return true;
             }
         }
     }
-    for state in &mut folds {
-        state.0[0] = false;
-    }
-    folds
+    false
 }
 
 /// [`fit`] for one statement.
@@ -249,4 +274,41 @@ pub fn fit_one(expr: &Expr, width: usize, rows: usize) -> Folds {
 pub fn fitted(expr: &Expr, width: usize, rows: usize) -> Layout {
     let folds = fit_one(expr, width, rows);
     layout(expr, &folds, width).clipped(width, rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::expr::Shape;
+
+    fn row_width(tokens: &[&str]) -> (usize, usize) {
+        let font = Font::builtin();
+        let shape = Shape::node(tokens.iter().map(|t| Shape::leaf(t)).collect());
+        let expr = Expr::build(Vec::new(), &shape);
+        let laid = layout(&expr, &Folds::none(&expr), 94);
+        assert_eq!(laid.rows(), 1);
+        let ink: usize = tokens.iter().map(|t| font.text_width(t)).sum();
+        (laid.lines[0].width, ink + tokens.len() - 1)
+    }
+
+    #[test]
+    fn an_unknown_takes_the_padding_of_a_variable_and_a_plain_token_does_not() {
+        let font = Font::builtin();
+        assert!(item(font, &Piece::Tok("?2".into())).pad.var);
+        assert!(item(font, &Piece::Tok("?".into())).pad.var);
+        assert_eq!(
+            item(font, &Piece::Tok("?2".into())).pad,
+            item(font, &Piece::Tok("ph".into())).pad
+        );
+        assert!(!item(font, &Piece::Tok("zz".into())).pad.var);
+        assert!(!item(font, &Piece::Tok("?x".into())).pad.var);
+    }
+
+    #[test]
+    fn a_row_of_unknowns_is_wider_than_the_same_row_with_no_padding() {
+        let (width, unpadded) = row_width(&["?2", "?0"]);
+        assert!(width > unpadded, "{width} against {unpadded}");
+        let (width, unpadded) = row_width(&["zz", "zy"]);
+        assert_eq!(width, unpadded);
+    }
 }

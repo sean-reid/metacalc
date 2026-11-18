@@ -1,5 +1,5 @@
 use super::{
-    Kernel, KernelError, Limits, ReadError, SectionCheckError, SectionError, decode,
+    Kernel, KernelError, Limits, ReadError, SectionCheckError, SectionError, decode, labels,
     locate_sections, verify_sections,
 };
 
@@ -9,6 +9,8 @@ pub enum CheckError {
     Load(KernelError),
     /// Labels of the assertions the kernel rejected, with the reason.
     Assertions(Vec<(String, KernelError)>),
+    /// An assertion label that is not a Metamath label, repeats or is also a symbol.
+    Label(String),
     /// The library's trailer or one of its sections is damaged.
     Damaged(SectionError),
     /// The library has sections and does not decode.
@@ -30,12 +32,13 @@ impl std::fmt::Display for CheckError {
                 }
                 write!(f, "{} assertions failed the kernel check", failed.len())
             }
+            CheckError::Label(label) => write!(f, "{label:?} cannot be a unique label"),
         }
     }
 }
 
-/// Runs the kernel over every assertion of a library, then checks its sections against its
-/// records, and returns how many assertions there are.
+/// Runs the kernel over every assertion of a library, checks its labels, then checks its sections
+/// against its records, and returns how many assertions there are.
 pub fn check(bytes: &[u8]) -> Result<usize, CheckError> {
     let mut kernel = Kernel::new(bytes, Limits::UNBOUNDED).map_err(CheckError::Load)?;
     let mut failed = Vec::new();
@@ -47,6 +50,9 @@ pub fn check(bytes: &[u8]) -> Result<usize, CheckError> {
     }
     if !failed.is_empty() {
         return Err(CheckError::Assertions(failed));
+    }
+    if let Some(label) = labels::first_bad(&kernel) {
+        return Err(CheckError::Label(label));
     }
     let sections = locate_sections(bytes).map_err(CheckError::Damaged)?;
     if sections.is_some() {

@@ -69,8 +69,6 @@ pub enum ProofBody {
 
 pub struct Proof {
     pub body: ProofBody,
-    /// Every disjoint pair active at the theorem, mandatory or not, sorted.
-    pub scope_dv: Vec<(Sym, Sym)>,
 }
 
 pub struct Stmt {
@@ -79,6 +77,8 @@ pub struct Stmt {
     pub expr: Vec<Sym>,
     pub frame: Frame,
     pub proof: Option<Result<Proof, ProofError>>,
+    /// For a theorem, every disjoint pair active at it, mandatory or not, sorted. Empty for any other statement.
+    pub scope_dv: Vec<(Sym, Sym)>,
     /// For a hypothesis, the number of statements parsed when its scope closed, or `StmtId::MAX` while it is still open. A hypothesis is active at statement `s` when it precedes `s` and `scope_end > s`.
     pub scope_end: StmtId,
 }

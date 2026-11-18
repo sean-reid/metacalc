@@ -21,4 +21,4 @@ pub use mcpack::library::Title;
 pub use proofs::{RestoreError, SavedProof};
 pub use screens::{Kind, State, View};
 pub use status::{Mark, Status};
-pub use ui::{CheckStep, Ui};
+pub use ui::{CheckStep, MAX_DEPTH, Ui};

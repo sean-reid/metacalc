@@ -55,6 +55,8 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+      - run: cargo clippy -p mcsend --all-targets --locked -- -D warnings
+      - run: cargo test -p mcsend --locked
       - run: cargo build --release --locked
 
   emu:
@@ -104,9 +106,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       - uses: ./.github/actions/spasm
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: sh scripts/test-spasm.sh
       - run: make -C app check
+      - run: seq 1 9000 | head -c 40000 > "$RUNNER_TEMP/lib.bin" && make -s -C app BUILD="$RUNNER_TEMP/app" LIBRARY="$RUNNER_TEMP/lib.bin" && MCSEND_APP="$RUNNER_TEMP/app/metacalc.8xk" MCSEND_LIBRARY="$RUNNER_TEMP/lib.bin" sh scripts/require-tests.sh 1 cargo test --locked -p mcsend --test tifile -- --ignored
       - run: make -C probe check
 
   libraries:
@@ -187,6 +192,8 @@ jobs:
       - run: sh scripts/verify-exports.sh "$RUNNER_TEMP/libraries"
       - run: sh scripts/test-verify-exports.sh
       - run: sh scripts/replay-libraries.sh "$RUNNER_TEMP/libraries"
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --release --locked -p mcpack --test export -- --ignored --exact the_shipped_libraries_repack_from_their_export_to_the_same_records
+      - run: MCEDIT_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --release --locked -p mcedit --test replay -- --ignored --exact theorems_with_a_late_float_are_rebuilt_as_new_proofs
 
   library-screens:
     needs: [changes, libraries]

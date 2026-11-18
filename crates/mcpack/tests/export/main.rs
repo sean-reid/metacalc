@@ -2,10 +2,10 @@
 mod references;
 
 use mcpack::library::{
-    CheckError, ExportError, Hypothesis, KernelError, ReadError, Step, check, crc32, decode,
-    export, pack,
+    CheckError, ExportError, KernelError, ReadError, Step, check, crc32, decode, export, pack,
+    pack_kernel,
 };
-use mcpack::mm::{self, Database, Kind, ProofBody, StmtId, Verifier};
+use mcpack::mm::{self, Database, Kind, StmtId, Verifier};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -72,14 +72,13 @@ $}
 ";
 
 const COLLISION: &str = "
-$c |- wff R th.f2 $.
+$c |- wff R $.
 $v x y $.
 vx $f wff x $.
 vy $f wff y $.
 th.e1 $a |- R $.
-th.f1 $a |- R $.
-th.d1 $a |- R $.
-th.f2-ax $a |- th.f2 $.
+f.0 $a |- R $.
+f.0_ $a |- R $.
 ${
   h $e |- R $.
   th $p |- R $= h $.
@@ -138,37 +137,10 @@ struct Exported {
     db: Database,
 }
 
-/// The statements a library needs: every assertion, and the hypotheses some frame or proof uses.
-fn kept(db: &Database) -> Vec<StmtId> {
-    let mut used = vec![false; db.stmts.len()];
-    for stmt in db.stmts.iter().filter(|s| s.kind.is_assertion()) {
-        stmt.frame
-            .hyps
-            .iter()
-            .for_each(|&h| used[h as usize] = true);
-        if let Some(Ok(proof)) = &stmt.proof {
-            let (ProofBody::Normal(labels) | ProofBody::Compressed { labels, .. }) = &proof.body;
-            labels.iter().for_each(|&l| used[l as usize] = true);
-        }
-    }
-    let keep = |id: &StmtId| db.stmt(*id).kind.is_assertion() || used[*id as usize];
-    all(db).into_iter().filter(keep).collect()
-}
-
 /// Exports the library, and holds the text to everything the export promises.
-///
-/// Packing every statement of a database also records a variable whose float no assertion uses; the
-/// export has nowhere to put that, so exporting either packing repacks to the library of `kept`.
 fn round_trip(name: &str, db: &Database) -> Exported {
-    let bytes = pack(db, &kept(db)).unwrap_or_else(|e| panic!("{name} packs: {e:?}"));
-    let everything = pack(db, &all(db)).expect("it packs");
+    let bytes = pack(db, &all(db)).unwrap_or_else(|e| panic!("{name} packs: {e:?}"));
     let text = export(&bytes).unwrap_or_else(|e| panic!("{name} exports: {e}"));
-    let from_everything = mm::parse(export(&everything).unwrap().into_bytes()).unwrap();
-    let repacked = pack(&from_everything, &all(&from_everything)).unwrap();
-    assert!(
-        repacked == bytes,
-        "{name}: unused symbols are not the only difference"
-    );
     assert!(
         text.lines().all(|l| l.len() <= 79),
         "{name}: a line is too long"
@@ -237,20 +209,31 @@ fn every_corpus_library_the_kernel_accepts_exports_to_the_same_bytes() {
 }
 
 #[test]
-fn dummy_variables_and_disjoint_pairs_are_written_inside_their_block() {
+fn floats_are_declared_once_after_the_variables_and_no_block_holds_one() {
     let db = parse(DB);
     let out = round_trip("DB", &db);
     assert!(check(&out.bytes).is_ok());
     assert!(
-        out.text.contains("  $d x z $.\n  dummy.f1 $f wff x $.\n"),
+        out.text
+            .contains("$v x y z $.\nf.0 $f wff x $.\nf.1 $f wff y $.\nf.2 $f wff z $.\n${\n"),
+        "{}",
+        out.text
+    );
+    let indented = out.text.lines().filter(|l| l.starts_with("  "));
+    assert!(
+        indented.clone().all(|l| !l.contains(" $f ")),
         "{}",
         out.text
     );
     assert!(
         out.text
-            .contains("  dummy.d1 $f wff z $.\n  dummy $p |- R x x $=")
+            .contains("  $d x z $.\n  dummy $p |- R x x $= ( f.2 ax-d ax-m )")
     );
-    assert!(out.text.contains("  both.d1 $f wff z $."));
+    assert!(
+        out.text.contains("  both $p |- R x y $= ( f.2 "),
+        "{}",
+        out.text
+    );
     assert!(out.text.contains("  $d x y $.\n"));
 }
 
@@ -306,34 +289,12 @@ fn letters(mut number: usize) -> String {
 }
 
 #[test]
-fn an_essential_hypothesis_before_a_float_keeps_the_records_order() {
-    let db = parse(ESSENTIAL_FIRST);
-    let out = round_trip("essential first", &db);
-    check(&out.bytes).expect("the kernel accepts the library");
-    let library = decode(&out.bytes).unwrap();
-    let kinds = |hyps: &[Hypothesis]| -> Vec<bool> {
-        hyps.iter()
-            .map(|h| matches!(h, Hypothesis::Float { .. }))
-            .collect()
-    };
-    let record = |label: &str| {
-        let a = library.assertions.iter().find(|a| a.label == label);
-        kinds(&a.unwrap().hypotheses)
-    };
-    assert_eq!(record("ax-mid"), [true, false, true]);
-    assert_eq!(record("ax-first"), [false, true]);
-    for label in ["ax-mid", "th-mid", "ax-first"] {
-        let id = out.db.find(label).unwrap();
-        let frame: Vec<bool> = out
-            .db
-            .stmt(id)
-            .frame
-            .hyps
-            .iter()
-            .map(|&h| out.db.stmt(h).kind == Kind::Float)
-            .collect();
-        assert_eq!(frame, record(label), "{label}");
-    }
+fn a_record_with_an_essential_hypothesis_before_a_float_is_refused() {
+    let bytes = pack(&parse(ESSENTIAL_FIRST), &all(&parse(ESSENTIAL_FIRST))).unwrap();
+    let bad = |label: &str| (label.into(), KernelError::BadRecord);
+    let failed = CheckError::Assertions(vec![bad("ax-mid"), bad("th-mid"), bad("ax-first")]);
+    assert_eq!(check(&bytes), Err(failed));
+    assert!(matches!(export(&bytes), Err(ExportError::Check(_))));
 }
 
 #[test]
@@ -342,7 +303,13 @@ fn generated_labels_step_around_labels_and_symbols_that_exist() {
     let out = round_trip("collision", &db);
     check(&out.bytes).expect("the kernel accepts the library");
     assert!(out.text.contains("  th.e1_ $e |- R $.\n"), "{}", out.text);
-    assert!(out.text.contains("  th.f1 $a |- R $."));
+    assert!(
+        out.text.contains("\nf.0__ $f wff x $.\nf.1 $f wff y $.\n"),
+        "{}",
+        out.text
+    );
+    assert!(out.text.contains("  f.0 $a |- R $."));
+    assert!(out.text.contains("  f.0_ $a |- R $."));
     let again = export(&out.bytes).unwrap();
     assert_eq!(again, out.text, "the export is deterministic");
     let labels: Vec<&str> = out.db.stmts.iter().map(|s| s.label.as_str()).collect();
@@ -354,11 +321,11 @@ fn generated_labels_step_around_labels_and_symbols_that_exist() {
 
 #[test]
 fn a_symbol_named_like_a_generated_label_is_not_reused() {
-    let src = "$c wff |- th.f1 $. $v x $. th.f1-pad $a th.f1 $. vx $f wff x $.
+    let src = "$c wff |- f.0 $. $v x $. f.0-pad $a f.0 $. vx $f wff x $.
         ${ th.1 $e |- x $. th $a |- x $. $}";
     let db = parse(src);
     let out = round_trip("symbol", &db);
-    assert!(out.text.contains("  th.f1_ $f wff x $."), "{}", out.text);
+    assert!(out.text.contains("\nf.0_ $f wff x $.\n"), "{}", out.text);
 }
 
 fn temp(name: &str) -> PathBuf {
@@ -456,7 +423,7 @@ ${
   m.1 $e |- R x y $.
   ax-m $a |- R x x $.
 $}
-dummy.d1 $a |- R $.
+f.2 $a |- R $.
 ${
   $d x z $.
   dummy $p |- R x x $= vx vz vx vz ax-d ax-m $.
@@ -464,14 +431,33 @@ $}
 ";
 
 #[test]
-fn a_dummy_label_that_collides_is_suffixed_and_the_proof_still_verifies() {
+fn a_float_label_that_collides_is_suffixed_and_the_proof_still_verifies() {
     let out = round_trip("colliding dummy", &parse(COLLIDING_DUMMY));
-    assert!(
-        out.text.contains("  dummy.d1_ $f wff z $.\n"),
-        "{}",
-        out.text
-    );
-    assert!(out.text.contains("( dummy.d1_ ax-d ax-m )"), "{}", out.text);
+    assert!(out.text.contains("\nf.2_ $f wff z $.\n"), "{}", out.text);
+    assert!(out.text.contains("( f.2_ ax-d ax-m )"), "{}", out.text);
+}
+
+/// The shipped libraries, as scripts/build-libraries.sh writes them into `MC_LIBRARIES`, export to
+/// a database whose repacked records are the library's own, byte for byte.
+#[test]
+#[ignore = "needs MC_LIBRARIES pointing at the built libraries"]
+fn the_shipped_libraries_repack_from_their_export_to_the_same_records() {
+    let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES is set");
+    for name in ["prop", "pred", "ring"] {
+        let bytes = std::fs::read(Path::new(&dir).join(format!("{name}.mclib"))).unwrap();
+        let text = export(&bytes).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let db = mm::parse(text.into_bytes()).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let kernel = pack_kernel(&db, &all(&db)).unwrap();
+        assert!(kernel.len() <= bytes.len(), "{name}");
+        assert!(
+            bytes[12..kernel.len()] == kernel[12..],
+            "{name}: the records differ"
+        );
+        println!(
+            "{name}: {} bytes of records repack identically",
+            kernel.len()
+        );
+    }
 }
 
 mod refusals;

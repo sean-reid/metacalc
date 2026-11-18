@@ -269,7 +269,7 @@ impl Packer<'_> {
             };
             refs.extend(reference.to_le_bytes());
         }
-        let extra: Vec<(Sym, Sym)> = proof
+        let extra: Vec<(Sym, Sym)> = stmt
             .scope_dv
             .iter()
             .filter(|(a, b)| dummies.contains(a) || dummies.contains(b))

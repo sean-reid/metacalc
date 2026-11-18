@@ -83,6 +83,7 @@ pub fn status(result: Result<(), KernelError>) -> u8 {
         Err(KernelError::WrongConclusion) => "ST_WRONG_CONCLUSION",
         Err(KernelError::WorkLimit) => "ST_WORK_LIMIT",
         Err(KernelError::LooseReference) => "ST_LOOSE_REF",
+        Err(KernelError::BadSymbol) => "ST_BAD_SYMBOL",
     };
     label(name) as u8
 }

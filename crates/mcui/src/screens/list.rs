@@ -1,6 +1,6 @@
 use super::{Ctx, Nav, Screen, State, proving::Proving, reveal, step, theorem::Theorem};
 use crate::canvas::{Canvas, PREFIX_WIDTH, TEXT_WIDTH, tail};
-use crate::fold::{Fit, Layout, fit, layout};
+use crate::fold::{Layout, fitted};
 use crate::key::Key;
 use crate::status::Mark;
 
@@ -88,26 +88,21 @@ impl List {
     /// Recomputes what the preview row shows after the cursor moved.
     fn refresh(&mut self, ctx: &Ctx) {
         self.preview = self.current().map(|i| {
-            let statement = ctx.libs[self.library].statement(i);
-            let expr = &statement.conclusion;
-            let folds = fit(
-                &[Fit {
-                    expr,
-                    width: TEXT_WIDTH,
-                }],
+            fitted(
+                &ctx.libs[self.library].statement(i).conclusion,
+                TEXT_WIDTH,
                 1,
             )
-            .remove(0);
-            layout(expr, &folds, TEXT_WIDTH)
         });
     }
 
-    fn jump(&mut self, ctx: &Ctx) {
+    /// Moves to the first item from `from` on whose label starts with the typed prefix.
+    fn jump(&mut self, ctx: &Ctx, from: usize) {
         let lib = &ctx.libs[self.library];
-        let hit = self
-            .items
+        let hit = self.items[from.min(self.items.len())..]
             .iter()
-            .position(|&i| lib.label(i).starts_with(&self.find));
+            .position(|&i| lib.label(i).starts_with(&self.find))
+            .map(|at| at + from);
         self.missed = hit.is_none();
         if let Some(at) = hit {
             self.cursor = at;
@@ -144,7 +139,7 @@ impl List {
                     .unwrap_or(self.items.len().saturating_sub(1));
                 self.top = reveal(0, self.cursor, LIST_ROWS);
                 if !self.find.is_empty() {
-                    self.jump(ctx);
+                    self.jump(ctx, 0);
                 }
             }
             Key::F4 => {
@@ -153,8 +148,11 @@ impl List {
                 }
             }
             Key::Letter(c) if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') => {
+                let from = if self.find.is_empty() { 0 } else { self.cursor };
                 self.find.push(c);
-                self.jump(ctx);
+                if !self.missed {
+                    self.jump(ctx, from);
+                }
             }
             Key::Clear => {
                 if self.find.is_empty() {

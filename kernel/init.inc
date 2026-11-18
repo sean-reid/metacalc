@@ -216,6 +216,16 @@ init_symbol_ok:
 	jr init_symbols
 init_symbols_done:
 
+; the symbol table ends inside the first chunk
+	ld a,(kv_rd_off+2)
+	or a
+	jp nz,fail_malformed
+	ld hl,(kv_rd_off)
+	ld de,$4001
+	or a
+	sbc hl,de
+	jp nc,fail_malformed
+
 ; directory: after the symbols, aligned, and every entry inside the library
 	ld hl,kv_directory
 	ld de,kv_rd_off
@@ -244,6 +254,87 @@ init_symbols_done:
 	ld de,kv_tmp24
 	call cmp24
 	jp c,fail_malformed
+
+; names, in the first chunk: 1 or more bytes in $21 to $7E but $24, all different
+	ld a,(kv_symbols)
+	or a
+	jr z,init_names_done
+	ld b,a
+	ld a,(kv_lib_page)
+	out (7),a
+	ld hl,$8014
+init_name_start:
+	inc hl
+	ld c,(hl)
+	inc hl
+	ld a,c
+	or a
+	jp z,fail_bad_symbol
+init_name_byte:
+	ld a,(hl)
+	inc hl
+	cp $21
+	jp c,fail_bad_symbol
+	cp $7F
+	jp nc,fail_bad_symbol
+	cp $24
+	jp z,fail_bad_symbol
+	dec c
+	jr nz,init_name_byte
+	djnz init_name_start
+	ld a,(kv_symbols)
+	dec a
+	jr z,init_names_done
+	ld (kv_tmp8),a
+	ld hl,$8014
+init_name_outer:
+	in a,(4)
+	and 8
+	jp z,fail_interrupted
+	inc hl
+	ld c,(hl)
+	inc hl
+	ld d,h
+	ld e,l
+	ld a,c
+	call add_hl_a
+	ld a,(kv_tmp8)
+	ld b,a
+init_name_inner:
+	inc hl
+	ld a,(hl)
+	inc hl
+	cp c
+	jr nz,init_name_skip
+	push bc
+	push de
+	push hl
+init_name_cmp:
+	ld a,(de)
+	cp (hl)
+	jr nz,init_name_differ
+	inc de
+	inc hl
+	dec c
+	jr nz,init_name_cmp
+	jp fail_bad_symbol
+init_name_differ:
+	pop hl
+	pop de
+	pop bc
+	ld a,c
+init_name_skip:
+	call add_hl_a
+	djnz init_name_inner
+	ld h,d
+	ld l,e
+	ld a,c
+	call add_hl_a
+	ld a,(kv_tmp8)
+	dec a
+	ld (kv_tmp8),a
+	jr nz,init_name_outer
+init_names_done:
 
 ; limits, clamped to the buffers
 	ld hl,(KERNEL_LIMIT_STACK_SYMS)
