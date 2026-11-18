@@ -128,7 +128,10 @@
 ;                          display font are in the buffer
 ;   lib_syntax_count  out: HL = syntax axioms. 9 without a trees section.
 ;   lib_syntax        in:  HL = syntax index
-;                     out: HL = the axiom's assertion number, B = its arity
+;                     out: HL = the axiom's assertion number, B = its arity. The entry is returned
+;                          as stored: the host decoder also refuses entries out of rising
+;                          assertion order and an arity that is not the assertion's hypothesis
+;                          count, and this does not check either.
 ;   lib_tree          in:  HL = assertion number; B = statement, the essential hypotheses in record
 ;                          order from 0, then the conclusion, which is also FFh; DE = buffer of
 ;                          255 bytes

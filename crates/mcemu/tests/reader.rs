@@ -44,6 +44,8 @@ mod speed;
 mod stackfree;
 #[path = "reader/support.rs"]
 mod support;
+#[path = "reader/syntax.rs"]
+mod syntax;
 #[path = "reader/unordered.rs"]
 mod unordered;
 #[path = "reader/windows.rs"]
