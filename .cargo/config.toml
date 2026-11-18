@@ -1,0 +1,2 @@
+[env]
+TILEM_SRC = { value = ".tilem", relative = true }
