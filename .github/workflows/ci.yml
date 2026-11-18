@@ -22,6 +22,7 @@ jobs:
       docs: ${{ steps.jobs.outputs.docs }}
       app: ${{ steps.jobs.outputs.app }}
       libraries: ${{ steps.jobs.outputs.libraries }}
+      site: ${{ steps.jobs.outputs.site }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,11 +34,13 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           if [ "${{ github.event_name }}" = pull_request ]; then
-            git diff --name-only "$BASE...$HEAD" > "$RUNNER_TEMP/changed"
+            git diff --no-renames --name-only "$BASE...$HEAD" > "$RUNNER_TEMP/changed"
           else
             echo every-job > "$RUNNER_TEMP/changed"
           fi
-          sh scripts/ci-changes.sh < "$RUNNER_TEMP/changed" | tee -a "$GITHUB_OUTPUT"
+          sh scripts/ci-changes.sh < "$RUNNER_TEMP/changed" > "$RUNNER_TEMP/jobs"
+          cat "$RUNNER_TEMP/jobs" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/jobs"
 
   rust:
     needs: changes
@@ -108,7 +111,7 @@ jobs:
 
   libraries:
     needs: changes
-    if: needs.changes.outputs.libraries == 'true'
+    if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -214,7 +217,7 @@ jobs:
 
   site:
     needs: [changes, libraries]
-    if: needs.changes.outputs.libraries == 'true'
+    if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -242,9 +245,12 @@ jobs:
       - env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
           CHANGES: ${{ needs.changes.result }}
+          FLAGS: ${{ toJSON(needs.changes.outputs) }}
         run: |
           echo "changes: $CHANGES, all: $RESULTS"
+          echo "$FLAGS"
           [ "$CHANGES" = success ] || exit 1
+          [ "$(echo "$FLAGS" | grep -cE '"(true|false)"')" -eq 7 ] || exit 1
           for result in $RESULTS; do
             case $result in success | skipped) ;; *) exit 1 ;; esac
           done
