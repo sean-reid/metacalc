@@ -1,0 +1,162 @@
+#include "equates.inc"
+
+VERSION = 1
+
+.org 4000h
+	.db 80h, 0Fh, 0, 0, 0, 0
+	.db 80h, 12h, 01h, 04h
+	.db 80h, 21h, VERSION
+	.db 80h, 31h, 01h
+	.db 80h, 48h, "sparechk"
+	.db 80h, 81h, 01h
+	.db 80h, 90h
+	.db 03h, 26h, 09h, 04h, 04h, 6Fh, 1Bh, 80h
+	.db 02h, 0Dh, 40h
+	.db 0A1h, 6Bh, 99h, 0F6h, 59h, 0BCh, 67h, 0F5h, 85h, 9Ch, 09h, 6Ch, 0Fh, 0B4h, 03h, 9Bh
+	.db 0C9h, 03h, 32h, 2Ch, 0E0h, 03h, 20h, 0E3h, 2Ch, 0F4h, 2Dh, 73h, 0B4h, 27h, 0C4h, 0A0h
+	.db 72h, 54h, 0B9h, 0EAh, 7Ch, 3Bh, 0AAh, 16h, 0F6h, 77h, 83h, 7Ah, 0EEh, 1Ah, 0D4h, 42h
+	.db 4Ch, 6Bh, 8Bh, 13h, 1Fh, 0BBh, 93h, 8Bh, 0FCh, 19h, 1Ch, 3Ch, 0ECh, 4Dh, 0E5h, 75h
+	.db 80h, 7Fh, 0, 0, 0, 0
+	.fill 4080h - $, 0
+
+start:
+#include "sparecore.inc"
+
+; Contract: the stack and the OS are usable again; prints the results, then waits for a key. Digits go
+; to the OS one at a time, with the running value kept in scratch because a bcall may change registers.
+show:
+	bcall(_ClrLCDFull)
+	xor a
+	ld (curRow), a
+	ld (curCol), a
+	ld hl, title
+	call putstr
+	bcall(_NewLine)
+	ld hl, text_write
+	call putstr
+	ld hl, (S_WBAD)
+	ld a, h
+	or l
+	jr nz, write_bad
+	ld hl, text_ok
+	call putstr
+	jr write_done
+write_bad:
+	ld hl, text_bad
+	call putstr
+	ld hl, (S_WBAD)
+	call putdec
+write_done:
+	bcall(_NewLine)
+	ld a, (S_CHECKED)
+	or a
+	jr nz, checked
+	ld hl, text_first
+	call putstr
+	jr wait
+checked:
+	ld hl, (S_LOST)
+	ld a, h
+	or l
+	jr nz, lost
+	ld hl, text_kept
+	call putstr
+	jr wait
+lost:
+	ld hl, text_lost
+	call putstr
+	ld hl, (S_LOST)
+	call putdec
+	bcall(_NewLine)
+	ld hl, (S_FIRST)
+	call puthex
+	ld a, '-'
+	bcall(_PutC)
+	ld hl, (S_LAST)
+	call puthex
+wait:
+	bcall(_GetKey)
+	bjump(_JForceCmdNoChar)
+
+; Contract: HL points at a zero-terminated string in the app page, which a bcall swaps out, so it
+; is read here and passed to the OS one character at a time.
+putstr:
+	ld a, (hl)
+	or a
+	ret z
+	bcall(_PutC)
+	inc hl
+	jr putstr
+
+; Prints HL as four decimal digits.
+putdec:
+	ld de, 1000
+	call digit
+	ld de, 100
+	call digit
+	ld de, 10
+	call digit
+	ld hl, (S_WFIRST)
+	ld a, l
+	add a, '0'
+	bcall(_PutC)
+	ret
+
+; Prints the quotient of HL by DE as one digit and leaves the remainder in scratch.
+digit:
+	ld b, 0
+digit_sub:
+	or a
+	sbc hl, de
+	jr c, digit_done
+	inc b
+	jr digit_sub
+digit_done:
+	add hl, de
+	ld (S_WFIRST), hl
+	ld a, '0'
+	add a, b
+	bcall(_PutC)
+	ld hl, (S_WFIRST)
+	ret
+
+; Prints HL as four hex digits.
+puthex:
+	ld (S_WFIRST), hl
+	ld a, (S_WFIRST + 1)
+	call hexbyte
+	ld a, (S_WFIRST)
+
+hexbyte:
+	ld (S_WLAST), a
+	rrca
+	rrca
+	rrca
+	rrca
+	call nibble
+	ld a, (S_WLAST)
+
+nibble:
+	and 0Fh
+	add a, '0'
+	cp '9' + 1
+	jr c, nibble_put
+	add a, 'A' - '9' - 1
+nibble_put:
+	bcall(_PutC)
+	ret
+
+title:
+	.db "sparechk v", '0' + VERSION, 0
+text_write:
+	.db "write ", 0
+text_ok:
+	.db "ok", 0
+text_bad:
+	.db "bad ", 0
+text_first:
+	.db "first run", 0
+text_kept:
+	.db "kept all", 0
+text_lost:
+	.db "lost ", 0
