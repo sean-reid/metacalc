@@ -21,6 +21,12 @@ pub enum Kind {
     Theorem,
 }
 
+impl Kind {
+    pub fn is_assertion(self) -> bool {
+        matches!(self, Kind::Axiom | Kind::Theorem)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProofError {
     NotATheorem,

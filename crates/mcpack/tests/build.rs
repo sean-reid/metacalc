@@ -1,6 +1,6 @@
 use mcpack::build;
 use mcpack::library::{self, check, pack};
-use mcpack::manifest::{Manifest, sha256_hex};
+use mcpack::manifest::{Manifest, Pin, sha256_hex};
 use mcpack::mm::{self, Database, Kind, ProofBody, StmtId};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -10,7 +10,6 @@ $c ( ) -> wff |- $.
 $v p q r $.
 wp $f wff p $.
 wq $f wff q $.
-wr $f wff r $.
 wi $a wff ( p -> q ) $.
 ax-1 $a |- ( p -> ( q -> p ) ) $.
 ${
@@ -18,6 +17,7 @@ ${
   maj $e |- ( p -> q ) $.
   ax-mp $a |- q $.
 $}
+wr $f wff r $.
 ${
   a1i.1 $e |- p $.
   a1i $p |- ( q -> p ) $= ( wi ax-1 ax-mp ) ABADCABEF $.
@@ -92,7 +92,7 @@ fn the_cut_closure_is_dependency_closed_and_packs() {
     assert_eq!(
         labels(&db, &whole),
         [
-            "wp", "wq", "wr", "wi", "ax-1", "min", "maj", "ax-mp", "a1i.1", "a1i", "use.1", "use"
+            "wp", "wq", "wi", "ax-1", "min", "maj", "ax-mp", "wr", "a1i.1", "a1i", "use.1", "use"
         ]
     );
 
@@ -100,7 +100,7 @@ fn the_cut_closure_is_dependency_closed_and_packs() {
     assert_eq!(
         labels(&db, &cut),
         [
-            "wp", "wq", "wr", "wi", "ax-1", "min", "maj", "ax-mp", "a1i.1"
+            "wp", "wq", "wi", "ax-1", "min", "maj", "ax-mp", "wr", "a1i.1"
         ]
     );
     for &id in &cut {
@@ -118,6 +118,42 @@ fn the_cut_closure_is_dependency_closed_and_packs() {
 }
 
 #[test]
+fn cutting_at_a_float_or_an_axiom_keeps_what_comes_before_it() {
+    let db = mm::parse(DB.as_bytes().to_vec()).expect("database parses");
+    for (before, kept, assertions) in [
+        (
+            "wr",
+            &["wp", "wq", "wi", "ax-1", "min", "maj", "ax-mp"][..],
+            3,
+        ),
+        ("ax-1", &["wp", "wq", "wi"][..], 1),
+    ] {
+        let cut = build::closure(
+            &db,
+            &manifest("\"use\"", &format!("before = \"{before}\"\n")),
+        )
+        .expect("cut builds");
+        assert_eq!(labels(&db, &cut), kept, "{before}");
+        let bytes = pack(&db, &cut).expect("the cut packs");
+        assert_eq!(check(&bytes), Ok(assertions), "{before}");
+    }
+}
+
+#[test]
+fn a_cut_that_leaves_no_assertion_is_refused() {
+    let db = mm::parse(DB.as_bytes().to_vec()).expect("database parses");
+    for before in ["wp", "wi"] {
+        let m = manifest("\"use\"", &format!("before = \"{before}\"\n"));
+        let err = build::closure(&db, &m).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("no assertion comes before {before}")
+        );
+        assert!(err.is_bad_input());
+    }
+}
+
+#[test]
 fn a_boundary_that_does_not_exist_is_refused() {
     let db = mm::parse(DB.as_bytes().to_vec()).expect("database parses");
     let err = build::closure(&db, &manifest("\"use\"", "before = \"nope\"\n")).unwrap_err();
@@ -130,15 +166,18 @@ fn corpus(name: &str) -> PathBuf {
         .join(name)
 }
 
+const DEMO: &str =
+    "name = \"demo\"\ntitle = \"Demo\"\ndescription = \"One theorem.\"\nroots = [\"th1\"]\n";
+
 /// Writes a manifest for demo0.mm and a pin with the given digest into a fresh directory.
 fn workspace(name: &str, sha256: &str) -> PathBuf {
+    workspace_with(name, sha256, DEMO)
+}
+
+fn workspace_with(name: &str, sha256: &str, manifest: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("demo.toml"),
-        "name = \"demo\"\ntitle = \"Demo\"\ndescription = \"One theorem.\"\nroots = [\"th1\"]\n",
-    )
-    .unwrap();
+    std::fs::write(dir.join("demo.toml"), manifest).unwrap();
     let pin = format!(
         "repository = \"https://example.org/demo\"\ncommit = \"abc123\"\npath = \"demo0.mm\"\nsha256 = \"{sha256}\"\n"
     );
@@ -339,4 +378,72 @@ fn the_decoder_never_panics_on_a_damaged_library() {
         damaged[at] ^= 0xFF;
         let _ = library::read(&damaged);
     }
+}
+
+#[test]
+fn build_exits_2_for_labels_the_database_does_not_have() {
+    let real = sha256_hex(&std::fs::read(corpus("demo0.mm")).unwrap());
+    let cases = [
+        (
+            "unknown-root",
+            DEMO.replace("th1", "nope"),
+            "no statement is labelled nope\n",
+        ),
+        (
+            "unknown-before",
+            format!("{DEMO}before = \"nope\"\n"),
+            "no statement is labelled nope\n",
+        ),
+        (
+            "empty-cut",
+            format!("{DEMO}before = \"tze\"\n"),
+            "no assertion comes before tze\n",
+        ),
+    ];
+    for (name, manifest, message) in cases {
+        let dir = workspace_with(name, &real, &manifest);
+        let library = dir.join("demo.mclib");
+        let out = mcpack(&[
+            Path::new("build"),
+            &dir.join("demo.toml"),
+            Path::new("--database"),
+            &corpus("demo0.mm"),
+            Path::new("-o"),
+            &library,
+        ]);
+        assert_eq!(out.status.code(), Some(2), "{name}");
+        assert_eq!(text(out.stderr), message, "{name}");
+        assert!(!library.exists(), "{name}");
+    }
+}
+
+#[test]
+fn a_manifest_with_no_roots_is_refused() {
+    let dir = workspace_with(
+        "no-roots",
+        &"0".repeat(64),
+        "name = \"d\"\ntitle = \"D\"\ndescription = \"d\"\nroots = []\n",
+    );
+    let err = Manifest::load(&dir.join("demo.toml")).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        format!("{}: roots is empty", dir.join("demo.toml").display())
+    );
+}
+
+#[test]
+fn a_pin_with_an_unknown_field_or_no_file_is_refused() {
+    let dir = workspace("pin-fields", &"0".repeat(64));
+    let pin = dir.join("source.toml");
+    let text = std::fs::read_to_string(&pin).unwrap();
+    std::fs::write(&pin, format!("{text}branch = \"main\"\n")).unwrap();
+    let err = Pin::load(&dir.join("demo.toml")).unwrap_err();
+    assert!(err.to_string().contains("unknown field `branch`"), "{err}");
+
+    std::fs::remove_file(&pin).unwrap();
+    let err = Pin::load(&dir.join("demo.toml")).unwrap_err();
+    assert!(
+        err.to_string().starts_with(&format!("{}: ", pin.display())),
+        "{err}"
+    );
 }

@@ -37,7 +37,13 @@ pub fn build(manifest: &Path, database: &Path, output: &Path) -> Result<ExitCode
     pin.check(&src)
         .map_err(|e| unusable(format_args!("{}: {e}", database.display())))?;
     let db = parse_source(database, src)?;
-    let kept = plan::closure(&db, &manifest).map_err(fail)?;
+    let kept = plan::closure(&db, &manifest).map_err(|e| {
+        if e.is_bad_input() {
+            unusable(e)
+        } else {
+            fail(e)
+        }
+    })?;
     pack_checked(&db, &kept, output)
 }
 
