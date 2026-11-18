@@ -71,6 +71,10 @@ images)
 		statement=$(block "$label" | head -n 1 | sed 's/  \[[^]]*\]$//')
 		# shellcheck disable=SC2086
 		"$root/target/release/mcglyph" -o "$target/$label.png" $statement
+		if [ ! -f "$target/$label.png" ]; then
+			echo "worked-examples: the statement of $label needs more than one screen, so $label.png was not written; choose another example or link the numbered files by hand" >&2
+			exit 1
+		fi
 	done
 	;;
 *)

@@ -26,7 +26,7 @@ Applying a theorem to a goal means choosing a theorem whose conclusion matches t
 
 A goal closes when the theorem applied to it has no hypotheses, as `ax-1` does. A label such as `syl.1` is a hypothesis of the theorem being proved, so that goal is already given. Each theorem applied has its own proof, which the tree does not expand.
 
-Each statement is also drawn in the calculator's font. These images are renderings of the statement on a 96 by 64 pixel screen, enlarged four times.
+The root statement of each example is also drawn in the calculator's font. These images are renderings of the statement on a 96 by 64 pixel screen, enlarged four times.
 
 ## 1. Every statement implies itself
 
