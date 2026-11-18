@@ -8,6 +8,9 @@ use crate::key::Key;
 use crate::status::Mark;
 
 /// Rows the goal may take before it is folded.
+/// The labels of the five keys.
+pub(crate) const KEYS: [&str; 5] = ["Fold", "Up", "Thm", "", ""];
+
 const GOAL_ROWS: usize = 3;
 
 /// One node of a theorem's goal tree: the goal, how it was proved, and its subgoals.
@@ -169,7 +172,7 @@ impl Proof {
                 canvas.invert_row(row as usize);
             }
         }
-        canvas.soft_keys(["Hide", "Up", "Thm", "", ""]);
+        canvas.soft_keys(KEYS);
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {

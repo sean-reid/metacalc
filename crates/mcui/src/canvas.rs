@@ -88,6 +88,28 @@ fn soft_key_box(i: usize) -> (usize, usize) {
     ((WIDTH * i + 2) / 5, (WIDTH * (i + 1) + 2) / 5 - 1)
 }
 
+fn key_font() -> &'static Font {
+    Font::keys()
+}
+
+/// Pixel width of `text` in the key font.
+pub fn key_text_width(text: &str) -> usize {
+    key_font().text_width(text)
+}
+
+/// `text` cut after as many characters as fit in `limit` pixels; the key font has no ellipsis.
+fn key_cut(text: &str, limit: usize) -> &str {
+    let mut end = 0;
+    for (at, c) in text.char_indices() {
+        let next = at + c.len_utf8();
+        if key_text_width(&text[..next]) > limit {
+            break;
+        }
+        end = next;
+    }
+    &text[..end]
+}
+
 /// Pixels a label of soft key `i` may use.
 pub fn soft_key_room(i: usize) -> usize {
     let (from, to) = soft_key_box(i);
@@ -180,16 +202,17 @@ impl Canvas {
 
     /// The labels of the five keys under the screen. A key with a label is an inverted box
     /// across its fifth of the width, one column short on the right so neighbours stay apart,
-    /// with the label centred in it; a key without one stays blank.
+    /// with the label centred in it, set in the key font; a key without one stays blank.
     pub fn soft_keys(&mut self, labels: [&str; 5]) {
         for (i, label) in labels.iter().enumerate() {
             if label.is_empty() {
                 continue;
             }
             let (from, to) = soft_key_box(i);
-            let label = truncate(label, soft_key_room(i));
-            let x = from + (to - from - text_width(&label)).div_ceil(2);
-            self.text(x, CONTENT_ROWS + 1, &label);
+            let label = key_cut(label, soft_key_room(i));
+            let ink = key_font().text(label);
+            let x = from + (to - from - ink.width()).div_ceil(2);
+            self.blit(&ink, x, CONTENT_ROWS + 1);
             self.invert(from, Self::top(CONTENT_ROWS + 1), to - from, ROW);
         }
     }

@@ -5,6 +5,9 @@ use crate::fold::{Fit, Folds, Layout, fit, layout};
 use crate::key::Key;
 use std::rc::Rc;
 
+/// The labels of the five keys.
+pub(crate) const KEYS: [&str; 5] = ["Fold", "Dist", "Why", "Try", ""];
+
 pub struct Theorem {
     library: usize,
     index: usize,
@@ -174,7 +177,7 @@ impl Theorem {
         } else {
             canvas.cursor(&rects, GUTTER + self.indent(s), row, window);
         }
-        canvas.soft_keys(["Hide", "Dist", "Why", "Try", ""]);
+        canvas.soft_keys(KEYS);
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {

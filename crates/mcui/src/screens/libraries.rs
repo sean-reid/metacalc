@@ -6,6 +6,9 @@ use crate::canvas::{CONTENT_ROWS, Canvas};
 use crate::data::Lib;
 use crate::key::Key;
 
+/// The labels of the five keys.
+pub(crate) const KEYS: [&str; 5] = ["Open", "Run", "Info", "", ""];
+
 #[derive(Default)]
 pub struct Libraries {
     cursor: usize,
@@ -70,7 +73,7 @@ impl Libraries {
             };
             canvas.list_row(1 + row, &left, &right, at == self.cursor);
         }
-        canvas.soft_keys(["See", "Run", "Info", "", ""]);
+        canvas.soft_keys(KEYS);
     }
 
     pub fn state(&self) -> State {

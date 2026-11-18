@@ -71,12 +71,15 @@ fn a_long_title_is_cut_short_of_its_status() {
 #[test]
 fn every_used_soft_key_is_its_own_inverted_box_with_the_label_centred_inside() {
     let labels = [
-        ["See", "Run", "Info", "", ""],
-        ["See", "Find", "Kind", "Try", ""],
-        ["Hide", "Dist", "Why", "Try", ""],
-        ["Hide", "Up", "Thm", "", ""],
+        ["Open", "Run", "Info", "", ""],
+        ["Open", "Find", "Kind", "Try", ""],
+        ["Fold", "Dist", "Why", "Try", ""],
+        ["Fold", "Up", "Thm", "", ""],
+        ["Aply", "Hyp", "Auto", "Undo", "Tree"],
+        ["Go", "", "", "Undo", "Tree"],
+        ["Stop", "", "", "", ""],
     ];
-    let font = Font::builtin();
+    let font = Font::keys();
     let slots = [(0, 18), (19, 37), (38, 57), (58, 76), (77, 95)];
     for set in labels {
         let mut canvas = Canvas::default();
