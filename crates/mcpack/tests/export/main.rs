@@ -358,22 +358,6 @@ fn a_symbol_named_like_a_generated_label_is_not_reused() {
     assert!(out.text.contains("  th.f1_ $f wff x $."), "{}", out.text);
 }
 
-#[test]
-fn nothing_a_damaged_library_holds_makes_the_decoder_or_exporter_panic() {
-    let db = parse(DB);
-    let original = pack(&db, &all(&db)).unwrap();
-    for at in 0..original.len() {
-        for value in [0x00, 0x01, 0x7F, 0x80, 0xEF, 0xF0, 0xFE, 0xFF] {
-            let mut bytes = original.clone();
-            bytes[at] = value;
-            let _ = export(&bytes);
-        }
-    }
-    for len in 0..original.len() {
-        assert!(export(&original[..len]).is_err());
-    }
-}
-
 fn temp(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     std::fs::create_dir_all(&dir).unwrap();

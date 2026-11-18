@@ -173,6 +173,9 @@ impl Writer<'_> {
                     dummies.push((var, name.clone()));
                     name
                 }
+                Reference::Invalid(_) => {
+                    return Err(refuse("a proof names a dummy that is not a variable"));
+                }
                 Reference::Assertion(target) if *target < index => {
                     library.assertions[*target].label.clone()
                 }

@@ -19,6 +19,8 @@ pub enum Hypothesis {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reference {
     Dummy(Variable),
+    /// A dummy entry that names no variable, as stored.
+    Invalid(u16),
     Assertion(usize),
 }
 
@@ -142,12 +144,6 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
         Some(&t) if t != 0xFF => name(t),
         _ => Err(ReadError),
     };
-    let dummy = |id: usize| -> Result<Variable, ReadError> {
-        Ok(Variable {
-            name: variable(id)?,
-            typecode: typecode(id)?,
-        })
-    };
     let variables = (constants..symbols)
         .map(|id| {
             Ok(Variable {
@@ -156,6 +152,11 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
             })
         })
         .collect::<Result<Vec<_>, ReadError>>()?;
+
+    let dummy = |id: usize| {
+        let index = id.checked_sub(constants)?;
+        variables.get(index).cloned()
+    };
 
     let mut table = Cursor {
         bytes,
@@ -206,7 +207,8 @@ pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
                 assertion
                     .references
                     .push(match reference.checked_sub(DUMMY as usize) {
-                        Some(var) => Reference::Dummy(dummy(var)?),
+                        Some(var) => dummy(var)
+                            .map_or(Reference::Invalid(reference as u16), Reference::Dummy),
                         None => Reference::Assertion(reference),
                     });
             }

@@ -1,4 +1,7 @@
 use super::*;
+use mcpack::library::{Reference, read};
+use mcpack::manifest::{Manifest, Pin};
+use mcpack::page;
 
 const LABELS: &str = "$c |- wff R $. $v x $. vx $f wff x $.
     one $a |- R $. two $a |- R $. six $a |- R $.";
@@ -253,4 +256,36 @@ fn the_command_names_the_assertion_the_exporter_refuses() {
         )
     );
     assert!(!output.exists());
+}
+
+fn page_renders(bytes: &[u8]) -> bool {
+    let manifest = "name = \"t\"\ntitle = \"T\"\ndescription = \"d\"\nroots = [\"a\"]\n";
+    let pin = Pin {
+        repository: "https://example.org/r".into(),
+        commit: "abc".into(),
+        path: "x.mm".into(),
+        sha256: "0".repeat(64),
+    };
+    page::render(&Manifest::parse(manifest).unwrap(), &pin, bytes).is_ok()
+}
+
+#[test]
+fn an_unused_dummy_entry_that_names_no_variable_is_read_but_not_exported() {
+    let original = packed(REFS);
+    let refs = record(&original, 3).refs;
+    for entry in [0x8000u16, 0x8000 + 300] {
+        let bytes = patched(original.clone(), |b| {
+            b[refs + 2..][..2].copy_from_slice(&entry.to_le_bytes());
+        });
+        check(&bytes).expect("the kernel never looks at an unused entry");
+        assert!(read(&bytes).is_ok(), "{entry:x}");
+        assert!(page_renders(&bytes), "{entry:x}");
+        let library = decode(&bytes).unwrap();
+        assert_eq!(
+            library.assertions[3].references[1],
+            Reference::Invalid(entry)
+        );
+        let why = "a proof names a dummy that is not a variable";
+        assert_eq!(refused(&bytes), assertion_error("th", why));
+    }
 }
