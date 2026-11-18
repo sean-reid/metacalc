@@ -522,6 +522,27 @@ fn an_assertion_with_a_variable_it_has_no_hypothesis_for_is_refused_wherever_it_
 }
 
 #[test]
+fn two_float_hypotheses_cannot_name_one_variable() {
+    let db = parse(DB);
+    let (axiom, dummy) = (number(&db, "ax-m"), number(&db, "dummy"));
+    let mut bytes = pack_all(&db);
+    let hyps = fields(&bytes, axiom).hyps;
+    assert_eq!((bytes[hyps], bytes[hyps + 2]), (0, 0));
+    assert_eq!((bytes[hyps + 4], bytes[hyps + 5]), (1, 4));
+    let x = bytes[hyps + 1];
+    assert_eq!(
+        bytes[hyps + 9],
+        bytes[hyps + 3],
+        "the essential ends in the second variable"
+    );
+    bytes[hyps + 3] = x;
+    bytes[hyps + 9] = x;
+    reseal(&mut bytes);
+    agree(&bytes, axiom, Err(KernelError::BadRecord), "axiom");
+    agree(&bytes, dummy, Err(KernelError::BadRecord), "user");
+}
+
+#[test]
 fn a_mandatory_pair_needs_hypotheses_for_both_variables() {
     let db = parse(DB);
     let (axiom, good) = (number(&db, "ax-d"), number(&db, "good"));
@@ -914,12 +935,21 @@ fn disagreement(
         .then(|| format!("device {init} {got:?}, model {want_init} {want:?}"))
 }
 
-fn sweep(original: &[u8], limits: Limits) -> [usize; 16] {
+fn sweep(original: &[u8], limits: Limits, near: bool) -> [usize; 16] {
     let mut device = Device::new();
     let mut seen = [0; 16];
     let mut runs = 0;
     for at in 8..original.len() {
-        for value in REPLACEMENTS {
+        let neighbours = [
+            original[at].wrapping_add(1),
+            original[at].wrapping_sub(1),
+            2,
+            3,
+            4,
+            5,
+        ];
+        let extra = if near { &neighbours[..] } else { &[] };
+        for &value in REPLACEMENTS.iter().chain(extra) {
             let mut bytes = original.to_vec();
             bytes[at] = value;
             reseal(&mut bytes);
@@ -937,7 +967,7 @@ fn sweep(original: &[u8], limits: Limits) -> [usize; 16] {
 fn no_single_byte_change_makes_the_kernel_disagree_with_the_model() {
     let db = parse(DB);
     let bytes = pack_all(&db);
-    let seen = sweep(&bytes, ASKED_UNBOUNDED);
+    let seen = sweep(&bytes, ASKED_UNBOUNDED, true);
     for code in (0..=12).filter(|&code| code != 3 && code != 5) {
         assert!(seen[code] > 0, "no mutation gave status {code}");
     }
@@ -947,7 +977,7 @@ fn no_single_byte_change_makes_the_kernel_disagree_with_the_model() {
         saved_syms: 4,
         saved_entries: 1,
     };
-    let seen = sweep(&bytes, tight);
+    let seen = sweep(&bytes, tight, false);
     assert!(seen[5] > 0, "no mutation ran out of memory");
 }
 
@@ -955,7 +985,7 @@ fn no_single_byte_change_makes_the_kernel_disagree_with_the_model() {
 fn no_single_byte_change_to_a_proof_library_makes_the_kernel_disagree() {
     for name in ["demo0.mm", "miu.mm"] {
         let bytes = pack_all(&corpus(name));
-        sweep(&bytes, ASKED_UNBOUNDED);
+        sweep(&bytes, ASKED_UNBOUNDED, false);
     }
 }
 
