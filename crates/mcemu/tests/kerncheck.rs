@@ -203,19 +203,18 @@ fn press_in_proof(bytes: &[u8], nth: usize) -> (bool, Rig) {
     let proofs = label("VERIFY_BODY")..label("KERNEL_CRC_BEGIN");
     let on_down = label("KD_ON_SEEN");
     let mut rig = Rig::new(bytes, Speed::Mhz15);
-    let mut pc = rig.run_until_trace_has("\rchk 00000/", 5_000);
+    rig.run_until_trace_has("\rchk 00000/", 5_000);
     let mut seen = 0;
     while seen < nth {
-        let run = rig.m.run(pc, 40);
+        let run = rig.m.resume(40);
         assert_eq!(run.stop, Stop::Limit, "the run ended before a proof step");
-        pc = rig.m.pc();
-        seen += usize::from(proofs.contains(&pc));
+        seen += usize::from(proofs.contains(&rig.m.pc()));
     }
     rig.m.press_key(Machine::KEY_ON);
     let mut driver_looked = false;
     for n in 0..MAX_STEPS {
-        let run = rig.m.run(pc, 40);
-        pc = rig.m.pc();
+        let run = rig.m.resume(40);
+        let pc = rig.m.pc();
         driver_looked |= pc == on_down;
         if rig.in_wait() {
             assert!(rig.finish(label("ON_RELEASE_AND_CLEAR"), 1) >= 1);
@@ -227,7 +226,10 @@ fn press_in_proof(bytes: &[u8], nth: usize) -> (bool, Rig) {
             "the routine ended without entering the wait, at pc {pc:04x} after {n} steps"
         );
     }
-    panic!("no wait after {MAX_STEPS} steps of 40 T-states, at pc {pc:04x}");
+    panic!(
+        "no wait after {MAX_STEPS} steps of 40 T-states, at pc {:04x}",
+        rig.m.pc()
+    );
 }
 
 /// The most 40 T-state steps `press_in_proof` takes after the press: one call of the kernel is at

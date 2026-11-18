@@ -234,14 +234,14 @@ fn the_shell_exits_with_its_marks_made_and_the_ports_it_had() {
 #[test]
 fn the_wait_loop_enables_interrupts_on_every_pass() {
     let app = shell();
-    // _GetCSC returns with interrupts off, as _PutC does: cp $FF becomes di, nop at its return.
+    // _GetCSC returns with interrupts off, as _PutC does: the ei before its ret becomes di.
     let mut rom = STUB_ROM.to_vec();
-    let tail = [0x21, 0x1A, 0xA1, 0xFE, 0xFF, 0xC9];
+    let tail = [0x21, 0x1A, 0xA1, 0xFE, 0xFF, 0xFB, 0xC9];
     let at: Vec<usize> = (0..rom.len() - tail.len())
         .filter(|&i| rom[i..i + tail.len()] == tail)
         .collect();
     assert_eq!(at.len(), 1, "the stub's _GetCSC return");
-    rom[at[0] + 3..at[0] + 5].copy_from_slice(&[0xF3, 0x00]);
+    rom[at[0] + 5] = 0xF3;
     let mut m = Machine::new(&rom).unwrap();
     m.install_app(&app, STUB_BASE).unwrap();
     m.launch(STUB_BASE).unwrap();

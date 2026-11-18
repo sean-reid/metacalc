@@ -1,10 +1,22 @@
 #include "equates.inc"
 
 .org ENTRY
+#ifdef IM1
+	im 1
+#endif
+#ifdef WAIT
+	ei
+	ld b, WAIT
+waiting:
+	halt
+	djnz waiting
+	di
+#endif
 #ifdef JUMP
 	bjump(SERVICE)
 #else
 	bcall(SERVICE)
 #endif
 	ld (RESULT), a
+	di
 	halt

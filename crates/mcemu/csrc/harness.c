@@ -8,8 +8,7 @@
 
 #include "scancodes.h"
 #include "tilem.h"
-
-static void elapsed_add(TilemCalc *calc);
+#include "xz/xz.h"
 
 void *tilem_malloc(size_t s) { void *p = malloc(s); if (!p) abort(); return p; }
 void *tilem_malloc0(size_t s) { void *p = calloc(1, s); if (!p) abort(); return p; }
@@ -62,6 +61,175 @@ static int halt_stops(TilemCalc *calc, dword op, void *data)
 	return !calc->z80.r.iff1 || (uint16_t)(calc->z80.r.pc.w.l - 1) < STUB_END;
 }
 
+/* The calculator has one spare RAM page for 82h to 87h; the core models six. */
+#define SPARE_FIRST 0x82
+#define SPARE_LAST 0x87
+
+static void alias_spare_pages(TilemCalc *calc)
+{
+	int i;
+
+	for (i = 1; i < 4; i++)
+		if (calc->mempagemap[i] > SPARE_FIRST && calc->mempagemap[i] <= SPARE_LAST)
+			calc->mempagemap[i] = SPARE_FIRST;
+}
+
+/* The core holds the LCD busy for a fixed count of CPU clocks, 50 at 6 MHz. The controller takes a fixed time, so the count scales with the clock. */
+#define LCD_BUSY_BASE_KHZ 6000
+
+static dword lcd_busy_expiry(TilemCalc *calc)
+{
+	if (!calc->lcd.busy)
+		return 0;
+	return calc->z80.clock + tilem_z80_get_timer_clocks(calc, TILEM_TIMER_LCD_DELAY);
+}
+
+static void scale_lcd_busy(TilemCalc *calc, dword before)
+{
+	dword after = lcd_busy_expiry(calc);
+
+	if (after == before || calc->z80.clockspeed == LCD_BUSY_BASE_KHZ)
+		return;
+	tilem_z80_set_timer(calc, TILEM_TIMER_LCD_DELAY,
+			    (after - calc->z80.clock) * calc->z80.clockspeed / LCD_BUSY_BASE_KHZ, 0, 0);
+}
+
+static int is_lcd_port(dword port)
+{
+	return (port & 0xff & 0xfc) == 0x10;
+}
+
+/* What the harness keeps for each machine: the set of values written to ports 5, 6 and 7 since its
+   last run began, whether the LCD busy bit is forced on, and the emulated time the clock ports
+   report. Found by the core's pointer. */
+typedef struct {
+	TilemCalc *calc;
+	uint8_t banks[3][32];
+	int stuck;
+	double us;
+	dword clock_at_bank;
+} McState;
+
+#define MAX_MACHINES 512
+static McState states[MAX_MACHINES];
+static pthread_mutex_t states_lock = PTHREAD_MUTEX_INITIALIZER;
+static _Thread_local McState *last_state;
+
+static McState *state_of(TilemCalc *calc)
+{
+	int i;
+
+	if (last_state && last_state->calc == calc)
+		return last_state;
+	pthread_mutex_lock(&states_lock);
+	for (i = 0; i < MAX_MACHINES; i++)
+		if (states[i].calc == calc) {
+			last_state = &states[i];
+			break;
+		}
+	pthread_mutex_unlock(&states_lock);
+	return i < MAX_MACHINES ? &states[i] : NULL;
+}
+
+static void claim_state(TilemCalc *calc)
+{
+	int i;
+
+	pthread_mutex_lock(&states_lock);
+	for (i = 0; i < MAX_MACHINES && states[i].calc; i++)
+		;
+	if (i == MAX_MACHINES)
+		abort();
+	memset(&states[i], 0, sizeof states[i]);
+	states[i].calc = calc;
+	states[i].clock_at_bank = calc->z80.clock;
+	pthread_mutex_unlock(&states_lock);
+}
+
+static void release_state(TilemCalc *calc)
+{
+	McState *st = state_of(calc);
+
+	if (st) {
+		pthread_mutex_lock(&states_lock);
+		st->calc = NULL;
+		pthread_mutex_unlock(&states_lock);
+	}
+	last_state = NULL;
+}
+
+/* The emulated time is the machine's own clock converted at the speed in force while it ran, so it
+   is banked before the speed changes and at every run, and the 32-bit clock cannot wrap unseen. */
+static McState *bank_time(TilemCalc *calc)
+{
+	McState *st = state_of(calc);
+
+	if (st) {
+		st->us += (double)(dword)(calc->z80.clock - st->clock_at_bank) * 1000.0 / calc->z80.clockspeed;
+		st->clock_at_bank = calc->z80.clock;
+	}
+	return st;
+}
+
+/* The core's clock ports read time(), renamed mcemu_time in the build. It answers with a fixed start
+   plus the emulated time of the machine running on the thread, so a run does not depend on the
+   host's clock or on how a test slices it. */
+#define CLOCK_START 1700000000
+static _Thread_local TilemCalc *running;
+
+time_t mcemu_time(time_t *t)
+{
+	McState *st = running ? bank_time(running) : NULL;
+	time_t now = CLOCK_START + (time_t)(st ? st->us / 1e6 : 0);
+
+	if (t)
+		*t = now;
+	return now;
+}
+
+static void note_bank_write(TilemCalc *calc, dword port, byte value)
+{
+	McState *st;
+
+	port &= 0xff;
+	if (port >= 5 && port <= 7 && (st = state_of(calc)))
+		st->banks[port - 5][value >> 3] |= 1 << (value & 7);
+}
+
+static void out_aliased(TilemCalc *calc, dword port, byte value)
+{
+	dword before = lcd_busy_expiry(calc);
+
+	if ((port & 0xff) == 0x20)
+		bank_time(calc);
+	note_bank_write(calc, port, value);
+
+	xz_z80_out(calc, port, value);
+	alias_spare_pages(calc);
+	if (is_lcd_port(port))
+		scale_lcd_busy(calc, before);
+}
+
+static byte in_scaled(TilemCalc *calc, dword port)
+{
+	dword before = lcd_busy_expiry(calc);
+	byte value = xz_z80_in(calc, port);
+	McState *st;
+
+	if (is_lcd_port(port))
+		scale_lcd_busy(calc, before);
+	if ((port & 0xfd) == 0x10 && (st = state_of(calc)) && st->stuck)
+		value |= 0x80;
+	return value;
+}
+
+static void out_clocked(TilemCalc *calc, dword port, byte value)
+{
+	if ((port & 0xff) == 0x20)
+		bank_time(calc);
+	xz_z80_out(calc, port, value);
+}
+
 typedef struct {
 	uint16_t af, bc, de, hl, ix, iy, sp, pc, af2, bc2, de2, hl2;
 	uint8_t i, iff1, iff2, im;
@@ -89,84 +257,17 @@ TilemCalc *mcemu_new(const uint8_t *rom, size_t len)
 		tilem_calc_free(calc);
 		return NULL;
 	}
+	claim_state(calc);
+	calc->hw.z80_out = out_aliased;
+	calc->hw.z80_in = in_scaled;
+	alias_spare_pages(calc);
 	calc->z80.emuflags |= TILEM_Z80_BREAK_EXCEPTIONS;
 	tilem_z80_add_breakpoint(calc, TILEM_BREAK_EXECUTE, OP_HALT, OP_HALT, OP_MASK, halt_stops, NULL);
-	elapsed_add(calc);
 	return calc;
 }
 
-/* The core's clock ports read time(), renamed mcemu_time in the build. It answers with a fixed start
-   plus the time the calculator itself has run, read from its own clock at the moment of the read, so
-   a run does not depend on the host's clock or on how a test slices it. The elapsed time is kept per
-   calculator; a read is attributed to the calculator that is running on the thread. */
-#define CLOCK_START 1700000000
-#define MAX_CALCS 256
-
-typedef struct {
-	TilemCalc *calc;
-	double us;
-	dword last;
-} Elapsed;
-
-static Elapsed elapsed_of[MAX_CALCS];
-static pthread_mutex_t elapsed_lock = PTHREAD_MUTEX_INITIALIZER;
-static _Thread_local TilemCalc *running;
-
-static void elapsed_add(TilemCalc *calc)
-{
-	int i;
-
-	pthread_mutex_lock(&elapsed_lock);
-	for (i = 0; i < MAX_CALCS; i++) {
-		if (!elapsed_of[i].calc) {
-			elapsed_of[i].calc = calc;
-			elapsed_of[i].us = 0;
-			elapsed_of[i].last = calc->z80.clock;
-			break;
-		}
-	}
-	pthread_mutex_unlock(&elapsed_lock);
-	if (i == MAX_CALCS)
-		abort();
-}
-
-static void elapsed_drop(TilemCalc *calc)
-{
-	int i;
-
-	pthread_mutex_lock(&elapsed_lock);
-	for (i = 0; i < MAX_CALCS; i++)
-		if (elapsed_of[i].calc == calc)
-			elapsed_of[i].calc = NULL;
-	pthread_mutex_unlock(&elapsed_lock);
-}
-
-time_t mcemu_time(time_t *t)
-{
-	TilemCalc *calc = running;
-	double us = 0;
-	int i;
-
-	if (calc) {
-		pthread_mutex_lock(&elapsed_lock);
-		for (i = 0; i < MAX_CALCS; i++) {
-			Elapsed *e = &elapsed_of[i];
-
-			if (e->calc != calc)
-				continue;
-			e->us += (double)(dword)(calc->z80.clock - e->last) * 1000.0 / calc->z80.clockspeed;
-			e->last = calc->z80.clock;
-			us = e->us;
-			break;
-		}
-		pthread_mutex_unlock(&elapsed_lock);
-	}
-	if (t)
-		*t = CLOCK_START + (time_t)(us / 1e6);
-	return CLOCK_START + (time_t)(us / 1e6);
-}
-
-/* A calculator that boots a real OS image from reset, with no stub entry and no HALT stop. */
+/* A calculator that boots a real OS image from reset, with no stub entry and no HALT stop. An
+   exception ends the run. */
 TilemCalc *mcemu_new_os(const uint8_t *rom, size_t len)
 {
 	TilemCalc *calc = tilem_calc_new(TILEM_CALC_TI84P_SE);
@@ -181,8 +282,9 @@ TilemCalc *mcemu_new_os(const uint8_t *rom, size_t len)
 		return NULL;
 	}
 	tilem_calc_reset(calc);
+	claim_state(calc);
+	calc->hw.z80_out = out_clocked;
 	calc->z80.emuflags |= TILEM_Z80_BREAK_EXCEPTIONS;
-	elapsed_add(calc);
 	return calc;
 }
 
@@ -190,18 +292,13 @@ TilemCalc *mcemu_new_os(const uint8_t *rom, size_t len)
 uint32_t mcemu_run_time(TilemCalc *calc, int microseconds)
 {
 	running = calc;
+	bank_time(calc);
 	return tilem_z80_run_time(calc, microseconds, NULL);
-}
-
-uint8_t mcemu_in(TilemCalc *calc, uint8_t port)
-{
-	running = calc;
-	return calc->hw.z80_in(calc, port);
 }
 
 void mcemu_free(TilemCalc *calc)
 {
-	elapsed_drop(calc);
+	release_state(calc);
 	tilem_calc_free(calc);
 }
 uint8_t *mcemu_mem(TilemCalc *calc) { return calc->mem; }
@@ -213,6 +310,14 @@ void mcemu_out(TilemCalc *calc, uint8_t port, uint8_t value)
 	running = calc;
 	calc->hw.z80_out(calc, port, value);
 }
+
+uint8_t mcemu_in(TilemCalc *calc, uint8_t port)
+{
+	running = calc;
+	return calc->hw.z80_in(calc, port);
+}
+
+int mcemu_khz(const TilemCalc *calc) { return calc->z80.clockspeed; }
 /* Writes a port with the flash protection open, as the OS does for the protected ones. */
 void mcemu_out_unlocked(TilemCalc *calc, uint8_t port, uint8_t value)
 {
@@ -260,6 +365,8 @@ uint32_t mcemu_run(TilemCalc *calc, uint16_t pc, int limit, uint32_t *elapsed)
 	uint32_t reason;
 
 	running = calc;
+	bank_time(calc);
+	memset(state_of(calc)->banks, 0, sizeof state_of(calc)->banks);
 	calc->z80.r.iff1 = calc->z80.r.iff2 = 0;
 	calc->z80.halted = 0;
 	calc->z80.r.pc.d = pc;
@@ -281,11 +388,18 @@ uint32_t mcemu_resume(TilemCalc *calc, int limit, uint32_t *elapsed)
 	uint32_t reason;
 
 	running = calc;
+	bank_time(calc);
+	memset(state_of(calc)->banks, 0, sizeof state_of(calc)->banks);
 	reason = tilem_z80_run(calc, limit, NULL);
-
 	*elapsed = calc->z80.clock - start;
 	return reason;
 }
+
+/* Copies the bit sets of values written to ports 5, 6 and 7 since this machine's last run or resume began. */
+void mcemu_banks(TilemCalc *calc, uint8_t out[3][32]) { memcpy(out, state_of(calc)->banks, sizeof state_of(calc)->banks); }
+
+/* Forces bit 7 of the LCD status port on, as a controller that never finishes would. */
+void mcemu_stick_lcd_busy(TilemCalc *calc, int on) { state_of(calc)->stuck = on; }
 
 /* One byte per pixel, 1 when lit; the core leaves the frame untouched while the LCD is off, so it starts zeroed. Returns 0 on success. */
 int mcemu_lcd(TilemCalc *calc, uint8_t *out, int width, int height)

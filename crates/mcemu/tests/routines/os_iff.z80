@@ -1,0 +1,17 @@
+#include "equates.inc"
+
+; Calls SERVICE with interrupts on or off, as ON says, and records the flags LD A,I leaves:
+; bit 2 is the interrupt state the service returned with.
+.org ENTRY
+#ifdef ON
+	ei
+#else
+	di
+#endif
+	bcall(SERVICE)
+	ld a, i
+	push af
+	pop hl
+	ld (RESULT), hl
+	di
+	halt
