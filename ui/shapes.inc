@@ -1,6 +1,7 @@
 ; Shapes: clear, rectangles, rows and the margin marker.
 
-; ui_clear   zeroes the frame with the stack, interrupts off, and restores the interrupt state
+; ui_clear   zeroes the frame with the stack, so interrupts go off for the call and are restored;
+;            the frame must not end above $FFFF
 ;            destroys AF BC DE HL
 ui_clear:
 	ld a,i
@@ -49,10 +50,12 @@ ui_row_addr:
 	add hl,de
 	ret
 
-; ui_marker   in:  A = text row 0 to 7
+; ui_marker   in:  A = text row 0 to 7, nothing drawn for a larger one
 ;             sets columns 0 and 1 on the seven scanlines below the row's blank one
 ;             destroys AF BC DE HL
 ui_marker:
+	cp UI_TEXT_ROWS
+	ret nc
 	call ui_row_addr
 	ld bc,UI_STRIDE
 	ld a,7
@@ -64,10 +67,12 @@ mk_loop:
 	jr nz,mk_loop
 	ret
 
-; ui_invert_row   in:  A = text row 0 to 7
+; ui_invert_row   in:  A = text row 0 to 7, nothing drawn for a larger one
 ;                 flips the eight scanlines of the row
 ;                 destroys AF BC DE HL
 ui_invert_row:
+	cp UI_TEXT_ROWS
+	ret nc
 	call ui_row_addr
 	ld de,-UI_STRIDE
 	add hl,de

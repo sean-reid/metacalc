@@ -1,9 +1,11 @@
 UI_WIDTH                .equ 96
 UI_HEIGHT               .equ 64
 UI_ROW                  .equ 8
+UI_TEXT_ROWS            .equ 8
 UI_STRIDE               .equ 12
 UI_MARGIN               .equ 1
 UI_SOFT_ROW             .equ 7
+UI_BUSY_LIMIT           .equ 255
 
 #ifndef UI_FRAME
 UI_FRAME                .equ $9340
@@ -12,12 +14,12 @@ UI_FRAME                .equ $9340
 UI_VARS                 .equ $9882
 #endif
 UI_FRAME_SIZE           .equ UI_STRIDE*UI_HEIGHT
-UI_VARS_SIZE            .equ $19
-#if (UI_FRAME + UI_FRAME_SIZE) > $10000
- .error "UI_FRAME must leave 768 bytes"
+UI_VARS_SIZE            .equ $1A
+#if (UI_FRAME + UI_FRAME_SIZE) > $FFFF
+ .error "UI_FRAME must end at or below $FFFF"
 #endif
 #if (UI_VARS + UI_VARS_SIZE) > $10000
- .error "UI_VARS must leave 25 bytes"
+ .error "UI_VARS must leave 26 bytes"
 #endif
 #if UI_FRAME < (UI_VARS + UI_VARS_SIZE)
 #if UI_VARS < (UI_FRAME + UI_FRAME_SIZE)
@@ -42,6 +44,7 @@ ui_kn                   .equ UI_VARS+$12
 ui_fontp                .equ UI_VARS+$14
 ui_sp                   .equ UI_VARS+$16
 ui_iff                  .equ UI_VARS+$18
+ui_blk                  .equ UI_VARS+$19
 
 SLOT                    .equ 8
 SPACE_CODE              .equ 1

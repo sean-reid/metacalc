@@ -136,17 +136,21 @@ fn compile_tilem() {
     println!("cargo:rerun-if-changed=csrc/harness.c");
 }
 
-fn spasm_ok(src: &Path, out: &Path, defines: &[&str], args: &[&str]) -> bool {
+/// Runs spasm; an error holds the assembler's own words.
+fn spasm_try(src: &Path, out: &Path, defines: &[&str], args: &[&str]) -> Result<(), String> {
     let mut cmd = Command::new(env::var_os("SPASM").unwrap_or_else(|| "spasm".into()));
     for d in defines {
         cmd.arg(format!("-D{d}"));
     }
-    cmd.args(args)
-        .arg("-N")
-        .arg(src)
-        .arg(out)
-        .output()
-        .is_ok_and(|o| o.status.success())
+    match cmd.args(args).arg("-N").arg(src).arg(out).output() {
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) => Err(String::from_utf8_lossy(&o.stdout).trim().replace('\n', " ")),
+        Err(e) => Err(format!("cannot run spasm (set SPASM to its path): {e}")),
+    }
+}
+
+fn spasm_ok(src: &Path, out: &Path, defines: &[&str], args: &[&str]) -> bool {
+    spasm_try(src, out, defines, args).is_ok()
 }
 
 fn spasm(src: &Path, out: &Path, defines: &[&str], args: &[&str]) {
@@ -293,7 +297,7 @@ fn assemble_ui(out: &Path) {
     fs::write(font_dir.join("font.inc"), table.include("ui_font")).unwrap();
     let include = dir.to_str().unwrap();
     let assemble = |defines: &[&str], output: &Path| {
-        spasm_ok(
+        spasm_try(
             &dir.join("ui.z80"),
             output,
             defines,
@@ -304,12 +308,14 @@ fn assemble_ui(out: &Path) {
         ("ui_test", &[][..]),
         ("ui_moved", &["UI_FRAME=$A000", "UI_VARS=$A500"][..]),
     ] {
-        if !assemble(defines, &out.join(format!("{name}.bin"))) {
-            fail(&format!("spasm failed on the canvas image {name}"));
+        if let Err(why) = assemble(defines, &out.join(format!("{name}.bin"))) {
+            fail(&format!("spasm failed on the canvas image {name}: {why}"));
         }
     }
-    assert!(
-        !assemble(&["UI_VARS=$9400"], &out.join("ui_probe.bin")),
-        "overlapping canvas blocks assembled"
-    );
+    match assemble(&["UI_VARS=$9400"], &out.join("ui_probe.bin")) {
+        Err(why) if why.contains("overlap") => {}
+        other => fail(&format!(
+            "overlapping canvas blocks gave {other:?}, not an overlap error"
+        )),
+    }
 }

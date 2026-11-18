@@ -108,3 +108,31 @@ fn a_font_without_a_question_mark_is_refused() {
     let font = Font::parse("height 7\n\nglyph a\n#\n#\n#\n#\n#\n#\n#\n", "").unwrap();
     assert!(Table::new(&font).is_err());
 }
+
+/// A font of `n` glyphs in seven rows, one of them the question mark.
+fn font_of(n: usize) -> Font {
+    let mut src = String::from("height 7\n\nglyph question\n#\n#\n#\n#\n#\n#\n#\n");
+    for i in 1..n {
+        src += &format!("\nglyph g{i:03}\n#\n#\n#\n#\n#\n#\n#\n");
+    }
+    Font::parse(&src, "").unwrap()
+}
+
+#[test]
+fn a_table_of_255_slots_is_accepted_and_256_refused() {
+    let table = Table::new(&font_of(254)).unwrap();
+    assert_eq!(table.slots().len(), 255);
+    assert_eq!(table.glyph("question"), Some(255));
+    assert!(Table::new(&font_of(255)).is_err());
+}
+
+#[test]
+fn a_wide_last_glyph_that_needs_a_256th_slot_is_refused() {
+    let mut src = String::from("height 7\n\nglyph question\n#\n#\n#\n#\n#\n#\n#\n");
+    for i in 1..254 {
+        src += &format!("\nglyph g{i:03}\n#\n#\n#\n#\n#\n#\n#\n");
+    }
+    src += "\nglyph zwide\n#########\n#########\n#########\n#########\n#########\n#########\n#########\n";
+    let font = Font::parse(&src, "").unwrap();
+    assert!(Table::new(&font).is_err());
+}

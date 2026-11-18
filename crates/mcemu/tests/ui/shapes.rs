@@ -151,3 +151,49 @@ fn list_rows_selected_and_not() {
         }
     }
 }
+
+const OFF_ROWS: [usize; 5] = [8, 9, 85, 86, 255];
+
+#[test]
+fn a_row_below_the_frame_draws_nothing_and_touches_no_ram() {
+    for row in OFF_ROWS {
+        agree(&format!("rows {row}"), |c| {
+            filled(c);
+            c.text(3, row, "below the frame");
+            c.text_right(row, "right");
+            c.text_centered(row, "centred");
+            c.marker(row);
+            c.invert_row(row);
+            c.list_row(row, "left", "right", true);
+            c.list_row(row, "left", "right", false);
+            c.title("kept", "kept");
+        });
+    }
+}
+
+#[test]
+fn text_below_the_frame_still_returns_the_x_it_advanced_to() {
+    let texts = [
+        "",
+        "a",
+        "a b",
+        "wider than the screen by a long way, really",
+    ];
+    let mut script = Vec::new();
+    let mut want = Vec::new();
+    for row in OFF_ROWS {
+        for text in texts {
+            for x in [0usize, 7, 90, 200] {
+                script.push(Op::Text {
+                    x,
+                    row,
+                    codes: table().encode(text),
+                });
+                want.push(x + mcui::canvas::text_width(text));
+            }
+        }
+    }
+    let got = run(REAL, &script);
+    let got: Vec<usize> = got.results.iter().map(|&r| usize::from(r)).collect();
+    assert_eq!(got, want);
+}

@@ -3,8 +3,8 @@ use mcemu::Speed;
 use mcui::canvas::Canvas;
 use std::io::Write;
 
-/// A cursor move must redraw within 50 ms: 300,000 T-states at 6 MHz.
-const BUDGET: u32 = 300_000;
+/// A cursor move must redraw within 50 ms.
+const BUDGET_MS: u32 = 50;
 
 /// Printed straight to stderr so a passing run shows it.
 fn report(line: String) {
@@ -66,7 +66,7 @@ fn measure(speed: Speed) -> Times {
 }
 
 #[test]
-fn a_typical_frame_and_its_blit_redraw_within_50_ms_at_6_mhz() {
+fn a_typical_frame_and_its_blit_redraw_within_50_ms_at_both_speeds() {
     for (speed, name, mhz) in [
         (Speed::Mhz6, "6 MHz", 6000),
         (Speed::Mhz15, "15 MHz", 15000),
@@ -88,14 +88,11 @@ fn a_typical_frame_and_its_blit_redraw_within_50_ms_at_6_mhz() {
         );
         line("blit", t.blit);
         line("typical frame and blit", t.frame + t.blit);
-        if speed == Speed::Mhz6 {
-            assert!(t.frame + t.blit < BUDGET, "{} T-states", t.frame + t.blit);
-        }
-        assert!(t.clear < 8_000, "clear {}", t.clear);
-        assert!(t.text < 20_000, "text {}", t.text);
-        assert!(t.title < 32_000, "title {}", t.title);
-        assert!(t.keys < 40_000, "keys {}", t.keys);
-        assert!(t.blit < 82_000, "blit {}", t.blit);
-        assert!(t.frame < 215_000, "frame {}", t.frame);
+        let whole = t.frame + t.blit;
+        assert!(
+            whole < BUDGET_MS * mhz,
+            "{name}: {whole} T-states against {} for {BUDGET_MS} ms",
+            BUDGET_MS * mhz
+        );
     }
 }

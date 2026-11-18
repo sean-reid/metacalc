@@ -97,6 +97,11 @@ pub enum Op {
     Ink(Bitmap),
 }
 
+/// `value` as a byte; a model value that does not fit is a bug in the test.
+pub fn byte(value: usize) -> u8 {
+    u8::try_from(value).unwrap_or_else(|_| panic!("{value} does not fit a byte"))
+}
+
 pub fn ops(calls: &[Call]) -> Vec<Op> {
     let t = table();
     let enc = |s: &str| t.encode(s);
@@ -122,12 +127,12 @@ pub fn ops(calls: &[Call]) -> Vec<Op> {
                 width,
                 height,
             } => Op::Invert {
-                x: *x as u8,
-                y: *y as u8,
-                w: *width as u8,
-                h: *height as u8,
+                x: byte(*x),
+                y: byte(*y),
+                w: byte(*width),
+                h: byte(*height),
             },
-            Call::InvertRow(row) => Op::InvertRow(*row as u8),
+            Call::InvertRow(row) => Op::InvertRow(byte(*row)),
             Call::Title { left, right } => Op::Title {
                 left: enc(left),
                 right: enc(right),
@@ -139,12 +144,12 @@ pub fn ops(calls: &[Call]) -> Vec<Op> {
                 right,
                 selected,
             } => Op::List {
-                row: *row as u8,
+                row: byte(*row),
                 left: enc(left),
                 right: enc(right),
                 selected: *selected,
             },
-            Call::Marker(row) => Op::Marker(*row as u8),
+            Call::Marker(row) => Op::Marker(byte(*row)),
             Call::Ink(layer) => Op::Ink(layer.clone()),
         })
         .collect()
@@ -160,7 +165,11 @@ struct Script {
 
 impl Script {
     fn put(&mut self, bytes: &[u8]) -> u16 {
-        let at = DATA + self.data.len() as u16;
+        let at = DATA + u16::try_from(self.data.len()).expect("data fits 16 bits");
+        assert!(
+            usize::from(at) + bytes.len() <= usize::from(RESULTS),
+            "the data reaches the results area"
+        );
         self.data.extend_from_slice(bytes);
         at
     }
@@ -189,14 +198,14 @@ impl Script {
             Op::Text { x, row, codes } => {
                 let s = self.put(codes);
                 self.word(&[0x21], s);
-                self.word(&[0x11], *x as u16);
-                self.code.extend_from_slice(&[0x06, *row as u8]);
+                self.word(&[0x11], u16::try_from(*x).expect("x fits 16 bits"));
+                self.code.extend_from_slice(&[0x06, byte(*row)]);
                 self.run("ui_text", &[0xED, 0x53], call);
             }
             Op::Right { row, codes } | Op::Centered { row, codes } => {
                 let s = self.put(codes);
                 self.word(&[0x21], s);
-                self.code.extend_from_slice(&[0x06, *row as u8]);
+                self.code.extend_from_slice(&[0x06, byte(*row)]);
                 let name = if matches!(op, Op::Right { .. }) {
                     "ui_text_right"
                 } else {
@@ -293,14 +302,13 @@ pub struct Outcome {
     pub results: Vec<u16>,
     pub tstates: u32,
     pub lcd: Vec<bool>,
-    /// RAM from 0x100 below the lower block to 0x100 above the upper one, with both blocks left
-    /// out, filled with MARK before the run.
-    pub around: Vec<u8>,
 }
 
 pub const MARK: u8 = 0xA5;
 const FRAME_LEN: u16 = 768;
-const VARS_LEN: u16 = 0x19;
+const VARS_LEN: u16 = 0x1A;
+/// RAM guarded on each side of the two blocks.
+const GUARD: u16 = 0x200;
 
 /// Flash fetch and RAM write wait states and LCD delays as TI-OS programs them.
 pub fn os_ports(m: &mut Machine) {
@@ -344,8 +352,8 @@ pub fn run_code(
     m.out_port(0x10, 0x03);
     m.load_flash(FLASH_TEST_PAGE, 0, code);
     let (lo, hi) = (
-        image.frame.min(image.vars) - 0x100,
-        image.frame.max(image.vars) + 0x120,
+        image.frame.min(image.vars) - GUARD,
+        (image.frame + FRAME_LEN).max(image.vars + VARS_LEN) + GUARD,
     );
     m.load_ram(lo, &vec![MARK; usize::from(hi - lo)]);
     m.load_ram(SCRIPT, &script.code);
@@ -374,11 +382,13 @@ pub fn run_code(
         (image.frame..image.frame + FRAME_LEN).contains(&a)
             || (image.vars..image.vars + VARS_LEN).contains(&a)
     };
-    let around: Vec<u8> = (lo..hi)
-        .zip(m.read_ram(lo, usize::from(hi - lo)))
-        .filter(|&(a, _)| !in_block(a))
-        .map(|(_, b)| b)
-        .collect();
+    let guarded = m.read_ram(lo, usize::from(hi - lo));
+    for (at, &b) in (lo..hi).zip(&guarded) {
+        assert!(
+            in_block(at) || b == MARK,
+            "RAM outside the two blocks changed at {at:04X}"
+        );
+    }
     let lcd = m.lcd();
     let lcd = (0..LCD_HEIGHT)
         .flat_map(|y| (0..LCD_WIDTH).map(move |x| (x, y)))
@@ -389,7 +399,6 @@ pub fn run_code(
         results,
         tstates: run.tstates,
         lcd,
-        around,
     }
 }
 

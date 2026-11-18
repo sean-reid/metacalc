@@ -63,7 +63,7 @@ impl Table {
                 slots.push(extra);
             }
         }
-        if slots.len() > 254 {
+        if slots.len() > 255 {
             return Err(format!("{} slots do not fit one-byte codes", slots.len()));
         }
         let question = *codes

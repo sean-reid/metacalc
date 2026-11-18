@@ -13,7 +13,8 @@ is written to OUT-1.png, OUT-2.png and so on. Prints each file written.
 
 usage: mcglyph z80 OUT.inc
 Writes the font as an assembler include for the Z80 canvas: the glyph table at the label ui_font,
-UI_FONT_GLYPHS and UI_FONT_CH_<hex> for the code of each character. The command is the first argument and no -o follows it.";
+UI_FONT_GLYPHS and UI_FONT_CH_<hex> for the code of each character. The command takes exactly the output path; with -o
+anywhere, z80 is an ordinary token to draw.";
 
 fn main() -> ExitCode {
     match run(env::args().skip(1).collect()) {

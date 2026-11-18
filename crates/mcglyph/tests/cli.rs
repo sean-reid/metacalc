@@ -102,3 +102,19 @@ fn z80_writes_the_glyph_table_include() {
     assert_eq!(run(&["z80"]).status.code(), Some(2));
     assert_eq!(run(&["z80", "a", "b"]).status.code(), Some(2));
 }
+
+#[test]
+fn a_token_named_z80_is_still_a_token() {
+    let dir = temp("cli-z80-token");
+    let png = dir.join("a.png");
+    for args in [
+        vec!["-o", png.to_str().unwrap(), "z80"],
+        vec!["z80", "-o", png.to_str().unwrap()],
+        vec!["-o", png.to_str().unwrap(), "ph", "z80"],
+    ] {
+        let out = run(&args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.contains("no glyphs for token z80"), "{args:?}: {err}");
+    }
+}

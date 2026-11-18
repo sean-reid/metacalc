@@ -87,7 +87,8 @@ tc_x:
 	pop bc
 	pop hl
 
-; ui_text   in:  HL = string, DE = x in pixels, B = text row 0 to 7
+; ui_text   in:  HL = string, DE = x in pixels, B = text row 0 to 7; a row of 8 or more draws
+;           nothing
 ;           out: DE = x after the last glyph, DE = x for an empty string
 ;           ORs the glyphs into the frame, one blank column between them, and drops pixels
 ;           right of column 95. Destroys AF BC HL.
@@ -95,6 +96,9 @@ ui_text:
 	ld a,(hl)
 	or a
 	ret z
+	ld a,b
+	cp UI_TEXT_ROWS
+	jp nc,ut_off
 	push hl
 	push de
 	ld a,b
@@ -189,6 +193,15 @@ ut_after:
 	pop de
 	pop hl
 	jr ut_loop
+
+; A row below the frame draws nothing and still returns the x after the string.
+ut_off:
+	push de
+	call ui_text_width
+	pop de
+	add hl,de
+	ex de,hl
+	ret
 
 ; A glyph that is nine wide or spills out of the last byte of a row: shifts each row as a 16 bit
 ; value and leaves the second byte alone in the last column.
