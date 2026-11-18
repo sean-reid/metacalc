@@ -57,6 +57,15 @@ pub struct Status {
     pub violations: Vec<Violation>,
     /// Pairs the session added for dummy variables.
     pub added_dv: Vec<(Sym, Sym)>,
+    /// The proof could not be walked for its disjoint pairs; the violations are incomplete.
+    pub corrupt: bool,
+}
+
+impl Status {
+    /// No violation and a proof that could be checked.
+    pub fn clean(&self) -> bool {
+        self.violations.is_empty() && !self.corrupt
+    }
 }
 
 /// Sizes of the structures a session holds, in entries.
@@ -93,6 +102,7 @@ pub struct Session<'a> {
     pub(crate) auto_nodes: usize,
     pub(crate) walks: Cell<usize>,
     pub(crate) visits: Cell<usize>,
+    pub(crate) work: Cell<usize>,
 }
 
 impl<'a> Session<'a> {
@@ -131,6 +141,7 @@ impl<'a> Session<'a> {
             auto_nodes: 0,
             walks: Cell::new(0),
             visits: Cell::new(0),
+            work: Cell::new(0),
         };
         let essentials = stmt
             .frame
@@ -230,19 +241,35 @@ impl<'a> Session<'a> {
         peak
     }
 
-    /// How many times the proof was walked for syntax-axiom pairs and how many terms those walks
-    /// visited.
+    /// How many times the proof was walked for syntax-axiom pairs, how many terms those walks
+    /// visited, and the units of work they and the condition checks did.
     #[doc(hidden)]
-    pub fn syntax_walk_stats(&self) -> (usize, usize) {
-        (self.walks.get(), self.visits.get())
+    pub fn syntax_walk_stats(&self) -> (usize, usize, usize) {
+        (self.walks.get(), self.visits.get(), self.work.get())
     }
 
-    /// The state of the proof. A live session's goal and metavariable ids are always valid, so
-    /// the walk behind the report cannot fail here and the stored pairs alone stand in if it
-    /// does; `export` reports the error.
+    /// Points the first goal's metavariables outside the store, as damaged state would.
+    #[doc(hidden)]
+    pub fn corrupt_metas(&mut self) {
+        if let Some(Goal {
+            state: GoalState::Applied { metas, .. },
+            ..
+        }) = self.goals.first_mut()
+        {
+            *metas = u32::MAX / 2;
+        }
+    }
+
+    /// The state of the proof. When the walk behind the report fails, the stored pairs alone
+    /// stand in and `corrupt` is set, so the proof does not read as clean.
     pub fn status(&self) -> Status {
-        let report = self.dv_report().unwrap_or_else(|_| self.stored_report());
-        self.status_of(&report)
+        match self.dv_report() {
+            Ok(report) => self.status_of(&report),
+            Err(_) => Status {
+                corrupt: true,
+                ..self.status_of(&self.stored_report())
+            },
+        }
     }
 
     pub(crate) fn status_of(&self, report: &Report) -> Status {
@@ -260,6 +287,7 @@ impl<'a> Session<'a> {
             metas: self.store.unbound().collect(),
             violations: report.violations.clone(),
             added_dv: report.added.clone(),
+            corrupt: false,
         }
     }
 

@@ -1,6 +1,6 @@
 use mcpack::mm::{Database, Grammar, Kind, Parsed, StmtId, SyntaxError};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// A database with its grammar and the syntax trees of the assertions read so far.
@@ -45,12 +45,13 @@ impl<'a> Catalog<'a> {
 }
 
 fn has_syntax_dv(db: &Database) -> bool {
-    let typed = |code| {
-        db.stmts
-            .iter()
-            .any(|s| s.kind == Kind::Float && s.expr[0] == code)
-    };
+    let typed: HashSet<_> = db
+        .stmts
+        .iter()
+        .filter(|s| s.kind == Kind::Float)
+        .map(|s| s.expr[0])
+        .collect();
     db.stmts
         .iter()
-        .any(|s| s.kind == Kind::Axiom && !s.frame.dv.is_empty() && typed(s.expr[0]))
+        .any(|s| s.kind == Kind::Axiom && !s.frame.dv.is_empty() && typed.contains(&s.expr[0]))
 }
