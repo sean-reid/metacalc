@@ -497,6 +497,69 @@ fn one_rejected_assertion_leaves_every_statement_a_tree_and_the_list_unflattened
     );
 }
 
+fn notice_title(ui: &mcui::Ui) -> String {
+    match ui.state() {
+        State::Notice { title } => title,
+        other => panic!("not a notice: {other:?}"),
+    }
+}
+
+#[test]
+fn with_one_rejected_assertion_why_reads_the_proof_of_an_unrelated_theorem() {
+    for label in ["a2i", "id", "alid", "syl"] {
+        let mut ui = support::rejected_ui();
+        open(&mut ui, label);
+        ui.press(F3);
+        assert!(
+            matches!(ui.state(), State::Proof { label: ref l, .. } if l == label),
+            "{label}"
+        );
+    }
+}
+
+#[test]
+fn why_on_the_rejected_theorem_says_its_proof_failed() {
+    let mut ui = support::rejected_ui();
+    open(&mut ui, "a1i");
+    ui.press(F3);
+    assert_eq!(notice_title(&ui), "Proof");
+    ui.press(Clear);
+    assert!(matches!(ui.state(), State::Theorem { ref label, .. } if label == "a1i"));
+}
+
+#[test]
+fn try_opens_on_an_unrelated_theorem_and_on_the_rejected_one() {
+    for label in ["a2i", "syl", "a1i"] {
+        let mut ui = support::rejected_ui();
+        open(&mut ui, label);
+        ui.press(F4);
+        assert!(
+            matches!(ui.state(), State::Proving { label: ref l, .. } if l == label),
+            "{label}"
+        );
+    }
+}
+
+#[test]
+fn the_list_title_and_marks_do_not_depend_on_the_rejection() {
+    let (bytes, table) = support::rejected_a1i();
+    let lib = mcui::data::Lib::new(
+        mcui::data::Installed {
+            name: "logic".into(),
+            bytes,
+        },
+        table,
+    )
+    .unwrap();
+    let mark = |label: &str| lib.mark((0..lib.len()).find(|&i| lib.label(i) == label).unwrap());
+    assert_eq!(mark("a1i"), mcui::Mark::Failed);
+    assert_eq!(mark("syl"), mcui::Mark::Resting);
+    assert_eq!(mark("a2i"), mcui::Mark::Checked);
+    let mut ui = support::rejected_ui();
+    press(&mut ui, &[Enter]);
+    assert!(support::title_is(&ui.frame(), "logic", "12/13"));
+}
+
 #[test]
 fn every_key_a_notice_offers_closes_it() {
     for key in [F1, Clear, Enter] {

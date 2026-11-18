@@ -4,7 +4,9 @@
 use crate::expr::{Expr, Shape};
 use crate::status::{Ledger, Mark, Status};
 use mcedit::Catalog;
-use mcpack::library::{self, Assertion, Hypothesis, Kernel, Limits, Part, ReadError, Title, Trees};
+use mcpack::library::{
+    self, Assertion, Hypothesis, Kernel, KernelError, Limits, Part, ReadError, Title, Trees,
+};
 use mcpack::mm::{self, Database, Grammar, Kind, Node, StmtId, Sym, Tree};
 use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
@@ -74,6 +76,8 @@ struct Source {
     ids: Vec<StmtId>,
     index: HashMap<StmtId, usize>,
     grammar: Option<&'static Grammar<'static>>,
+    /// The assertions the kernel rejects, which the database holds with a proof of `?`.
+    rejected: Vec<(String, KernelError)>,
     /// The editor's parsed assertions, kept for as long as the library is.
     catalog: Option<Rc<Catalog<'static>>>,
 }
@@ -245,7 +249,7 @@ impl Lib {
     }
 
     fn load(&self) -> Option<Source> {
-        let text = library::export(self.bytes).ok()?;
+        let library::Export { text, rejected } = library::export_accepted(self.bytes).ok()?;
         let db = mm::parse(text.into_bytes()).ok()?;
         let ids: Vec<StmtId> = (0..db.stmts.len() as StmtId)
             .filter(|&id| db.stmt(id).kind.is_assertion())
@@ -264,6 +268,7 @@ impl Lib {
             ids,
             index,
             grammar,
+            rejected,
             catalog,
         })
     }
@@ -379,6 +384,14 @@ impl Lib {
             return Err("an axiom has no proof");
         }
         let source = self.source().ok_or("the library does not export")?;
+        let label = &self.assertions[i].label;
+        if source
+            .rejected
+            .iter()
+            .any(|(rejected, _)| rejected == label)
+        {
+            return Err("its proof failed");
+        }
         let id = source.ids[i];
         let root = mm::outline(source.db, id, "|-").map_err(|e| match e {
             mm::OutlineError::NotProvable => "it proves a syntax statement",
