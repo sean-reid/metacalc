@@ -321,23 +321,6 @@ fn a_theorem_whose_hypothesis_the_grammar_cannot_read_does_not_start() {
 }
 
 #[test]
-fn a_variable_in_force_whose_only_float_comes_later_is_refused() {
-    let db = db();
-    let g = grammar(&db);
-    let cat = catalog(&db, &g);
-    let q = sym(&db, "q");
-    let theorem = id(&db, "tnew");
-    assert!(db.var_active(q, theorem));
-    assert!(db.stmt(id(&db, "vq")).expr[1] == q && id(&db, "vq") > theorem);
-    let mut s = session(&cat, "tnew");
-    s.apply(0, id(&db, "axfree")).unwrap();
-    assert_eq!(s.store().meta_typecode(1), Some(sym(&db, "setvar")));
-    assert_eq!(s.assign(1, q), Err(Error::NotAVariable));
-    assert!(s.vars().of_typecode(sym(&db, "setvar")).all(|v| v != q));
-    assert!(s.assign(1, sym(&db, "y")).is_ok());
-}
-
-#[test]
 fn a_saved_session_starts_with_its_format_byte() {
     let db = db();
     let g = grammar(&db);

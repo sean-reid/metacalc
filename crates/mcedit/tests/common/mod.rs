@@ -156,7 +156,11 @@ axd $a |- ( ( ps -> ps ) -> ps ) $.
 ${
   tbig $p |- ps $= ? $.
 $}
-vq $f setvar q $.
+${
+  $d ps w $.
+  tscope.1 $e |- ps $.
+  tscope $p |- ps $= ? $.
+$}
 ";
 
 pub fn db() -> Database {

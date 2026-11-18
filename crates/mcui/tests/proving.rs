@@ -223,6 +223,28 @@ fn an_axiom_and_a_syntax_theorem_cannot_be_proved() {
     check(&ui, "proving-notice-syntax");
 }
 
+/// A theorem that negates `ph` 130 times, one level past the depth the editor accepts.
+fn deep_bytes() -> Vec<u8> {
+    let statement = format!("{}ph", "-. ".repeat(130));
+    let proof = format!("wph {}axn", "wn ".repeat(129));
+    let src = format!(
+        "$c -. wff |- $. $v ph $. wph $f wff ph $. wn $a wff -. ph $. axn $a |- -. ph $.
+         deep $p |- {statement} $= {proof} $."
+    );
+    let bytes = support::pack_all(&support::db(&src)).expect("the deep library packs");
+    library::check(&bytes).expect("the kernel accepts the deep library");
+    bytes
+}
+
+#[test]
+fn a_theorem_whose_statement_is_past_the_term_bound_says_so() {
+    let mut ui = ui_over(deep_bytes(), &[], &[]);
+    open(&mut ui, "deep");
+    ui.press(F4);
+    assert_eq!(notice(&ui), "Prove");
+    check(&ui, "proving-notice-too-large");
+}
+
 #[test]
 fn proving_a1i_with_aply_and_hyp() {
     let mut p = Prover::new(proving_bytes(), "a1i");

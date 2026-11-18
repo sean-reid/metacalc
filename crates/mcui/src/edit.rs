@@ -115,7 +115,10 @@ impl Editor {
                 (session, saved.groups.clone())
             }
             None => (
-                Session::start_in(catalog, id).map_err(|_| "it proves a syntax statement")?,
+                Session::start_in(catalog, id).map_err(|e| match e {
+                    Error::TooLarge => "its statement is too large",
+                    _ => "it proves a syntax statement",
+                })?,
                 Vec::new(),
             ),
         };
