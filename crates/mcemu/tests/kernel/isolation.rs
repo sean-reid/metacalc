@@ -81,7 +81,7 @@ pub fn stray_writes(
 
 /// The two gaps TI-OS leaves on the spare page, written out here and not read from the kernel.
 pub fn expected() -> [(u16, usize); 2] {
-    [(0xC500, 0x1200), (0xDF00, 0x2000)]
+    layout_regions("default", DEFAULT)
 }
 
 pub fn run_all(device: &mut Device, count: usize) -> (u8, Vec<u8>) {
@@ -121,36 +121,43 @@ const CORPUS: [&str; 12] = [
 
 #[test]
 fn verifying_a_whole_corpus_library_touches_only_the_two_regions() {
-    for name in CORPUS {
-        let bytes = pack_all(&corpus(name));
-        let (want_init, want) = model_statuses(&bytes, ASKED_UNBOUNDED);
-        let mut device = primed(DEFAULT, &bytes);
-        let (init, got) = run_all(&mut device, want.len());
-        assert_eq!((init, &got), (want_init, &want), "{name}");
-        let stray = stray_writes(&mut device, want.len(), expected());
-        assert!(stray.is_empty(), "{name}: {stray:x?}");
-        let written = device.kram_label("KERNEL_RAM_LOW", 0x1200);
-        assert_ne!(
-            written,
-            (0..0x1200)
-                .map(|at| pattern(SPARE_PAGE, offset(device.label("KERNEL_RAM_LOW")) + at))
-                .collect::<Vec<u8>>(),
-            "{name}: the kernel used its low region"
-        );
+    for (layout, image) in LAYOUTS {
+        for name in CORPUS {
+            let bytes = pack_all(&corpus(name));
+            let (want_init, want) = model_statuses(&bytes, ASKED_UNBOUNDED);
+            let mut device = primed(image, &bytes);
+            let (init, got) = run_all(&mut device, want.len());
+            assert_eq!((init, &got), (want_init, &want), "{name}, {layout}");
+            let stray = stray_writes(&mut device, want.len(), layout_regions(layout, image));
+            assert!(stray.is_empty(), "{name}, {layout}: {stray:x?}");
+            let written = device.kram_label("KERNEL_RAM_LOW", 0x1200);
+            assert_ne!(
+                written,
+                (0..0x1200)
+                    .map(|at| pattern(SPARE_PAGE, offset(device.label("KERNEL_RAM_LOW")) + at))
+                    .collect::<Vec<u8>>(),
+                "{name}: the kernel used its low region"
+            );
+        }
     }
 }
 
 #[test]
 fn every_failure_status_leaves_the_other_pages_alone() {
     let mut seen = std::collections::BTreeSet::new();
-    for (n, (bytes, id)) in failing_libraries().into_iter().enumerate() {
-        let want = model_one(&bytes, id, ASKED_UNBOUNDED);
-        seen.insert(want);
-        let mut device = primed(DEFAULT, &bytes);
-        let (_, got) = run_one(&mut device, id);
-        assert_eq!(got, want, "case {n}");
-        let stray = stray_writes(&mut device, 0, expected());
-        assert!(stray.is_empty(), "case {n}, status {want}: {stray:x?}");
+    for (layout, image) in LAYOUTS {
+        for (n, (bytes, id)) in failing_libraries().into_iter().enumerate() {
+            let want = model_one(&bytes, id, ASKED_UNBOUNDED);
+            seen.insert(want);
+            let mut device = primed(image, &bytes);
+            let (_, got) = run_one(&mut device, id);
+            assert_eq!(got, want, "{layout}, case {n}");
+            let stray = stray_writes(&mut device, 0, layout_regions(layout, image));
+            assert!(
+                stray.is_empty(),
+                "{layout}, case {n}, status {want}: {stray:x?}"
+            );
+        }
     }
     for code in [0, 1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13] {
         assert!(seen.contains(&code), "no case ended in status {code}");
@@ -159,13 +166,15 @@ fn every_failure_status_leaves_the_other_pages_alone() {
 
 #[test]
 fn an_interrupted_call_leaves_the_other_pages_alone() {
-    let (db, bytes) = small_library();
-    let mut device = primed(DEFAULT, &bytes);
-    device.m.press_key(Machine::KEY_ON);
-    let (init, got) = run_one(&mut device, number(&db, "both"));
-    assert_eq!((init, got), (0, label("ST_INTERRUPTED") as u8));
-    let stray = stray_writes(&mut device, 0, expected());
-    assert!(stray.is_empty(), "{stray:x?}");
+    for (layout, image) in LAYOUTS {
+        let (db, bytes) = small_library();
+        let mut device = primed(image, &bytes);
+        device.m.press_key(Machine::KEY_ON);
+        let (init, got) = run_one(&mut device, number(&db, "both"));
+        assert_eq!((init, got), (0, label("ST_INTERRUPTED") as u8));
+        let stray = stray_writes(&mut device, 0, layout_regions(layout, image));
+        assert!(stray.is_empty(), "{layout}: {stray:x?}");
+    }
 }
 
 #[test]
@@ -174,19 +183,21 @@ fn a_checksum_run_touches_only_the_two_regions() {
     let good = padded(&small, 3 * CHUNK + 100);
     let mut wrong = good.clone();
     wrong[CHUNK + 9] ^= 0x40;
-    for (bytes, entry, last) in [
-        (&good, "ENTRY_CRC", 0u8),
-        (&wrong, "ENTRY_CRC", 1),
-        (&good, "ENTRY_CRC_RAW", 1),
-    ] {
-        let mut device = primed(DEFAULT, bytes);
-        device.m.load_ram(device.label("TEST_COUNT"), &[255, 0]);
-        device.run(entry);
-        let calls = usize::from(device.byte("TEST_CRC_CALLS"));
-        let statuses = device.m.read_ram(device.label("TEST_STATUSES"), calls);
-        assert_eq!(statuses.last(), Some(&last), "{entry}");
-        let stray = stray_writes(&mut device, calls, expected());
-        assert!(stray.is_empty(), "{entry}: {stray:x?}");
+    for (layout, image) in LAYOUTS {
+        for (bytes, entry, last) in [
+            (&good, "ENTRY_CRC", 0u8),
+            (&wrong, "ENTRY_CRC", 1),
+            (&good, "ENTRY_CRC_RAW", 1),
+        ] {
+            let mut device = primed(image, bytes);
+            device.m.load_ram(device.label("TEST_COUNT"), &[255, 0]);
+            device.run(entry);
+            let calls = usize::from(device.byte("TEST_CRC_CALLS"));
+            let statuses = device.m.read_ram(device.label("TEST_STATUSES"), calls);
+            assert_eq!(statuses.last(), Some(&last), "{entry}");
+            let stray = stray_writes(&mut device, calls, layout_regions(layout, image));
+            assert!(stray.is_empty(), "{layout}, {entry}: {stray:x?}");
+        }
     }
 }
 
@@ -285,38 +296,56 @@ fn port_5_is_restored_on_every_exit_path() {
     }
 }
 
+/// Whether the test stub's own variables, at $FF00 of the caller's page, lie inside a region.
+/// A caller on the spare page then shares them with the kernel.
+fn stub_variables_in_regions(layout: &str, image: Image) -> bool {
+    layout_regions(layout, image)
+        .iter()
+        .any(|&(start, len)| (usize::from(start)..usize::from(start) + len).contains(&0xFF00))
+}
+
 #[test]
-fn port_5_is_restored_by_the_image_with_moved_regions_too() {
+fn port_5_is_restored_on_every_layout() {
     let (db, small) = small_library();
     let id = number(&db, "both");
-    for initial in [0u8, 1, 3] {
-        let mut device = p5_run(MOVED, &small, id, initial, 1, false);
-        assert_port5_kept(&mut device, initial, 1, "moved");
-        assert_eq!(device.byte("TEST_VERIFY_STATUS"), 0);
+    for (layout, image) in LAYOUTS {
+        for initial in [0u8, 1, 3] {
+            if initial == SPARE_PAGE && stub_variables_in_regions(layout, image) {
+                continue;
+            }
+            let mut device = p5_run(image, &small, id, initial, 1, false);
+            assert_port5_kept(&mut device, initial, 1, layout);
+            assert_eq!(device.byte("TEST_VERIFY_STATUS"), 0, "{layout}");
+        }
     }
 }
 
 #[test]
 fn a_caller_already_on_the_spare_page_keeps_everything_outside_the_regions() {
-    let (db, small) = small_library();
-    let id = number(&db, "both");
-    let mut device = Device::new();
-    device.load(&small);
-    device.m.out_port(5, SPARE_PAGE);
-    fill_outside(device.m.ram_page(SPARE_PAGE), DEFAULT, 0x6B);
-    device.params(ASKED_UNBOUNDED);
-    device
-        .m
-        .load_ram(device.label("TEST_ASSERTION"), &(id as u16).to_le_bytes());
-    device
-        .m
-        .load_ram(device.label("TEST_P5_WANT"), &[SPARE_PAGE, 0, 0]);
-    device.run("ENTRY_P5");
-    assert_eq!(device.byte("TEST_VERIFY_STATUS"), 0);
-    assert_eq!(device.byte("TEST_P5_BAD"), 0);
-    let block = offset(device.label("TEST_BLOCK"));
-    let mut page = device.m.ram_page(SPARE_PAGE).to_vec();
-    page[block..block + 0x30].fill(0x6B);
-    page[0x4000 - STACK_BYTES..].fill(0x6B);
-    assert_eq!(first_outside_not(&page, DEFAULT, 0x6B), None);
+    for (layout, image) in LAYOUTS {
+        if stub_variables_in_regions(layout, image) {
+            continue;
+        }
+        let (db, small) = small_library();
+        let id = number(&db, "both");
+        let mut device = Device::with_image(image);
+        device.load(&small);
+        device.m.out_port(5, SPARE_PAGE);
+        fill_outside(device.m.ram_page(SPARE_PAGE), image, 0x6B);
+        device.params(ASKED_UNBOUNDED);
+        device
+            .m
+            .load_ram(device.label("TEST_ASSERTION"), &(id as u16).to_le_bytes());
+        device
+            .m
+            .load_ram(device.label("TEST_P5_WANT"), &[SPARE_PAGE, 0, 0]);
+        device.run("ENTRY_P5");
+        assert_eq!(device.byte("TEST_VERIFY_STATUS"), 0, "{layout}");
+        assert_eq!(device.byte("TEST_P5_BAD"), 0);
+        let block = offset(device.label("TEST_BLOCK"));
+        let mut page = device.m.ram_page(SPARE_PAGE).to_vec();
+        page[block..block + 0x30].fill(0x6B);
+        page[0x4000 - STACK_BYTES..].fill(0x6B);
+        assert_eq!(first_outside_not(&page, image, 0x6B), None);
+    }
 }

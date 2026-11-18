@@ -10,6 +10,8 @@ mod edges;
 mod isolation;
 #[path = "kernel/launch.rs"]
 mod launch;
+#[path = "kernel/layouts.rs"]
+mod layouts;
 #[path = "kernel/libraries.rs"]
 mod libraries;
 #[path = "kernel/limits.rs"]
@@ -54,9 +56,12 @@ fn the_kernel_agrees_with_the_model_on_every_assertion_of_the_corpus() {
         let db = corpus(name);
         let bytes = pack_all(&db);
         let (want_init, want) = model_statuses(&bytes, ASKED_UNBOUNDED);
-        let mut device = Device::with_library(&bytes);
-        let (init, got, _) = device.verify_all(want.len(), ASKED_UNBOUNDED);
-        assert_eq!((init, &got), (want_init, &want), "{name}");
+        for (layout, image) in LAYOUTS {
+            let mut device = Device::with_image_library(image, &bytes);
+            let (init, got, _) = device.verify_all(want.len(), ASKED_UNBOUNDED);
+            assert_eq!((init, &got), (want_init, &want), "{name}, {layout} layout");
+        }
+        let got = &want;
         let mut reference = Verifier::new(&db);
         for (local, &id) in assertions(&db).iter().enumerate() {
             let stmt = db.stmt(id);
