@@ -208,6 +208,7 @@ mod tests {
             proof::KEYS,
             checking::KEYS,
             proving::KEYS,
+            proving::HYPS_KEYS,
         ];
         sets.push([proving::GO, "", "", proving::KEYS[3], proving::KEYS[4]]);
         for set in sets {

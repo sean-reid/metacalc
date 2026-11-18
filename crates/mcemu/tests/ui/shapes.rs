@@ -121,9 +121,9 @@ fn title_bars_with_short_and_long_texts() {
 
 #[test]
 fn soft_key_rows_with_all_some_and_no_labels() {
-    const LABELS: [&str; 18] = [
+    const LABELS: [&str; 19] = [
         "Open", "Run", "Info", "Find", "Kind", "Try", "Fold", "Dist", "Why", "Up", "Thm", "Aply",
-        "Hyp", "Auto", "Undo", "Tree", "Go", "Stop",
+        "Use", "Hyp", "Auto", "Undo", "Tree", "Go", "Stop",
     ];
     for start in 0..LABELS.len() {
         let five: [&str; 5] = std::array::from_fn(|i| LABELS[(start + i) % LABELS.len()]);
