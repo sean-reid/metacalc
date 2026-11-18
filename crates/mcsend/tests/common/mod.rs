@@ -72,6 +72,10 @@ pub struct Calc {
     pub error_at_content_packet: Option<(usize, u16)>,
     pub disconnect_at_content_packet: Option<usize>,
     pub refuse_rts: Option<u16>,
+    /// The reconnect, counted from 1, that finds the calculator gone.
+    pub fail_reconnect: Option<usize>,
+    /// How many listings after the send still lack the app, as while it installs.
+    pub slow_install: usize,
 }
 
 /// The calculator keeps the sender waiting for the acknowledgement of content packet `at`:
@@ -114,6 +118,8 @@ impl Default for Calc {
             error_at_content_packet: None,
             disconnect_at_content_packet: None,
             refuse_rts: None,
+            fail_reconnect: None,
+            slow_install: 0,
         }
     }
 }
@@ -131,6 +137,9 @@ pub struct Peer {
     unacked: bool,
     negotiated: bool,
     mode_set: bool,
+    deaf: bool,
+    reconnects: usize,
+    listings_after_send: usize,
     vbuf: Vec<u8>,
     content_raw: usize,
     expect_size: Option<usize>,
@@ -140,6 +149,7 @@ pub struct Peer {
     /// The timeout of every `recv` call and of every `send`.
     pub waits: Vec<Duration>,
     pub write_waits: Vec<Duration>,
+    pub pauses: Vec<Duration>,
     raws_in_vpkt: usize,
     sent_done: bool,
     pub events: Vec<&'static str>,
@@ -156,6 +166,9 @@ impl Peer {
             unacked: false,
             negotiated: false,
             mode_set: false,
+            deaf: false,
+            reconnects: 0,
+            listings_after_send: 0,
             vbuf: Vec::new(),
             content_raw: 0,
             expect_size: None,
@@ -163,6 +176,7 @@ impl Peer {
             clock: Duration::ZERO,
             waits: Vec::new(),
             write_waits: Vec::new(),
+            pauses: Vec::new(),
             raws_in_vpkt: 0,
             sent_done: false,
             events: Vec::new(),
@@ -221,6 +235,11 @@ impl Peer {
                 let n = be32(&data);
                 assert_eq!(data.len(), 4 + 2 * n + 7, "directory request length");
                 assert_eq!(
+                    &data[4..4 + 2 * n],
+                    [0, 1, 0, 2, 0, 3],
+                    "size, type and archived, as tilibs asks"
+                );
+                assert_eq!(
                     &data[4 + 2 * n..],
                     [0, 1, 0, 1, 0, 1, 1],
                     "directory trailer"
@@ -230,7 +249,11 @@ impl Peer {
                     .into_iter()
                     .chain(self.cfg.apps.iter().map(|a| (a.clone(), 0x24)))
                     .collect();
-                if self.sent_done && self.cfg.after_send == After::Lists {
+                if self.sent_done {
+                    self.listings_after_send += 1;
+                }
+                let installed = self.listings_after_send > self.cfg.slow_install;
+                if self.sent_done && self.cfg.after_send == After::Lists && installed {
                     listing.push((self.rts_name.clone().unwrap(), 0x24));
                 }
                 for (name, kind) in listing {
@@ -238,10 +261,15 @@ impl Peer {
                     name.extend(std::iter::repeat_n(0, self.cfg.pad_listing));
                     let mut h = vec![0, name.len() as u8];
                     h.extend_from_slice(&name);
-                    h.extend_from_slice(&[0, 0, 1, 0, 2, 0, 0, 4, 0xF0, 0x07, 0, kind]);
+                    h.extend_from_slice(&[0, 0, 3]);
+                    h.extend_from_slice(&[0, 1, 0, 0, 4, 0, 0, 0x40, 0]);
+                    h.extend_from_slice(&[0, 2, 0, 0, 4, 0xF0, 0x07, 0, kind]);
+                    h.extend_from_slice(&[0, 3, 0, 0, 1, u8::from(kind == 0x24)]);
                     self.queue(0x000A, &h);
                 }
                 self.queue(0xDD00, &[]);
+                // A TI-84 Plus Silver Edition on OS 2.43 answers nothing after a listing.
+                self.deaf = true;
             }
             0x000B => {
                 self.events.push("rts");
@@ -258,7 +286,8 @@ impl Peer {
                     [0, 2, 0, 2, 0, 4, 0xF0, 0x07, 0, 0x24, 0, 3, 0, 1, 0],
                     "attributes"
                 );
-                if let Some(code) = self.cfg.refuse_rts {
+                let installed = self.cfg.apps.contains(self.rts_name.as_ref().unwrap());
+                if let Some(code) = self.cfg.refuse_rts.or(installed.then_some(0x000E)) {
                     self.queue(0xEE00, &code.to_be_bytes());
                 } else {
                     self.expect_size = Some(size);
@@ -286,6 +315,7 @@ impl Peer {
                     "end of transmission before the content"
                 );
                 self.sent_done = true;
+                self.deaf = true;
                 if self.cfg.late_delay {
                     self.queue(0xBB00, &1000u32.to_be_bytes());
                 }
@@ -304,6 +334,9 @@ impl Transport for Peer {
             "the sender wrote after the calculator reported an error"
         );
         assert_eq!(be32(data), data.len() - 5, "raw length field");
+        if self.deaf && data[4] != 5 {
+            return Ok(());
+        }
         let payload = &data[5..];
         match data[4] {
             1 => {
@@ -406,6 +439,26 @@ impl Transport for Peer {
 
     fn elapsed(&self) -> Duration {
         self.clock
+    }
+
+    fn pause(&mut self, time: Duration) {
+        self.pauses.push(time);
+        self.clock += time;
+    }
+
+    fn reconnect(&mut self) -> Result<(), Error> {
+        self.reconnects += 1;
+        if self.cfg.fail_reconnect == Some(self.reconnects) {
+            return Err(Error::Disconnected);
+        }
+        self.events.push("reconnect");
+        self.deaf = false;
+        self.negotiated = false;
+        self.mode_set = false;
+        self.unacked = false;
+        self.vbuf.clear();
+        self.cur = None;
+        Ok(())
     }
 
     fn recv(&mut self, timeout: Duration) -> Result<Vec<u8>, Error> {

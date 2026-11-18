@@ -8,6 +8,7 @@ pub const PARAM_PRODUCT_NUMBER: u16 = 0x0001;
 pub const PARAM_PRODUCT_NAME: u16 = 0x0002;
 pub const PARAM_FREE_FLASH: u16 = 0x0011;
 
+pub const ATTR_VAR_SIZE: u16 = 0x0001;
 pub const ATTR_VAR_TYPE: u16 = 0x0002;
 pub const ATTR_ARCHIVED: u16 = 0x0003;
 

@@ -251,6 +251,7 @@ name = "mcpack"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "libc",
  "mcglyph",
  "serde",
  "sha2",
