@@ -475,10 +475,30 @@ fn nothing_is_printed_after_an_on_stop_until_the_flag_is_clear() {
     assert_stopped_at_done(&mut rig);
 }
 
-/// The kernel on this branch never returns 14 from kernel_init, so the test image's entry is
-/// replaced by `ld a,14; ret`, which is what a kernel that stops its init for ON returns.
+const INIT_STOPPED: [&str; 5] = [
+    "kernchk v1",
+    "init stopped",
+    "checked 00000",
+    "accepted 00000",
+    "stopped 00000",
+];
+
+/// Runs until the driver waits for ON, checks nothing but the first clear has been printed over
+/// several waits, and returns where to go on from.
+fn wait_quietly(rig: &mut Rig) -> u16 {
+    let mut pc = ENTRY;
+    for _ in 0..4 {
+        pc = rig.until_waiting(pc);
+        assert_eq!(rig.trace(), [0x0C], "nothing is printed while ON is down");
+    }
+    pc
+}
+
+/// The test image's kernel_init is replaced by `ld a,14; ret`, which is what the kernel returns
+/// when ON is down in its symbol comparison, so the driver's handling is tested on its own,
+/// whether or not ON is down.
 #[test]
-fn an_init_the_kernel_reports_interrupted_is_a_stop_and_not_a_failure() {
+fn an_init_reported_interrupted_is_a_stop_and_not_a_failure() {
     let bytes = axioms(300);
     let mut code = CODE.to_vec();
     let at = usize::from(label("KERNEL_INIT") - ENTRY);
@@ -488,21 +508,40 @@ fn an_init_the_kernel_reports_interrupted_is_a_stop_and_not_a_failure() {
         rig.m.ram_page(1)[FLAGS] = 0xFF;
         if held {
             rig.m.press_key(Machine::KEY_ON);
+            let pc = wait_quietly(&mut rig);
+            rig.m.release_key(Machine::KEY_ON);
+            rig.finish(pc, 0);
+        } else {
+            rig.finish(ENTRY, 0);
         }
-        rig.finish(ENTRY, if held { 2 } else { 0 });
         let (_, result) = screens(&rig.trace());
-        assert_eq!(
-            result,
-            [
-                "kernchk v1",
-                "crc stopped",
-                "checked 00000",
-                "accepted 00000",
-                "stopped 00000"
-            ],
-            "ON held: {held}"
-        );
+        assert_eq!(result, INIT_STOPPED, "ON held: {held}");
         assert_eq!(rig.byte(label("K_INIT")), 0, "ON held: {held}");
+        assert_eq!(rig.byte(label("K_STOPPED")), 3, "ON held: {held}");
         assert_eq!(rig.m.ram_page(1)[FLAGS], 0xEF, "ON held: {held}");
     }
+}
+
+/// The unpatched kernel returns 14 from kernel_init when ON is down while it compares symbol names,
+/// in a library with more than one symbol.
+#[test]
+fn on_down_before_the_run_stops_the_real_init_and_the_next_run_checks_the_library() {
+    let bytes = axioms(300);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    rig.m.ram_page(1)[FLAGS] = 0xFF;
+    rig.m.press_key(Machine::KEY_ON);
+    let pc = wait_quietly(&mut rig);
+    rig.m.release_key(Machine::KEY_ON);
+    rig.finish(pc, 0);
+    let (_, result) = screens(&rig.trace());
+    assert_eq!(result, INIT_STOPPED);
+    assert_eq!(rig.byte(label("K_INIT")), 0);
+    assert_eq!(rig.byte(label("K_STOPPED")), 3);
+    assert_eq!(rig.m.ram_page(1)[FLAGS], 0xEF, "the break flag is cleared");
+
+    rig.finish(ENTRY, 0);
+    let (_, result) = screens(&rig.trace());
+    assert_eq!(result, report(&bytes));
+    assert_eq!(rig.word("K_DONE"), model(&bytes).count as u16);
+    assert_eq!(rig.byte(label("K_STOPPED")), 0);
 }
