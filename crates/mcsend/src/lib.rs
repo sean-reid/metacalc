@@ -8,3 +8,4 @@ pub mod tifile;
 pub mod trace;
 pub mod transfer;
 pub mod transport;
+pub mod usb;

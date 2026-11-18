@@ -68,6 +68,7 @@ jobs:
       - uses: ./.github/actions/spasm
       - run: sh scripts/test-spasm.sh
       - run: make -C app check
+      - run: seq 1 9000 | head -c 40000 > "$RUNNER_TEMP/lib.bin" && make -s -C app BUILD="$RUNNER_TEMP/app" LIBRARY="$RUNNER_TEMP/lib.bin" && MCSEND_APP="$RUNNER_TEMP/app/metacalc.8xk" MCSEND_LIBRARY="$RUNNER_TEMP/lib.bin" sh scripts/require-tests.sh 1 cargo test --locked -p mcsend --test tifile -- --ignored
       - run: make -C probe check
 
   libraries:
