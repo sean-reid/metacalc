@@ -40,7 +40,7 @@ pub fn load(path: &Path) -> Result<Database, ExitCode> {
 fn grammar(db: &Database) -> Result<Grammar<'_>, ExitCode> {
     Grammar::new(db, &[("|-", "wff")]).map_err(|e| {
         fail(format_args!(
-            "the syntax axioms do not form a usable grammar: {e:?}"
+            "the syntax axioms do not form a usable grammar: {e}"
         ))
     })
 }

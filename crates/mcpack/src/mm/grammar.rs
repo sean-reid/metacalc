@@ -11,6 +11,17 @@ pub enum GrammarError {
     LeftRecursion(String),
 }
 
+impl std::fmt::Display for GrammarError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (kind, name) = match self {
+            GrammarError::UnknownSymbol(name) => ("UnknownSymbol", name),
+            GrammarError::UnsupportedRule(name) => ("UnsupportedRule", name),
+            GrammarError::LeftRecursion(name) => ("LeftRecursion", name),
+        };
+        write!(f, "{kind}(\"{}\")", super::shown(name.as_bytes()))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyntaxError {
     NoParse,

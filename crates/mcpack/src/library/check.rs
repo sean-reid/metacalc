@@ -55,11 +55,15 @@ impl std::fmt::Display for CheckError {
             CheckError::Sections(e) => write!(f, "a section is wrong: {e}"),
             CheckError::Assertions(failed) => {
                 for (label, e) in failed {
-                    writeln!(f, "{label}: {}", describe(e))?;
+                    writeln!(f, "{}: {}", crate::mm::shown(label.as_bytes()), describe(e))?;
                 }
                 write!(f, "{} assertions failed the kernel check", failed.len())
             }
-            CheckError::Label(label) => write!(f, "{label:?} cannot be a unique label"),
+            CheckError::Label(label) => write!(
+                f,
+                "\"{}\" cannot be a unique label",
+                crate::mm::shown(label.as_bytes())
+            ),
         }
     }
 }

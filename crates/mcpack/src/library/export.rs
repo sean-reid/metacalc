@@ -1,5 +1,6 @@
 use super::read::{Assertion, Hypothesis, Library, Reference, Step, decode};
 use super::{CheckError, ReadError, check};
+use crate::mm::shown;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fmt;
@@ -27,13 +28,23 @@ impl fmt::Display for ExportError {
         match self {
             ExportError::Check(e) => e.fmt(f),
             ExportError::Read(e) => e.fmt(f),
-            ExportError::Symbol(name) => write!(f, "{name:?} cannot be a math symbol"),
-            ExportError::Label(label) => write!(f, "{label:?} cannot be a unique label"),
-            ExportError::Assertion(label, why) => write!(f, "{label}: {why}"),
+            ExportError::Symbol(name) => {
+                write!(f, "\"{}\" cannot be a math symbol", shown(name.as_bytes()))
+            }
+            ExportError::Label(label) => write!(
+                f,
+                "\"{}\" cannot be a unique label",
+                shown(label.as_bytes())
+            ),
+            ExportError::Assertion(label, why) => write!(f, "{}: {why}", shown(label.as_bytes())),
             ExportError::FloatOrder(labels) => write!(
                 f,
                 "the floating hypotheses of {} order the variables in a cycle",
-                labels.join(", ")
+                labels
+                    .iter()
+                    .map(|l| shown(l.as_bytes()))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
         }
     }

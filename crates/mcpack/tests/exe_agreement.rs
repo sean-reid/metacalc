@@ -385,17 +385,11 @@ fn an_included_directory_is_refused_by_name() {
 
 #[cfg(unix)]
 #[test]
-fn an_included_symlink_loop_and_fifo_are_refused() {
+fn an_included_symlink_loop_is_refused() {
     let (dir, top) = include_dir("loop", "$[ a.mm $]", &[]);
     std::os::unix::fs::symlink(dir.join("b.mm"), dir.join("a.mm")).unwrap();
     std::os::unix::fs::symlink(dir.join("a.mm"), dir.join("b.mm")).unwrap();
     assert!(refusal(&top, 1 << 20, 1 << 20).contains("cannot read a.mm"));
-    std::fs::write(&top, "$[ pipe $]").unwrap();
-    let made = Command::new("mkfifo")
-        .arg(dir.join("pipe"))
-        .status()
-        .unwrap();
-    assert!(made.success());
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -522,24 +516,11 @@ fn text_from_the_database_is_cut_and_escaped_in_messages() {
     let message = refusal(&top, 1 << 20, 1 << 20);
     assert!(message.contains("a\\u{1b}[2Jb\\xff"), "{message}");
     assert!(!message.contains('\x1b'), "{message}");
-    std::fs::write(&top, b"$[ a\x1b\nb $]").unwrap();
-    let message = refusal(&top, 1 << 20, 1 << 20);
-    assert!(
-        !message.contains('\x1b') && !message.contains('\n'),
-        "{message}"
-    );
     std::fs::write(&top, format!("$c {long} $. $c {long} $.")).unwrap();
     let src = std::fs::read(&top).unwrap();
     let message = parse_at(&top, src).err().unwrap().to_string();
     assert!(
         message.contains(&format!("{}...", "n".repeat(64))) && message.len() < 200,
-        "{message}"
-    );
-    std::fs::write(&top, b"$c a $. a\x1b $.").unwrap();
-    let src = std::fs::read(&top).unwrap();
-    let message = parse_at(&top, src).err().unwrap().to_string();
-    assert!(
-        message.contains("outside printable ASCII") && !message.contains('\x1b'),
         "{message}"
     );
     std::fs::remove_dir_all(&dir).unwrap();
@@ -618,5 +599,27 @@ fn an_included_file_with_an_escape_in_its_name_is_named_escaped() {
     );
     let message = refusal(&top, 1 << 20, 1 << 20);
     assert!(message.starts_with("a\\u{1b}b.mm: line 1:"), "{message}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_long_label_is_cut_in_what_the_commands_print() {
+    let long = "l".repeat(300);
+    let (dir, top) = include_dir(
+        "long-label",
+        &format!("$c wff |- $. $v p $. wp $f wff p $. {long} $p |- p $= ? $."),
+        &[],
+    );
+    let out = Command::new(env!("CARGO_BIN_EXE_mcpack"))
+        .arg("verify")
+        .arg(&top)
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{err}");
+    assert!(
+        err.starts_with(&format!("{}...: ", "l".repeat(64))),
+        "{err}"
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }

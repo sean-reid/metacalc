@@ -2,7 +2,7 @@ const LIMIT: usize = 64;
 
 /// Text from a database made safe to put in a message: cut to 64 characters, with every byte
 /// outside printable ASCII written as an escape.
-pub(super) fn shown(bytes: &[u8]) -> String {
+pub fn shown(bytes: &[u8]) -> String {
     let mut out = String::new();
     let mut count = 0;
     for chunk in bytes.utf8_chunks() {

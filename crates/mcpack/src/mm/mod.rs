@@ -13,6 +13,7 @@ pub use closure::closure;
 pub use grammar::{Grammar, GrammarError, Parsed, SyntaxError, Tree};
 pub use outline::{Node, OutlineError, outline};
 pub use parse::{ParseError, parse, parse_at, parse_at_capped};
+pub use shown::shown;
 pub use verify::{Event, Usage, Verifier};
 
 pub type Sym = u32;

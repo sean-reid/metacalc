@@ -218,12 +218,15 @@ impl Expander<'_> {
     }
 }
 
-/// Opens `path` without blocking, so that a pipe put in the place of a file cannot stall the read.
+/// Opens `path` without blocking and without taking a controlling terminal, so that a pipe or device put in the place of a file cannot stall the read or claim a terminal.
 fn open_regular(path: &Path) -> std::io::Result<File> {
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NONBLOCK);
+    std::os::unix::fs::OpenOptionsExt::custom_flags(
+        &mut options,
+        libc::O_NONBLOCK | libc::O_NOCTTY,
+    );
     options.open(path)
 }
 
