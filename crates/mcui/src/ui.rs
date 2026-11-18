@@ -2,7 +2,21 @@ use crate::canvas::Canvas;
 use crate::data::{Installed, Lib, LoadError, Statuses};
 use crate::key::Key;
 use crate::screens::{Ctx, Nav, Screen, State};
+use crate::status::Status;
 use mcglyph::Bitmap;
+
+/// What one call of [`Ui::step_check`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckStep {
+    /// No checking screen is open.
+    Idle,
+    /// An assertion passed.
+    Checked,
+    /// An assertion failed.
+    Failed,
+    /// Nothing was left to check.
+    Finished,
+}
 
 pub struct Ui {
     libs: Vec<Lib>,
@@ -46,6 +60,25 @@ impl Ui {
                     self.stack.pop();
                 }
             }
+        }
+    }
+
+    /// Checks the next unchecked assertion of the library on the open checking screen, and
+    /// records the outcome in the status table every screen reads.
+    pub fn step_check(&mut self) -> CheckStep {
+        let Some(Screen::Checking(screen)) = self.stack.last() else {
+            return CheckStep::Idle;
+        };
+        let lib = &mut self.libs[screen.library()];
+        let Some(i) = lib.next_unchecked() else {
+            return CheckStep::Finished;
+        };
+        if lib.verify(i) {
+            lib.set_status(i, Status::Checked);
+            CheckStep::Checked
+        } else {
+            lib.set_status(i, Status::Failed);
+            CheckStep::Failed
         }
     }
 

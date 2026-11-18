@@ -1,4 +1,7 @@
-use super::{Ctx, Nav, Screen, State, about::About, list::List, notice::Notice, reveal, step};
+use super::{
+    Ctx, Nav, Screen, State, about::About, checking::Checking, list::List, notice::Notice, reveal,
+    step,
+};
 use crate::canvas::{CONTENT_ROWS, Canvas};
 use crate::data::Lib;
 use crate::key::Key;
@@ -45,7 +48,13 @@ impl Libraries {
                     Nav::push(Notice::unavailable("My proofs"))
                 }
             }
-            Key::F2 => Nav::push(Notice::unavailable("Verify")),
+            Key::F2 => {
+                if self.cursor < ctx.libs.len() {
+                    Nav::push(Screen::Checking(Checking::open(self.cursor)))
+                } else {
+                    Nav::push(Notice::screen("Verify", &["Pick a library"]))
+                }
+            }
             Key::F3 => Nav::push(Screen::About(About)),
             _ => Nav::Stay,
         }

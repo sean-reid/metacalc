@@ -17,4 +17,4 @@ pub use data::{Installed, LoadError, Statuses};
 pub use key::Key;
 pub use screens::{Kind, State};
 pub use status::{Mark, Status};
-pub use ui::Ui;
+pub use ui::{CheckStep, Ui};

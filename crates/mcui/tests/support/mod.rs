@@ -3,6 +3,7 @@
 use mcpack::library::{self, pack};
 use mcpack::mm::{self, Database, Grammar, StmtId};
 use mcui::{Installed, Key, Status, Statuses, Ui};
+use std::path::PathBuf;
 
 /// A small logic with one binder, a distinct variable condition and a theorem whose
 /// hypotheses alone fill more rows than the screen has.
@@ -259,4 +260,49 @@ pub fn open(ui: &mut Ui, label: &str) {
         ui.press(Key::Down);
     }
     ui.press(Key::Enter);
+}
+
+/// Compares `frame` with the checked-in text art. With MCUI_BLESS set the art is rewritten first
+/// and compared as usual, so a blessing run cannot pass without a comparison; a CI run cannot bless.
+pub fn check_frame(frame: &mcglyph::Bitmap, name: &str) {
+    assert_eq!((frame.width(), frame.height()), (96, 64), "{name}");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/frames")
+        .join(format!("{name}.txt"));
+    let got = format!("{frame}\n");
+    if std::env::var("MCUI_BLESS").is_ok_and(|v| v == "1") {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "frames cannot be blessed in CI"
+        );
+        std::fs::write(&path, &got).expect("write frame");
+    }
+    let want = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+    assert!(
+        got == want,
+        "{name} differs\n--- got\n{got}--- want\n{want}"
+    );
+}
+
+/// The bytes with their checksum recomputed after a patch.
+pub fn refreshed(mut bytes: Vec<u8>) -> Vec<u8> {
+    let crc = library::crc32(&bytes[8..]);
+    bytes[4..8].copy_from_slice(&crc.to_le_bytes());
+    bytes
+}
+
+/// A user interface over one library named `logic` whose assertions are all still unchecked.
+pub fn unchecked_ui(bytes: Vec<u8>) -> Ui {
+    let table = vec![Status::Unchecked; library::read(&bytes).expect("library reads").len()];
+    Ui::new(
+        vec![Installed {
+            name: "logic".into(),
+            bytes,
+        }],
+        Statuses {
+            libraries: vec![table],
+            my_proofs: 2,
+        },
+    )
+    .expect("the library loads")
 }

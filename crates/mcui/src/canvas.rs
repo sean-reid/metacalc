@@ -217,6 +217,25 @@ impl Canvas {
         }
     }
 
+    /// A progress bar across the text width on `row`, `done` of `total` filled; with nothing to
+    /// do (`total` of zero) it is full.
+    pub fn bar(&mut self, row: usize, done: usize, total: usize) {
+        let (width, height) = (TEXT_WIDTH, ROW - 1);
+        let inner = width - 4;
+        let filled = (inner * done.min(total))
+            .checked_div(total)
+            .unwrap_or(inner);
+        for y in 0..height {
+            for x in 0..width {
+                let edge = y == 0 || y == height - 1 || x == 0 || x == width - 1;
+                let fill = (2..height - 2).contains(&y) && (2..2 + filled).contains(&x);
+                if edge || fill {
+                    self.bitmap.set(MARGIN + x, Self::top(row) + 1 + y, true);
+                }
+            }
+        }
+    }
+
     /// A two column bar in the left margin of `row`, the cursor of a whole statement.
     pub fn marker(&mut self, row: usize) {
         for y in Self::top(row) + 1..Self::top(row) + ROW {

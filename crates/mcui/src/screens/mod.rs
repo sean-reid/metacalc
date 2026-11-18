@@ -1,6 +1,7 @@
 //! One module per screen. A screen owns its position and reads the libraries it is shown.
 
 mod about;
+mod checking;
 mod dist;
 mod libraries;
 mod list;
@@ -40,6 +41,7 @@ pub enum Screen {
     Proof(proof::Proof),
     Notice(notice::Notice),
     About(about::About),
+    Checking(checking::Checking),
 }
 
 /// Where a screen stands, for tests and scripts.
@@ -82,6 +84,14 @@ pub enum State {
         title: String,
     },
     About,
+    Checking {
+        library: usize,
+        /// Assertions settled either way.
+        done: usize,
+        total: usize,
+        failed: usize,
+        finished: bool,
+    },
 }
 
 impl Screen {
@@ -98,6 +108,7 @@ impl Screen {
             Screen::Proof(s) => s.press(ctx, key),
             Screen::Notice(s) => s.press(key),
             Screen::About(s) => s.press(key),
+            Screen::Checking(s) => s.press(key),
         }
     }
 
@@ -110,6 +121,7 @@ impl Screen {
             Screen::Proof(s) => s.draw(ctx, canvas),
             Screen::Notice(s) => s.draw(canvas),
             Screen::About(s) => s.draw(ctx, canvas),
+            Screen::Checking(s) => s.draw(ctx, canvas),
         }
     }
 
@@ -122,6 +134,7 @@ impl Screen {
             Screen::Proof(s) => s.state(ctx),
             Screen::Notice(s) => s.state(),
             Screen::About(_) => State::About,
+            Screen::Checking(s) => s.state(ctx),
         }
     }
 }

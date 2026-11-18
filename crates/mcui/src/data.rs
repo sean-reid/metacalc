@@ -3,7 +3,7 @@
 
 use crate::expr::{Expr, Shape};
 use crate::status::{Mark, Status, marks};
-use mcpack::library::{self, Assertion, Hypothesis, ReadError};
+use mcpack::library::{self, Assertion, Hypothesis, Kernel, Limits, ReadError};
 use mcpack::mm::{self, Database, Grammar, Kind, Node, StmtId, Sym, Tree};
 use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
@@ -135,6 +135,32 @@ impl Lib {
             .iter()
             .filter(|&&m| matches!(m, Mark::Checked | Mark::Resting))
             .count()
+    }
+
+    /// Assertions a check has settled, either way.
+    pub fn settled(&self) -> usize {
+        self.status
+            .iter()
+            .filter(|&&s| s != Status::Unchecked)
+            .count()
+    }
+
+    /// The first assertion no check has settled.
+    pub fn next_unchecked(&self) -> Option<usize> {
+        self.status.iter().position(|&s| s == Status::Unchecked)
+    }
+
+    /// Runs the kernel on assertion `i`, trusting nothing but the library's bytes.
+    pub fn verify(&self, i: usize) -> bool {
+        Kernel::new(&self.bytes, Limits::UNBOUNDED)
+            .and_then(|mut kernel| kernel.verify(i))
+            .is_ok()
+    }
+
+    /// Records the outcome of a check and settles every mark again.
+    pub fn set_status(&mut self, i: usize, status: Status) {
+        self.status[i] = status;
+        self.marks = marks(&self.assertions, &self.status);
     }
 
     /// Assertions that failed, or whose proof uses itself or a later assertion.
