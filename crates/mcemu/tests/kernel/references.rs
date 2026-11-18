@@ -60,3 +60,20 @@ fn the_device_charges_the_duplicate_check_as_the_model_does() {
         "one entry too many",
     );
 }
+
+#[test]
+fn the_on_key_interrupts_the_check_for_equal_entries_and_the_call_can_be_run_again() {
+    let bytes = cases::pack_source(&cases::long_source(512));
+    let mut device = Device::with_library(&bytes);
+    let (pc, after) = crate::work::press_on_during(&mut device, 512, 2_000_000);
+    assert!(
+        crate::work::in_code(pc, &[("CHECK_REFERENCES", "VERIFY_BODY")]),
+        "pc {pc:#06x}"
+    );
+    assert!(after < 25_000, "{after} T-states");
+    assert_eq!(
+        device.byte("TEST_VERIFY_STATUS"),
+        crate::work::status_code("ST_INTERRUPTED")
+    );
+    assert_eq!(crate::work::verify_again(&mut device), status(Ok(())));
+}

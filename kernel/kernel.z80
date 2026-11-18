@@ -91,8 +91,9 @@
 ; step and whenever the second byte of the work count changes. The read comes before the scan of
 ; the pair list that a comparison charges for, and the scan itself is not interrupted. The longest
 ; stretch without a read is one scan, 96 T-states per pair listed, plus up to 255 one-unit charges
-; of 288 T-states before the second byte next changes. A comparison of the equal-entries check is
-; a one-unit charge. A record holds at most 7,750 pairs in this
+; of 288 T-states before the second byte next changes. The equal-entries check on a list of up to
+; 512 entries reads it before each row of at most 511 comparisons, 39 T-states each; on a longer
+; list every comparison is a one-unit charge. A record holds at most 7,750 pairs in this
 ; shape (about 8,000 fit a 16 KB page), so ON waits at most 0.83 million T-states, 0.14 s at
 ; 6 MHz; with 600 pairs, 130,000 T-states, 22 ms. With ON down kernel_verify returns
 ; ST_INTERRUPTED, restoring the stack, port 7 and the interrupt state as for any other exit and

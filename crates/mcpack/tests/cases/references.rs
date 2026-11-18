@@ -114,15 +114,15 @@ pub fn long_source(entries: usize) -> String {
     src + &format!("big $p wff T $= {proof} $.\n")
 }
 
-/// The theorem `big` of `long_source(entries)`, with the second entry made equal to the first
-/// when `repeat`.
-fn long(entries: usize, repeat: bool) -> (Vec<u8>, usize) {
+/// The theorem `big` of `long_source(entries)`, with entry `j` made equal to entry `i` for a
+/// `repeat` of `(i, j)`.
+fn long(entries: usize, repeat: Option<(usize, usize)>) -> (Vec<u8>, usize) {
     let mut bytes = pack_source(&long_source(entries));
     let id = entries;
     let at = spot(&bytes, id);
     assert_eq!(at.count, entries);
-    if repeat {
-        bytes.copy_within(at.refs..at.refs + 2, at.refs + 2);
+    if let Some((i, j)) = repeat {
+        bytes.copy_within(at.refs + 2 * i..at.refs + 2 * i + 2, at.refs + 2 * j);
         reseal(&mut bytes);
     }
     (bytes, id)
@@ -228,18 +228,32 @@ pub fn cases() -> Vec<Case> {
             loose,
         ),
     ];
-    for (name, entries, repeat, expected) in [
-        ("512 entries are within the work limit", 512, false, ok),
+    let limit = Err(KernelError::WorkLimit);
+    // Comparison number 131072 is the last the limit allows; entry 489 against entry 509 is
+    // comparison 131072 of 513 entries, against entry 510 comparison 131073.
+    for (name, repeat, expected) in [
+        ("512 entries are within the work limit", None, ok),
         (
-            "513 entries pass the work limit",
-            513,
-            false,
-            Err(KernelError::WorkLimit),
+            "a duplicate is found before the work limit",
+            Some((0, 1)),
+            bad,
         ),
-        ("a duplicate is found before the work limit", 513, true, bad),
+        (
+            "a duplicate at the last comparison the limit allows",
+            Some((489, 509)),
+            bad,
+        ),
+        (
+            "a duplicate one comparison past the limit",
+            Some((489, 510)),
+            limit,
+        ),
     ] {
+        let entries = if repeat.is_none() { 512 } else { 513 };
         let (bytes, id) = long(entries, repeat);
         cases.push(case(name, bytes, id, expected));
     }
+    let (bytes, id) = long(513, None);
+    cases.push(case("513 entries pass the work limit", bytes, id, limit));
     cases
 }

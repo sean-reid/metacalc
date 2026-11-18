@@ -95,7 +95,10 @@ hf_found:
 	ret
 
 ; Refuses a current record whose reference list has a dummy entry for a variable it has a float
-; hypothesis for, or two equal entries; each comparison is charged one unit before it is made.
+; hypothesis for, or two equal entries. A comparison costs one unit of work. A list of at most
+; 512 entries costs at most 130,816 units, which the count still holds when the call starts, so
+; it is charged once and the rows are scanned with the ON key read once per row. A longer list
+; is charged one unit before each comparison.
 check_references:
 	ld hl,(CUR_DESC+D_REFS)
 	ld bc,(CUR_DESC+D_NREFS)
@@ -120,8 +123,78 @@ cf_dummy:
 	jp c,fail_bad_record
 	jr cf_dummy
 cf_pairs:
-	ld hl,(CUR_DESC+D_REFS)
 	ld bc,(CUR_DESC+D_NREFS)
+	ld a,b
+	or c
+	ret z
+	ld hl,512
+	or a
+	sbc hl,bc
+	jr c,cf_slow
+	push bc
+	dec bc
+	ld hl,0
+	ld d,0
+cf_sum:
+	ld a,b
+	or c
+	jr z,cf_charge
+	add hl,bc
+	jr nc,cf_carried
+	inc d
+cf_carried:
+	dec bc
+	jr cf_sum
+cf_charge:
+	ld (kv_tmp16),hl
+	ld bc,(kv_tmp16)
+	ld hl,(kv_work)
+	or a
+	sbc hl,bc
+	ld (kv_work),hl
+	ld a,(kv_work+2)
+	sbc a,d
+	ld (kv_work+2),a
+	pop bc
+	ld hl,(CUR_DESC+D_REFS)
+cf_row:
+	dec bc
+	ld a,b
+	or c
+	ret z
+	in a,(4)
+	and 8
+	jp z,fail_interrupted
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	push hl
+	push bc
+	ld a,e
+cf_scan:
+	cpi
+	jr z,cf_low
+	inc hl
+	jp pe,cf_scan
+cf_row_done:
+	pop bc
+	pop hl
+	jr cf_row
+cf_low:
+	ld a,(hl)
+	inc hl
+	cp d
+	jp z,fail_bad_record
+	ld a,b
+	or c
+	ld a,e
+	jr nz,cf_scan
+	jr cf_row_done
+
+; in: BC = entry count. The list in full, one unit of work before each comparison.
+cf_slow:
+	ld hl,(CUR_DESC+D_REFS)
 cf_outer:
 	ld a,b
 	or c

@@ -109,7 +109,7 @@ const BUDGET_LONG_SCAN: u32 = 900_000;
 /// Loads the assertion and the limits and runs the init-and-verify entry for `press_at` T-states;
 /// then holds ON and finishes the run. Returns the program counter when the key went down and the
 /// T-states after that.
-fn press_on_during(device: &mut Device, id: usize, press_at: u32) -> (u16, u32) {
+pub fn press_on_during(device: &mut Device, id: usize, press_at: u32) -> (u16, u32) {
     device.params(ASKED_UNBOUNDED);
     device
         .m
@@ -123,14 +123,14 @@ fn press_on_during(device: &mut Device, id: usize, press_at: u32) -> (u16, u32) 
     (pc, rest.tstates)
 }
 
-fn verify_again(device: &mut Device) -> u8 {
+pub fn verify_again(device: &mut Device) -> u8 {
     device.m.release_key(Machine::KEY_ON);
     device.run("ENTRY_VERIFY");
     device.byte("TEST_VERIFY_STATUS")
 }
 
 /// Whether `pc` is in one of the code ranges `[from, to)` named by labels.
-fn in_code(pc: u16, ranges: &[(&str, &str)]) -> bool {
+pub fn in_code(pc: u16, ranges: &[(&str, &str)]) -> bool {
     ranges
         .iter()
         .any(|&(from, to)| (label(from)..label(to)).contains(&pc))
@@ -226,7 +226,7 @@ fn the_longest_stretch_without_a_poll_is_one_scan_of_the_longest_pair_list() {
     assert!(rest.tstates < BUDGET_LONG_SCAN, "{} T-states", rest.tstates);
 }
 
-fn status_code(name: &str) -> u8 {
+pub fn status_code(name: &str) -> u8 {
     label(name) as u8
 }
 
