@@ -1,4 +1,4 @@
-use super::{HEADER_LEN, MAGIC};
+use super::{DUMMY, HEADER_LEN, MAGIC};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadError;
@@ -15,13 +15,39 @@ pub enum Hypothesis {
     Essential(Vec<String>),
 }
 
+/// What a theorem's proof names: a dummy variable's float hypothesis, or an earlier assertion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reference {
+    Dummy(String),
+    Assertion(usize),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Assertion {
     pub theorem: bool,
     pub label: String,
     pub hypotheses: Vec<Hypothesis>,
+    /// The pairs between the variables of the hypotheses and the conclusion.
     pub disjoint: Vec<(String, String)>,
     pub conclusion: Vec<String>,
+    /// The pairs of a theorem that involve a dummy variable.
+    pub extra_disjoint: Vec<(String, String)>,
+    pub references: Vec<Reference>,
+    /// The proof's step numbers exactly as stored.
+    pub proof: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Variable {
+    pub name: String,
+    pub typecode: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Library {
+    pub constants: Vec<String>,
+    pub variables: Vec<Variable>,
+    pub assertions: Vec<Assertion>,
 }
 
 struct Cursor<'a> {
@@ -61,6 +87,11 @@ impl<'a> Cursor<'a> {
 
 /// Every assertion of a packed library, spelled with the library's own symbol table.
 pub fn read(bytes: &[u8]) -> Result<Vec<Assertion>, ReadError> {
+    decode(bytes).map(|library| library.assertions)
+}
+
+/// A packed library's symbol table and assertions, with every number resolved to a name.
+pub fn decode(bytes: &[u8]) -> Result<Library, ReadError> {
     let mut cur = Cursor { bytes, pos: 0 };
     if cur.take(4)? != MAGIC {
         return Err(ReadError);
@@ -69,7 +100,8 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Assertion>, ReadError> {
     if cur.u32()? != bytes.len() {
         return Err(ReadError);
     }
-    let symbols = cur.u8()? + cur.u8()?;
+    let constants = cur.u8()?;
+    let symbols = constants + cur.u8()?;
     let count = cur.u16()?;
     let directory = cur.u32()?;
     debug_assert_eq!(cur.pos, HEADER_LEN);
@@ -82,16 +114,42 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Assertion>, ReadError> {
         names.push(cur.text(len)?);
     }
     let name = |id: usize| names.get(id).cloned().ok_or(ReadError);
+    let variable = |id: usize| {
+        if id < constants {
+            return Err(ReadError);
+        }
+        name(id)
+    };
     let expression = |cur: &mut Cursor| -> Result<Vec<String>, ReadError> {
         let len = cur.u8()?;
         (0..len).map(|_| name(cur.u8()?)).collect()
     };
+    let pairs = |cur: &mut Cursor| -> Result<Vec<(String, String)>, ReadError> {
+        let mut pairs = Vec::new();
+        for _ in 0..cur.u16()? {
+            let (a, b) = (cur.u8()?, cur.u8()?);
+            pairs.push((name(a)?, name(b)?));
+        }
+        Ok(pairs)
+    };
+    let typecode = |id: usize| match typecodes.get(id) {
+        Some(&0xFF) | None => Ok(None),
+        Some(&t) => name(t).map(Some),
+    };
+    let variables = (constants..symbols)
+        .map(|id| {
+            Ok(Variable {
+                name: name(id)?,
+                typecode: typecode(id)?,
+            })
+        })
+        .collect::<Result<Vec<_>, ReadError>>()?;
 
     let mut table = Cursor {
         bytes,
         pos: directory,
     };
-    let mut out = Vec::with_capacity(count);
+    let mut assertions = Vec::with_capacity(count);
     for _ in 0..count {
         let offset = table.u32()?;
         let mut cur = Cursor { bytes, pos: offset };
@@ -107,29 +165,47 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Assertion>, ReadError> {
             hypotheses.push(match cur.u8()? {
                 0 => {
                     let var = cur.u8()?;
-                    let typecode = *typecodes.get(var).ok_or(ReadError)?;
+                    let typecode = typecode(var)?.ok_or(ReadError)?;
                     Hypothesis::Float {
-                        typecode: name(typecode)?,
-                        variable: name(var)?,
+                        typecode,
+                        variable: variable(var)?,
                     }
                 }
                 1 => Hypothesis::Essential(expression(&mut cur)?),
                 _ => return Err(ReadError),
             });
         }
-        let mut disjoint = Vec::new();
-        for _ in 0..cur.u16()? {
-            let (a, b) = (cur.u8()?, cur.u8()?);
-            disjoint.push((name(a)?, name(b)?));
-        }
+        let disjoint = pairs(&mut cur)?;
         let conclusion = expression(&mut cur)?;
-        out.push(Assertion {
+        let mut assertion = Assertion {
             theorem,
             label,
             hypotheses,
             disjoint,
             conclusion,
-        });
+            extra_disjoint: Vec::new(),
+            references: Vec::new(),
+            proof: Vec::new(),
+        };
+        if theorem {
+            assertion.extra_disjoint = pairs(&mut cur)?;
+            for _ in 0..cur.u16()? {
+                let reference = cur.u16()?;
+                assertion
+                    .references
+                    .push(match reference.checked_sub(DUMMY as usize) {
+                        Some(var) => Reference::Dummy(variable(var)?),
+                        None => Reference::Assertion(reference),
+                    });
+            }
+            let len = cur.u16()?;
+            assertion.proof = cur.take(len)?.to_vec();
+        }
+        assertions.push(assertion);
     }
-    Ok(out)
+    Ok(Library {
+        constants: names[..constants].to_vec(),
+        variables,
+        assertions,
+    })
 }
