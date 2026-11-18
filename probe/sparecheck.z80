@@ -1,0 +1,43 @@
+#include "equates.inc"
+
+VERSION = 1
+
+.org 4000h
+	.db 80h, 0Fh, 0, 0, 0, 0
+	.db 80h, 12h, 01h, 04h
+	.db 80h, 21h, VERSION
+	.db 80h, 31h, 01h
+	.db 80h, 48h, "sparechk"
+	.db 80h, 81h, 01h
+	.db 80h, 90h
+	.db 03h, 26h, 09h, 04h, 04h, 6Fh, 1Bh, 80h
+	.db 02h, 0Dh, 40h
+	.db 0A1h, 6Bh, 99h, 0F6h, 59h, 0BCh, 67h, 0F5h, 85h, 9Ch, 09h, 6Ch, 0Fh, 0B4h, 03h, 9Bh
+	.db 0C9h, 03h, 32h, 2Ch, 0E0h, 03h, 20h, 0E3h, 2Ch, 0F4h, 2Dh, 73h, 0B4h, 27h, 0C4h, 0A0h
+	.db 72h, 54h, 0B9h, 0EAh, 7Ch, 3Bh, 0AAh, 16h, 0F6h, 77h, 83h, 7Ah, 0EEh, 1Ah, 0D4h, 42h
+	.db 4Ch, 6Bh, 8Bh, 13h, 1Fh, 0BBh, 93h, 8Bh, 0FCh, 19h, 1Ch, 3Ch, 0ECh, 4Dh, 0E5h, 75h
+	.db 80h, 7Fh, 0, 0, 0, 0
+	.fill 4080h - $, 0
+
+start:
+#include "sparecore.inc"
+
+	bcall(_ClrLCDFull)
+	xor a
+	ld (curRow), a
+	ld (curCol), a
+	call show_results
+	bcall(_GetKey)
+	bjump(_JForceCmdNoChar)
+
+; Contract: A is one character, or 0Ah for a new line.
+putchar:
+	cp 0Ah
+	jr z, newline
+	bcall(_PutC)
+	ret
+newline:
+	bcall(_NewLine)
+	ret
+
+#include "sparescreen.inc"

@@ -1,15 +1,22 @@
 SPASM ?= spasm
-OUT   := build/ramprobe.8xk
 
-$(OUT): ramprobe.z80 ../app/src/equates.inc
+all: build/ramprobe.8xk build/sparecheck.8xk
+
+build/ramprobe.8xk: ramprobe.z80 ../app/src/equates.inc
 	mkdir -p build
-	$(SPASM) -I ../app/src ramprobe.z80 $(OUT)
+	$(SPASM) -I ../app/src ramprobe.z80 $@
 
-check: $(OUT)
-	sh ../app/scripts/check-8xk.sh $(OUT) ramprobe
-	sh ../app/scripts/test-check-8xk.sh $(OUT) ramprobe
+build/sparecheck.8xk: sparecheck.z80 sparecore.inc sparescreen.inc ../app/src/equates.inc
+	mkdir -p build
+	$(SPASM) -I ../app/src -I . sparecheck.z80 $@
+
+check: all
+	sh ../app/scripts/check-8xk.sh build/ramprobe.8xk ramprobe
+	sh ../app/scripts/test-check-8xk.sh build/ramprobe.8xk ramprobe
+	sh ../app/scripts/check-8xk.sh build/sparecheck.8xk sparechk
+	sh ../app/scripts/test-check-8xk.sh build/sparecheck.8xk sparechk
 
 clean:
 	rm -rf build
 
-.PHONY: check clean
+.PHONY: all check clean

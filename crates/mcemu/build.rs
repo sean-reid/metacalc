@@ -132,6 +132,17 @@ fn main() {
         );
     }
     assemble_kernel(&out);
+    for name in ["sparecheck_test", "sparescreen_test"] {
+        spasm(
+            &Path::new("tests/routines").join(format!("{name}.z80")),
+            &out.join(format!("{name}.bin")),
+            &[],
+            &["-I", "../../app/src", "-I", "../../probe", "-L"],
+        );
+    }
+    println!("cargo:rerun-if-changed=../../probe/sparecore.inc");
+    println!("cargo:rerun-if-changed=../../probe/sparescreen.inc");
+    println!("cargo:rerun-if-changed=../../app/src/equates.inc");
 }
 
 /// The kernel on its own, and with the test entry points and a label file for the tests.

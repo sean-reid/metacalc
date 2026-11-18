@@ -1,0 +1,29 @@
+#include "equates.inc"
+
+VERSION = 1
+
+.org 4000h
+	jp main
+#include "sparecore.inc"
+
+OUT_PTR = S_END
+OUT_BUF = S_END + 2
+
+main:
+	ld hl, OUT_BUF
+	ld (OUT_PTR), hl
+	call show_results
+	halt
+
+putchar:
+	push hl
+	ld hl, (OUT_PTR)
+	ld (hl), a
+	inc hl
+	ld (OUT_PTR), hl
+	pop hl
+	ld bc, 0FFFFh
+	ld de, 0FFFFh
+	ret
+
+#include "sparescreen.inc"
