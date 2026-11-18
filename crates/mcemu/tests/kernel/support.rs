@@ -190,7 +190,8 @@ impl Device {
 
     /// Initialises once, then verifies assertions 0..count in order.
     pub fn verify_all(&mut self, count: usize, limits: Limits) -> (u8, Vec<u8>, u32) {
-        assert!(count <= 0xD00, "the status array holds 3328 entries");
+        let room = usize::from(self.label("TEST_BLOCK") - self.label("TEST_STATUSES"));
+        assert!(count <= room, "the status array holds {room} entries");
         self.params(limits);
         self.m
             .load_ram(self.label("TEST_COUNT"), &(count as u16).to_le_bytes());

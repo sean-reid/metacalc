@@ -63,11 +63,7 @@ push_var:
 	jp stack_push
 
 verify_body:
-	ld hl,(kv_ready)
-	ld de,READY_MAGIC
-	or a
-	sbc hl,de
-	jp nz,fail_malformed
+	call require_ready
 	ld ix,CUR_DESC
 	ld hl,(kv_arg_id)
 	call parse_record

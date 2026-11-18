@@ -147,16 +147,20 @@ fn assemble_kernel(out: &Path) {
         &[],
         &["-I", include],
     );
-    for base in ["$BF00", "$C080", "$F100"] {
-        assert!(
-            !spasm_ok(
-                Path::new("tests/routines/kernel_test.z80"),
-                &out.join("kernel_bad_base.bin"),
-                &[&format!("KERNEL_RAM={base}")],
-                &["-I", include],
-            ),
-            "a kernel RAM base of {base} assembled"
-        );
+    let assembles = |base: &str| {
+        spasm_ok(
+            &dir.join("kernel.z80"),
+            &out.join("kernel_base_probe.bin"),
+            &[&format!("KERNEL_RAM={base}")],
+            &["-I", include],
+        )
+    };
+    assert!(
+        assembles("$CE00"),
+        "a kernel RAM base of $CE00 does not assemble"
+    );
+    for base in ["$BF00", "$C080", "$CF00", "$F100"] {
+        assert!(!assembles(base), "a kernel RAM base of {base} assembled");
     }
     for (name, defines) in [
         ("kernel_test", &[][..]),

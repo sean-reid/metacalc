@@ -77,6 +77,7 @@ fill_bytes:
 init_body:
 	ld hl,0
 	ld (kv_ready),hl
+	ld (kv_crc_state),hl
 	ld a,(KERNEL_LIB_PAGE)
 	cp $80
 	jp nc,fail_malformed
@@ -281,6 +282,20 @@ init_cache_clear:
 	ld hl,READY_MAGIC
 	ld (kv_ready),hl
 	ret
+
+; out: Z if the last kernel_init succeeded. Destroys AF DE HL.
+is_ready:
+	ld hl,(kv_ready)
+	ld de,READY_MAGIC
+	or a
+	sbc hl,de
+	ret
+
+; Refuses unless the last kernel_init succeeded. Destroys AF DE HL.
+require_ready:
+	call is_ready
+	ret z
+	jp fail_malformed
 
 ; in: HL = value, DE = cap. out: HL = the smaller. Destroys AF DE.
 clamp_hl:
