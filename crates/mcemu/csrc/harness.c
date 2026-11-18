@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "scancodes.h"
 #include "tilem.h"
@@ -97,21 +98,75 @@ static int is_lcd_port(dword port)
 	return (port & 0xff & 0xfc) == 0x10;
 }
 
-/* The values written to ports 5, 6 and 7 since the last run began, for the calling thread. */
-static _Thread_local uint8_t bank_writes[3][32];
+/* What the harness keeps for each machine: the set of values written to ports 5, 6 and 7 since its
+   last run began, and whether the LCD busy bit is forced on. Found by the core's pointer. */
+typedef struct {
+	TilemCalc *calc;
+	uint8_t banks[3][32];
+	int stuck;
+} McState;
 
-static void note_bank_write(dword port, byte value)
+#define MAX_MACHINES 512
+static McState states[MAX_MACHINES];
+static pthread_mutex_t states_lock = PTHREAD_MUTEX_INITIALIZER;
+static _Thread_local McState *last_state;
+
+static McState *state_of(TilemCalc *calc)
 {
+	int i;
+
+	if (last_state && last_state->calc == calc)
+		return last_state;
+	pthread_mutex_lock(&states_lock);
+	for (i = 0; i < MAX_MACHINES; i++)
+		if (states[i].calc == calc) {
+			last_state = &states[i];
+			break;
+		}
+	pthread_mutex_unlock(&states_lock);
+	return i < MAX_MACHINES ? &states[i] : NULL;
+}
+
+static void claim_state(TilemCalc *calc)
+{
+	int i;
+
+	pthread_mutex_lock(&states_lock);
+	for (i = 0; i < MAX_MACHINES && states[i].calc; i++)
+		;
+	if (i == MAX_MACHINES)
+		abort();
+	memset(&states[i], 0, sizeof states[i]);
+	states[i].calc = calc;
+	pthread_mutex_unlock(&states_lock);
+}
+
+static void release_state(TilemCalc *calc)
+{
+	McState *st = state_of(calc);
+
+	if (st) {
+		pthread_mutex_lock(&states_lock);
+		st->calc = NULL;
+		pthread_mutex_unlock(&states_lock);
+	}
+	last_state = NULL;
+}
+
+static void note_bank_write(TilemCalc *calc, dword port, byte value)
+{
+	McState *st;
+
 	port &= 0xff;
-	if (port >= 5 && port <= 7)
-		bank_writes[port - 5][value >> 3] |= 1 << (value & 7);
+	if (port >= 5 && port <= 7 && (st = state_of(calc)))
+		st->banks[port - 5][value >> 3] |= 1 << (value & 7);
 }
 
 static void out_aliased(TilemCalc *calc, dword port, byte value)
 {
 	dword before = lcd_busy_expiry(calc);
 
-	note_bank_write(port, value);
+	note_bank_write(calc, port, value);
 
 	xz_z80_out(calc, port, value);
 	alias_spare_pages(calc);
@@ -123,9 +178,12 @@ static byte in_scaled(TilemCalc *calc, dword port)
 {
 	dword before = lcd_busy_expiry(calc);
 	byte value = xz_z80_in(calc, port);
+	McState *st;
 
 	if (is_lcd_port(port))
 		scale_lcd_busy(calc, before);
+	if ((port & 0xfd) == 0x10 && (st = state_of(calc)) && st->stuck)
+		value |= 0x80;
 	return value;
 }
 
@@ -156,6 +214,7 @@ TilemCalc *mcemu_new(const uint8_t *rom, size_t len)
 		tilem_calc_free(calc);
 		return NULL;
 	}
+	claim_state(calc);
 	calc->hw.z80_out = out_aliased;
 	calc->hw.z80_in = in_scaled;
 	alias_spare_pages(calc);
@@ -164,7 +223,11 @@ TilemCalc *mcemu_new(const uint8_t *rom, size_t len)
 	return calc;
 }
 
-void mcemu_free(TilemCalc *calc) { tilem_calc_free(calc); }
+void mcemu_free(TilemCalc *calc)
+{
+	release_state(calc);
+	tilem_calc_free(calc);
+}
 uint8_t *mcemu_mem(TilemCalc *calc) { return calc->mem; }
 size_t mcemu_rom_size(const TilemCalc *calc) { return calc->hw.romsize; }
 size_t mcemu_ram_size(const TilemCalc *calc) { return calc->hw.ramsize; }
@@ -217,7 +280,7 @@ uint32_t mcemu_run(TilemCalc *calc, uint16_t pc, int limit, uint32_t *elapsed)
 	uint32_t start;
 	uint32_t reason;
 
-	memset(bank_writes, 0, sizeof bank_writes);
+	memset(state_of(calc)->banks, 0, sizeof state_of(calc)->banks);
 	calc->z80.r.iff1 = calc->z80.r.iff2 = 0;
 	calc->z80.halted = 0;
 	calc->z80.r.pc.d = pc;
@@ -238,14 +301,17 @@ uint32_t mcemu_resume(TilemCalc *calc, int limit, uint32_t *elapsed)
 	uint32_t start = calc->z80.clock;
 	uint32_t reason;
 
-	memset(bank_writes, 0, sizeof bank_writes);
+	memset(state_of(calc)->banks, 0, sizeof state_of(calc)->banks);
 	reason = tilem_z80_run(calc, limit, NULL);
 	*elapsed = calc->z80.clock - start;
 	return reason;
 }
 
-/* Copies the bit sets of values written to ports 5, 6 and 7 during the last run or resume. */
-void mcemu_banks(uint8_t out[3][32]) { memcpy(out, bank_writes, sizeof bank_writes); }
+/* Copies the bit sets of values written to ports 5, 6 and 7 since this machine's last run or resume began. */
+void mcemu_banks(TilemCalc *calc, uint8_t out[3][32]) { memcpy(out, state_of(calc)->banks, sizeof state_of(calc)->banks); }
+
+/* Forces bit 7 of the LCD status port on, as a controller that never finishes would. */
+void mcemu_stick_lcd_busy(TilemCalc *calc, int on) { state_of(calc)->stuck = on; }
 
 /* One byte per pixel, 1 when lit; the core leaves the frame untouched while the LCD is off, so it starts zeroed. Returns 0 on success. */
 int mcemu_lcd(TilemCalc *calc, uint8_t *out, int width, int height)

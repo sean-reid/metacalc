@@ -33,6 +33,22 @@ const CLR_LCD_FULL_MODE6: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full_mode6.bin"));
 const CLR_LCD_FULL_MODE7: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full_mode7.bin"));
+const GR_BUF_CPY_INTS_MODE4: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_gr_buf_cpy_ints_mode4.bin"));
+const GR_BUF_CPY_INTS_MODE5: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_gr_buf_cpy_ints_mode5.bin"));
+const GR_BUF_CPY_INTS_MODE6: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_gr_buf_cpy_ints_mode6.bin"));
+const GR_BUF_CPY_INTS_MODE7: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_gr_buf_cpy_ints_mode7.bin"));
+const CLR_LCD_FULL_INTS_MODE4: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full_ints_mode4.bin"));
+const CLR_LCD_FULL_INTS_MODE5: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full_ints_mode5.bin"));
+const CLR_LCD_FULL_INTS_MODE6: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full_ints_mode6.bin"));
+const CLR_LCD_FULL_INTS_MODE7: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full_ints_mode7.bin"));
 const RELIANT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_reliant.bin"));
 
 const ENTRY: u16 = 0x9000;
@@ -475,4 +491,63 @@ fn the_lcd_services_leave_the_controller_in_the_mode_they_found_it() {
             );
         }
     }
+}
+
+/// The timer fires about every 55,000 T-states and a copy takes about 98,000 at 6 MHz, so with
+/// interrupts on one lands in the middle; with a key held the handler also has a key to report.
+/// The handler works in the shadow registers, so a copy that keeps its mode there loses it.
+#[test]
+fn an_interrupt_during_an_lcd_copy_does_not_change_the_mode_it_restores() {
+    let services: [(&str, [&[u8]; 4]); 2] = [
+        (
+            "_GrBufCpy",
+            [
+                GR_BUF_CPY_INTS_MODE4,
+                GR_BUF_CPY_INTS_MODE5,
+                GR_BUF_CPY_INTS_MODE6,
+                GR_BUF_CPY_INTS_MODE7,
+            ],
+        ),
+        (
+            "_ClrLCDFull",
+            [
+                CLR_LCD_FULL_INTS_MODE4,
+                CLR_LCD_FULL_INTS_MODE5,
+                CLR_LCD_FULL_INTS_MODE6,
+                CLR_LCD_FULL_INTS_MODE7,
+            ],
+        ),
+    ];
+    for (name, codes) in services {
+        for (mode, code) in (4u8..).zip(codes) {
+            for key in [None, Some(0x09)] {
+                let mut m = machine_with(code);
+                if let Some(key) = key {
+                    m.press_key(key);
+                }
+                assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::Halted);
+                let status = 0x60 | (mode & 3);
+                assert_eq!(
+                    m.read_ram(RESULT, 2),
+                    [status, status],
+                    "{name} from {mode}, key {key:?}"
+                );
+            }
+        }
+    }
+}
+
+/// A controller that never comes ready stops the copy at the stub's fault instead of hanging
+/// the run or letting it write into a busy controller. The harness forces the busy bit on.
+#[test]
+fn an_lcd_that_never_comes_ready_stops_the_stub_with_lcd_stuck() {
+    for code in [GR_BUF_CPY, CLR_LCD_FULL] {
+        let mut m = machine_with(code);
+        m.stick_lcd_busy(true);
+        assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::LcdStuck);
+    }
+    let mut m = machine_with(GR_BUF_CPY);
+    m.stick_lcd_busy(true);
+    m.stick_lcd_busy(false);
+    assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::Halted);
 }

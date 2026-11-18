@@ -53,6 +53,8 @@ pub enum Stop {
     BadExit(ExitState),
     /// The app returned from its entry point instead of leaving through `_JForceCmdNoChar`.
     Returned,
+    /// The stub's LCD wait polled its limit without the controller becoming ready.
+    LcdStuck,
     /// The app made a `bcall` the stub does not implement; the address is the one called.
     UnsupportedBcall(u16),
     /// The app made a `bjump` the stub does not implement.
@@ -187,11 +189,18 @@ impl Machine {
         &mut mem[start..start + RAM_PAGE_SIZE]
     }
 
-    /// The values written to ports 5, 6 and 7 since the last `run` or `resume` began, as
-    /// (port, value) pairs in order. Pages 82h to 87h are one page, so these are the only
-    /// record of which page number the code selected.
-    pub fn banks_written(&self) -> Vec<(u8, u8)> {
+    /// The (port, value) pairs written to ports 5, 6 and 7 since this machine's last `run` or
+    /// `resume` began, sorted by port and then value and without repeats. It is a set: it says
+    /// which values were written, not in what order or how often. Pages 82h to 87h are one
+    /// page, so this is the only record of which page number the code selected.
+    pub fn banks_written(&mut self) -> Vec<(u8, u8)> {
         self.calc.banks_written()
+    }
+
+    /// Forces the LCD busy bit, bit 7 of port 10h, on for every read, as a controller that never
+    /// finishes would.
+    pub fn stick_lcd_busy(&mut self, on: bool) {
+        self.calc.stick_lcd_busy(on);
     }
 
     pub fn out_port(&mut self, port: u8, value: u8) {
@@ -273,6 +282,7 @@ impl Machine {
                         left => Stop::BadExit(left),
                     },
                     stub::APP_RETURN => Stop::Returned,
+                    stub::FAULT_LCD => Stop::LcdStuck,
                     stub::FAULT_BCALL => Stop::UnsupportedBcall(r.bc),
                     stub::FAULT_BJUMP => Stop::UnsupportedBjump(r.bc),
                     stub::FAULT_ERROR => Stop::OsError((r.af >> 8) as u8),

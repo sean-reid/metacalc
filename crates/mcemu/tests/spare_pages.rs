@@ -86,3 +86,19 @@ fn in_memory_mode_1_the_spare_page_is_one_page_in_all_three_banks() {
         "page 81h is not the spare page"
     );
 }
+
+/// `di; ld a,n; out (5),a` twice, then a HALT.
+fn writes_port_5(n: u8) -> Vec<u8> {
+    vec![0xF3, 0x3E, n, 0xD3, 0x05, 0xD3, 0x05, 0x76]
+}
+
+#[test]
+fn each_machine_keeps_its_own_set_of_bank_writes() {
+    let (mut a, mut b) = (boot(), boot());
+    a.load_ram(CODE, &writes_port_5(3));
+    b.load_ram(CODE, &writes_port_5(5));
+    assert_eq!(a.run(CODE, LIMIT).stop, Stop::Halted);
+    assert_eq!(b.run(CODE, LIMIT).stop, Stop::Halted);
+    assert_eq!(a.banks_written(), [(5, 3)], "written twice, listed once");
+    assert_eq!(b.banks_written(), [(5, 5)]);
+}

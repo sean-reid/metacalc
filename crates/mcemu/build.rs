@@ -151,6 +151,94 @@ const OS_ROUTINES: &[(&str, &str, &[&str])] = &[
     ),
     (
         "os_lcd.z80",
+        "os_gr_buf_cpy_ints_mode4.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_GrBufCpy",
+            "MODE=4",
+            "INTERRUPTS",
+        ],
+    ),
+    (
+        "os_lcd.z80",
+        "os_gr_buf_cpy_ints_mode5.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_GrBufCpy",
+            "MODE=5",
+            "INTERRUPTS",
+        ],
+    ),
+    (
+        "os_lcd.z80",
+        "os_gr_buf_cpy_ints_mode6.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_GrBufCpy",
+            "MODE=6",
+            "INTERRUPTS",
+        ],
+    ),
+    (
+        "os_lcd.z80",
+        "os_gr_buf_cpy_ints_mode7.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_GrBufCpy",
+            "MODE=7",
+            "INTERRUPTS",
+        ],
+    ),
+    (
+        "os_lcd.z80",
+        "os_clr_lcd_full_ints_mode4.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_ClrLCDFull",
+            "MODE=4",
+            "INTERRUPTS",
+        ],
+    ),
+    (
+        "os_lcd.z80",
+        "os_clr_lcd_full_ints_mode5.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_ClrLCDFull",
+            "MODE=5",
+            "INTERRUPTS",
+        ],
+    ),
+    (
+        "os_lcd.z80",
+        "os_clr_lcd_full_ints_mode6.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_ClrLCDFull",
+            "MODE=6",
+            "INTERRUPTS",
+        ],
+    ),
+    (
+        "os_lcd.z80",
+        "os_clr_lcd_full_ints_mode7.bin",
+        &[
+            "ENTRY=$9000",
+            "RESULT=$A000",
+            "SERVICE=_ClrLCDFull",
+            "MODE=7",
+            "INTERRUPTS",
+        ],
+    ),
+    (
+        "os_lcd.z80",
         "os_clr_lcd_full_mode7.bin",
         &[
             "ENTRY=$9000",
@@ -397,6 +485,7 @@ fn write_stub_labels(labels: &Path, out: &Path) {
         "FAULT_BCALL",
         "FAULT_BJUMP",
         "FAULT_ERROR",
+        "FAULT_LCD",
         "OS_INIT",
         "HOST_INIT",
         "HOST_FIND",

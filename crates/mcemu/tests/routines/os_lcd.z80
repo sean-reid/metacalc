@@ -5,7 +5,8 @@
 #endif
 
 ; Calls SERVICE with the LCD on in increment mode MODE, 05h unless defined, and records the status
-; byte, busy bit cleared, before at RESULT and after at RESULT + 1.
+; byte, busy bit cleared, before at RESULT and after at RESULT + 1. With INTERRUPTS the call
+; is made with them on.
 .org ENTRY
 	ld a, 03h
 	out (10h), a
@@ -16,6 +17,9 @@
 	in a, (10h)
 	and 7Fh
 	ld (RESULT), a
+#ifdef INTERRUPTS
+	ei
+#endif
 	bcall(SERVICE)
 	call settle
 	in a, (10h)

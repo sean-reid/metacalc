@@ -269,15 +269,17 @@ put_c:
 	ret
 
 ; Both services write the 12 columns of each of the 64 rows, waiting on the LCD between
-; accesses, whatever the CPU speed. They destroy every register but IX, IY and SP and return
-; with interrupts on.
+; accesses, whatever the CPU speed. They destroy every register but IX, IY and SP. They mask
+; interrupts for the copy and return with them on, as TI-OS 2.43 does.
 clr_lcd_full:
+	di
 	ld hl,zero
 	ld de,0
 	call lcd_blit
 	jr lcd_done
 
 gr_buf_cpy:
+	di
 	ld hl,plotSScreen
 	ld de,1
 	call lcd_blit
@@ -305,12 +307,12 @@ junk_all:
 	ret
 
 ; In: HL = the first byte, DE = how far HL moves after each byte. Leaves the controller in the
-; increment mode it was in, kept in AF' meanwhile.
+; increment mode it was in, kept on the stack meanwhile.
 lcd_blit:
 	in a,(PORT_LCD_CMD)
 	and 3
 	or 4
-	ex af,af'
+	push af
 	ld a,$07
 	call lcd_command
 	ld c,$80
@@ -330,7 +332,7 @@ lcd_byte:
 	ld a,c
 	cp $C0
 	jr nz,lcd_row
-	ex af,af'
+	pop af
 	jp lcd_command
 
 lcd_command:
@@ -341,15 +343,29 @@ lcd_command:
 	ret
 
 ; Waits for the CPU-side LCD wait and then for the controller's own busy bit, which drops a
-; write made inside its window.
+; write made inside its window. Gives up after 256 polls between the two and stops the machine
+; at fault_lcd, with interrupts off.
 lcd_wait:
+	push bc
+	ld b,0
+lcd_wait_ready:
 	in a,(PORT_STATUS)
 	and LCD_READY
-	jr z,lcd_wait
+	jr nz,lcd_busy
+	djnz lcd_wait_ready
+	jr lcd_stuck
 lcd_busy:
 	in a,(PORT_LCD_CMD)
 	rla
-	jr c,lcd_busy
+	jr nc,lcd_wait_ok
+	djnz lcd_busy
+lcd_stuck:
+	di
+fault_lcd:
+	halt
+	jr fault_lcd
+lcd_wait_ok:
+	pop bc
 	ret
 
 zero:
