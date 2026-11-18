@@ -1,8 +1,8 @@
 use mcglyph::Font;
 
-const LABELS: [&str; 19] = [
-    "Open", "Run", "Info", "Find", "Kind", "Try", "Fold", "Dist", "Why", "Up", "Thm", "Aply",
-    "Use", "Hyp", "Auto", "Undo", "Tree", "Go", "Stop",
+const LABELS: [&str; 20] = [
+    "Open", "Run", "Info", "Find", "Kind", "Try", "Sect", "Fold", "Dist", "Why", "Up", "Thm",
+    "Aply", "Use", "Hyp", "Auto", "Undo", "Tree", "Go", "Stop",
 ];
 
 /// Letters that need more than three columns to read apart from their neighbours.
