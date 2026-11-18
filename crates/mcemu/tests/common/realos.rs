@@ -2,6 +2,8 @@
 //! that has it, under `$HOME/ti84-rom`; where it is absent `RealOs::boot` returns `None` and the
 //! test skips.
 
+#![allow(dead_code)]
+
 use mcemu::Machine;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -98,6 +100,27 @@ pub fn make_app(dir: &str, name: &str, args: &[String]) -> PathBuf {
         String::from_utf8_lossy(&make.stdout)
     );
     build
+}
+
+/// Assembles a test routine that is an app, `tests/routines/<file>`, and returns the app file.
+pub fn assemble_routine(file: &str) -> Vec<u8> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{file}.8xk"));
+    let wrapper = root.join("../../scripts/spasm.sh");
+    let run = Command::new("sh")
+        .arg(wrapper)
+        .arg("-I")
+        .arg(root.join("../../app/src"))
+        .arg(root.join("tests/routines").join(file))
+        .arg(&out)
+        .output()
+        .expect("the assembler runs");
+    assert!(
+        run.status.success(),
+        "spasm: {}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+    std::fs::read(out).unwrap()
 }
 
 /// The address of `name` in the label file spasm wrote next to the app.
