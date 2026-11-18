@@ -40,3 +40,11 @@ fn long_statement_continues_on_the_next_screen_without_cutting_a_line() {
         }
     }
 }
+
+#[test]
+fn empty_input_gives_one_blank_screen() {
+    let frames = Font::builtin().frames(&[], (96, 64)).expect("renders");
+    assert_eq!(frames.len(), 1);
+    assert_eq!((frames[0].width(), frames[0].height()), (96, 64));
+    assert!(frames[0].rows().all(|row| row.iter().all(|&ink| !ink)));
+}

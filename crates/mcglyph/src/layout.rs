@@ -104,7 +104,8 @@ impl Font {
     }
 
     /// Renders `tokens` onto screens of `size` pixels, breaking between lines only. A screen shows
-    /// whole lines and is padded with blank rows to its full height.
+    /// whole lines and is padded with blank rows to its full height. Empty input gives one blank
+    /// screen.
     pub fn frames(
         &self,
         tokens: &[&str],
@@ -113,6 +114,9 @@ impl Font {
         let lines = self.layout(tokens, width)?;
         let pitch = self.height() + LEADING;
         let per_frame = ((height + LEADING) / pitch).max(1);
+        if lines.is_empty() {
+            return Ok(vec![Bitmap::new(width, height)]);
+        }
         lines
             .chunks(per_frame)
             .map(|chunk| {
