@@ -1,4 +1,4 @@
-use super::{Database, Kind, Proof, ProofBody, ProofError, StmtId, Sym, dv_pair};
+use super::{Database, Kind, ProofBody, ProofError, StmtId, Sym, dv_pair};
 
 /// High-water marks of one proof check, in the units a fixed-memory kernel has to budget.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -87,11 +87,11 @@ impl<'a> Verifier<'a> {
         match &proof.body {
             ProofBody::Normal(steps) => {
                 for &step in steps {
-                    self.apply(step, proof)?;
+                    self.apply(step, &stmt.scope_dv)?;
                 }
             }
             ProofBody::Compressed { labels, letters } => {
-                self.run_compressed(&stmt.frame.hyps, labels, letters, proof)?;
+                self.run_compressed(&stmt.frame.hyps, labels, letters, &stmt.scope_dv)?;
             }
         }
         if self.starts.len() != 1 {
@@ -108,7 +108,7 @@ impl<'a> Verifier<'a> {
         hyps: &[StmtId],
         labels: &[StmtId],
         body: &[u8],
-        proof: &Proof,
+        scope_dv: &[(Sym, Sym)],
     ) -> Result<(), ProofError> {
         let mut high: usize = 0;
         for &c in body {
@@ -120,9 +120,9 @@ impl<'a> Verifier<'a> {
                         .ok_or(ProofError::MalformedCompressed)?;
                     high = 0;
                     if index < hyps.len() {
-                        self.apply(hyps[index], proof)?;
+                        self.apply(hyps[index], scope_dv)?;
                     } else if index - hyps.len() < labels.len() {
-                        self.apply(labels[index - hyps.len()], proof)?;
+                        self.apply(labels[index - hyps.len()], scope_dv)?;
                     } else {
                         let saved = self
                             .saved
@@ -165,7 +165,7 @@ impl<'a> Verifier<'a> {
         Ok(())
     }
 
-    fn apply(&mut self, id: StmtId, proof: &Proof) -> Result<(), ProofError> {
+    fn apply(&mut self, id: StmtId, scope_dv: &[(Sym, Sym)]) -> Result<(), ProofError> {
         let db = self.db;
         let stmt = db.stmt(id);
         if matches!(stmt.kind, Kind::Float | Kind::Essential) {
@@ -218,7 +218,7 @@ impl<'a> Verifier<'a> {
                     if !db.syms[b as usize].is_var {
                         continue;
                     }
-                    if a == b || proof.scope_dv.binary_search(&dv_pair(a, b)).is_err() {
+                    if a == b || scope_dv.binary_search(&dv_pair(a, b)).is_err() {
                         return Err(ProofError::DisjointViolation);
                     }
                 }

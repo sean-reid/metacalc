@@ -312,3 +312,51 @@ fn a_refined_syntax_axiom_is_clean_when_the_theorem_declares_the_pair() {
         Ok(())
     );
 }
+
+fn scope_session<'a>(cat: &std::rc::Rc<mcedit::Catalog<'a>>, dummy: &str) -> mcedit::Session<'a> {
+    let db = cat.db;
+    let mut s = session(cat, "tscope");
+    s.apply(0, id(db, "axfree")).unwrap();
+    s.apply(1, id(db, "ax-gen")).unwrap();
+    s.close(2, id(db, "tscope.1")).unwrap();
+    let meta = s.status().metas[0];
+    s.assign(meta, sym(db, dummy)).unwrap();
+    s
+}
+
+#[test]
+fn a_pair_a_question_mark_theorem_declares_is_in_scope_for_a_new_proof() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = scope_session(&cat, "w");
+    s.allow_new_disjoint(false);
+    assert_eq!(s.status().violations, []);
+    let done = s.export().unwrap();
+    assert_eq!(done.added_dv, []);
+    assert_eq!(verified(&db, &done), Ok(()));
+}
+
+#[test]
+fn a_pair_a_question_mark_theorem_does_not_declare_is_refused_and_the_verifier_agrees() {
+    let db = db();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = scope_session(&cat, "z");
+    s.allow_new_disjoint(false);
+    let wrong = violation(&db, "axfree", "ps", "z", ViolationKind::Undeclared);
+    assert_eq!(s.status().violations, [wrong]);
+    assert!(s.export().is_err());
+
+    s.allow_new_disjoint(true);
+    let mut done = s.export().unwrap();
+    assert_eq!(done.added_dv, [(sym(&db, "ps"), sym(&db, "z"))]);
+    assert_eq!(verified(&db, &done), Ok(()));
+    done.added_dv.clear();
+    assert_eq!(
+        verified(&db, &done),
+        Err(mcedit::oracle::Failure::Rejected(
+            mcpack::mm::ProofError::DisjointViolation
+        ))
+    );
+}

@@ -187,6 +187,8 @@ jobs:
       - run: sh scripts/verify-exports.sh "$RUNNER_TEMP/libraries"
       - run: sh scripts/test-verify-exports.sh
       - run: sh scripts/replay-libraries.sh "$RUNNER_TEMP/libraries"
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --release --locked -p mcpack --test export -- --ignored --exact the_shipped_libraries_repack_from_their_export_to_the_same_records
+      - run: MCEDIT_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --release --locked -p mcedit --test replay -- --ignored --exact theorems_with_a_late_float_are_rebuilt_as_new_proofs
 
   library-screens:
     needs: [changes, libraries]
