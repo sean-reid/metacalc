@@ -78,6 +78,8 @@ pub struct Stmt {
     pub expr: Vec<Sym>,
     pub frame: Frame,
     pub proof: Option<Result<Proof, ProofError>>,
+    /// For a hypothesis, the number of statements parsed when its scope closed, or `StmtId::MAX` while it is still open. A hypothesis is active at statement `s` when it precedes `s` and `scope_end > s`.
+    pub scope_end: StmtId,
 }
 
 pub struct Database {

@@ -259,6 +259,7 @@ impl<'a> Parser<'a> {
         let scope = self.scopes.pop().unwrap();
         for hyp in scope.hyps {
             self.hyp_active[hyp as usize] = false;
+            self.stmts[hyp as usize].scope_end = self.stmts.len() as StmtId;
             let stmt = &self.stmts[hyp as usize];
             if stmt.kind == Kind::Float {
                 self.float_of[stmt.expr[1] as usize] = None;
@@ -352,6 +353,7 @@ impl<'a> Parser<'a> {
             expr,
             frame,
             proof,
+            scope_end: StmtId::MAX,
         });
         Ok(())
     }
