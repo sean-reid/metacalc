@@ -1,0 +1,5 @@
+name = "prop"
+title = "Propositional calculus"
+description = "The propositional calculus of set.mm that the ring theorems depend on, from the first axiom up to the start of predicate calculus."
+roots = ["ringlz", "ringnegl", "ringcom"]
+before = "vx"

@@ -1,0 +1,4 @@
+name = "ring"
+title = "Ring theory"
+description = "Everything the set.mm theorems ringlz, ringnegl and ringcom depend on, from propositional calculus through set theory to rings."
+roots = ["ringlz", "ringnegl", "ringcom"]
