@@ -1,0 +1,141 @@
+#define KERNEL_EMBEDDED
+
+TEST_INIT_STATUS	.equ $FF00
+TEST_VERIFY_STATUS	.equ $FF01
+TEST_ASSERTION		.equ $FF02
+TEST_COUNT		.equ $FF04
+TEST_IFF		.equ $FF06
+TEST_BLOCK		.equ $FF00
+TEST_VERIFY2_STATUS	.equ $FF0A
+TEST_ASSERTION2		.equ $FF08
+TEST_STATUSES		.equ $F200
+TEST_REGS		.equ $FF10
+TEST_IFF_IN		.equ $FF1A
+
+.org $4000
+	jp entry_one
+	jp entry_all
+	jp entry_iff
+	jp entry_two
+
+entry_one:
+	di
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	ld hl,(TEST_ASSERTION)
+	call kernel_verify
+	ld (TEST_VERIFY_STATUS),a
+	call iff_flag
+	halt
+
+entry_two:
+	di
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	ld hl,(TEST_ASSERTION)
+	call kernel_verify
+	ld (TEST_VERIFY_STATUS),a
+	ld hl,(TEST_ASSERTION2)
+	call kernel_verify
+	ld (TEST_VERIFY2_STATUS),a
+	halt
+
+entry_verify:
+	di
+	ld hl,(TEST_ASSERTION)
+	call kernel_verify
+	ld (TEST_VERIFY_STATUS),a
+	halt
+
+entry_regs:
+	di
+	ld iy,$1357
+	ld bc,$2468
+	push bc
+	pop af
+	ex af,af'
+	exx
+	ld bc,$369C
+	ld de,$48AE
+	ld hl,$5AC0
+	exx
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	ld hl,(TEST_ASSERTION)
+	call kernel_verify
+	ld (TEST_VERIFY_STATUS),a
+	ld (TEST_REGS),iy
+	ex af,af'
+	push af
+	pop bc
+	ld (TEST_REGS+2),bc
+	exx
+	ld (TEST_REGS+4),bc
+	ld (TEST_REGS+6),de
+	ld (TEST_REGS+8),hl
+	halt
+
+entry_iffv:
+	xor a
+	out (3),a
+	ld a,(TEST_IFF_IN)
+	or a
+	jr z,iffv_start
+	ei
+iffv_start:
+	nop
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	ld hl,(TEST_ASSERTION)
+	call kernel_verify
+	ld (TEST_VERIFY_STATUS),a
+	call iff_flag
+	di
+	halt
+
+entry_all:
+	di
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	ld hl,0
+all_next:
+	ld de,(TEST_COUNT)
+	push hl
+	or a
+	sbc hl,de
+	pop hl
+	jr nc,all_done
+	push hl
+	call kernel_verify
+	pop hl
+	ld de,TEST_STATUSES
+	add hl,de
+	ld (hl),a
+	or a
+	sbc hl,de
+	inc hl
+	jr all_next
+all_done:
+	halt
+
+entry_iff:
+	xor a
+	out (3),a
+	ei
+	nop
+	call kernel_init
+	ld (TEST_INIT_STATUS),a
+	call iff_flag
+	di
+	halt
+
+iff_flag:
+	ld a,i
+	ld a,0
+	jp po,iff_store
+	inc a
+iff_store:
+	ld (TEST_IFF),a
+	ret
+
+#include "kernel.z80"

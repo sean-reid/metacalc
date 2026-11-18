@@ -75,13 +75,26 @@ fn compile_tilem() {
     println!("cargo:rerun-if-changed=csrc/harness.c");
 }
 
-fn spasm(src: &Path, out: &Path, defines: &[&str]) {
+fn spasm_ok(src: &Path, out: &Path, defines: &[&str], args: &[&str]) -> bool {
+    let mut cmd = Command::new(env::var_os("SPASM").unwrap_or_else(|| "spasm".into()));
+    for d in defines {
+        cmd.arg(format!("-D{d}"));
+    }
+    cmd.args(args)
+        .arg("-N")
+        .arg(src)
+        .arg(out)
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+fn spasm(src: &Path, out: &Path, defines: &[&str], args: &[&str]) {
     println!("cargo:rerun-if-changed={}", src.display());
     let mut cmd = Command::new(env::var_os("SPASM").unwrap_or_else(|| "spasm".into()));
     for d in defines {
         cmd.arg(format!("-D{d}"));
     }
-    let status = cmd.arg("-N").arg(src).arg(out).output();
+    let status = cmd.args(args).arg("-N").arg(src).arg(out).output();
     match status {
         Ok(o) if o.status.success() => {}
         Ok(o) => fail(&format!(
@@ -101,8 +114,8 @@ fn main() {
     let dir = Path::new("stub");
     let os = out.join("os.bin");
     let boot = out.join("boot.bin");
-    spasm(&dir.join("os.z80"), &os, &[]);
-    spasm(&dir.join("boot.z80"), &boot, &[]);
+    spasm(&dir.join("os.z80"), &os, &[], &[]);
+    spasm(&dir.join("boot.z80"), &boot, &[], &[]);
     let mut rom = vec![0xFF; ROM_SIZE];
     for (bin, at) in [(os, 0), (boot, BOOT_PAGE * PAGE)] {
         let bytes = fs::read(bin).unwrap();
@@ -115,6 +128,45 @@ fn main() {
             &Path::new("tests/routines").join(src),
             &out.join(name),
             defines,
+            &[],
+        );
+    }
+    assemble_kernel(&out);
+}
+
+/// The kernel on its own, and with the test entry points and a label file for the tests.
+fn assemble_kernel(out: &Path) {
+    let dir = Path::new("../../kernel");
+    for entry in fs::read_dir(dir).unwrap().flatten() {
+        println!("cargo:rerun-if-changed={}", entry.path().display());
+    }
+    let include = dir.to_str().unwrap();
+    spasm(
+        &dir.join("kernel.z80"),
+        &out.join("kernel_standalone.bin"),
+        &[],
+        &["-I", include],
+    );
+    for base in ["$BF00", "$C080", "$F100"] {
+        assert!(
+            !spasm_ok(
+                Path::new("tests/routines/kernel_test.z80"),
+                &out.join("kernel_bad_base.bin"),
+                &[&format!("KERNEL_RAM={base}")],
+                &["-I", include],
+            ),
+            "a kernel RAM base of {base} assembled"
+        );
+    }
+    for (name, defines) in [
+        ("kernel_test", &[][..]),
+        ("kernel_test_moved", &["KERNEL_RAM=$C400"][..]),
+    ] {
+        spasm(
+            Path::new("tests/routines/kernel_test.z80"),
+            &out.join(format!("{name}.bin")),
+            defines,
+            &["-I", include, "-L"],
         );
     }
 }
