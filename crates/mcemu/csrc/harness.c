@@ -83,6 +83,7 @@ TilemCalc *mcemu_new(const uint8_t *rom, size_t len)
 		tilem_calc_free(calc);
 		return NULL;
 	}
+	calc->z80.emuflags |= TILEM_Z80_BREAK_EXCEPTIONS;
 	tilem_z80_add_breakpoint(calc, TILEM_BREAK_EXECUTE, OP_HALT, OP_HALT, 0xffff, halt_stops, NULL);
 	return calc;
 }

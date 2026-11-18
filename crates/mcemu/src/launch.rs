@@ -1,6 +1,6 @@
 //! Installing an app and entering it the way TI-OS does.
 
-use crate::{APP_PAGE_SIZE, AppError, Machine, Regs, Run, Speed, Stop, decode_app, stub};
+use crate::{AppError, FLASH_PAGE_SIZE, Machine, Regs, Run, Speed, Stop, decode_app, stub};
 
 /// Where an app is entered, and the stack TI-OS gives it.
 pub const APP_ENTRY: u16 = 0x4080;
@@ -14,14 +14,24 @@ const RAM_PAGE_BANK_B: u8 = 0x81;
 const INIT_LIMIT: u32 = 100_000;
 
 impl Machine {
+    fn check_base(&self, base: u8) -> Result<(), AppError> {
+        if base <= FIRST_PROTECTED {
+            return Err(AppError("the base page is in the OS's range"));
+        }
+        if usize::from(base) >= self.calc.rom_size() / FLASH_PAGE_SIZE - 1 {
+            return Err(AppError("the base page is past the user flash"));
+        }
+        Ok(())
+    }
+
     /// Writes page k of the app file to flash page `base - k`.
     pub fn install_app(&mut self, file: &[u8], base: u8) -> Result<(), AppError> {
+        self.check_base(base)?;
         let pages = decode_app(file)?;
-        if pages.len() > usize::from(base).saturating_sub(usize::from(FIRST_PROTECTED)) {
+        if pages.len() > usize::from(base - FIRST_PROTECTED) {
             return Err(AppError("the pages do not fit below the base page"));
         }
         for (k, page) in pages.iter().enumerate() {
-            debug_assert!(page.len() <= APP_PAGE_SIZE);
             self.load_flash(base - k as u8, 0, page);
         }
         Ok(())
@@ -29,8 +39,8 @@ impl Machine {
 
     /// Leaves the machine as TI-OS does at the first instruction of an app installed with `base`,
     /// ready for `run_app`.
-    pub fn launch(&mut self, base: u8) {
-        assert!(base > FIRST_PROTECTED, "the base page is in the OS's range");
+    pub fn launch(&mut self, base: u8) -> Result<(), AppError> {
+        self.check_base(base)?;
         let init = self.run(stub::OS_INIT, INIT_LIMIT);
         assert_eq!(init.stop, Stop::Halted, "the stub's launch setup finishes");
         self.set_speed(Speed::Mhz6);
@@ -78,6 +88,7 @@ impl Machine {
             iff2: 0,
             im: 1,
         });
+        Ok(())
     }
 
     /// Runs the launched app on from where it is, interrupts as it left them, until it exits,

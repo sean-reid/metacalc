@@ -140,3 +140,77 @@ fn the_kernel_checks_a_library_stored_in_the_pages_of_a_built_app() {
         assert_eq!(crc.value, crc32(&bytes[8..]), "{name}: crc");
     }
 }
+
+type Decoded = Result<Vec<Vec<u8>>, mcemu::AppError>;
+
+/// The broken files test-check-8xk.sh feeds the checker, for the one-page app and for the app
+/// with a library, as (file name, decoded).
+fn fixtures(name: &str, library: Option<&[u8]>) -> Vec<(String, Decoded)> {
+    build(name, library);
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("app-{name}"));
+    let fixtures = dir.join("fixtures");
+    let _ = std::fs::remove_dir_all(&fixtures);
+    let mut script = Command::new("sh");
+    script
+        .arg(app_dir().join("scripts/test-check-8xk.sh"))
+        .env("KEEP_FIXTURES", &fixtures);
+    if library.is_some() {
+        script.arg("-l").arg(dir.join("library.mclib"));
+    }
+    let ran = script
+        .arg(dir.join("metacalc.8xk"))
+        .output()
+        .expect("the script runs");
+    assert!(
+        ran.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    let mut found: Vec<_> = std::fs::read_dir(&fixtures)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "8xk"))
+        .map(|e| {
+            let file = std::fs::read(e.path()).unwrap();
+            (
+                e.file_name().to_string_lossy().into_owned(),
+                mcemu::decode_app(&file),
+            )
+        })
+        .collect();
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found
+}
+
+/// The checker refuses some broken files for what is in the app (its name, signature, library
+/// bytes, page count), and those are valid hex the decoder takes. The ones it refuses for the
+/// hex itself, the decoder must refuse too.
+#[test]
+fn the_decoder_and_the_checker_agree_on_the_broken_files_the_checker_is_tested_with() {
+    let (_, small) = small_library();
+    let library = padded(&small, 3 * PAGE - 96);
+    let hex_level = ["empty", "checksum", "gap", "long-page"];
+    for (label, library) in [("fixtures-one", None), ("fixtures-lib", Some(&library[..]))] {
+        let found = fixtures(label, library);
+        assert!(found.len() >= 5, "{label}: {} fixtures", found.len());
+        let mut seen = Vec::new();
+        for (file, decoded) in &found {
+            let stem = file.trim_end_matches(".8xk");
+            if hex_level.contains(&stem) {
+                assert!(decoded.is_err(), "{label}: the decoder took {file}");
+                seen.push(stem.to_string());
+            } else {
+                assert!(
+                    decoded.is_ok(),
+                    "{label}: the decoder refused {file}: {decoded:?}"
+                );
+            }
+        }
+        assert!(seen.contains(&"checksum".to_string()), "{label}: {seen:?}");
+        if library.is_some() {
+            for stem in ["gap", "long-page"] {
+                assert!(seen.contains(&stem.to_string()), "{label}: {seen:?}");
+            }
+        }
+    }
+}

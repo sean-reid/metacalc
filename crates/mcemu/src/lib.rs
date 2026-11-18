@@ -8,7 +8,7 @@ mod stub {
     include!(concat!(env!("OUT_DIR"), "/stub_labels.rs"));
 }
 
-pub use app::{AppError, PAGE_SIZE as APP_PAGE_SIZE, decode as decode_app};
+pub use app::{AppError, decode as decode_app};
 pub use ffi::Regs;
 
 /// Free stub ROM: boots to a known state and jumps to `ENTRY`.
@@ -33,7 +33,8 @@ pub enum Speed {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stop {
-    /// A HALT executed with interrupts off, or any HALT under `run`.
+    /// A HALT executed with interrupts off, or one in the stub's own code. A HALT with
+    /// interrupts on is the app waiting for the next one, and the run goes on.
     Halted,
     Limit,
     /// The core raised a hardware exception or stopped for another reason of its own.
@@ -162,8 +163,10 @@ impl Machine {
         self.calc.key(scancode, false);
     }
 
-    /// Runs from `pc` with interrupts off until HALT executes or `limit` T-states pass.
-    /// The count includes the HALT. A stub service that ends the run reports its own stop.
+    /// Runs from `pc` with interrupts off until a HALT executes with them off or `limit`
+    /// T-states pass. The code may turn them on, and then its HALTs wait for an interrupt
+    /// instead of ending the run. The count includes the HALT. A stub service that ends the
+    /// run reports its own stop.
     pub fn run(&mut self, pc: u16, limit: u32) -> Run {
         let limit = i32::try_from(limit).expect("limit fits in i32");
         let (reason, tstates) = self.calc.run(pc, limit);

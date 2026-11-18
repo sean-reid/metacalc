@@ -13,7 +13,8 @@ const PORTS: [u8; 27] = [
     0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x33, 0x34, 0x36, 0x37,
 ];
 
-/// What TI-OS 2.55MP left in each of them when it entered the same app on the real ROM.
+/// The values TI-OS 2.55MP left when it entered this same app on the real ROM, as measured; the
+/// same numbers `launch` writes.
 const REAL_PORTS: [u8; 27] = [
     0xE3,
     0x0B,
@@ -62,7 +63,7 @@ fn word(m: &mut Machine, name: &str) -> u16 {
 fn entered() -> Machine {
     let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
     m.install_app(LAUNCH_STATE, BASE).expect("the app installs");
-    m.launch(BASE);
+    m.launch(BASE).expect("the app launches");
     assert_eq!(m.regs().pc, 0x4080);
     m
 }
@@ -105,7 +106,7 @@ fn the_timer_flag_repeats_as_often_as_on_the_real_os() {
 #[test]
 fn the_timer_interrupt_reaches_the_stub_handler_about_108_times_a_second() {
     let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
-    m.launch(BASE);
+    m.launch(BASE).expect("the app launches");
     m.load_ram(0x9000, IRQ_COUNT);
     // A second of 6 MHz T-states.
     let run = m.run(0x9000, 6_000_000);
@@ -115,13 +116,52 @@ fn the_timer_interrupt_reaches_the_stub_handler_about_108_times_a_second() {
     assert!((107..=108).contains(&wakes), "{wakes} interrupts");
 }
 
+/// Runs a NOP and a HALT from the start of flash page `page` with the stub as launch leaves it.
+/// The core checks for a refused fetch after the instruction, and a HALT first would end the run.
+fn halt_on_page(page: u8) -> Stop {
+    let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
+    m.launch(0x30).expect("the app launches");
+    m.load_flash(page, 0, &[0x00, 0x76]);
+    m.out_port(0x06, page);
+    m.run(0x4000, 1000).stop
+}
+
 #[test]
-fn the_protected_range_stops_just_below_the_base_page() {
+fn code_runs_on_the_base_page_and_above_and_is_refused_in_the_protected_range() {
+    for page in [0x07, 0x30, 0x31, 0x69] {
+        assert_eq!(halt_on_page(page), Stop::Halted, "page {page:02X}");
+    }
+    for page in [0x08, 0x20, 0x2F] {
+        assert_eq!(halt_on_page(page), Stop::Fault, "page {page:02X}");
+    }
+}
+
+#[test]
+fn a_base_page_outside_the_user_flash_is_an_error_not_a_panic() {
+    let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
+    for base in [0x00, 0x08, 0x7F, 0x80, 0xFF] {
+        assert!(
+            m.install_app(LAUNCH_STATE, base).is_err(),
+            "install {base:02X}"
+        );
+        assert!(m.launch(base).is_err(), "launch {base:02X}");
+    }
+}
+
+#[test]
+fn an_ei_halt_with_no_interrupt_source_runs_to_the_limit() {
+    let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
+    m.out_port(0x03, 0x00);
+    m.load_ram(0x9000, &[0xFB, 0x76]);
+    assert_eq!(m.run(0x9000, 100_000).stop, Stop::Limit);
+}
+
+#[test]
+fn an_app_that_halts_with_interrupts_off_is_halted_not_exited_or_faulted() {
     let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
     m.install_app(LAUNCH_STATE, 0x30).expect("the app installs");
-    m.launch(0x30);
-    assert_eq!(m.run_app(LIMIT).stop, Stop::Exited);
-    let ports = m.read_ram(label("S_PORTS"), PORTS.len());
-    let at = |port: u8| ports[PORTS.iter().position(|&p| p == port).unwrap()];
-    assert_eq!((at(0x06), at(0x22), at(0x23)), (0x30, 0x08, 0x2F));
+    m.load_flash(0x30, 0x80, &[0xF3, 0x76]);
+    m.launch(0x30).expect("the app launches");
+    assert_eq!(m.run_app(LIMIT).stop, Stop::Halted);
+    assert_eq!(m.regs().pc, 0x4081);
 }

@@ -56,7 +56,7 @@ fn shows_the_word(lcd: &Lcd) -> bool {
 fn launched(file: &[u8], base: u8) -> Machine {
     let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
     m.install_app(file, base).expect("the app installs");
-    m.launch(base);
+    m.launch(base).expect("the app launches");
     m
 }
 
