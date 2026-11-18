@@ -110,6 +110,46 @@ mutate() {
 	resum "$dir/$2.tmp" "$dir/$2.8xk"
 }
 
+# read_field: sets n, t, sig and trailer from the 96-byte signature field of the good file, n
+# signature bytes and a trailer of t bytes, and fieldpos to the field's offset in the file's data
+# as hex digits.
+read_field() {
+	body=$(grep -a -E '^:[0-9A-F]{6}00' "$good" | tr -d '\r' | sed -E 's/^:[0-9A-F]{6}00(.*)..$/\1/' | tr -d '\n')
+	n=$(sh "$check" "$good" "$name" | sed -n 's/.*, \([0-9]*\)-byte signature.*/\1/p')
+	stripped=$(printf '%s' "$body" | sed -E 's/F+$//')
+	case $stripped in
+		*010[123]) t=2 ;;
+		*) t=1 ;;
+	esac
+	old=$(printf '%s' "$stripped" | tail -c $((2 * (3 + n + t))))
+	sig=$(printf '%s' "$old" | cut -c7-$((6 + 2 * n)))
+	trailer=$(printf '%s' "$old" | cut -c$((7 + 2 * n))-)
+	fieldpos=$((${#stripped} - 2 * (3 + n + t)))
+}
+
+# set_field out hex: the good file with its signature field replaced by hex, which must be 192
+# hex digits.
+set_field() {
+	{
+		head -n 1 "$good"
+		tail -n +2 "$good" | awk -v pos="$fieldpos" -v new="$2" "$HEX"'
+			BEGIN { off = 0 }
+			/^:[0-9A-F]{6}00/ {
+				len = 2 * hex(substr($0, 2, 2))
+				data = substr($0, 10, len)
+				for (i = 1; i <= len; i++) {
+					at = off + i - 1 - pos
+					if (at >= 0 && at < length(new)) data = substr(data, 1, i - 1) substr(new, at + 1, 1) substr(data, i + 1)
+				}
+				off += len
+				$0 = substr($0, 1, 9) data substr($0, 10 + len)
+			}
+			{ print }
+		'
+	} > "$1.tmp"
+	resum "$1.tmp" "$1"
+}
+
 if [ -z "$library" ]; then
 	: > "$dir/empty.8xk"
 	refuses empty "no bytes"
@@ -132,6 +172,32 @@ if [ -z "$library" ]; then
 
 	corrupt "$good" 0 1 "$dir/checksum.8xk"
 	refuses checksum "a data byte changed under its checksum" "checksum is wrong"
+
+	# The signer drops leading zero bytes of the number it exports, least significant byte first,
+	# so a shorter signature is the good one without its last byte, a smaller length byte and one
+	# more FF. This one is synthesised from the good file's own signature.
+	read_field
+	fill() { printf '%*s' "$1" '' | tr ' ' F; }
+	pad=$((192 - 6 - 2 * n - 2 * t))
+	hexlen() { printf %02X "$1"; }
+	short="022D$(hexlen $((n - 1)))$(printf '%s' "$sig" | cut -c1-$((2 * n - 2)))$trailer$(fill $((pad + 2)))"
+	set_field "$dir/short-signature.8xk" "$short"
+	sh "$check" "$dir/short-signature.8xk" "$name" | grep -q "$((n - 1))-byte signature" || {
+		echo "test-check-8xk: refused a signature one byte short" >&2
+		exit 1
+	}
+	liar="022D$(hexlen $((n - 1)))$sig$trailer$(fill $pad)"
+	set_field "$dir/length-lies.8xk" "$liar"
+	refuses length-lies "a length byte one under the signature bytes present" "no signature field"
+	long="022D$(hexlen $((n + 1)))$sig$trailer$(fill $pad)"
+	set_field "$dir/length-over.8xk" "$long"
+	refuses length-over "a length byte one over the signature bytes present" "no signature field"
+	empty="022D00${trailer}$(fill $((192 - 6 - 2 * t)))"
+	set_field "$dir/zero-length.8xk" "$empty"
+	refuses zero-length "a zero-length signature" "no signature field"
+	too_long="022D41${sig}00$(fill $((pad - 2)))"
+	set_field "$dir/sixty-five.8xk" "$too_long"
+	refuses sixty-five "a length byte of 65, which the signer cannot emit" "no signature field"
 
 	sh "$check" "$good" "$name" > /dev/null
 	echo "test-check-8xk: ok"
