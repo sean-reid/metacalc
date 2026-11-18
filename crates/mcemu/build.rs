@@ -259,6 +259,14 @@ fn main() {
             ],
         );
     }
+    spasm(
+        Path::new("../../probe/storecheck.z80"),
+        &out.join("storecheck.8xk"),
+        &[],
+        &["-I", "../../app/src", "-L"],
+    );
+    println!("cargo:rerun-if-changed=../../probe/storecheck.z80");
+    println!("cargo:rerun-if-changed=../../app/src/store.inc");
     println!("cargo:rerun-if-changed=../../probe/sparecore.inc");
     println!("cargo:rerun-if-changed=../../probe/sparescreen.inc");
     println!("cargo:rerun-if-changed=../../probe/printnum.inc");

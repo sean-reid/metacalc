@@ -1,0 +1,538 @@
+#include "equates.inc"
+
+; Runs the commands of the AppVar MCCMD against the status table and logs what each returns.
+;
+; MCCMD holds the commands, each a command byte and its arguments, ended by CMD_END. Words
+; and the CRC are little endian. The app copies the script to RAM, so creating or deleting
+; variables cannot move it.
+;     CMD_OPEN       crc (4), count (2)    log: A, B
+;     CMD_GET        n (2)                 log: A, B
+;     CMD_SET        n (2), value (1)      log: A
+;     CMD_GET_NEXT                         log: A, next (2)
+;     CMD_SET_NEXT   n (2)                 log: A
+;     CMD_COUNT                            log: A, four counts (8)
+;     CMD_RESET                            log: A
+;     CMD_MAKE       letter, size (2)      log: 0 made, 1 refused for room
+;     CMD_DELETE     letter                log: 0 deleted, 1 absent
+;     CMD_LOCATE                           log: 0 in RAM, 1 absent, 2 archived; data pointer (2), size (2)
+;     CMD_FILL       size (2)              creates MCFILL with no room check; log: 0
+;     CMD_ROOM       n (2)                 log: 0 if _EnoughMem accepts n bytes, 1 if not
+;     CMD_NOP                              log: 0
+;     CMD_REPEAT     n (2)                 runs the next command n times and logs the last
+;     CMD_WAIT                             holds the screen until CLEAR after the last command
+; The log starts at LOG with the address one past its end, then one record per command: the
+; command byte, then what is listed above.
+
+CMD_END      = 0
+CMD_OPEN     = 1
+CMD_GET      = 2
+CMD_SET      = 3
+CMD_GET_NEXT = 4
+CMD_SET_NEXT = 5
+CMD_COUNT    = 6
+CMD_RESET    = 7
+CMD_MAKE     = 8
+CMD_DELETE   = 9
+CMD_LOCATE   = 10
+CMD_NOP      = 11
+CMD_REPEAT   = 12
+CMD_WAIT     = 13
+CMD_FILL     = 14
+CMD_ROOM     = 15
+
+LOG         = appBackUpScreen
+LOG_LIMIT   = LOG + 700
+SCRIPT      = 86ECh
+SCRIPT_MAX  = 640
+STATE       = 8A3Ah
+S_PTR       = STATE
+S_AT        = STATE + 2
+S_REPEAT    = STATE + 4
+S_WAIT      = STATE + 6
+S_CMD       = STATE + 7
+S_RES_LEN   = STATE + 8
+S_RES       = STATE + 9
+S_TMP       = STATE + 24
+S_COUNTS    = STATE + 28
+S_DRAW      = STATE + 40
+
+#define APP_NAME "storechk"
+#include "header.inc"
+
+start:
+	ld hl, LOG + 2
+	ld (LOG), hl
+	xor a
+	ld (S_WAIT), a
+	ld hl, 0
+	ld (S_REPEAT), hl
+	call load_script
+	jr nz, finish
+	ld hl, SCRIPT
+	ld (S_PTR), hl
+next:
+	ld hl, (S_PTR)
+	ld (S_AT), hl
+	call fetch
+	or a
+	jr z, finish
+	cp CMD_REPEAT
+	jr nz, run
+	call fetch_word
+	ld a, h
+	or l
+	jr z, set_repeat
+	dec hl
+set_repeat:
+	ld (S_REPEAT), hl
+	jr next
+run:
+	ld (S_CMD), a
+	ld b, a
+	ld hl, S_RES
+	ld (hl), a
+	ld a, 2
+	ld (S_RES_LEN), a
+	ld a, b
+	call dispatch
+	ld hl, (S_REPEAT)
+	ld a, h
+	or l
+	jr z, record
+	dec hl
+	ld (S_REPEAT), hl
+	ld hl, (S_AT)
+	inc hl
+	ld (S_PTR), hl
+	ld a, (S_CMD)
+	jr run
+record:
+	call log_result
+	jr next
+
+finish:
+	call draw_log
+	ld a, (S_WAIT)
+	or a
+	jr z, leave
+	ei
+wait_for_clear:
+	halt
+	bcall(_GetCSC)
+	cp skClear
+	jr nz, wait_for_clear
+leave:
+	bjump(_JForceCmdNoChar)
+
+; Out: A = next script byte.
+fetch:
+	ld hl, (S_PTR)
+	ld a, (hl)
+	inc hl
+	ld (S_PTR), hl
+	ret
+
+; Out: HL = next script word.
+fetch_word:
+	call fetch
+	push af
+	call fetch
+	ld h, a
+	pop af
+	ld l, a
+	ret
+
+; Copies MCCMD to SCRIPT, ended by a zero byte. Out: NZ if there is no MCCMD.
+load_script:
+	ld hl, OP1
+	ld (hl), appVarObj
+	inc hl
+	ld (hl), 'M'
+	inc hl
+	ld (hl), 'C'
+	inc hl
+	ld (hl), 'C'
+	inc hl
+	ld (hl), 'M'
+	inc hl
+	ld (hl), 'D'
+	inc hl
+	ld (hl), 0
+	bcall(_ChkFindSym)
+	jr c, no_script
+	ld a, b
+	or a
+	jr nz, no_script
+	ex de, hl
+	ld c, (hl)
+	inc hl
+	ld b, (hl)
+	inc hl
+	ld de, SCRIPT_MAX - 1
+	ld a, b
+	cp d
+	jr c, size_ok
+	jr nz, size_cap
+	ld a, c
+	cp e
+	jr c, size_ok
+size_cap:
+	ld b, d
+	ld c, e
+size_ok:
+	ld de, SCRIPT
+	ld a, b
+	or c
+	jr z, script_end
+	ldir
+script_end:
+	xor a
+	ld (de), a
+	ret
+no_script:
+	or 1
+	ret
+
+dispatch:
+	cp CMD_OPEN
+	jp z, do_open
+	cp CMD_GET
+	jp z, do_get
+	cp CMD_SET
+	jp z, do_set
+	cp CMD_GET_NEXT
+	jp z, do_get_next
+	cp CMD_SET_NEXT
+	jp z, do_set_next
+	cp CMD_COUNT
+	jp z, do_count
+	cp CMD_RESET
+	jp z, do_reset
+	cp CMD_MAKE
+	jp z, do_make
+	cp CMD_DELETE
+	jp z, do_delete
+	cp CMD_LOCATE
+	jp z, do_locate
+	cp CMD_FILL
+	jp z, do_fill
+	cp CMD_ROOM
+	jp z, do_room
+	cp CMD_WAIT
+	jr nz, do_nop
+	ld a, 1
+	ld (S_WAIT), a
+do_nop:
+	xor a
+	jp result_a
+
+; In: A = the status, which becomes the first byte after the command byte.
+result_a:
+	ld (S_RES + 1), a
+	ret
+
+do_open:
+	call fetch_word
+	ld (S_TMP), hl
+	call fetch_word
+	ld (S_TMP + 2), hl
+	call fetch_word
+	ld b, h
+	ld c, l
+	ld hl, (S_TMP)
+	ld de, (S_TMP + 2)
+	call store_open
+	ld (S_RES + 1), a
+	ld a, b
+	ld (S_RES + 2), a
+	ld a, 3
+	jp result_len
+
+do_get:
+	call fetch_word
+	call store_get
+	ld (S_RES + 1), a
+	ld a, b
+	ld (S_RES + 2), a
+	ld a, 3
+	jp result_len
+
+do_set:
+	call fetch_word
+	push hl
+	call fetch
+	ld b, a
+	pop hl
+	call store_set
+	jp result_a
+
+do_get_next:
+	call store_get_next
+	ld (S_RES + 1), a
+	ld (S_RES + 2), hl
+	ld a, 4
+	jp result_len
+
+do_set_next:
+	call fetch_word
+	call store_set_next
+	jp result_a
+
+do_count:
+	ld hl, S_COUNTS
+	call store_count
+	ld (S_RES + 1), a
+	ld hl, S_COUNTS
+	ld de, S_RES + 2
+	ld bc, 8
+	ldir
+	ld a, 10
+	jp result_len
+
+do_reset:
+	call store_reset
+	jp result_a
+
+do_make:
+	call fetch
+	ld (S_TMP), a
+	call fetch_word
+	push hl
+	ld de, 16
+	add hl, de
+	bcall(_EnoughMem)
+	pop hl
+	jr nc, make_room
+	ld a, 1
+	jp result_a
+make_room:
+	push hl
+	call letter_name
+	pop hl
+	bcall(_CreateAppVar)
+	xor a
+	jp result_a
+
+do_delete:
+	call fetch
+	ld (S_TMP), a
+	call letter_name
+	bcall(_ChkFindSym)
+	jr nc, delete_found
+	ld a, 1
+	jp result_a
+delete_found:
+	bcall(_DelVarArc)
+	xor a
+	jp result_a
+
+do_fill:
+	call fetch_word
+	push hl
+	ld hl, fill_name
+	ld de, OP1
+	ld bc, 9
+	ldir
+	pop hl
+	bcall(_CreateAppVar)
+	xor a
+	jp result_a
+
+fill_name:
+	.db appVarObj, "MCFILL", 0, 0
+
+do_room:
+	call fetch_word
+	bcall(_EnoughMem)
+	sbc a, a
+	and 1
+	jp result_a
+
+; OP1 = the AppVar named by the letter in S_TMP.
+letter_name:
+	ld hl, OP1
+	ld (hl), appVarObj
+	inc hl
+	ld a, (S_TMP)
+	ld (hl), a
+	inc hl
+	ld (hl), 0
+	ret
+
+do_locate:
+	call store_name
+	bcall(_ChkFindSym)
+	jr nc, locate_found
+	ld a, 1
+	jp result_a
+locate_found:
+	ld a, b
+	or a
+	jr z, locate_ram
+	ld a, 2
+	jp result_a
+locate_ram:
+	ld (S_RES + 2), de
+	ex de, hl
+	ld e, (hl)
+	inc hl
+	ld d, (hl)
+	ld (S_RES + 4), de
+	xor a
+	ld (S_RES + 1), a
+	ld a, 6
+	jp result_len
+
+; In: A = bytes of the result, the command byte included.
+result_len:
+	ld (S_RES_LEN), a
+	ret
+
+; Appends the result to the log unless it is full.
+log_result:
+	ld hl, (LOG)
+	ld de, LOG_LIMIT
+	or a
+	sbc hl, de
+	ret nc
+	ld hl, (LOG)
+	ex de, hl
+	ld hl, S_RES
+	ld a, (S_RES_LEN)
+	ld c, a
+	ld b, 0
+	ldir
+	ld (LOG), de
+	ret
+
+; Draws the log as hex digits, 24 to a line, ten lines.
+LOG_SHOWN = 120
+
+draw_log:
+	ld hl, plotSScreen
+	ld de, plotSScreen + 1
+	ld bc, 767
+	ld (hl), 0
+	ldir
+	ld hl, LOG + 2
+	ld (S_DRAW), hl
+	ld hl, 0
+	ld (S_DRAW + 2), hl
+dl_next:
+	ld hl, (S_DRAW + 2)
+	ld de, LOG_SHOWN
+	or a
+	sbc hl, de
+	jr nc, dl_show
+	ld hl, (S_DRAW)
+	ld de, (LOG)
+	or a
+	sbc hl, de
+	jr nc, dl_show
+	ld hl, (S_DRAW)
+	ld a, (hl)
+	inc hl
+	ld (S_DRAW), hl
+	ld (S_DRAW + 4), a
+	ld a, (S_DRAW + 2)
+	ld d, 0
+dl_div:
+	cp 12
+	jr c, dl_have
+	sub 12
+	inc d
+	jr dl_div
+dl_have:
+	add a, a
+	ld (S_DRAW + 6), a
+	ld a, d
+	ld (S_DRAW + 5), a
+	ld a, (S_DRAW + 4)
+	rrca
+	rrca
+	rrca
+	rrca
+	and 0Fh
+	call draw_digit
+	ld hl, S_DRAW + 6
+	inc (hl)
+	ld a, (S_DRAW + 4)
+	and 0Fh
+	call draw_digit
+	ld hl, (S_DRAW + 2)
+	inc hl
+	ld (S_DRAW + 2), hl
+	jr dl_next
+dl_show:
+	bcall(_GrBufCpy)
+	ret
+
+; In: A = a digit, S_DRAW + 5 = the line, S_DRAW + 6 = the cell, four pixels wide, in the line.
+draw_digit:
+	ld l, a
+	ld h, 0
+	ld e, l
+	ld d, h
+	add hl, hl
+	add hl, hl
+	add hl, de
+	ld de, font
+	add hl, de
+	push hl
+	ld a, (S_DRAW + 5)
+	ld b, a
+	ld hl, plotSScreen
+	ld de, 72
+	inc b
+	jr dd_start
+dd_line:
+	add hl, de
+dd_start:
+	djnz dd_line
+	ld a, (S_DRAW + 6)
+	ld c, a
+	srl a
+	ld e, a
+	ld d, 0
+	add hl, de
+	pop de
+	ld b, 5
+dd_row:
+	ld a, (de)
+	inc de
+	bit 0, c
+	jr z, dd_put
+	srl a
+	srl a
+	srl a
+	srl a
+dd_put:
+	or (hl)
+	ld (hl), a
+	push de
+	ld de, 12
+	add hl, de
+	pop de
+	djnz dd_row
+	ret
+
+; 3 by 5 digits, one byte a row with the pixels in the top three bits.
+font:
+	.db 0E0h, 0A0h, 0A0h, 0A0h, 0E0h
+	.db 040h, 0C0h, 040h, 040h, 0E0h
+	.db 0E0h, 020h, 0E0h, 080h, 0E0h
+	.db 0E0h, 020h, 0E0h, 020h, 0E0h
+	.db 0A0h, 0A0h, 0E0h, 020h, 020h
+	.db 0E0h, 080h, 0E0h, 020h, 0E0h
+	.db 0E0h, 080h, 0E0h, 0A0h, 0E0h
+	.db 0E0h, 020h, 020h, 020h, 020h
+	.db 0E0h, 0A0h, 0E0h, 0A0h, 0E0h
+	.db 0E0h, 0A0h, 0E0h, 020h, 0E0h
+	.db 0E0h, 0A0h, 0E0h, 0A0h, 0A0h
+	.db 0C0h, 0A0h, 0C0h, 0A0h, 0C0h
+	.db 0E0h, 080h, 080h, 080h, 0E0h
+	.db 0C0h, 0A0h, 0A0h, 0A0h, 0C0h
+	.db 0E0h, 080h, 0E0h, 080h, 0E0h
+	.db 0E0h, 080h, 0E0h, 080h, 080h
+
+#include "store.inc"
