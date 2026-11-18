@@ -8,7 +8,7 @@ const REPLACEMENTS: [u8; 8] = [0x00, 0x01, 0x7F, 0x80, 0xEF, 0xF0, 0xFE, 0xFF];
 /// None when the length is more than the flash pages left can hold.
 fn flash_view(bytes: &[u8]) -> Option<Vec<u8>> {
     let length = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
-    let room = (0x80 - LIB_PAGE as usize) * PAGE;
+    let room = (LIB_PAGE as usize + 1) * PAGE;
     if length > room {
         return None;
     }
@@ -100,7 +100,7 @@ fn no_single_byte_change_to_a_proof_library_makes_the_kernel_disagree() {
 fn a_length_at_the_edge_of_flash_is_judged_as_the_model_would() {
     let db = parse(DB);
     let original = pack_all(&db);
-    let room = (0x80 - LIB_PAGE as u32) << 14;
+    let room = (LIB_PAGE as u32 + 1) << 14;
     let mut device = Device::new();
     for length in [
         0,

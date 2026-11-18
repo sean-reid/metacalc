@@ -3,15 +3,36 @@ use mcpack::library::{Kernel, KernelError, Limits, crc32, pack};
 use mcpack::mm::{self, Database, Kind, StmtId};
 use std::path::Path;
 
-pub const KERNEL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kernel_test.bin"));
-pub const LABELS: &str = include_str!(concat!(env!("OUT_DIR"), "/kernel_test.lab"));
+/// A kernel assembled with the test entry stub, and the label file the assembler wrote for it.
+#[derive(Clone, Copy)]
+pub struct Image {
+    pub code: &'static [u8],
+    pub labels: &'static str,
+}
 
-pub const LIB_PAGE: u8 = 0x40;
+pub const DEFAULT: Image = Image {
+    code: include_bytes!(concat!(env!("OUT_DIR"), "/kernel_test.bin")),
+    labels: include_str!(concat!(env!("OUT_DIR"), "/kernel_test.lab")),
+};
+
+/// The same kernel with its RAM block moved to $C400.
+pub const MOVED: Image = Image {
+    code: include_bytes!(concat!(env!("OUT_DIR"), "/kernel_test_moved.bin")),
+    labels: include_str!(concat!(env!("OUT_DIR"), "/kernel_test_moved.lab")),
+};
+
+/// The flash page of chunk 0; chunk c is at this page minus c.
+pub const LIB_PAGE: u8 = 0x6F;
 pub const PAGE: usize = 1 << 14;
 pub const RUN_LIMIT: u32 = 200_000_000;
 
 pub fn label(name: &str) -> u16 {
-    LABELS
+    label_in(DEFAULT, name)
+}
+
+pub fn label_in(image: Image, name: &str) -> u16 {
+    image
+        .labels
         .lines()
         .find_map(|line| {
             let (key, value) = line.split_once(" = ")?;
@@ -61,6 +82,8 @@ pub const ASKED_UNBOUNDED: Limits = Limits {
 
 pub struct Device {
     pub m: Machine,
+    pub image: Image,
+    pub lib_page: u8,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -72,13 +95,25 @@ pub struct Outcome {
 
 impl Device {
     pub fn new() -> Device {
+        Device::with_image(DEFAULT)
+    }
+
+    pub fn with_image(image: Image) -> Device {
         let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
         m.out_port(0x29, 0x17);
         m.out_port(0x2A, 0x27);
         m.out_port(0x2E, 0x45);
         m.set_speed(Speed::Mhz15);
-        m.load_flash(FLASH_TEST_PAGE, 0, KERNEL);
-        Device { m }
+        m.load_flash(FLASH_TEST_PAGE, 0, image.code);
+        Device {
+            m,
+            image,
+            lib_page: LIB_PAGE,
+        }
+    }
+
+    pub fn label(&self, name: &str) -> u16 {
+        label_in(self.image, name)
     }
 
     pub fn with_library(library: &[u8]) -> Device {
@@ -87,15 +122,22 @@ impl Device {
         device
     }
 
+    pub fn with_library_at(page: u8, library: &[u8]) -> Device {
+        let mut device = Device::new();
+        device.lib_page = page;
+        device.load(library);
+        device
+    }
+
     pub fn load(&mut self, library: &[u8]) {
         for (i, chunk) in library.chunks(PAGE).enumerate() {
-            self.m.load_flash(LIB_PAGE + i as u8, 0, chunk);
+            self.m.load_flash(self.lib_page - i as u8, 0, chunk);
         }
     }
 
     pub fn params(&mut self, limits: Limits) {
         let word = |value: usize| (value as u16).to_le_bytes();
-        let mut block = vec![LIB_PAGE];
+        let mut block = vec![self.lib_page];
         for value in [
             limits.stack_syms,
             limits.stack_entries,
@@ -104,23 +146,23 @@ impl Device {
         ] {
             block.extend(word(value));
         }
-        self.m.load_ram(label("KERNEL_LIB_PAGE"), &block);
+        self.m.load_ram(self.label("KERNEL_LIB_PAGE"), &block);
     }
 
     pub fn run(&mut self, entry: &str) -> u32 {
-        let run = self.m.run(label(entry), RUN_LIMIT);
+        let run = self.m.run(self.label(entry), RUN_LIMIT);
         assert_eq!(run.stop, Stop::Halted, "{entry} did not halt");
         run.tstates
     }
 
     pub fn byte(&mut self, name: &str) -> u8 {
-        self.m.read_ram(label(name), 1)[0]
+        self.m.read_ram(self.label(name), 1)[0]
     }
 
     pub fn verify(&mut self, id: usize, limits: Limits) -> Outcome {
         self.params(limits);
         self.m
-            .load_ram(label("TEST_ASSERTION"), &(id as u16).to_le_bytes());
+            .load_ram(self.label("TEST_ASSERTION"), &(id as u16).to_le_bytes());
         let tstates = self.run("ENTRY_ONE");
         Outcome {
             init: self.byte("TEST_INIT_STATUS"),
@@ -133,9 +175,11 @@ impl Device {
     pub fn verify_two(&mut self, first: usize, second: usize, limits: Limits) -> (u8, u8, u8) {
         self.params(limits);
         self.m
-            .load_ram(label("TEST_ASSERTION"), &(first as u16).to_le_bytes());
-        self.m
-            .load_ram(label("TEST_ASSERTION2"), &(second as u16).to_le_bytes());
+            .load_ram(self.label("TEST_ASSERTION"), &(first as u16).to_le_bytes());
+        self.m.load_ram(
+            self.label("TEST_ASSERTION2"),
+            &(second as u16).to_le_bytes(),
+        );
         self.run("ENTRY_TWO");
         (
             self.byte("TEST_INIT_STATUS"),
@@ -146,12 +190,12 @@ impl Device {
 
     /// Initialises once, then verifies assertions 0..count in order.
     pub fn verify_all(&mut self, count: usize, limits: Limits) -> (u8, Vec<u8>, u32) {
-        assert!(count <= 0xF00, "the status array holds 3840 entries");
+        assert!(count <= 0xD00, "the status array holds 3328 entries");
         self.params(limits);
         self.m
-            .load_ram(label("TEST_COUNT"), &(count as u16).to_le_bytes());
+            .load_ram(self.label("TEST_COUNT"), &(count as u16).to_le_bytes());
         let tstates = self.run("ENTRY_ALL");
-        let statuses = self.m.read_ram(label("TEST_STATUSES"), count);
+        let statuses = self.m.read_ram(self.label("TEST_STATUSES"), count);
         (self.byte("TEST_INIT_STATUS"), statuses, tstates)
     }
 }

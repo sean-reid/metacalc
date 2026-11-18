@@ -1,4 +1,9 @@
+#ifndef KERNEL_RAM
 KERNEL_RAM                  .equ $C000
+#endif
+#if KERNEL_RAM & $FF
+ .error "KERNEL_RAM must be a multiple of $100"
+#endif
 KERNEL_LIB_PAGE             .equ KERNEL_RAM+$00
 KERNEL_LIMIT_STACK_SYMS     .equ KERNEL_RAM+$01
 KERNEL_LIMIT_STACK_ENTRIES  .equ KERNEL_RAM+$03
@@ -48,6 +53,7 @@ kv_ye               .equ KERNEL_RAM+$58
 kv_xp               .equ KERNEL_RAM+$5A
 kv_yp               .equ KERNEL_RAM+$5C
 kv_a                .equ KERNEL_RAM+$5E
+kv_lib_page         .equ KERNEL_RAM+$5F
 CUR_DESC            .equ KERNEL_RAM+$60
 USED_DESC           .equ KERNEL_RAM+$80
 
@@ -78,6 +84,9 @@ SAVED_STARTS_BUF    .equ KERNEL_RAM+$1200
 STACK_BUF           .equ KERNEL_RAM+$1600
 SAVED_BUF           .equ KERNEL_RAM+$2200
 KERNEL_RAM_END      .equ KERNEL_RAM+$2E00
+#if KERNEL_RAM_END > $10000
+ .error "the kernel RAM block does not fit below $10000"
+#endif
 
 CACHE_IDS           .equ $2000
 CAP_STACK_SYMS      .equ $0C00

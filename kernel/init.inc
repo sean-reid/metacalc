@@ -4,7 +4,7 @@ magic:
 	.db "MCL1"
 
 ; in: E:HL = library offset (below the library length)
-; out: page mapped at $8000, HL = its address there, B = page index, C = flash page.
+; out: page mapped at $8000, HL = its address there, B = chunk index, C = flash page (the page of chunk 0 minus the index).
 ; Destroys AF.
 map_offset:
 	ld a,e
@@ -17,8 +17,8 @@ map_offset:
 	and 3
 	or b
 	ld b,a
-	ld a,(KERNEL_LIB_PAGE)
-	add a,b
+	ld a,(kv_lib_page)
+	sub b
 	ld c,a
 	out (7),a
 	ld a,h
@@ -80,6 +80,7 @@ init_body:
 	ld a,(KERNEL_LIB_PAGE)
 	cp $80
 	jp nc,fail_malformed
+	ld (kv_lib_page),a
 	out (7),a
 
 	ld hl,$8000
@@ -101,9 +102,8 @@ init_magic:
 	ld (kv_length),hl
 	ld a,($800A)
 	ld (kv_length+2),a
-	ld a,$80
-	ld hl,KERNEL_LIB_PAGE
-	sub (hl)
+	ld a,(kv_lib_page)
+	inc a
 	ld b,a
 	rrca
 	rrca

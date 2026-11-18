@@ -134,10 +134,15 @@ fn assemble_kernel(out: &Path) {
         &[],
         &["-I", include],
     );
-    spasm(
-        Path::new("tests/routines/kernel_test.z80"),
-        &out.join("kernel_test.bin"),
-        &[],
-        &["-I", include, "-L"],
-    );
+    for (name, defines) in [
+        ("kernel_test", &[][..]),
+        ("kernel_test_moved", &["KERNEL_RAM=$C400"][..]),
+    ] {
+        spasm(
+            Path::new("tests/routines/kernel_test.z80"),
+            &out.join(format!("{name}.bin")),
+            defines,
+            &["-I", include, "-L"],
+        );
+    }
 }
