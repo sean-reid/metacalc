@@ -308,6 +308,8 @@ pub struct Outcome {
     pub results: Vec<u16>,
     pub tstates: u32,
     pub lcd: Vec<bool>,
+    /// Where the last run stopped.
+    pub pc: u16,
 }
 
 pub const MARK: u8 = 0xA5;
@@ -395,6 +397,7 @@ pub fn run_code(
             "RAM outside the two blocks changed at {at:04X}"
         );
     }
+    let pc = m.regs().pc;
     let lcd = m.lcd();
     let lcd = (0..LCD_HEIGHT)
         .flat_map(|y| (0..LCD_WIDTH).map(move |x| (x, y)))
@@ -405,6 +408,7 @@ pub fn run_code(
         results,
         tstates: run.tstates,
         lcd,
+        pc,
     }
 }
 

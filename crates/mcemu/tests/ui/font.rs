@@ -1,4 +1,5 @@
 use crate::support::*;
+use mcemu::Speed;
 use mcglyph::z80::{SLOT, Table};
 use mcglyph::{Bitmap, Font};
 use mcui::canvas::Canvas;
@@ -107,7 +108,8 @@ fn glyphs_nine_wide_on_the_last_row_at_the_last_frame_byte() {
 }
 
 /// Glyphs six to nine wide with ink in rows 5 and 6: at shifts 1 to 3 the six, seven and eight
-/// wide ones take the two-byte path with the descender rows, `ui_tv1` to `ui_tv3`.
+/// wide ones take the two-byte path with the descender rows, `ui_tv1` to `ui_tv3`. The test
+/// also covers the other shifts and the nine wide glyph on the way.
 #[test]
 fn flagged_glyphs_six_to_nine_wide_draw_at_every_alignment_on_three_rows() {
     let font = Font::parse(TALL, "").unwrap();
@@ -145,6 +147,50 @@ fn flagged_glyphs_six_to_nine_wide_draw_at_every_alignment_on_three_rows() {
             }
         }
     }
+}
+
+/// Runs `text` at `x` on row 0 with a HALT written over the first byte of `entry` in a copy of
+/// the image, and returns where the run stopped.
+fn stop_with_halt_at(entry: &str, text: &str, x: usize) -> u16 {
+    let font = Font::parse(TALL, "").unwrap();
+    let table = Table::new(&font).unwrap();
+    let mut code = REAL.code.to_vec();
+    code[usize::from(label(REAL, entry)) - 0x4000] = 0x76;
+    run_code(
+        REAL,
+        &code,
+        (Speed::Mhz6, true),
+        &[
+            Op::SetFont(flat(&table)),
+            Op::Text {
+                x,
+                row: 0,
+                codes: table.encode(text),
+            },
+        ],
+        true,
+    )
+    .pc
+}
+
+#[test]
+fn the_descender_entries_run_for_the_glyphs_and_shifts_that_reach_them() {
+    for (entry, reaching, other) in [("ui_tv1", 81, 82), ("ui_tv2", 82, 81), ("ui_tv3", 83, 81)] {
+        let at = label(REAL, entry);
+        assert_eq!(stop_with_halt_at(entry, "c", reaching), at, "{entry}");
+        assert_ne!(
+            stop_with_halt_at(entry, "c", other),
+            at,
+            "{entry} at {other}"
+        );
+        assert_ne!(
+            stop_with_halt_at(entry, "c", 89),
+            at,
+            "{entry} past column 88"
+        );
+    }
+    assert_eq!(stop_with_halt_at("ui_tv3", "a", 83), label(REAL, "ui_tv3"));
+    assert_ne!(stop_with_halt_at("ui_tv2", "a", 82), label(REAL, "ui_tv2"));
 }
 
 #[test]
