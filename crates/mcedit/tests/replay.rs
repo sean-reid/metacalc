@@ -54,11 +54,12 @@ fn libraries(names: &[&str]) {
     for &name in names {
         let src = std::fs::read_to_string(format!("{dir}/{name}.mm")).unwrap();
         let started = Instant::now();
-        let thin = name == "ring";
-        let check = |n: usize, done: &mcedit::oracle::Replayed| {
-            !thin || n.is_multiple_of(5) || done.dummies > 0
-        };
-        let r = replay_database(&src, |_| true, check, true).unwrap();
+        let want: usize = std::fs::read_to_string(format!("{dir}/{name}.proofs"))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let r = replay_database(&src, |_| true, |_, _| true, true).unwrap();
         let median = |mut v: Vec<usize>| {
             v.sort_unstable();
             (v[v.len() / 2], v[v.len() * 99 / 100], v[v.len() - 1])
@@ -70,9 +71,9 @@ fn libraries(names: &[&str]) {
         );
         let bytes = median(r.saved.clone());
         println!(
-            "{name}: rebuilt {} verified {} failures {} skipped {} ops {} assigns {} refines {} with dummies {} with dv {} nodes (median, p99, max) {:?} metas {:?} goals {:?} saved bytes {:?} peak {:?} at {} in {:?} (rebuild {:?}, verify {:?})",
-            r.rebuilt,
+            "{name}: verified {} of {want} rebuilt {} failures {} skipped {} ops {} assigns {} refines {} with dummies {} with dv {} nodes (median, p99, max) {:?} metas {:?} goals {:?} saved bytes {:?} peak {:?} at {} in {:?} (rebuild {:?}, verify {:?})",
             r.verified,
+            r.rebuilt,
             r.failures.len(),
             r.skipped,
             r.ops,
@@ -98,6 +99,7 @@ fn libraries(names: &[&str]) {
         }
         assert!(r.failures.is_empty(), "{name}");
         assert_eq!(r.skipped, 0, "{name}");
+        assert_eq!((r.rebuilt, r.verified), (want, want), "{name}");
     }
 }
 
