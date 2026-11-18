@@ -16,75 +16,51 @@ fn app_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app")
 }
 
-struct App {
-    pages: Vec<Vec<u8>>,
-    labels: String,
+pub struct App {
+    pub file: Vec<u8>,
+    pub pages: Vec<Vec<u8>>,
+    pub labels: String,
 }
 
-/// Runs `make -C app` on a library and the checker on what it produced, then decodes the file.
-fn build(name: &str, library: &[u8]) -> App {
+/// Runs `make -C app` and the checker on what it produced, with a library or without, then
+/// decodes the file.
+pub fn build(name: &str, library: Option<&[u8]>) -> App {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("app-{name}"));
     std::fs::create_dir_all(&dir).unwrap();
     let library_path = dir.join("library.mclib");
-    std::fs::write(&library_path, library).unwrap();
     let spasm = std::env::var_os("SPASM").unwrap_or_else(|| "spasm".into());
-    let make = Command::new("make")
-        .arg("-s")
+    let mut make = Command::new("make");
+    make.arg("-s")
         .arg("-C")
         .arg(app_dir())
         .arg(format!("SPASM={}", spasm.to_string_lossy()))
-        .arg(format!("BUILD={}", dir.display()))
-        .arg(format!("LIBRARY={}", library_path.display()))
-        .output()
-        .expect("make runs");
+        .arg(format!("BUILD={}", dir.display()));
+    let mut check = Command::new("sh");
+    check.arg(app_dir().join("scripts/check-8xk.sh"));
+    if let Some(library) = library {
+        std::fs::write(&library_path, library).unwrap();
+        make.arg(format!("LIBRARY={}", library_path.display()));
+        check.arg("-l").arg(&library_path);
+    }
+    let made = make.output().expect("make runs");
     assert!(
-        make.status.success(),
+        made.status.success(),
         "make: {}",
-        String::from_utf8_lossy(&make.stdout)
+        String::from_utf8_lossy(&made.stdout)
     );
     let app_path = dir.join("metacalc.8xk");
-    let check = Command::new("sh")
-        .arg(app_dir().join("scripts/check-8xk.sh"))
-        .arg("-l")
-        .arg(&library_path)
-        .arg(&app_path)
-        .output()
-        .expect("the checker runs");
+    let checked = check.arg(&app_path).output().expect("the checker runs");
     assert!(
-        check.status.success(),
+        checked.status.success(),
         "check-8xk: {}",
-        String::from_utf8_lossy(&check.stderr)
+        String::from_utf8_lossy(&checked.stderr)
     );
+    let file = std::fs::read(app_path).unwrap();
     App {
-        pages: decode(&std::fs::read(app_path).unwrap()),
+        pages: mcemu::decode_app(&file).expect("the app decodes"),
+        file,
         labels: std::fs::read_to_string(dir.join("metacalc.lab")).unwrap(),
     }
-}
-
-/// The pages of an .8xk: a type 02 Intel hex record starts each page, type 00 records fill it.
-fn decode(file: &[u8]) -> Vec<Vec<u8>> {
-    let text = String::from_utf8_lossy(file);
-    let mut pages: Vec<Vec<u8>> = Vec::new();
-    for line in text.lines() {
-        let Some(at) = line.rfind(':') else { continue };
-        let record = &line[at + 1..];
-        let byte = |i: usize| u8::from_str_radix(&record[2 * i..2 * i + 2], 16).unwrap();
-        let len = usize::from(byte(0));
-        match byte(3) {
-            2 => {
-                assert_eq!(usize::from(byte(5)), pages.len(), "page records in order");
-                pages.push(Vec::new());
-            }
-            0 => {
-                let page = pages.last_mut().expect("data after a page record");
-                let address = usize::from(byte(1)) << 8 | usize::from(byte(2));
-                assert_eq!(address, 0x4000 + page.len(), "records are contiguous");
-                page.extend((0..len).map(|i| byte(4 + i)));
-            }
-            _ => {}
-        }
-    }
-    pages
 }
 
 /// Page 0 of the app runs in bank A, as it does when TI-OS enters the app, and its accessor
@@ -135,16 +111,17 @@ fn the_kernel_checks_a_library_stored_in_the_pages_of_a_built_app() {
             base.len()
         );
         let bytes = padded(base, len);
-        let app = build(name, &bytes);
+        let app = build(name, Some(&bytes));
         assert_eq!(app.pages.len(), want_pages, "{name}: pages");
         for (c, chunk) in bytes.chunks(PAGE).enumerate() {
             assert_eq!(&app.pages[1 + c][..chunk.len()], chunk, "{name}: chunk {c}");
         }
 
         let mut device = Device::new();
-        for (k, page) in app.pages.iter().enumerate() {
-            device.m.load_flash(BASE - k as u8, 0, page);
-        }
+        device
+            .m
+            .install_app(&app.file, BASE)
+            .expect("the app installs");
         device.lib_page = lib_page_from_app(&mut device, &app);
         assert_eq!(device.lib_page, BASE - 1, "{name}: the accessor");
 
@@ -161,5 +138,79 @@ fn the_kernel_checks_a_library_stored_in_the_pages_of_a_built_app() {
             "{name}: crc run"
         );
         assert_eq!(crc.value, crc32(&bytes[8..]), "{name}: crc");
+    }
+}
+
+type Decoded = Result<Vec<Vec<u8>>, mcemu::AppError>;
+
+/// The broken files test-check-8xk.sh feeds the checker, for the one-page app and for the app
+/// with a library, as (file name, decoded).
+fn fixtures(name: &str, library: Option<&[u8]>) -> Vec<(String, Decoded)> {
+    build(name, library);
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("app-{name}"));
+    let fixtures = dir.join("fixtures");
+    let _ = std::fs::remove_dir_all(&fixtures);
+    let mut script = Command::new("sh");
+    script
+        .arg(app_dir().join("scripts/test-check-8xk.sh"))
+        .env("KEEP_FIXTURES", &fixtures);
+    if library.is_some() {
+        script.arg("-l").arg(dir.join("library.mclib"));
+    }
+    let ran = script
+        .arg(dir.join("metacalc.8xk"))
+        .output()
+        .expect("the script runs");
+    assert!(
+        ran.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    let mut found: Vec<_> = std::fs::read_dir(&fixtures)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "8xk"))
+        .map(|e| {
+            let file = std::fs::read(e.path()).unwrap();
+            (
+                e.file_name().to_string_lossy().into_owned(),
+                mcemu::decode_app(&file),
+            )
+        })
+        .collect();
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found
+}
+
+/// The checker refuses some broken files for what is in the app (its name, signature, library
+/// bytes, page count), and those are valid hex the decoder takes. The ones it refuses for the
+/// hex itself, the decoder must refuse too.
+#[test]
+fn the_decoder_and_the_checker_agree_on_the_broken_files_the_checker_is_tested_with() {
+    let (_, small) = small_library();
+    let library = padded(&small, 3 * PAGE - 96);
+    let hex_level = ["empty", "checksum", "gap", "long-page"];
+    for (label, library) in [("fixtures-one", None), ("fixtures-lib", Some(&library[..]))] {
+        let found = fixtures(label, library);
+        assert!(found.len() >= 5, "{label}: {} fixtures", found.len());
+        let mut seen = Vec::new();
+        for (file, decoded) in &found {
+            let stem = file.trim_end_matches(".8xk");
+            if hex_level.contains(&stem) {
+                assert!(decoded.is_err(), "{label}: the decoder took {file}");
+                seen.push(stem.to_string());
+            } else {
+                assert!(
+                    decoded.is_ok(),
+                    "{label}: the decoder refused {file}: {decoded:?}"
+                );
+            }
+        }
+        assert!(seen.contains(&"checksum".to_string()), "{label}: {seen:?}");
+        if library.is_some() {
+            for stem in ["gap", "long-page"] {
+                assert!(seen.contains(&stem.to_string()), "{label}: {seen:?}");
+            }
+        }
     }
 }

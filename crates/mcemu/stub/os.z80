@@ -1,7 +1,40 @@
 ; Page 0. Flash pages $40-$6F cannot execute, test pages below them can.
+; The services below stand in for the OS entry points an app calls, and are run for real.
 TEST_PAGE .equ $20
+
+_GetCSC           .equ $4018
+_JForceCmdNoChar  .equ $4027
+_ClrLCDFull       .equ $4540
+_GrBufCpy         .equ $486A
+
+kbdScanCode       .equ $843F
+plotSScreen       .equ $9340
+
+PORT_KEYS         .equ $01
+PORT_STATUS       .equ $02
+PORT_MASK         .equ $03
+PORT_LCD_CMD      .equ $10
+PORT_LCD_DATA     .equ $11
+LCD_READY         .equ $02
+
+JUNK_AF           .equ $AF5A
+JUNK_BC           .equ $BC0B
+JUNK_DE           .equ $DE0D
+JUNK_HL           .equ $A11A
+JUNK_AF2          .equ $AF27
+JUNK_BC2          .equ $BC27
+JUNK_DE2          .equ $DE27
+JUNK_HL2          .equ $A127
+
 .org $0000
+	.fill $0028-$,$FF
+	jp bcall
+	.fill $0038-$,$FF
+	jp isr
+	.fill $0050-$,$FF
+	jp bjump
 	.fill $0100-$,$FF
+
 	xor a
 	out ($04),a
 	ld a,TEST_PAGE
@@ -13,3 +46,291 @@ TEST_PAGE .equ $20
 	out ($20),a
 	ld sp,$FFFF
 	jp $4000
+
+; Acknowledges the timer and keypad sources the way the hardware needs: the mask on port 3
+; written as zero and then again.
+isr:
+	push af
+	in a,(PORT_MASK)
+	push af
+	xor a
+	out (PORT_MASK),a
+	pop af
+	out (PORT_MASK),a
+	pop af
+	ei
+	reti
+
+; rst 28h: the two bytes after the call site name the entry point. Registers survive except
+; the ones the service returns.
+bcall:
+	push hl
+	push de
+	push bc
+	push af
+	ld hl,8
+	add hl,sp
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	ld a,(de)
+	ld c,a
+	inc de
+	ld a,(de)
+	ld b,a
+	inc de
+	ld (hl),d
+	dec hl
+	ld (hl),e
+	ld hl,bcall_table
+bcall_next:
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	ld a,d
+	or e
+	jr z,bcall_missing
+	ld a,e
+	cp c
+	jr nz,bcall_skip
+	ld a,d
+	cp b
+	jr z,bcall_found
+bcall_skip:
+	inc hl
+	inc hl
+	jr bcall_next
+bcall_found:
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	ex de,hl
+	pop af
+	pop bc
+	pop de
+	ex (sp),hl
+	ret
+
+; BC holds the unsupported address when the machine stops here.
+bcall_missing:
+	di
+fault_bcall:
+	halt
+	jr fault_bcall
+
+; call 50h: the same, and the service never returns.
+bjump:
+	pop hl
+	ld c,(hl)
+	inc hl
+	ld b,(hl)
+	ld hl,bjump_table
+bjump_next:
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	ld a,d
+	or e
+	jr z,bjump_missing
+	ld a,e
+	cp c
+	jr nz,bjump_skip
+	ld a,d
+	cp b
+	jr nz,bjump_skip
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	ex de,hl
+	jp (hl)
+bjump_skip:
+	inc hl
+	inc hl
+	jr bjump_next
+
+bjump_missing:
+	di
+fault_bjump:
+	halt
+	jr fault_bjump
+
+bcall_table:
+	.dw _GetCSC, get_csc
+	.dw _ClrLCDFull, clr_lcd_full
+	.dw _GrBufCpy, gr_buf_cpy
+	.dw 0
+
+bjump_table:
+	.dw _JForceCmdNoChar, force_cmd_no_char
+	.dw 0
+
+; The app has left. The machine stops here.
+force_cmd_no_char:
+	di
+app_exit:
+	halt
+	jr app_exit
+
+; A returns the scan code of a key newly pressed since the last call, 0 if none, and the
+; flags, BC, DE and HL are junk. The key that was reported stays the current one until it
+; is up, and no other key reads while it is down; then the lowest code down is reported.
+get_csc:
+	ld a,(kbdScanCode)
+	or a
+	jr z,get_csc_scan
+	dec a
+	ld d,a
+	and 7
+	inc a
+	ld e,a
+	ld a,d
+	rrca
+	rrca
+	rrca
+	and 7
+	ld b,a
+	ld c,$FE
+	or a
+	jr z,get_csc_select
+get_csc_rotate:
+	rlc c
+	djnz get_csc_rotate
+get_csc_select:
+	ld a,c
+	out (PORT_KEYS),a
+	in a,(PORT_KEYS)
+	ld b,e
+get_csc_shift:
+	rra
+	djnz get_csc_shift
+	jr c,get_csc_scan
+	ld a,$FF
+	out (PORT_KEYS),a
+	xor a
+	jr get_csc_return
+get_csc_scan:
+	ld e,0
+	ld c,$FE
+get_csc_group:
+	ld a,c
+	out (PORT_KEYS),a
+	in a,(PORT_KEYS)
+	cpl
+	or a
+	jr z,get_csc_next
+get_csc_bit:
+	inc e
+	rra
+	jr nc,get_csc_bit
+	ld a,e
+	jr get_csc_done
+get_csc_next:
+	ld a,e
+	add a,8
+	ld e,a
+	rlc c
+	cp 56
+	jr nz,get_csc_group
+	xor a
+get_csc_done:
+	ld d,a
+	ld a,$FF
+	out (PORT_KEYS),a
+	ld a,d
+	ld (kbdScanCode),a
+get_csc_return:
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_HL
+	cp $FF
+	ret
+
+; Both services write the 12 columns of each of the 64 rows, waiting on the LCD between
+; accesses, whatever the CPU speed. They destroy every register but IX, IY and SP.
+clr_lcd_full:
+	ld hl,zero
+	ld de,0
+	call lcd_blit
+	jr lcd_done
+
+gr_buf_cpy:
+	ld hl,plotSScreen
+	ld de,1
+	call lcd_blit
+lcd_done:
+	exx
+	ld bc,JUNK_BC2
+	ld de,JUNK_DE2
+	ld hl,JUNK_HL2
+	exx
+	ld bc,JUNK_AF2
+	push bc
+	pop af
+	ex af,af'
+	ld bc,JUNK_BC
+	ld de,JUNK_DE
+	ld hl,JUNK_AF
+	push hl
+	pop af
+	ld hl,JUNK_HL
+	ret
+
+; In: HL = the first byte, DE = how far HL moves after each byte.
+lcd_blit:
+	ld a,$07
+	call lcd_command
+	ld c,$80
+lcd_row:
+	ld a,c
+	call lcd_command
+	ld a,$20
+	call lcd_command
+	ld b,12
+lcd_byte:
+	call lcd_wait
+	ld a,(hl)
+	out (PORT_LCD_DATA),a
+	add hl,de
+	djnz lcd_byte
+	inc c
+	ld a,c
+	cp $C0
+	jr nz,lcd_row
+	ret
+
+lcd_command:
+	push af
+	call lcd_wait
+	pop af
+	out (PORT_LCD_CMD),a
+	ret
+
+lcd_wait:
+	in a,(PORT_STATUS)
+	and LCD_READY
+	jr z,lcd_wait
+	ret
+
+zero:
+	.db 0
+
+; Run by the launcher before it hands over: the LCD on in 8-bit mode with the cursor at the
+; origin, and no key reported yet.
+os_init:
+	ld a,$03
+	call lcd_command
+	ld a,$01
+	call lcd_command
+	ld a,$05
+	call lcd_command
+	ld a,$40
+	call lcd_command
+	ld a,$20
+	call lcd_command
+	ld a,$80
+	call lcd_command
+	xor a
+	ld (kbdScanCode),a
+	halt

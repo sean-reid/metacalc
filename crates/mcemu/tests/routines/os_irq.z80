@@ -1,0 +1,8 @@
+.org ENTRY
+	ei
+wake:
+	halt
+	ld hl, (RESULT)
+	inc hl
+	ld (RESULT), hl
+	jr wake

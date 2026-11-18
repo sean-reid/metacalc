@@ -1,7 +1,15 @@
 //! A TI-84 Plus SE on the TilEm core, for tests. The C core is built from the TilEm
 //! source named by `TILEM_SRC`.
 
+mod app;
 mod ffi;
+mod launch;
+mod stub {
+    include!(concat!(env!("OUT_DIR"), "/stub_labels.rs"));
+}
+
+pub use app::{AppError, decode as decode_app};
+pub use ffi::Regs;
 
 /// Free stub ROM: boots to a known state and jumps to `ENTRY`.
 pub const STUB_ROM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stub.rom"));
@@ -25,9 +33,18 @@ pub enum Speed {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stop {
+    /// A HALT executed with interrupts off, or one in the stub's own code. A HALT with
+    /// interrupts on is the app waiting for the next one, and the run goes on.
     Halted,
     Limit,
+    /// The core raised a hardware exception or stopped for another reason of its own.
     Fault,
+    /// The app left through `_JForceCmdNoChar`.
+    Exited,
+    /// The app made a `bcall` the stub does not implement; the address is the one called.
+    UnsupportedBcall(u16),
+    /// The app made a `bjump` the stub does not implement.
+    UnsupportedBjump(u16),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -146,17 +163,35 @@ impl Machine {
         self.calc.key(scancode, false);
     }
 
-    /// Runs from `pc` with interrupts off until HALT executes or `limit` T-states pass.
-    /// The count includes the HALT.
+    /// Runs from `pc` with interrupts off until a HALT executes with them off or `limit`
+    /// T-states pass. The code may turn them on, and then its HALTs wait for an interrupt
+    /// instead of ending the run. The count includes the HALT. A stub service that ends the
+    /// run reports its own stop.
     pub fn run(&mut self, pc: u16, limit: u32) -> Run {
         let limit = i32::try_from(limit).expect("limit fits in i32");
         let (reason, tstates) = self.calc.run(pc, limit);
+        self.stopped(reason, tstates)
+    }
+
+    fn stopped(&self, reason: u32, tstates: u32) -> Run {
         let stop = match reason {
             0 => Stop::Limit,
-            1 => Stop::Halted,
+            1 => {
+                let r = self.calc.regs();
+                match r.pc {
+                    stub::APP_EXIT => Stop::Exited,
+                    stub::FAULT_BCALL => Stop::UnsupportedBcall(r.bc),
+                    stub::FAULT_BJUMP => Stop::UnsupportedBjump(r.bc),
+                    _ => Stop::Halted,
+                }
+            }
             _ => Stop::Fault,
         };
         Run { stop, tstates }
+    }
+
+    pub fn regs(&self) -> Regs {
+        self.calc.regs()
     }
 
     pub fn lcd(&mut self) -> Lcd {

@@ -1,0 +1,10 @@
+#include "equates.inc"
+
+.org ENTRY
+	ld a, 03h
+	out (10h), a
+	ld b, 20
+settle:
+	djnz settle
+	bcall(SERVICE)
+	halt

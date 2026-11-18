@@ -1,0 +1,10 @@
+#include "equates.inc"
+
+; Keeps a value in C across _GetCSC and stores what is left, as an app would that took it
+; for granted.
+.org ENTRY
+	ld c, 42h
+	bcall(_GetCSC)
+	ld a, c
+	ld (RESULT), a
+	halt
