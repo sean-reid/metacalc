@@ -291,14 +291,10 @@ fn letters(mut number: usize) -> String {
 #[test]
 fn a_record_with_an_essential_hypothesis_before_a_float_is_refused() {
     let bytes = pack(&parse(ESSENTIAL_FIRST), &all(&parse(ESSENTIAL_FIRST))).unwrap();
-    check(&bytes).expect("the kernel accepts the library");
-    assert_eq!(
-        export(&bytes),
-        Err(ExportError::Assertion(
-            "ax-mid".into(),
-            "an essential hypothesis comes before a floating hypothesis"
-        ))
-    );
+    let bad = |label: &str| (label.into(), KernelError::BadRecord);
+    let failed = CheckError::Assertions(vec![bad("ax-mid"), bad("th-mid"), bad("ax-first")]);
+    assert_eq!(check(&bytes), Err(failed));
+    assert!(matches!(export(&bytes), Err(ExportError::Check(_))));
 }
 
 #[test]

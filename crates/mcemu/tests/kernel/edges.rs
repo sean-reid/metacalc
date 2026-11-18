@@ -262,7 +262,7 @@ fn cut_agrees(device: &mut Device, bytes: &[u8], length: usize) {
     let mut cut = bytes.to_vec();
     cut[8..12].copy_from_slice(&(length as u32).to_le_bytes());
     reseal(&mut cut);
-    if let Some(difference) = disagreement(device, &cut, ASKED_UNBOUNDED, &mut [0; 16]) {
+    if let Some(difference) = disagreement(device, &cut, ASKED_UNBOUNDED, &mut [0; 17]) {
         panic!("length {length}: {difference}");
     }
 }
