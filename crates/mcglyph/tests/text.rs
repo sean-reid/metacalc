@@ -33,6 +33,25 @@ fn a_character_the_font_lacks_shows_as_a_question_mark() {
 }
 
 #[test]
+fn braces_bar_backslash_and_caret_have_their_own_glyphs() {
+    let question = font().text("?");
+    for c in ['{', '}', '|', '\\', '^'] {
+        let text = font().text(&c.to_string());
+        assert!(text != question, "{c:?}");
+    }
+}
+
+#[test]
+fn only_these_printable_ascii_characters_fall_back_to_the_question_mark() {
+    let question = font().text("?");
+    let fallback: String = (b'!'..=b'~')
+        .map(char::from)
+        .filter(|&c| c != '?' && font().text(&c.to_string()) == question)
+        .collect();
+    assert_eq!(fallback, "\"#$%&;@`");
+}
+
+#[test]
 fn the_status_and_fold_glyphs_are_drawn_exactly() {
     let art = |c: char| font().text(&c.to_string()).to_string();
     assert_eq!(
