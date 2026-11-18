@@ -102,4 +102,30 @@ impl Font {
         }
         Ok(out)
     }
+
+    /// Renders `tokens` onto screens of `size` pixels, breaking between lines only. A screen shows
+    /// whole lines and is padded with blank rows to its full height.
+    pub fn frames(
+        &self,
+        tokens: &[&str],
+        (width, height): (usize, usize),
+    ) -> Result<Vec<Bitmap>, RenderError> {
+        let lines = self.layout(tokens, width)?;
+        let pitch = self.height() + LEADING;
+        let per_frame = ((height + LEADING) / pitch).max(1);
+        lines
+            .chunks(per_frame)
+            .map(|chunk| {
+                let first = chunk[0].tokens[0].index;
+                let last = chunk[chunk.len() - 1]
+                    .tokens
+                    .last()
+                    .expect("a line holds a token");
+                let text = self.render(&tokens[first..=last.index], width)?;
+                let mut frame = Bitmap::new(width, height);
+                frame.blit(&text, 0, 0);
+                Ok(frame)
+            })
+            .collect()
+    }
 }
