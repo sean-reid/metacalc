@@ -226,8 +226,87 @@ print(s.to_bytes(64, "little").hex().upper() if s < 1 << 512 else "")
 	fi
 }
 
+# resign in out form delta claim: the good file with the code byte 100 bytes before the signature
+# field changed until the signer's arithmetic gives trailer form `form` for the MD5 of the data up
+# to the field plus delta bytes, signed with the factors of the modulus of key 0104 as published in
+# spasm-ng (export.cpp) and with the trailer written as form `claim`. Delta 0 is what the checker
+# hashes.
+RESIGN='
+import hashlib, re, sys
+
+P = int.from_bytes(bytes.fromhex(
+    "5B2E54E9B5C1FE26CE93261478D3873F3FC41BFFF1F5F934D7A5793A43C1C21C"), "little")
+Q = int.from_bytes(bytes.fromhex(
+    "97F7707B94079B73858720BF6D4909AB3BEDA1BA9B93112B041340A16ED597B604"), "little")
+N = P * Q
+src, out, form, delta, claim = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+raw = open(src, "rb").read()
+records = [m for m in re.finditer(rb":[0-9A-F]{8}[0-9A-F]*", raw) if m.group()[7:9] == b"00"]
+spans = [(m.start(), 11 + 2 * int(m.group()[1:3], 16)) for m in records]
+body = bytes.fromhex(b"".join(m.group()[9:-2] for m in records).decode())
+at = len(body) - 96
+
+
+def sign(data):
+    m = int.from_bytes(hashlib.md5(data).digest(), "little") * 256 + 1
+    lp = 0 if pow(m, (P - 1) // 2, P) == 1 else 1
+    lq = 1 if pow(m, (Q - 1) // 2, Q) == 1 else 0
+    f = lp + lq + lq
+    if lp == lq:
+        m *= 2
+    if lq == 0:
+        m = N - m
+    r, s = pow(m, (P + 1) // 4, P), pow(m, (Q + 1) // 4, Q)
+    root = ((r - s) * pow(Q, -1, P) % P) * Q + s
+    assert root * root % N == m
+    return f, root.to_bytes((root.bit_length() + 7) // 8, "little")
+
+
+for value in range(256):
+    data = body[:at - 100] + bytes([value]) + body[at - 99:at]
+    f, sig = sign((data + body[at:])[:at + delta])
+    if f == form:
+        break
+else:
+    sys.exit("no byte value gives form %d" % form)
+trailer = b"\x00" if claim == 0 else bytes([1, claim])
+field = (b"\x02\x2d" + bytes([len(sig)]) + sig + trailer).ljust(96, b"\xff")
+hexed = (data + field).hex().upper().encode()
+pieces, last, used = [], 0, 0
+for m, (start, size) in zip(records, spans):
+    rec = m.group()[1:9] + hexed[used:used + size - 11]
+    used += size - 11
+    total = sum(bytes.fromhex(rec.decode()))
+    pieces += [raw[last:start], b":" + rec + b"%02X" % ((256 - total % 256) % 256)]
+    last = start + size
+open(out, "wb").write(b"".join(pieces) + raw[last:])
+'
+
+# trailer_tests: for each of the four trailer forms, a file signed the way the signer signs passes,
+# and one whose signed range is a byte short or a byte long, or whose trailer names another form,
+# is refused.
+trailer_tests() {
+	form=0
+	while [ "$form" -le 3 ]; do
+		python3 -I -c "$RESIGN" "$good" "$dir/form$form.8xk" "$form" 0 "$form"
+		sh "$check" "$dir/form$form.8xk" "$name" > /dev/null || {
+			echo "test-check-8xk: refused a correct file with trailer form $form" >&2
+			exit 1
+		}
+		python3 -I -c "$RESIGN" "$good" "$dir/short$form.8xk" "$form" -1 "$form"
+		refuses "short$form" "a form $form signature over one byte too few" "does not verify"
+		python3 -I -c "$RESIGN" "$good" "$dir/long$form.8xk" "$form" 1 "$form"
+		refuses "long$form" "a form $form signature over one byte too many" "does not verify"
+		other=$(((form + 1) % 4))
+		python3 -I -c "$RESIGN" "$good" "$dir/claim$form.8xk" "$form" 0 "$other"
+		refuses "claim$form" "a form $form signature with the trailer of form $other" "does not verify"
+		form=$((form + 1))
+	done
+}
+
 if [ -z "$library" ]; then
 	common_tests
+	trailer_tests
 
 	append_ff "$good" "$dir/after-field.8xk"
 	refuses after-field "a byte after the signature field" "no signature field"
