@@ -289,3 +289,62 @@ fn an_unused_dummy_entry_that_names_no_variable_is_read_but_not_exported() {
         assert_eq!(refused(&bytes), assertion_error("th", why));
     }
 }
+
+const MIXED: &str = "
+$c R wff |- ( ) -> $.
+$v x y z p q $.
+vx $f wff x $.
+vy $f wff y $.
+vz $f wff z $.
+wp $f wff p $.
+wq $f wff q $.
+wi $a wff ( p -> q ) $.
+${ $d x y $. ax-d $a |- R x y $. $}
+${ m.1 $e |- R x y $. ax-m $a |- R x x $. $}
+${ $d x z $. dummy $p |- R x x $= vx vz vx vz ax-d ax-m $. $}
+${ t.1 $e |- R x z $. ax-t $a |- R x y $. $}
+${ $d x y z $. both $p |- R x y $= vx vy vz vx vz ax-d ax-t $. $}
+twice $p wff ( ( p -> p ) -> ( p -> p ) ) $= ( wi ) AABZCB $.
+";
+
+fn big() -> Vec<u8> {
+    let mut src =
+        String::from("$c T wff $.\n${ d.1 $e wff T $. d.2 $e wff T $. drop $a wff T $. $}\n");
+    let (mut labels, mut proof) = (String::new(), letters(0));
+    for i in 0..250 {
+        src += &format!("n{i} $a wff T $.\n");
+        labels += &format!("n{i} ");
+        if i > 0 {
+            proof += &(letters(i) + &letters(250));
+        }
+    }
+    src += &format!("big $p wff T $= ( {labels}drop ) {proof} $.\n");
+    packed(&src)
+}
+
+#[test]
+fn no_byte_change_makes_the_decoder_or_exporter_panic() {
+    let mixed = packed(MIXED);
+    check(&mixed).expect("the kernel accepts the library");
+    let big = big();
+    check(&big).expect("the kernel accepts the library");
+    let from = record(&big, 250 + 1).proof - 4;
+    for (original, first) in [(mixed, 8), (big, from)] {
+        for at in first..original.len() {
+            for value in [0x00, 0x80, 0xF0, 0xFF] {
+                let mut bytes = original.clone();
+                bytes[at] = value;
+                let _ = decode(&bytes);
+                let _ = read(&bytes);
+                reseal(&mut bytes);
+                let _ = decode(&bytes);
+                let _ = read(&bytes);
+                let _ = export(&bytes);
+            }
+        }
+        for len in 0..original.len() {
+            assert!(decode(&original[..len]).is_err());
+            assert!(export(&original[..len]).is_err());
+        }
+    }
+}
