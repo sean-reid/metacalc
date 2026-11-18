@@ -28,8 +28,13 @@ fn parse_source(path: &Path, src: Vec<u8>) -> Result<Database, ExitCode> {
     mm::parse(src).map_err(|e| fail(format_args!("{}: {e}", path.display())))
 }
 
-pub fn load(path: &Path) -> Result<Database, ExitCode> {
+/// Reads a database without following its inclusion commands.
+pub fn load_plain(path: &Path) -> Result<Database, ExitCode> {
     parse_source(path, read(path)?)
+}
+
+pub fn load(path: &Path) -> Result<Database, ExitCode> {
+    mm::parse_at(path, read(path)?).map_err(|e| fail(format_args!("{}: {e}", path.display())))
 }
 
 fn grammar(db: &Database) -> Result<Grammar<'_>, ExitCode> {

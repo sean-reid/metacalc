@@ -1,27 +1,56 @@
 use super::headings::heading;
+use super::include::{Expanded, MAX_FILE, MAX_TOTAL, expand};
 use super::{
     Database, Frame, Heading, Kind, Proof, ProofBody, ProofError, Stmt, StmtId, Sym, Symbol,
     dv_pair,
 };
 use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct ParseError {
+    /// The included file the error is in, or `None` for the top-level file.
+    pub file: Option<String>,
     pub line: usize,
     pub message: String,
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(file) = &self.file {
+            write!(f, "{file}: ")?;
+        }
         write!(f, "line {}: {}", self.line, self.message)
     }
 }
 
 impl std::error::Error for ParseError {}
 
+/// Parses a database held in memory; a file inclusion command is refused.
 pub fn parse(src: Vec<u8>) -> Result<Database, ParseError> {
-    let mut parser = Parser::new(&src);
+    parse_expanded(expand(&src, None, MAX_FILE, MAX_TOTAL)?)
+}
+
+/// Parses the database in `src`, read from `path`, with each `$[ file $]` replaced by the file's
+/// text. A name is read relative to the directory of `path`; a name already included is skipped.
+pub fn parse_at(path: &Path, src: Vec<u8>) -> Result<Database, ParseError> {
+    parse_expanded(expand(&src, Some(path), MAX_FILE, MAX_TOTAL)?)
+}
+
+/// [`parse_at`] with the caps on an included file and on the expanded text set by the caller.
+#[doc(hidden)]
+pub fn parse_at_capped(
+    path: &Path,
+    src: Vec<u8>,
+    max_file: u64,
+    max_total: u64,
+) -> Result<Database, ParseError> {
+    parse_expanded(expand(&src, Some(path), max_file, max_total)?)
+}
+
+fn parse_expanded(expanded: Expanded) -> Result<Database, ParseError> {
+    let mut parser = Parser::new(&expanded.text);
     match parser.run() {
         Ok(()) => {
             let (syms, stmts) = (parser.syms, parser.stmts);
@@ -32,13 +61,14 @@ pub fn parse(src: Vec<u8>) -> Result<Database, ParseError> {
                 headings: parser.headings,
             })
         }
-        Err(message) => Err(ParseError {
-            line: 1 + src[..parser.token_start]
-                .iter()
-                .filter(|&&b| b == b'\n')
-                .count(),
-            message,
-        }),
+        Err(message) => {
+            let (file, line) = expanded.locate(parser.token_start);
+            Err(ParseError {
+                file: file.map(str::to_owned),
+                line,
+                message,
+            })
+        }
     }
 }
 
@@ -68,6 +98,10 @@ struct Parser<'a> {
 }
 
 type Res<T> = Result<T, String>;
+
+fn contains(token: &[u8], marker: &[u8; 2]) -> bool {
+    token.windows(2).any(|pair| pair == marker)
+}
 
 fn text(token: &[u8]) -> String {
     String::from_utf8_lossy(token).into_owned()
@@ -123,7 +157,12 @@ impl<'a> Parser<'a> {
                     loop {
                         match self.raw_token()? {
                             Some(b"$)") => break,
-                            Some(b"$(") => return Err("$( inside a comment".into()),
+                            Some(token) if contains(token, b"$(") => {
+                                return Err("$( inside a comment".into());
+                            }
+                            Some(token) if contains(token, b"$)") => {
+                                return Err("$) must stand alone".into());
+                            }
                             Some(_) => {}
                             None => return Err("unterminated comment".into()),
                         }
@@ -137,7 +176,6 @@ impl<'a> Parser<'a> {
                         });
                     }
                 }
-                Some(b"$[") => return Err("file inclusion is not supported".into()),
                 other => return Ok(other),
             }
         }

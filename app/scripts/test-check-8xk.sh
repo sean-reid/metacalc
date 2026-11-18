@@ -67,6 +67,15 @@ resum() {
 	} > "$2"
 }
 
+# unlf file: drops the file's last byte when it is LF, which awk adds after the unterminated end
+# record the signer writes.
+unlf() {
+	if [ "$(tail -c 1 "$1" | od -An -tx1 | tr -d ' ')" = 0a ]; then
+		head -c $(($(wc -c < "$1") - 1)) "$1" > "$1.cut"
+		mv "$1.cut" "$1"
+	fi
+}
+
 # corrupt in page record out: changes the first nibble of data record $3 of page $2, both
 # counted from 0.
 corrupt() {
@@ -82,6 +91,7 @@ corrupt() {
 			{ print }
 		'
 	} > "$4"
+	unlf "$4"
 }
 
 # Sets the last data byte of the file, which the signer pads with FF, to 00.
@@ -150,7 +160,78 @@ set_field() {
 	resum "$1.tmp" "$1"
 }
 
+fill() { printf '%*s' "$1" '' | tr ' ' F; }
+hexlen() { printf %02X "$1"; }
+
+# append_ff in out: the file with one FF byte after the signature field, in a record of its own.
+append_ff() {
+	{
+		head -n 1 "$1"
+		tail -n +2 "$1" | awk "$HEX"'
+			/^:[0-9A-F]{6}00/ { next_address = hex(substr($0, 4, 4)) + hex(substr($0, 2, 2)) }
+			/^:00000001FF/ {
+				body = sprintf("01%04X00FF", next_address)
+				printf ":%s%02X\r\n", body, checksum(body)
+				printf "%s", $0
+				next
+			}
+			{ print }
+		'
+	} > "$2"
+}
+
+# The rules that hold for the app of any library: the signature covers every byte, the header
+# says shareware, the records end in CR LF and the file ends with the end record.
+common_tests() {
+	corrupt "$good" 0 4 "$dir/code.tmp"
+	resum "$dir/code.tmp" "$dir/code.8xk"
+	refuses code "a code byte changed under fixed checksums" "does not verify"
+
+	mutate 's/80120104/80120105/' key-id
+	refuses key-id "key ID 0105" "key ID"
+
+	# 80 12 01 04 elsewhere in the header is not the key ID field.
+	mutate 's/80120104/80120105/;s/A16B99F6/80120104/' key-id-elsewhere
+	refuses key-id-elsewhere "the key ID 0104 somewhere other than after the length" "key ID"
+
+	{ cat "$good"; printf '\n'; } > "$dir/lf-end.8xk"
+	refuses lf-end "an end record that ends in LF alone" "end record"
+
+	sed '$d' "$good" > "$dir/no-end.8xk"
+	refuses no-end "no end record" "end record"
+
+	sed "s/$(printf '\r')\$//" "$good" > "$dir/lf.8xk"
+	refuses lf "LF line endings" "CR LF"
+
+	# A signature of fewer than 64 bytes with a zero byte added at the top is the same number.
+	read_field
+	# The signature plus the modulus squares to the same number, and fits in 64 bytes when the
+	# signature is below 2^512 minus the modulus.
+	bumped=$(python3 -I -c '
+import sys
+n = int.from_bytes(bytes.fromhex(
+    "AD2431DA2297E4175EAC61A3154FA3D847115794DD330AB7FF36BA59FEDA195F"
+    "EA7C16743BD7BCED8A0DA885E5E5C34D5BF20D0AB3EF9181ED39BA2C4D898E87"), "little")
+s = int.from_bytes(bytes.fromhex(sys.argv[1]), "little") + n
+print(s.to_bytes(64, "little").hex().upper() if s < 1 << 512 else "")
+' "$sig")
+	if [ -n "$bumped" ]; then
+		set_field "$dir/above-modulus.8xk" "022D40${bumped}${trailer}$(fill $((192 - 6 - 128 - 2 * t)))"
+		refuses above-modulus "the signature plus the modulus" "not below the modulus"
+	fi
+	if [ "$n" -lt 64 ]; then
+		leading="022D$(hexlen $((n + 1)))${sig}00${trailer}$(fill $((192 - 6 - 2 * (n + 1) - 2 * t)))"
+		set_field "$dir/leading-zero.8xk" "$leading"
+		refuses leading-zero "a zero byte at the top of the signature" "zero byte at the top"
+	fi
+}
+
 if [ -z "$library" ]; then
+	common_tests
+
+	append_ff "$good" "$dir/after-field.8xk"
+	refuses after-field "a byte after the signature field" "no signature field"
+
 	: > "$dir/empty.8xk"
 	refuses empty "no bytes"
 
@@ -163,7 +244,7 @@ if [ -z "$library" ]; then
 	mutate 's/807F00000000/807F00000001/' header
 	refuses header "bytes between the header and 4080h"
 
-	mutate 's/022D40/022D41/' signature
+	mutate "s/022D$(hexlen "$n")/022D$(hexlen $((n + 1)))/" signature
 	refuses signature "no signature field"
 
 	zero_last_byte "$good" "$dir/after-signature.tmp"
@@ -173,19 +254,11 @@ if [ -z "$library" ]; then
 	corrupt "$good" 0 1 "$dir/checksum.8xk"
 	refuses checksum "a data byte changed under its checksum" "checksum is wrong"
 
-	# The signer drops leading zero bytes of the number it exports, least significant byte first,
-	# so a shorter signature is the good one without its last byte, a smaller length byte and one
-	# more FF. This one is synthesised from the good file's own signature.
 	read_field
-	fill() { printf '%*s' "$1" '' | tr ' ' F; }
 	pad=$((192 - 6 - 2 * n - 2 * t))
-	hexlen() { printf %02X "$1"; }
 	short="022D$(hexlen $((n - 1)))$(printf '%s' "$sig" | cut -c1-$((2 * n - 2)))$trailer$(fill $((pad + 2)))"
 	set_field "$dir/short-signature.8xk" "$short"
-	sh "$check" "$dir/short-signature.8xk" "$name" | grep -q "$((n - 1))-byte signature" || {
-		echo "test-check-8xk: refused a signature one byte short" >&2
-		exit 1
-	}
+	refuses short-signature "a signature one byte short of the signed number" "does not verify"
 	liar="022D$(hexlen $((n - 1)))$sig$trailer$(fill $pad)"
 	set_field "$dir/length-lies.8xk" "$liar"
 	refuses length-lies "a length byte one under the signature bytes present" "no signature field"
@@ -207,6 +280,7 @@ fi
 pages=$(sh "$check" -l "$library" "$good" "$name" | sed -n 's/.* \([0-9][0-9]*\) pages.*/\1/p')
 [ "$pages" -ge 3 ] || { echo "test-check-8xk: $good has $pages pages, need at least 3" >&2; exit 1; }
 len=$(wc -c < "$library" | tr -d ' ')
+common_tests
 field() { printf '2s/8081%02X/8081%02X/' "$1" "$2"; }
 
 mutate "$(field "$pages" $((pages + 1)))" more-pages
@@ -235,6 +309,7 @@ refuses gap "a missing record in the middle of a page" "not contiguous"
 		{ print }
 	'
 } > "$dir/long-page.8xk"
+unlf "$dir/long-page.8xk"
 refuses long-page "a last page over 16384 bytes" "over 16384"
 
 corrupt "$good" 1 1 "$dir/chunk.tmp"
