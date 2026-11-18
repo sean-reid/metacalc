@@ -1,0 +1,25 @@
+name: spasm-ng
+description: Builds spasm-ng at a pinned commit, cached, and exports SPASM.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        echo "SPASM_REV=5f0786d38f064835be674d4b7df42969967bb73c" >> "$GITHUB_ENV"
+        echo "SPASM=$GITHUB_WORKSPACE/.spasm/spasm" >> "$GITHUB_ENV"
+    - shell: bash
+      run: sudo apt-get update && sudo apt-get install -y libgmp-dev libssl-dev
+    - uses: actions/cache@v6
+      id: spasm
+      with:
+        path: .spasm/spasm
+        key: spasm-ng-${{ runner.os }}-${{ runner.arch }}-${{ env.SPASM_REV }}
+    - if: steps.spasm.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        git clone https://github.com/alberthdev/spasm-ng "$RUNNER_TEMP/spasm-ng"
+        git -C "$RUNNER_TEMP/spasm-ng" checkout "$SPASM_REV"
+        make -C "$RUNNER_TEMP/spasm-ng"
+        mkdir -p .spasm
+        cp "$RUNNER_TEMP/spasm-ng/spasm" "$SPASM"

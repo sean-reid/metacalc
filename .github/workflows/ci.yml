@@ -22,9 +22,26 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
-      - run: cargo build --workspace --release --locked
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+
+  emu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: ./.github/actions/spasm
+      - uses: actions/cache@v6
+        with:
+          path: .tilem
+          key: tilem-${{ hashFiles('scripts/fetch-tilem.sh') }}
+      - run: sh scripts/fetch-tilem.sh
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p mcemu --all-targets --locked -- -D warnings
+      - run: cargo test -p mcemu --locked
 
   audit:
     runs-on: ubuntu-latest
@@ -46,22 +63,7 @@ jobs:
 
   app:
     runs-on: ubuntu-latest
-    env:
-      SPASM_REV: 5f0786d38f064835be674d4b7df42969967bb73c
-      SPASM: ${{ github.workspace }}/.spasm/spasm
     steps:
       - uses: actions/checkout@v7
-      - run: sudo apt-get update && sudo apt-get install -y libgmp-dev libssl-dev
-      - uses: actions/cache@v6
-        id: spasm
-        with:
-          path: .spasm/spasm
-          key: spasm-ng-${{ runner.os }}-${{ runner.arch }}-${{ env.SPASM_REV }}
-      - if: steps.spasm.outputs.cache-hit != 'true'
-        run: |
-          git clone https://github.com/alberthdev/spasm-ng "$RUNNER_TEMP/spasm-ng"
-          git -C "$RUNNER_TEMP/spasm-ng" checkout "$SPASM_REV"
-          make -C "$RUNNER_TEMP/spasm-ng"
-          mkdir -p .spasm
-          cp "$RUNNER_TEMP/spasm-ng/spasm" "$SPASM"
+      - uses: ./.github/actions/spasm
       - run: make -C app check

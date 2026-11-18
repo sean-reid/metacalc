@@ -1,0 +1,8 @@
+.org ENTRY
+	di
+	ld b,0
+	xor a
+loop:
+	add a,b
+	djnz loop
+	halt

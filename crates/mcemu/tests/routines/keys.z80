@@ -1,0 +1,7 @@
+.org $9000
+	di
+	ld a,$FD
+	out ($01),a
+	in a,($01)
+	ld (RESULT),a
+	halt

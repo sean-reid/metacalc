@@ -1,0 +1,120 @@
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::{Command, exit};
+
+const ROM_SIZE: usize = 0x20_0000;
+const PAGE: usize = 0x4000;
+const BOOT_PAGE: usize = 0x7F;
+
+/// Test routines: source, output name, spasm defines.
+const ROUTINES: &[(&str, &str, &[&str])] = &[
+    ("sum.z80", "sum_ram.bin", &["ENTRY=$9000", "RESULT=$A000"]),
+    ("sum.z80", "sum_flash.bin", &["ENTRY=$4000", "RESULT=$A000"]),
+    ("lcd_busy.z80", "lcd_busy.bin", &[]),
+    ("lcd_busy.z80", "lcd_wait.bin", &["WAIT"]),
+    ("keys.z80", "keys.bin", &["RESULT=$A000"]),
+    ("count.z80", "count.bin", &["ENTRY=$9000"]),
+];
+
+fn fail(msg: &str) -> ! {
+    eprintln!("error: {msg}");
+    exit(1);
+}
+
+fn tilem_sources() -> Vec<PathBuf> {
+    println!("cargo:rerun-if-env-changed=TILEM_SRC");
+    let Some(root) = env::var_os("TILEM_SRC") else {
+        fail("TILEM_SRC is not set; run scripts/fetch-tilem.sh and point it at the checkout");
+    };
+    let emu = Path::new(&root).join("emu");
+    if !emu.join("tilem.h").is_file() {
+        fail(&format!(
+            "TILEM_SRC={} has no emu/tilem.h; run scripts/fetch-tilem.sh",
+            Path::new(&root).display()
+        ));
+    }
+    println!("cargo:rerun-if-changed={}", emu.display());
+    let mut files = Vec::new();
+    let mut dirs = vec![emu.clone()];
+    for entry in fs::read_dir(&emu).unwrap().flatten() {
+        let path = entry.path();
+        if path.is_dir() && path.file_name().unwrap().to_string_lossy().starts_with('x') {
+            dirs.push(path);
+        }
+    }
+    for dir in dirs {
+        for entry in fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "c") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+fn compile_tilem() {
+    let files = tilem_sources();
+    let emu = Path::new(&env::var_os("TILEM_SRC").unwrap()).join("emu");
+    cc::Build::new()
+        .files(&files)
+        .file("csrc/harness.c")
+        .include(&emu)
+        .include(emu.join("xz"))
+        .define("HAVE_STDINT_H", "1")
+        .define("HAVE_INTTYPES_H", "1")
+        .define("HAVE_STRING_H", "1")
+        .define("PACKAGE_VERSION", "\"pinned\"")
+        .define("restrict", "__restrict")
+        .define("_POSIX_C_SOURCE", "200809L")
+        .warnings(false)
+        .opt_level(2)
+        .compile("tilem");
+    println!("cargo:rerun-if-changed=csrc/harness.c");
+}
+
+fn spasm(src: &Path, out: &Path, defines: &[&str]) {
+    println!("cargo:rerun-if-changed={}", src.display());
+    let mut cmd = Command::new(env::var_os("SPASM").unwrap_or_else(|| "spasm".into()));
+    for d in defines {
+        cmd.arg(format!("-D{d}"));
+    }
+    let status = cmd.arg("-N").arg(src).arg(out).output();
+    match status {
+        Ok(o) if o.status.success() => {}
+        Ok(o) => fail(&format!(
+            "spasm failed on {}: {}",
+            src.display(),
+            String::from_utf8_lossy(&o.stdout).trim().replace('\n', " ")
+        )),
+        Err(e) => fail(&format!("cannot run spasm (set SPASM to its path): {e}")),
+    }
+}
+
+fn main() {
+    println!("cargo:rerun-if-env-changed=SPASM");
+    compile_tilem();
+
+    let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let dir = Path::new("stub");
+    let os = out.join("os.bin");
+    let boot = out.join("boot.bin");
+    spasm(&dir.join("os.z80"), &os, &[]);
+    spasm(&dir.join("boot.z80"), &boot, &[]);
+    let mut rom = vec![0xFF; ROM_SIZE];
+    for (bin, at) in [(os, 0), (boot, BOOT_PAGE * PAGE)] {
+        let bytes = fs::read(bin).unwrap();
+        rom[at..at + bytes.len()].copy_from_slice(&bytes);
+    }
+    fs::write(out.join("stub.rom"), rom).unwrap();
+
+    for (src, name, defines) in ROUTINES {
+        spasm(
+            &Path::new("tests/routines").join(src),
+            &out.join(name),
+            defines,
+        );
+    }
+}

@@ -1,0 +1,27 @@
+.org $9000
+	di
+	ld a,$03
+	out ($10),a
+	call lcddly
+	ld a,$07
+	out ($10),a
+	call lcddly
+	ld a,$20
+	out ($10),a
+	call lcddly
+	ld a,$80
+	out ($10),a
+	call lcddly
+	ld a,$FF
+	out ($11),a
+#ifdef WAIT
+	call lcddly
+#endif
+	ld a,$0F
+	out ($11),a
+	halt
+lcddly:
+	ld b,6
+lcdw:
+	djnz lcdw
+	ret
