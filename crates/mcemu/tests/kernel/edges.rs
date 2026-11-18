@@ -132,7 +132,7 @@ fn assertions_past_the_cache_and_a_directory_over_pages_agree_with_the_model() {
     }
     let directory = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
     let boundaries: Vec<usize> = (0..count)
-        .filter(|&e| (directory + 4 * e) % PAGE == 0 && e > 0)
+        .filter(|&e| (directory + 4 * e).is_multiple_of(PAGE) && e > 0)
         .collect();
     assert!(!boundaries.is_empty(), "the directory crosses a page");
     for &entry in &boundaries {
