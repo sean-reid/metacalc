@@ -1,9 +1,5 @@
 #define KERNEL_EMBEDDED
 
-#ifndef KERNEL_RAM
-#define KERNEL_RAM $C000
-#endif
-
 TEST_INIT_STATUS	.equ $FF00
 TEST_VERIFY_STATUS	.equ $FF01
 TEST_ASSERTION		.equ $FF02
@@ -12,25 +8,36 @@ TEST_IFF		.equ $FF06
 TEST_BLOCK		.equ $FF00
 TEST_VERIFY2_STATUS	.equ $FF0A
 TEST_ASSERTION2		.equ $FF08
-TEST_STATUSES		.equ KERNEL_RAM+$3200
+TEST_STATUSES		.equ $E000
+TEST_STATUSES_END	.equ $FF00
 TEST_REGS		.equ $FF10
 TEST_IFF_IN		.equ $FF1A
 TEST_CRC_BEGIN		.equ $FF0B
 TEST_CRC_CALLS		.equ $FF0C
 TEST_BUF_LEN		.equ $FF1C
-TEST_BUF		.equ TEST_STATUSES
+TEST_BUF		.equ $8800
 TEST_CRC_EXTRA		.equ $FF0D
 TEST_CRC_BEFORE		.equ $FF1E
+TEST_CRC_RESULT		.equ $FF22
+TEST_PARAM_PTR		.equ $FF26
+TEST_PORT5		.equ $FF28
+TEST_P5_WANT		.equ $FF29
+TEST_P5_BAD		.equ $FF2A
+TEST_P5_N		.equ $FF2B
+TEST_PARAMS		.equ $7F00
 
 .org $4000
 	jp entry_one
 	jp entry_all
 	jp entry_iff
 	jp entry_two
+	jp entry_p5
+	jp entry_overhead
+	jp entry_baseline
 
 entry_one:
 	di
-	call kernel_init
+	call test_init
 	ld (TEST_INIT_STATUS),a
 	ld hl,(TEST_ASSERTION)
 	call kernel_verify
@@ -40,7 +47,7 @@ entry_one:
 
 entry_two:
 	di
-	call kernel_init
+	call test_init
 	ld (TEST_INIT_STATUS),a
 	ld hl,(TEST_ASSERTION)
 	call kernel_verify
@@ -69,7 +76,7 @@ entry_regs:
 	ld de,$48AE
 	ld hl,$5AC0
 	exx
-	call kernel_init
+	call test_init
 	ld (TEST_INIT_STATUS),a
 	ld hl,(TEST_ASSERTION)
 	call kernel_verify
@@ -94,7 +101,7 @@ entry_iffv:
 	ei
 iffv_start:
 	nop
-	call kernel_init
+	call test_init
 	ld (TEST_INIT_STATUS),a
 	ld hl,(TEST_ASSERTION)
 	call kernel_verify
@@ -105,7 +112,7 @@ iffv_start:
 
 entry_all:
 	di
-	call kernel_init
+	call test_init
 	ld (TEST_INIT_STATUS),a
 	ld hl,0
 all_next:
@@ -133,7 +140,7 @@ entry_iff:
 	out (3),a
 	ei
 	nop
-	call kernel_init
+	call test_init
 	ld (TEST_INIT_STATUS),a
 	call iff_flag
 	di
@@ -141,7 +148,7 @@ entry_iff:
 
 entry_crc:
 	di
-	call kernel_init
+	call test_init
 	ld (TEST_INIT_STATUS),a
 	call crc_run
 	halt
@@ -153,56 +160,52 @@ entry_crc_raw:
 
 entry_crc_second_init:
 	di
-	call kernel_init
+	call test_init
 	call kernel_crc_begin
-	call kernel_crc_chunk
+	call test_chunk
 	ld (TEST_STATUSES),a
-	call kernel_init
+	call test_init
 	ld (TEST_INIT_STATUS),a
-	ld hl,(KERNEL_CRC)
-	ld (TEST_CRC_BEFORE),hl
-	ld hl,(KERNEL_CRC+2)
-	ld (TEST_CRC_BEFORE+2),hl
-	call kernel_crc_chunk
+	call peek_crc
+	call test_chunk
 	ld (TEST_STATUSES+1),a
 	halt
 
 entry_crc_again:
 	di
-	call kernel_init
+	call test_init
 	call crc_run
-	ld hl,(KERNEL_CRC)
+	ld hl,(TEST_CRC_RESULT)
 	ld (TEST_CRC_BEFORE),hl
-	ld hl,(KERNEL_CRC+2)
+	ld hl,(TEST_CRC_RESULT+2)
 	ld (TEST_CRC_BEFORE+2),hl
-	call kernel_crc_chunk
+	call test_chunk
 	ld (TEST_CRC_EXTRA),a
 	halt
 
 entry_crc_failed_init:
 	di
-	call kernel_init
+	call test_init
 	call kernel_crc_begin
-	call kernel_crc_chunk
+	call test_chunk
 	ld (TEST_STATUSES),a
-	ld a,$80
-	ld (KERNEL_LIB_PAGE),a
+	ld hl,bad_params
 	call kernel_init
 	ld (TEST_INIT_STATUS),a
-	call kernel_crc_chunk
+	call test_chunk
 	ld (TEST_STATUSES+1),a
 	halt
 
 entry_crc_between_verifies:
 	di
-	call kernel_init
+	call test_init
 	ld (TEST_INIT_STATUS),a
 	call kernel_crc_begin
 	ld (TEST_CRC_BEGIN),a
 	xor a
 	ld (TEST_CRC_CALLS),a
 cbv_next:
-	call kernel_crc_chunk
+	call test_chunk
 	ld c,a
 	ld a,(TEST_CRC_CALLS)
 	ld e,a
@@ -231,10 +234,10 @@ cbv_next:
 
 entry_crc_restart:
 	di
-	call kernel_init
+	call test_init
 	ld (TEST_INIT_STATUS),a
 	call kernel_crc_begin
-	call kernel_crc_chunk
+	call test_chunk
 	call crc_run
 	halt
 
@@ -252,7 +255,7 @@ refused_go:
 	call iff_flag
 	ld a,(TEST_IFF)
 	ld (TEST_IFF+1),a
-	call kernel_crc_chunk
+	call test_chunk
 	ld (TEST_CRC_EXTRA),a
 	call iff_flag
 	di
@@ -277,7 +280,7 @@ crc_env_go:
 	ld de,$48AE
 	ld hl,$5AC0
 	exx
-	call kernel_init
+	call test_init
 	ld (TEST_INIT_STATUS),a
 	call crc_run
 	call iff_flag
@@ -295,16 +298,119 @@ crc_env_go:
 
 entry_crc_vector:
 	di
+	ld hl,(TEST_BUF_LEN)
+	ld de,TEST_BUF
+	add hl,de
+	ld a,KERNEL_RAM_PAGE
+	out (5),a
+	ld (kv_tmp16),hl
+	ld sp,KSTACK_TOP
 	call crc_table_build
 	ld hl,$FFFF
 	ld (KERNEL_CRC),hl
 	ld (KERNEL_CRC+2),hl
-	ld hl,(TEST_BUF_LEN)
-	ld de,TEST_BUF
-	add hl,de
-	ex de,hl
+	ld hl,TEST_BUF
+	ld de,(kv_tmp16)
 	call crc_update
 	halt
+
+entry_p5:
+	xor a
+	out (3),a
+	ld a,(TEST_IFF_IN)
+	or a
+	jr z,p5_start
+	ei
+p5_start:
+	nop
+	call test_init
+	ld (TEST_INIT_STATUS),a
+	call p5_probe
+	ld hl,(TEST_ASSERTION)
+	call kernel_verify
+	ld (TEST_VERIFY_STATUS),a
+	call p5_probe
+	call kernel_crc_begin
+	call p5_probe
+	xor a
+	ld (TEST_CRC_CALLS),a
+p5_chunk:
+	call test_chunk
+	call p5_probe
+	ld c,a
+	ld a,(TEST_CRC_CALLS)
+	inc a
+	ld (TEST_CRC_CALLS),a
+	cp 8
+	jr nc,p5_end
+	ld a,c
+	cp ST_CRC_MORE
+	jr z,p5_chunk
+p5_end:
+	call kernel_crc_chunk
+	call p5_probe
+	call iff_flag
+	di
+	halt
+
+p5_probe:
+	push af
+	push hl
+	ld hl,TEST_P5_N
+	inc (hl)
+	in a,(5)
+	ld hl,TEST_P5_WANT
+	cp (hl)
+	jr z,p5_same
+	ld hl,TEST_P5_BAD
+	inc (hl)
+p5_same:
+	pop hl
+	pop af
+	ret
+
+entry_overhead:
+	di
+	ld ix,overhead_body
+	call kernel_enter
+	halt
+
+entry_baseline:
+	di
+	ld ix,overhead_body
+	call overhead_body
+	halt
+
+overhead_body:
+	ret
+
+test_init:
+	ld hl,(TEST_PARAM_PTR)
+	jp kernel_init
+
+test_chunk:
+	call kernel_crc_chunk
+	ld (TEST_CRC_RESULT),hl
+	ld (TEST_CRC_RESULT+2),de
+	ret
+
+; out: TEST_CRC_BEFORE = the CRC-32 run state in the kernel page. Interrupts must be off.
+peek_crc:
+	in a,(5)
+	ld c,a
+	ld a,KERNEL_RAM_PAGE
+	out (5),a
+	ld hl,(KERNEL_CRC)
+	ld de,(KERNEL_CRC+2)
+	ld a,c
+	out (5),a
+	ld (TEST_CRC_BEFORE),hl
+	ld (TEST_CRC_BEFORE+2),de
+	ret
+
+bad_params:
+	.db $80
+	.dw 0,0,0,0
 
 crc_run:
 	call kernel_crc_begin
@@ -316,7 +422,7 @@ crc_next:
 	ld hl,TEST_COUNT
 	cp (hl)
 	ret nc
-	call kernel_crc_chunk
+	call test_chunk
 	ld c,a
 	ld a,(TEST_CRC_CALLS)
 	ld e,a
@@ -338,13 +444,12 @@ iff_flag:
 	inc a
 iff_store:
 	ld (TEST_IFF),a
+	in a,(5)
+	ld (TEST_PORT5),a
 	ret
 
 #include "kernel.z80"
 
-#if TEST_STATUSES != KERNEL_RAM_END
- .error "the test variables must start at the end of the kernel block"
-#endif
-#if TEST_STATUSES+$800 > TEST_BLOCK
- .error "the test variables do not fit above the kernel block"
+#if $ > TEST_PARAMS
+ .error "the test code reaches the parameter block"
 #endif

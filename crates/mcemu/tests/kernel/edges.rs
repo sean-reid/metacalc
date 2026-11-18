@@ -57,10 +57,7 @@ fn the_validated_page_and_limits_are_the_ones_used() {
     let want = status(Ok(()));
     let mut device = Device::with_library(&bytes);
     assert_eq!(device.verify(both, ASKED_UNBOUNDED).verify, want);
-    device.m.load_ram(
-        device.label("KERNEL_LIB_PAGE"),
-        &[0x20, 0, 0, 0, 0, 0, 0, 0, 0],
-    );
+    device.write_params(&[0x20, 0, 0, 0, 0, 0, 0, 0, 0]);
     device
         .m
         .load_ram(device.label("TEST_ASSERTION"), &(both as u16).to_le_bytes());
@@ -70,7 +67,7 @@ fn the_validated_page_and_limits_are_the_ones_used() {
     let many = pack_all(&long_labels(2500));
     let mut device = Device::with_library(&many);
     device.verify(0, ASKED_UNBOUNDED);
-    device.m.load_ram(device.label("KERNEL_LIB_PAGE"), &[0x7F]);
+    device.write_params(&[0x7F]);
     for id in [0, 1200, 2499] {
         device
             .m
@@ -81,27 +78,35 @@ fn the_validated_page_and_limits_are_the_ones_used() {
 }
 
 #[test]
-fn the_block_can_be_assembled_at_another_address() {
-    let base = label_in(MOVED, "KERNEL_RAM");
-    assert_eq!(base, 0xC400);
-    assert_ne!(base, label("KERNEL_RAM"));
+fn the_regions_can_be_assembled_at_other_addresses() {
+    let (low, high) = (
+        label_in(MOVED, "KERNEL_RAM_LOW"),
+        label_in(MOVED, "KERNEL_RAM_HIGH"),
+    );
+    assert_eq!((low, high), (0xC100, 0xE000));
+    assert_ne!(low, label("KERNEL_RAM_LOW"));
+    assert_ne!(high, label("KERNEL_RAM_HIGH"));
     let (small_db, small) = small_library();
     let demo = pack_all(&corpus("demo0.mm"));
-    for bytes in [small, demo] {
+    for bytes in [small.clone(), demo] {
         let (want_init, want) = model_statuses(&bytes, ASKED_UNBOUNDED);
         let mut device = Device::with_image(MOVED);
         device.load(&bytes);
-        device.m.load_ram(0xC000, &[0x5A; 0x400]);
+        fill_outside(device.m.ram_page(SPARE_PAGE), MOVED, 0x5A);
         let (init, got, _) = device.verify_all(want.len(), ASKED_UNBOUNDED);
         assert_eq!((init, got), (want_init, want));
-        assert_eq!(device.m.read_ram(0xC000, 0x400), vec![0x5A; 0x400]);
-        let end = device.label("KERNEL_RAM_END");
-        assert_eq!(end, label("KERNEL_RAM_END") + 0x400);
+        let page = device.m.ram_page(SPARE_PAGE).to_vec();
+        assert_eq!(first_outside_not(&page, MOVED, 0x5A), None);
+        assert!(
+            (0..page.len()).any(|at| in_regions(MOVED, 0xC000 + at as u16)
+                && !in_regions(DEFAULT, 0xC000 + at as u16)
+                && page[at] != 0),
+            "the moved regions were used"
+        );
     }
     let id = number(&small_db, "both");
-    let (_, bytes) = small_library();
     let mut device = Device::with_image(MOVED);
-    device.load(&bytes);
+    device.load(&small);
     assert_eq!(device.verify(id, ASKED_UNBOUNDED).verify, status(Ok(())));
 }
 
@@ -235,7 +240,7 @@ fn a_library_that_ends_inside_a_record_is_judged_as_the_model_would() {
 
 pub const REGISTERS: [u8; 10] = [0x57, 0x13, 0x68, 0x24, 0x9C, 0x36, 0xAE, 0x48, 0xC0, 0x5A];
 
-fn failing_libraries() -> Vec<(Vec<u8>, usize)> {
+pub fn failing_libraries() -> Vec<(Vec<u8>, usize)> {
     let mut theorems = String::new();
     for (i, proof) in [
         "vx vy vy vx ax-d ax-m",
@@ -345,15 +350,15 @@ fn the_substitution_serial_wraps_without_changing_a_result() {
     let mut device = Device::with_library(&bytes);
     assert_eq!(device.verify(id, ASKED_UNBOUNDED).verify, status(Ok(())));
     let serial = device.label("KV_SERIAL");
-    assert_eq!(device.m.read_ram(serial, 2), [11, 0], "eleven applies");
-    device.m.load_ram(serial, &0xFFFDu16.to_le_bytes());
+    assert_eq!(device.kram(serial, 2), [11, 0], "eleven applies");
+    device.kram_write(serial, &0xFFFDu16.to_le_bytes());
     device
         .m
         .load_ram(device.label("TEST_ASSERTION"), &(id as u16).to_le_bytes());
     device.run("ENTRY_VERIFY");
     assert_eq!(device.byte("TEST_VERIFY_STATUS"), status(Ok(())));
     assert_eq!(
-        device.m.read_ram(serial, 2),
+        device.kram(serial, 2),
         [9, 0],
         "wrapped to 1 on the third apply"
     );
@@ -382,7 +387,7 @@ fn enough_applies_in_one_initialisation_wrap_the_serial() {
     assert_eq!(got[2..], [0; THEOREMS]);
     let applies = THEOREMS * (2 * DROPS + 3);
     assert!(applies > 2 * 0xFFFF);
-    let serial = device.m.read_ram(device.label("KV_SERIAL"), 2);
+    let serial = device.kram_label("KV_SERIAL", 2);
     assert_eq!(serial, (((applies - 1) % 0xFFFF + 1) as u16).to_le_bytes());
 }
 
@@ -398,8 +403,7 @@ fn verify_without_a_successful_init_is_refused_whatever_the_ram_holds() {
     let (db, bytes) = small_library();
     let good = number(&db, "good");
     let malformed = status(Err(KernelError::Malformed));
-    let start = label("KERNEL_RAM");
-    let len = usize::from(label("KERNEL_RAM_END") - start);
+    let len = PAGE;
     let mut seed = 0x2545_F491;
     let random: Vec<u8> = (0..len).map(|_| xorshift(&mut seed)).collect();
     for (name, fill) in [
@@ -411,7 +415,7 @@ fn verify_without_a_successful_init_is_refused_whatever_the_ram_holds() {
             let mut device = Device::with_library(&bytes);
             device.m.load_flash(0x50, 0, b"flash page marker");
             device.m.load_ram(0x8000, &[0xA5; 64]);
-            device.m.load_ram(start, &fill);
+            device.m.ram_page(SPARE_PAGE).copy_from_slice(&fill);
             device.m.out_port(7, page);
             device
                 .m
@@ -443,7 +447,9 @@ fn a_failed_init_leaves_nothing_to_verify_against() {
     for (what, page, magic) in [("page", 0x80u8, b'M'), ("magic", device.lib_page, b'X')] {
         device.m.load_flash(device.lib_page, 0, &[magic]);
         device.params(ASKED_UNBOUNDED);
-        device.m.load_ram(device.label("KERNEL_LIB_PAGE"), &[page]);
+        let mut block = device.param_block(ASKED_UNBOUNDED);
+        block[0] = page;
+        device.write_params(&block);
         device.run("ENTRY_TWO");
         assert_eq!(device.byte("TEST_INIT_STATUS"), malformed, "{what}");
         assert_eq!(device.byte("TEST_VERIFY_STATUS"), malformed, "{what}");
@@ -460,22 +466,53 @@ fn the_table_is_cleared_when_the_serial_wraps() {
     let mut device = Device::with_library(&bytes);
     assert_eq!(device.verify(both, ASKED_UNBOUNDED).verify, status(Ok(())));
     let table = device.label("SUBST");
-    let z = device.m.read_ram(table + 5 * 8, 8);
+    let z = device.kram(table + 5 * 8, 8);
     assert_ne!(z, [0; 8], "z is bound by the proof of both");
-    device
-        .m
-        .load_ram(device.label("KV_SERIAL"), &0xFFFFu16.to_le_bytes());
+    device.kram_write(device.label("KV_SERIAL"), &0xFFFFu16.to_le_bytes());
     device
         .m
         .load_ram(device.label("TEST_ASSERTION"), &(good as u16).to_le_bytes());
     device.run("ENTRY_VERIFY");
     assert_eq!(device.byte("TEST_VERIFY_STATUS"), status(Ok(())));
-    assert_eq!(device.m.read_ram(device.label("KV_SERIAL"), 2), [1, 0]);
-    assert_eq!(
-        device.m.read_ram(table + 5 * 8, 8),
-        [0; 8],
-        "z was not rebound"
-    );
-    let x = device.m.read_ram(table + 3 * 8, 8);
+    assert_eq!(device.kram_label("KV_SERIAL", 2), [1, 0]);
+    assert_eq!(device.kram(table + 5 * 8, 8), [0; 8], "z was not rebound");
+    let x = device.kram(table + 3 * 8, 8);
     assert_eq!(x[4..6], [1, 0], "x was rebound after the wrap");
+}
+
+#[test]
+fn a_parameter_block_that_touches_bank_c_is_refused_before_it_is_read() {
+    let (db, bytes) = small_library();
+    let both = number(&db, "both");
+    let malformed = status(Err(KernelError::Malformed));
+    let ok = status(Ok(()));
+    for (at, accepted) in [
+        (0x8100u16, true),
+        (0xBFF6, true),
+        (0xBFF7, true),
+        (0xBFF8, false),
+        (0xBFFF, false),
+        (0xC000, false),
+        (0xC001, false),
+        (0xFF00, false),
+        (0xFFF7, false),
+    ] {
+        let mut device = Device::with_library(&bytes);
+        assert_eq!(device.verify(both, ASKED_UNBOUNDED).verify, ok);
+        device.params_in_bank_b(ASKED_UNBOUNDED, at);
+        device
+            .m
+            .load_ram(device.label("TEST_ASSERTION"), &(both as u16).to_le_bytes());
+        device.run("ENTRY_ONE");
+        let (init, verify) = (
+            device.byte("TEST_INIT_STATUS"),
+            device.byte("TEST_VERIFY_STATUS"),
+        );
+        let want = if accepted {
+            (ok, ok)
+        } else {
+            (malformed, malformed)
+        };
+        assert_eq!((init, verify), want, "block at {at:04X}");
+    }
 }

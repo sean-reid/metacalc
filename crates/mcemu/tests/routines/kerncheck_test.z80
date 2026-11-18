@@ -1,0 +1,66 @@
+#include "equates.inc"
+
+VERSION = 1
+
+OUT_PTR   = 0A000h
+OUT_SPEED = 0A002h
+OUT_AFTER = 0A003h
+OUT_BUF   = 0A010h
+OUT_IFF   = 0A004h
+IY_TEST   = 0B800h
+
+.org 4000h
+	jp main
+
+main:
+	xor a
+	out (3), a
+	ld hl, OUT_BUF
+	ld (OUT_PTR), hl
+	ld iy, IY_TEST
+	ei
+	nop
+	call kernchk_run
+	di
+	in a, (20h)
+	ld (OUT_AFTER), a
+	halt
+
+onbreak_entry:
+	xor a
+	out (3), a
+	di
+	ld iy, IY_TEST
+	call on_release_and_clear
+	ld a, i
+	ld a, 0
+	jp po, onbreak_off
+	inc a
+onbreak_off:
+	ld (OUT_IFF), a
+	di
+	halt
+
+; Contract: A is one character. Destroys every register.
+putchar:
+	ld hl, (OUT_PTR)
+	ld (hl), a
+	inc hl
+	ld (OUT_PTR), hl
+	cp 0Dh
+	jr nz, putchar_done
+	in a, (20h)
+	ld (OUT_SPEED), a
+putchar_done:
+	ld hl, 0FFFFh
+	ld bc, 0FFFFh
+	ld de, 0FFFFh
+	ld ix, 0FFFFh
+	ld a, 0FFh
+	or a
+	ret
+
+#define KERNEL_EMBEDDED
+#include "libpage.inc"
+#include "kernel.z80"
+#include "kerndriver.inc"

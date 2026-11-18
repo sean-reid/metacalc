@@ -33,7 +33,7 @@ fn run_entry(device: &mut Device, entry: &str, max_calls: u8) -> Crc {
         .load_ram(device.label("TEST_COUNT"), &[max_calls, 0]);
     let tstates = device.run(entry);
     let calls = device.byte("TEST_CRC_CALLS") as usize;
-    let value = device.m.read_ram(device.label("KERNEL_CRC"), 4);
+    let value = device.m.read_ram(device.label("TEST_CRC_RESULT"), 4);
     Crc {
         init: device.byte("TEST_INIT_STATUS"),
         begin: device.byte("TEST_CRC_BEGIN"),
@@ -238,7 +238,7 @@ fn the_checksum_needs_a_successful_init() {
     device.m.load_flash(0x50, 0, &marker);
     device.m.out_port(PORT_BANK_B, 0x50);
     let stale = device.label("KERNEL_CRC");
-    device.m.load_ram(stale, &[0xA5; 4]);
+    device.kram_write(stale, &[0xA5; 4]);
     let run = run_entry(&mut device, "ENTRY_CRC_RAW", 4);
     assert_eq!((run.begin, run.statuses), (MALFORMED, vec![MALFORMED]));
     assert_eq!(run.value, 0);
@@ -247,7 +247,7 @@ fn the_checksum_needs_a_successful_init() {
     let mut bad = bytes.clone();
     bad[0] = b'X';
     device.load(&bad);
-    device.m.load_ram(stale, &[0xA5; 4]);
+    device.kram_write(stale, &[0xA5; 4]);
     let run = run_crc(&mut device);
     assert_eq!((run.init, run.begin), (MALFORMED, MALFORMED));
     assert_eq!((run.statuses, run.value), (vec![MALFORMED], 0));
@@ -343,8 +343,8 @@ fn the_checksum_runs_at_another_address() {
     assert_eq!(run.statuses.len(), 4);
     assert_eq!(run.value, sum(&bytes));
     let table = device.label("CRC_TABLE");
-    assert_eq!(table, device.label("KERNEL_RAM") + 0x2E00);
-    assert_eq!(device.m.read_ram(table + 1, 1), [0x96]);
+    assert_eq!(table, device.label("KERNEL_RAM_LOW") + 0xE00);
+    assert_eq!(device.kram(table + 1, 1), [0x96]);
     let mut wrong = bytes.clone();
     wrong[CHUNK + 5] ^= 4;
     device.load(&wrong);
@@ -366,13 +366,14 @@ fn refused(device: &mut Device, interrupts: u8) {
 }
 
 #[test]
-fn a_refused_call_restores_everything_whatever_the_block_held() {
+fn a_refused_call_restores_everything_whatever_the_page_held() {
     let marker = *b"flash page marker";
-    let base = label("KERNEL_RAM");
-    let block = usize::from(label("KERNEL_RAM_END") - base);
-    let crc_at = usize::from(label("KERNEL_CRC") - base);
+    let low = label("KERNEL_RAM_LOW");
+    let saved = usize::from(low - 0xC000) + 0x10..usize::from(low - 0xC000) + 0x15;
+    let crc_at = usize::from(label("KERNEL_CRC") - 0xC000);
+    let stack = usize::from(label("KSTACK") - 0xC000)..usize::from(label("KSTACK_TOP") - 0xC000);
     let mut state = 0x9E37_79B9u32;
-    let random: Vec<u8> = (0..block)
+    let random: Vec<u8> = (0..PAGE)
         .map(|_| {
             state ^= state << 13;
             state ^= state >> 17;
@@ -380,8 +381,8 @@ fn a_refused_call_restores_everything_whatever_the_block_held() {
             (state >> 9) as u8
         })
         .collect();
-    let ready = usize::from(label("KERNEL_RAM") + 0xA0 - base);
-    for pattern in [vec![0xFF; block], vec![0x01; block], random] {
+    let ready = usize::from(label("KERNEL_RAM_LOW") + 0xA0 - 0xC000);
+    for pattern in [vec![0xFF; PAGE], vec![0x01; PAGE], random] {
         assert_ne!(pattern[ready..ready + 2], [0xA5, 0x5A]);
         for page in [RAM_PAGE, 0x50] {
             for interrupts in [0u8, 1] {
@@ -389,7 +390,7 @@ fn a_refused_call_restores_everything_whatever_the_block_held() {
                 device.m.load_flash(0x50, 0, &marker);
                 device.m.load_ram(0x8000, &[0xA5; 64]);
                 device.m.out_port(PORT_BANK_B, page);
-                device.m.load_ram(base, &pattern);
+                device.m.ram_page(SPARE_PAGE).copy_from_slice(&pattern);
                 refused(&mut device, interrupts);
                 let bank = device.m.read_ram(0x8000, marker.len());
                 let expect = if page == RAM_PAGE {
@@ -398,13 +399,10 @@ fn a_refused_call_restores_everything_whatever_the_block_held() {
                     marker.to_vec()
                 };
                 assert_eq!(bank, expect, "bank B from page {page:#x}");
-                let now = device.m.read_ram(base, block);
-                let stack =
-                    usize::from(label("KSTACK") - base)..usize::from(label("KSTACK_TOP") - base);
-                let entry = 0x10..0x14;
-                for at in (9..block).filter(|at| !stack.contains(at) && !entry.contains(at)) {
+                let now = device.m.ram_page(SPARE_PAGE).to_vec();
+                for at in (0..PAGE).filter(|at| !stack.contains(at) && !saved.contains(at)) {
                     let crc = (crc_at..crc_at + 4).contains(&at);
-                    assert!(crc || now[at] == pattern[at], "block byte {at:#x} changed");
+                    assert!(crc || now[at] == pattern[at], "page byte {at:#x} changed");
                 }
             }
         }
@@ -418,17 +416,14 @@ fn the_checksum_restores_registers_the_bank_the_interrupts_and_all_other_memory(
     let (_, small) = small_library();
     let bytes = padded(&small, 2 * CHUNK + 100);
     let marker = *b"flash page marker";
-    assert!(label("KERNEL_RAM_END") <= label("TEST_STATUSES"));
-    let free_start = label("TEST_STATUSES") + 16;
-    let free_len = usize::from(label("TEST_BLOCK") - free_start);
     let stack = usize::from(label("KSTACK_TOP") - label("KSTACK"));
     for page in [RAM_PAGE, 0x50] {
         for interrupts in [0u8, 1] {
             let mut device = Device::with_library(&bytes);
             device.m.load_flash(0x50, 0, &marker);
             device.m.load_ram(0x8000, &vec![0xA5; PAGE]);
-            device.m.load_ram(free_start, &vec![0x5A; free_len]);
-            device.m.load_ram(label("KSTACK"), &vec![0xCC; stack]);
+            fill_outside(device.m.ram_page(SPARE_PAGE), DEFAULT, 0x5A);
+            device.kram_write(label("KSTACK"), &vec![0xCC; stack]);
             device.m.out_port(PORT_BANK_B, page);
             device
                 .m
@@ -448,11 +443,9 @@ fn the_checksum_restores_registers_the_bank_the_interrupts_and_all_other_memory(
             if page == RAM_PAGE {
                 assert_eq!(device.m.read_ram(0x8000, PAGE), vec![0xA5; PAGE]);
             }
-            assert!(
-                device.m.read_ram(free_start, free_len) == vec![0x5A; free_len],
-                "memory above the block"
-            );
-            let used = device.m.read_ram(label("KSTACK"), stack);
+            let outside = device.m.ram_page(SPARE_PAGE);
+            assert_eq!(first_outside_not(outside, DEFAULT, 0x5A), None);
+            let used = device.kram(label("KSTACK"), stack);
             let deepest = used.iter().position(|&b| b != 0xCC).unwrap_or(stack);
             assert!(
                 deepest >= 128,
@@ -468,7 +461,7 @@ fn vector(device: &mut Device, data: &[u8]) -> u32 {
         .m
         .load_ram(label("TEST_BUF_LEN"), &(data.len() as u16).to_le_bytes());
     device.run("ENTRY_CRC_VECTOR");
-    let raw = device.m.read_ram(label("KERNEL_CRC"), 4);
+    let raw = device.kram_label("KERNEL_CRC", 4);
     !u32::from_le_bytes(raw.try_into().unwrap())
 }
 
@@ -477,7 +470,7 @@ fn the_core_reproduces_the_published_test_vector_and_table() {
     assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
     let mut device = Device::new();
     assert_eq!(vector(&mut device, b"123456789"), 0xCBF4_3926);
-    let table = device.m.read_ram(label("CRC_TABLE"), 1024);
+    let table = device.kram_label("CRC_TABLE", 1024);
     let entry =
         |i: usize| u32::from_le_bytes([table[i], table[256 + i], table[512 + i], table[768 + i]]);
     assert_eq!(entry(0), 0);

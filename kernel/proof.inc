@@ -63,6 +63,7 @@ push_var:
 	jp stack_push
 
 verify_body:
+	ld (kv_arg_id),hl
 	call require_ready
 	ld ix,CUR_DESC
 	ld hl,(kv_arg_id)

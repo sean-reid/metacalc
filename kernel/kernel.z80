@@ -7,14 +7,28 @@
 ; alone places it at $4000; an including file defines KERNEL_EMBEDDED first and
 ; places the code itself.
 ;
-; RAM sits at KERNEL_RAM, default $C000; define another multiple of $100 to move it, up to
-; $CE00 (the block is $3200 long and must end by $10000).
+; Memory. Every entry point maps RAM page KERNEL_RAM_PAGE (default 3, the calculator's spare
+; page) into bank C through port 5 and keeps all its storage there, in two regions that TI-OS
+; leaves alone: KERNEL_RAM_LOW, default $C500, $1200 bytes, and KERNEL_RAM_HIGH, default $DF00,
+; $2000 bytes. Define either as another multiple of $100 inside bank C to move it; the regions
+; must not overlap. No other byte of the page is written, and no other page is.
 ;
-; Calling: DI, map library pages at $8000 through port 7, restore port 7 and the
-; interrupt state on return. Preserves IY and the shadow registers, destroys the
-; rest. The kernel runs on its own stack inside bank C. Nothing else is written.
+; The caller cannot see that storage: its own bank C, including its stack, is swapped out for
+; the length of a call. Nothing the caller needs lives there. Parameters go in through a block in
+; memory outside bank C, and the one result that is not a status comes back in registers.
 ;
-;   kernel_init     in:  KERNEL_LIB_PAGE and the four KERNEL_LIMIT_* filled in
+; Calling: DI, save and set port 5, switch to the kernel's own stack in the mapped page, map
+; library pages at $8000 through port 7. On every exit, whatever the status, restore port 7,
+; the caller's stack, port 5 and the interrupt state, in that order. Preserves IY and the shadow
+; registers, destroys the rest. Between the port 5 write and the stack switch, and between the
+; stack restore and the port 5 restore, no instruction uses the stack. Entry and exit together
+; cost 374 T-states.
+;
+;   kernel_init     in:  HL = parameter block outside bank C: the library flash page (1 byte),
+;                        then the four limits as 16-bit little-endian words: stack symbols,
+;                        stack entries, saved symbols, saved entries. 9 bytes, copied before
+;                        port 7 changes, so the block may be in bank B. HL above $BFF7, a block
+;                        that touches bank C, is refused with Malformed before it is read.
 ;                   out: A = status
 ;   kernel_verify   in:  HL = assertion number, kernel_init returned 0
 ;                   out: A = status, 0 meaning accepted
@@ -23,15 +37,18 @@
 ;   kernel_crc_chunk  in:  kernel_crc_begin returned 0
 ;                     out: A = ST_CRC_MORE until the last chunk, then 0 if the CRC-32 of the
 ;                          library bytes from offset 8 to its end equals the header's, else
-;                          Malformed
+;                          Malformed. With 0, DE:HL = the CRC-32, DE the high 16 bits and HL the
+;                          low 16; with Malformed, DE:HL = 0; otherwise DE and HL are destroyed.
 ;
-; kernel_verify returns Malformed unless a kernel_init on the same RAM block succeeded and no
-; later kernel_init failed. It may be called any number of times after that init. Limits above a
+; kernel_verify returns Malformed unless a kernel_init succeeded and no later kernel_init
+; failed. The state survives between calls, and across TI-OS calls that leave the two regions
+; alone. It may be called any number of times after that init. Limits above a
 ; buffer's capacity (CAP_* in ram.inc) are clamped to it when kernel_init runs. The library
 ; is stored the way TI-OS stores an app: chunk c of 16 KB at flash page KERNEL_LIB_PAGE - c.
-; kernel_init refuses KERNEL_LIB_PAGE >= $80 and a library that needs more than
-; KERNEL_LIB_PAGE + 1 chunks; one that ends exactly at page 0 is accepted. The page is copied
-; at init, so changing KERNEL_LIB_PAGE afterwards has no effect until the next kernel_init.
+; kernel_init refuses a library page >= $80 and a library that needs more than
+; KERNEL_LIB_PAGE + 1 chunks; one that ends exactly at page 0 is accepted. The page is
+; copied at init, so a later change to the caller's parameter block has no effect until the next
+; kernel_init.
 ;
 ; The checksum runs in 16 KB steps so the app can poll keys between calls. kernel_crc_begin
 ; builds a 1 KB table (307,000 T-states at most, 51 ms at 6 MHz) and starts a run. Each
@@ -39,10 +56,8 @@
 ; 0.14 s at 15 MHz, about 124 T-states per byte. A library of 369,178 bytes takes 23 calls and
 ; 46.1 million T-states at most, 7.7 s at 6 MHz. Call chunk until it does not return
 ; ST_CRC_MORE. A chunk call without a begin since the last kernel_init, or after the run has
-; ended, is refused (1); kernel_crc_begin restarts. KERNEL_CRC is the CRC-32, least significant
-; byte first, and is meaningful only when the call that ended the run returned 0, a match; the
-; app can key its status cache on it then. A mismatch or a refused call returns 1 and sets it to
-; 0. The value is a running state while chunk returns ST_CRC_MORE.
+; ended, is refused (1); kernel_crc_begin restarts. The call that ends the run on a match
+; returns the CRC-32 in DE:HL, which the app can key its status cache on.
 ;
 ; Work limit. The disjoint-variable check of a proof step takes the pairs of the applied
 ; assertion one at a time, with X and Y the expressions that replace its two variables, and
@@ -77,22 +92,22 @@
 ;          13 WorkLimit         14 Interrupted (kernel_verify only)
 ;         255 ST_CRC_MORE (kernel_crc_chunk only)
 ;
-; RAM, bank C, shown for the default base (KERNEL_RAM_END is the first free byte):
-;   $C000  9     parameters: lib page (1), stack syms, stack entries,
-;                saved syms, saved entries (2 each, little endian)
-;   $C010  $F0   private state and the two record descriptors
-;   $C100  256   typecode of each symbol id, $FF for a constant
-;   $C200  256   float marks of the record being checked
-;   $C300  256   kernel stack, growing down from $C400
-;   $C400  1024  one bit per assertion: known to pass the record rules (ids below 8192)
-;   $C800  2048  substitution, 8 bytes per variable: start, end, apply serial
-;   $D000  512   stack entry starts, 256 entries
-;   $D200  1024  saved entry starts, 512 entries
-;   $D600  3072  stack symbols, scratch included
-;   $E200  3072  saved symbols
-;   $EE00  1024  CRC-32 table, four planes of 256 bytes, built by kernel_crc_begin
-;   $C0A8  4     KERNEL_CRC, the CRC-32 (inside the private state, which runs to $C0FF)
-; Everything above KERNEL_RAM_END is free for the caller.
+; RAM, bank C of page KERNEL_RAM_PAGE, shown for the default bases:
+;   low region $C500, $1200 bytes
+;   $C500  $100  private state: parameters (9 bytes), saved SP, port 7, port 5 and interrupt
+;                state, the two record descriptors, the CRC-32 run state
+;   $C600  $100  typecode of each symbol id, $FF for a constant
+;   $C700  $100  float marks of the record being checked
+;   $C800  $100  kernel stack, growing down from $C900
+;   $C900  $400  one bit per assertion: known to pass the record rules (ids below 8192)
+;   $CD00  $200  stack entry starts, 256 entries
+;   $CF00  $400  saved entry starts, 512 entries
+;   $D300  $400  CRC-32 table, four planes of 256 bytes, built by kernel_crc_begin
+;   high region $DF00, $2000 bytes
+;   $DF00  $800  substitution, 8 bytes per variable: start, end, apply serial
+;   $E700  $C00  stack symbols, scratch included
+;   $F300  $C00  saved symbols
+; Everything else on the page belongs to TI-OS.
 
 #ifndef KERNEL_EMBEDDED
 .org $4000
@@ -101,41 +116,59 @@
 #include "ram.inc"
 
 kernel_init:
-	ld hl,init_body
+	ld ix,init_body
 	jr kernel_enter
 
 kernel_verify:
-	ld (kv_arg_id),hl
-	ld hl,verify_body
+	ld ix,verify_body
 
+; in: IX = body, HL = the call's argument, left alone until the body runs. The window from the
+; port 5 write to the stack switch, and the one from the stack restore to the port 5 restore in
+; leave, hold no stack instruction: the caller's stack is in the page being swapped out.
 kernel_enter:
 	ld a,i
 	jp pe,ke_on
 	ld a,i
 	jp pe,ke_on
-	xor a
+	ld b,0
 	jr ke_save
 ke_on:
-	ld a,1
+	ld b,1
 ke_save:
-	ld (kv_saved_iff),a
 	di
+	in a,(5)
+	ld c,a
+	ld a,KERNEL_RAM_PAGE
+ke_window:
+	out (5),a
+	ld a,b
+	ld (kv_saved_iff),a
+	ld a,c
+	ld (kv_saved_port5),a
+	ld (kv_saved_sp),sp
+ke_window_end:
+	ld sp,KSTACK_TOP
 	in a,(7)
 	ld (kv_saved_bank),a
-	ld (kv_saved_sp),sp
-	ld sp,KSTACK_TOP
 	ld de,exit_ok
 	push de
-	jp (hl)
+	jp (ix)
 
 exit_ok:
 	xor a
+; in: A = status. DE and HL pass through to the caller.
 leave:
-	ld sp,(kv_saved_sp)
 	ld c,a
 	ld a,(kv_saved_bank)
 	out (7),a
 	ld a,(kv_saved_iff)
+	ld b,a
+	ld a,(kv_saved_port5)
+	ld sp,(kv_saved_sp)
+leave_window:
+	out (5),a
+leave_window_end:
+	ld a,b
 	or a
 	ld a,c
 	ret z

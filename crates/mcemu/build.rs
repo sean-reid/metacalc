@@ -213,16 +213,28 @@ fn main() {
         &[],
         &["-I", "../../app/src", "-L"],
     );
-    for name in ["sparecheck_test", "sparescreen_test"] {
+    for name in ["sparecheck_test", "sparescreen_test", "kerncheck_test"] {
         spasm(
             &Path::new("tests/routines").join(format!("{name}.z80")),
             &out.join(format!("{name}.bin")),
             &[],
-            &["-I", "../../app/src", "-I", "../../probe", "-L"],
+            &[
+                "-I",
+                "../../app/src",
+                "-I",
+                "../../probe",
+                "-I",
+                "../../kernel",
+                "-L",
+            ],
         );
     }
     println!("cargo:rerun-if-changed=../../probe/sparecore.inc");
     println!("cargo:rerun-if-changed=../../probe/sparescreen.inc");
+    println!("cargo:rerun-if-changed=../../probe/printnum.inc");
+    println!("cargo:rerun-if-changed=../../probe/kerndriver.inc");
+    println!("cargo:rerun-if-changed=../../probe/onbreak.inc");
+    println!("cargo:rerun-if-changed=../../app/src/libpage.inc");
     println!("cargo:rerun-if-changed=../../app/src/equates.inc");
     println!("cargo:rerun-if-changed=../../app/src/header.inc");
 }
@@ -256,24 +268,44 @@ fn assemble_kernel(out: &Path) {
         &[],
         &["-I", include],
     );
-    let assembles = |base: &str| {
+    let assembles = |defines: &[&str]| {
         spasm_ok(
             &dir.join("kernel.z80"),
             &out.join("kernel_base_probe.bin"),
-            &[&format!("KERNEL_RAM={base}")],
+            defines,
             &["-I", include],
         )
     };
-    assert!(
-        assembles("$CE00"),
-        "a kernel RAM base of $CE00 does not assemble"
-    );
-    for base in ["$BF00", "$C080", "$CF00", "$F100"] {
-        assert!(!assembles(base), "a kernel RAM base of {base} assembled");
+    for (defines, ok) in [
+        (&["KERNEL_RAM_LOW=$C000", "KERNEL_RAM_HIGH=$E000"][..], true),
+        (&["KERNEL_RAM_LOW=$EE00", "KERNEL_RAM_HIGH=$C000"][..], true),
+        (&["KERNEL_RAM_LOW=$C000", "KERNEL_RAM_HIGH=$D200"][..], true),
+        (
+            &["KERNEL_RAM_LOW=$C000", "KERNEL_RAM_HIGH=$D100"][..],
+            false,
+        ),
+        (&["KERNEL_RAM_LOW=$D000"][..], false),
+        (&["KERNEL_RAM_LOW=$BF00"][..], false),
+        (&["KERNEL_RAM_LOW=$C080"][..], false),
+        (&["KERNEL_RAM_LOW=$EF00"][..], false),
+        (&["KERNEL_RAM_HIGH=$BF00"][..], false),
+        (&["KERNEL_RAM_HIGH=$E100"][..], false),
+        (&["KERNEL_RAM_HIGH=$D880"][..], false),
+        (&["KERNEL_RAM_PAGE=7"][..], true),
+        (&["KERNEL_RAM_PAGE=8"][..], false),
+    ] {
+        assert_eq!(
+            assembles(defines),
+            ok,
+            "assembling the kernel with {defines:?}"
+        );
     }
     for (name, defines) in [
         ("kernel_test", &[][..]),
-        ("kernel_test_moved", &["KERNEL_RAM=$C400"][..]),
+        (
+            "kernel_test_moved",
+            &["KERNEL_RAM_LOW=$C100", "KERNEL_RAM_HIGH=$E000"][..],
+        ),
     ] {
         spasm(
             Path::new("tests/routines/kernel_test.z80"),

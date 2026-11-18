@@ -13,6 +13,7 @@ fi
 f=${1:?usage: check-8xk.sh [-l library] app.8xk [name]}
 want=${2:-metacalc}
 hexname=$(printf %s "$want" | od -An -tx1 | tr -d ' \n' | tr a-f A-F)
+namefield=804$(printf %X "${#want}")
 fail() { echo "check-8xk: $f: $*" >&2; exit 1; }
 
 [ -s "$f" ] || fail "missing or empty"
@@ -25,15 +26,16 @@ name=$(dd if="$f" bs=1 skip=17 count=8 2>/dev/null)
 body=$(grep -a -E '^:[0-9A-F]{6}00' "$f" | tr -d '\r' |
 	sed -E 's/^:[0-9A-F]{6}00(.*)..$/\1/' | tr -d '\n')
 
-# Name field 80 48 <name> in the app header.
+# Name field 80 4n <name> in the app header, n the length of the name.
 case $body in
-	800F*8048${hexname}*) ;;
+	800F*${namefield}${hexname}*) ;;
 	*) fail "app header has no '$want' name field" ;;
 esac
 
-# TI-OS enters an app at 4080h, so the header's last field ends 16 bytes before it.
-[ "$(printf '%s' "$body" | cut -c213-256)" = "807F0000000000000000000000000000000000000000" ] ||
-	fail "app header is not 128 bytes"
+# TI-OS enters an app at 4080h, so the header's last field ends 16 bytes before it. A name shorter
+# than 8 characters moves the field one byte back per missing character.
+last=$(printf '%s' "$body" | cut -c1-256 | grep -oE '807F(00)*$' || true)
+[ "${#last}" -eq $((44 + 2 * (8 - ${#want}))) ] || fail "app header is not 128 bytes"
 
 # The signer appends 02 2D 40, 64 signature bytes, a 00 or 01 xx trailer, then FF padding.
 sig=$(printf '%s' "$body" | grep -oE '022D40[0-9A-F]{128}(00|01[0-9A-F]{2})F*$' | cut -c7-134 || true)
@@ -41,7 +43,7 @@ sig=$(printf '%s' "$body" | grep -oE '022D40[0-9A-F]{128}(00|01[0-9A-F]{2})F*$' 
 [ -n "$(printf '%s' "$sig" | tr -d '0')" ] || fail "signature is all zero"
 
 # Pages 8081 nn field of the header against the 02 records that start each page.
-declared=$(printf '%s' "$body" | sed -nE "s/^800F[0-9A-F]{0,80}8048${hexname}8081(..).*/\1/p")
+declared=$(printf '%s' "$body" | sed -nE "s/^800F[0-9A-F]{0,80}${namefield}${hexname}8081(..).*/\1/p")
 [ -n "$declared" ] || fail "app header has no page count"
 declared=$((0x$declared))
 

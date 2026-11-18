@@ -14,6 +14,7 @@ fi
 good=${1:?usage: test-check-8xk.sh [-l library] app.8xk [name]}
 name=${2:-metacalc}
 hexname=$(printf %s "$name" | od -An -tx1 | tr -d ' \n' | tr a-f A-F)
+namefield=804$(printf %X "${#name}")
 check=$(dirname "$0")/check-8xk.sh
 # With KEEP_FIXTURES set to a directory, the broken files are built there and left in place.
 if [ -n "${KEEP_FIXTURES:-}" ]; then
@@ -116,7 +117,7 @@ if [ -z "$library" ]; then
 	sed "s/$name/${name%?}x/" "$good" > "$dir/file-name.8xk"
 	refuses file-name "another name in the file header"
 
-	mutate "s/8048$hexname/8048${hexname%??}78/" app-name
+	mutate "s/$namefield$hexname/$namefield${hexname%??}78/" app-name
 	refuses app-name "another name in the app header"
 
 	mutate 's/807F00000000/807F00000001/' header
