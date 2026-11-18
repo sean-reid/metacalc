@@ -138,7 +138,7 @@ fn the_first_launch_touches_no_other_page() {
     for page in [0u8, 2, 4, 5, 6, 7] {
         let bad: Vec<usize> = (0usize..)
             .zip(rig.0.ram_page(page).iter())
-            .filter(|&(i, &b)| b != FILL.wrapping_add(page))
+            .filter(|&(_, &b)| b != FILL.wrapping_add(page))
             .map(|(i, _)| i)
             .collect();
         assert!(bad.is_empty(), "page {page} changed at {bad:x?}");
