@@ -1,6 +1,7 @@
 SPASM   ?= spasm
 BUILD   ?= build
 LIBRARY ?=
+ASM     := SPASM="$(SPASM)" sh ../scripts/spasm.sh
 
 all: $(BUILD)/ramprobe.8xk $(BUILD)/sparecheck.8xk
 ifneq ($(LIBRARY),)
@@ -9,18 +10,18 @@ endif
 
 $(BUILD)/ramprobe.8xk: ramprobe.z80 ../app/src/equates.inc
 	mkdir -p "$(BUILD)"
-	"$(SPASM)" -I ../app/src ramprobe.z80 $@
+	$(ASM) -I ../app/src ramprobe.z80 $@
 
 $(BUILD)/sparecheck.8xk: sparecheck.z80 sparecore.inc sparescreen.inc printnum.inc ../app/src/equates.inc
 	mkdir -p "$(BUILD)"
-	"$(SPASM)" -I ../app/src -I . sparecheck.z80 $@
+	$(ASM) -I ../app/src -I . sparecheck.z80 $@
 
 # A phony target, so a path with a space is never a make target, and the app is always assembled
 # because make cannot see LIBRARY change. It needs a library, so it is only built when one is given.
 kernchk:
 	mkdir -p "$(BUILD)"
 	sh ../app/scripts/library-include.sh "$(LIBRARY)" > "$(BUILD)/library.inc"
-	"$(SPASM)" -L -I ../app/src -I ../kernel -I . -I "$(BUILD)" kerncheck.z80 "$(BUILD)/kernchk.8xk"
+	$(ASM) -L -I ../app/src -I ../kernel -I . -I "$(BUILD)" kerncheck.z80 "$(BUILD)/kernchk.8xk"
 
 check: all
 	sh ../app/scripts/check-8xk.sh $(BUILD)/ramprobe.8xk ramprobe
