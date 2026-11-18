@@ -61,6 +61,7 @@ pub fn status(result: Result<(), KernelError>) -> u8 {
         Err(KernelError::DisjointViolation) => "ST_DISJOINT",
         Err(KernelError::StackNotSingleton) => "ST_NOT_SINGLETON",
         Err(KernelError::WrongConclusion) => "ST_WRONG_CONCLUSION",
+        Err(KernelError::WorkLimit) => "ST_WORK_LIMIT",
     };
     label(name) as u8
 }

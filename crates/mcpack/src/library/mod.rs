@@ -35,7 +35,7 @@ mod read;
 
 pub use check::{CheckError, check};
 pub use export::{ExportError, export};
-pub use kernel::{Kernel, KernelError, Limits};
+pub use kernel::{Kernel, KernelError, Limits, WORK_LIMIT};
 pub use pack::{PackError, pack};
 pub use read::{
     Assertion, Hypothesis, Library, ReadError, Reference, Step, Variable, decode, read,
