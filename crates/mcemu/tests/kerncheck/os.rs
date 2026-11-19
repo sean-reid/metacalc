@@ -201,7 +201,7 @@ fn a_held_on_stops_the_check_and_the_report_waits_for_the_key_to_come_up() {
 
 /// ON goes down after kernel_init's last call into the OS and is held through its return. The
 /// library has one symbol, so init never reads the key, and the OS sets its break flag where the
-/// kernel turns interrupts back on. The driver must stop before it prints, or the OS breaks out of
+/// driver's `ei` at the end of `kd_header` turns interrupts on. The driver must stop before it prints, or the OS breaks out of
 /// the app at its next text call.
 #[test]
 #[ignore = "needs the reference ROM image"]

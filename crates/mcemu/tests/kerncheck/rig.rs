@@ -19,8 +19,8 @@ const TIMER_PERIOD_US: u32 = 1953;
 /// T-states in two timer periods at 15 MHz, five at 6 MHz: every slice spans an interrupt, so the
 /// halt in the wait wakes at least once in it. A wait is a slice that ended in the loop, not a poll.
 pub const SLICE: u32 = 2 * TIMER_PERIOD_US * 15;
-/// A slice that ends inside the OS's interrupt handler is carried on in steps of `OS_NUDGE`
-/// T-states, so that it is judged where the code has come back to; slices are a whole number of
+/// A slice that ends below the app's page, where the stub OS and its handler are, is carried on in
+/// steps of `OS_NUDGE` T-states, so that it is judged where the code has come back to; slices are a whole number of
 /// timer periods, and would otherwise end at the same place in the handler every time.
 const OS_NUDGE: u32 = 37;
 const OS_NUDGES: usize = 200;
@@ -207,8 +207,12 @@ impl Rig {
     /// to come up counts one wait, and after `holds` of them the key is released. Returns the
     /// waits.
     pub fn finish(&mut self, pc: u16, holds: usize) -> usize {
+        self.finish_from(Some(pc), holds)
+    }
+
+    /// `finish` from where the last run stopped, interrupts as it left them, when `from` is `None`.
+    pub fn finish_from(&mut self, mut from: Option<u16>, holds: usize) -> usize {
         let mut waits = 0;
-        let mut from = Some(pc);
         for _ in 0..MAX_SLICES {
             match self.step(from.take()) {
                 Step::Done => return waits,

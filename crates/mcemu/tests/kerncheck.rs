@@ -141,6 +141,11 @@ fn on_held_before_the_run_stops_it_before_the_checksum_starts() {
     assert_eq!(rig.finish(ENTRY, 3), 3);
     let (_, result) = screens(&rig.trace());
     assert_eq!(result, INIT_STOPPED);
+    assert_eq!(
+        rig.byte(OUT_FLAGGED),
+        0,
+        "a text call ran with the flag set"
+    );
 }
 
 #[test]
@@ -298,7 +303,7 @@ fn the_app_builds_from_a_library_and_passes_the_checker() {
     );
 }
 
-const FLAGS: usize = 0x3800 + 9;
+const FLAGS: usize = 0x09F0 + 9;
 
 #[test]
 fn after_an_on_stop_the_report_waits_for_the_key_to_come_up() {
@@ -595,9 +600,43 @@ fn a_hold_during_the_call_before_a_progress_print_never_reaches_a_text_call() {
         }
         assert_eq!(rig.m.run(pc, 600).stop, Stop::Limit);
         pc = rig.m.pc();
+        let proofs = label("VERIFY_BODY")..label("KERNEL_CRC_BEGIN");
+        assert!(
+            proofs.contains(&pc),
+            "assertion {last}: pc {pc:04x} is outside the verify body"
+        );
+        assert_eq!(rig.word("K_DONE"), last, "the call has not returned");
         rig.m.press_key(Machine::KEY_ON);
         rig.finish(pc, 2);
         assert_eq!(rig.byte(label("K_STOPPED")), 2, "assertion {last}");
         assert_eq!(rig.byte(OUT_FLAGGED), 0, "assertion {last}: flagged text");
     }
+}
+
+/// ON goes down after the driver's poll after init has read the key and before the first print of
+/// the checksum, which is where interrupts would otherwise still be on.
+#[test]
+fn an_on_hold_between_the_poll_after_init_and_the_first_print_stops_the_checksum() {
+    let bytes = single_symbol_axioms(300);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    assert_eq!(rig.m.run(ENTRY, 1).stop, Stop::Limit);
+    let mut pc = rig.m.pc();
+    while pc != label("KD_ON_SEEN") {
+        assert_eq!(rig.m.resume(1).stop, Stop::Limit);
+        pc = rig.m.pc();
+    }
+    let window = label("KD_INITED")..label("KD_HEADER");
+    while !window.contains(&pc) {
+        assert_eq!(rig.m.resume(1).stop, Stop::Limit);
+        pc = rig.m.pc();
+    }
+    assert!(!String::from_utf8_lossy(&rig.trace()).contains("crc"));
+    rig.m.press_key(Machine::KEY_ON);
+    rig.finish_from(None, 3);
+    assert_eq!(
+        rig.byte(OUT_FLAGGED),
+        0,
+        "a text call ran with the flag set"
+    );
+    assert_eq!(rig.byte(label("K_STOPPED")), 1, "stopped in the checksum");
 }

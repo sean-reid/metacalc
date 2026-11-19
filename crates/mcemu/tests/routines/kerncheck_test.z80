@@ -8,7 +8,7 @@ OUT_AFTER = 0A003h
 OUT_BUF   = 0A010h
 OUT_IFF   = 0A004h
 OUT_FLAGGED = 0A006h
-IY_TEST   = 0B800h
+IY_TEST   = 089F0h
 
 .org 4000h
 	jp main

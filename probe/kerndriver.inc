@@ -86,6 +86,7 @@ kd_init_stopped:
 	jr kd_done
 kd_inited:
 	call kd_header
+	di
 	call kd_on_seen
 	jr nz, kd_init_stopped
 	call kd_crc
