@@ -1,28 +1,37 @@
 ; The app's one key wait: app_key waits for a key with the OS's _GetKey, sets the canvas font
 ; again, and returns the model's key (crates/mcui/src/key.rs). Every call into the OS that waits
-; for a key is here, so this file can sit on the app's entry page.
+; for a key is here.
 ;
-; Included after equates.inc and ui.z80, which give _GetKey, onFlags, ui_set_font and ui_font.
+; Needs equates.inc before it, and ui_set_font and ui_font from ui.z80 in the same flash page,
+; because it loads ui_font and calls ui_set_font directly.
 ;
 ; app_key   out: A = the key, one of the KEY_ codes below; KEY_NONE for a key the app ignores
-;                B = for KEY_LETTER, the letter as an uppercase ASCII code; 0 for every other key
+;                B = for KEY_LETTER, the character as ASCII, uppercase for a letter; else 0
 ;                destroys every register but IY, which must hold the OS flags pointer; the
 ;                shadow registers and IX are the OS's to change. Returns with interrupts on.
 ;
-; _GetKey handles 2nd and ALPHA, so a letter arrives in one of two forms: the key's own code, or
-; a capital's code after ALPHA or alpha lock. Both give KEY_LETTER, so the key that carries a
-; letter needs no ALPHA press. The keys that also carry a digit give their letter, so the digits
-; cannot be typed. 2nd and ALPHA return nothing; the other 2nd keys return their own codes and
-; give KEY_NONE, except 2nd+QUIT, which gives KEY_QUIT.
+; KEY_LETTER carries the characters the model's list accepts that a key face has: A to Z, 0 to
+; 9, '-' and '.'; the model also takes '_', which no key carries.
+;   Plain: a key that carries a letter gives it, so the list's jump is one press and the eight
+;   digit keys 1 2 4 5 6 7 8 9 and the subtract key give their letters; the 3, 0 and dot keys
+;   carry none and give their character.
+;   After ALPHA, and under alpha lock: the keys 0 to 9, subtract and dot give the digit or the
+;   '-' or '.' on their face. Every other key that carries a letter (MATH APPS PRGM x^-1 SIN COS
+;   TAN ^ x^2 , ( ) / LOG x LN STO) gives KEY_NONE, as do (-), +, VARS, STAT, DEL, X,T,theta,n
+;   and MODE. The arrows, ENTER, CLEAR and the five keys under the screen are the same as plain.
+; 2nd and ALPHA return nothing. After 2nd every key gives KEY_NONE except CLEAR, which the OS
+; reports as Clear and gives KEY_CLEAR, and MODE, which is QUIT and gives KEY_QUIT.
 ;
 ; ON is never returned. The OS sets onInterrupt when ON goes down and _GetKey then returns 0 at
-; once, on every call, until the flag is clear. app_key clears the flag, waits for ON to come up
-; and waits for a key again, so a press leaves no break for the next long job.
+; once, on every call, until the flag is clear. app_key waits for ON to come up with interrupts
+; off for the read and the clear, clears the flag and waits for a key again. A press that lands
+; after the clear sets the flag again and is taken the same way by the next wait; a press made
+; between waits is for the long job that polls ON.
 ;
-; The OS zeroes UI_VARS when auto power down fires inside _GetKey, and the font pointer is the one
-; byte of it that holds anything between calls; app_key sets the canvas font after every wait,
-; power down or not. 2nd+OFF never returns: the OS leaves the app, and the app is not entered
-; again when the calculator is turned back on.
+; The OS zeroes UI_VARS when auto power down fires inside _GetKey, and the font pointer, two
+; bytes, is the one thing in it that holds state between calls; app_key sets the canvas font
+; after every wait, power down or not. 2nd+OFF never returns: the OS leaves the app, and the app
+; is not entered again when the calculator is turned back on.
 
 KEY_NONE         .equ 0
 KEY_UP           .equ 1
@@ -39,8 +48,8 @@ KEY_F5           .equ 11
 KEY_LETTER       .equ 12
 KEY_QUIT         .equ 13
 
-KEY_CAP_A        .equ $9A
 KEY_PAIRS        .equ 12
+KEY_CHARS        .equ 41
 
 app_key:
 ak_wait:
@@ -55,33 +64,16 @@ ak_wait:
 	ld a,c
 	ld hl,ak_pairs
 	ld d,KEY_PAIRS
-ak_pair:
-	cp (hl)
-	inc hl
+	call ak_find
 	jr z,ak_hit
-	inc hl
-	dec d
-	jr nz,ak_pair
-	sub KEY_CAP_A
-	cp 26
-	jr c,ak_letter
-	ld a,c
-	ld hl,ak_plain
-	ld d,26
-ak_plain_next:
-	cp (hl)
-	inc hl
-	jr z,ak_plain_hit
-	dec d
-	jr nz,ak_plain_next
+	ld hl,ak_chars
+	ld d,KEY_CHARS
+	call ak_find
+	jr z,ak_char
 	xor a
 	ret
-ak_plain_hit:
-	ld a,26
-	sub d
-ak_letter:
-	add a,'A'
-	ld b,a
+ak_char:
+	ld b,(hl)
 	ld a,KEY_LETTER
 	ret
 ak_hit:
@@ -90,11 +82,23 @@ ak_hit:
 ak_on:
 	ei
 	halt
+	di
 	in a,(4)
 	bit 3,a
 	jr z,ak_on
 	res onInterrupt,(iy+onFlags)
 	jr ak_wait
+
+; In: A = the OS's code, HL = D pairs of code and value. Out: Z with HL at the value for a hit.
+ak_find:
+	cp (hl)
+	inc hl
+	ret z
+	inc hl
+	dec d
+	jr nz,ak_find
+	dec d
+	ret
 
 ; The OS's code for a key and the code it gives.
 ak_pairs:
@@ -111,7 +115,17 @@ ak_pairs:
 	.db $44,KEY_F5
 	.db $40,KEY_QUIT
 
-; The OS's code for the key that carries each letter, A to Z, before any ALPHA.
-ak_plain:
-	.db $32,$2C,$2D,$B6,$B7,$B9,$BB,$84,$BD,$8B,$85,$86,$83
-	.db $C1,$95,$96,$97,$82,$BF,$92,$93,$94,$81,$8A,$8F,$90
+; The OS's code and the character: the key that carries each letter, A to Z; the 3, 0 and dot
+; keys; then the codes after ALPHA of the digit, subtract and dot keys.
+ak_chars:
+	.db $32,'A',$2C,'B',$2D,'C',$B6,'D'
+	.db $B7,'E',$B9,'F',$BB,'G',$84,'H'
+	.db $BD,'I',$8B,'J',$85,'K',$86,'L'
+	.db $83,'M',$C1,'N',$95,'O',$96,'P'
+	.db $97,'Q',$82,'R',$BF,'S',$92,'T'
+	.db $93,'U',$94,'V',$81,'W',$8A,'X'
+	.db $8F,'Y',$90,'Z'
+	.db $91,'3',$8E,'0',$8D,'.'
+	.db $A8,'7',$A9,'8',$AA,'9',$AD,'4'
+	.db $AE,'5',$AF,'6',$B2,'1',$B3,'2'
+	.db $CC,'3',$99,'0',$C6,'.',$B0,'-'

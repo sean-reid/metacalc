@@ -286,10 +286,12 @@ get_csc:
 
 ; A returns the key code TI-OS 2.43 reports for the key taken next, spinning with interrupts open
 ; until one is down, because a HALT in the stub stops the machine. 2nd and ALPHA set a modifier
-; for the next key, within one call, and return nothing, and a key with no code in its table is waited out. With
-; the OS break flag set, which ON does, it returns 0 at once and leaves the flag, as the OS does.
-; Alpha lock and power off are not modelled. Every register but IX, IY and SP is junk on return,
-; which has interrupts on.
+; for the next key, within one call, and return nothing, and a key with no code in its table is
+; waited out. With the OS break flag set, which ON does, it returns 0 at once and leaves the flag,
+; as the OS does.
+; Alpha lock and power off are not modelled. A is the code; BC, DE, HL and the shadow set are
+; junk, and the flags are whatever the last compare left. IX, IY and SP are kept, and interrupts
+; are on.
 get_key:
 	xor a
 	ld (gkMods),a

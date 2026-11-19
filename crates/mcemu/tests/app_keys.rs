@@ -27,6 +27,9 @@ const FONT_POINTER: usize = 0x14;
 /// Bit 4 of port 3 reads set once the OS has run its auto power down.
 const POWER_DOWN: u8 = 0x10;
 
+/// Port 4: the ON interrupt latch, and the level, which reads clear while ON is down.
+const ON_LATCH: u8 = 0x01;
+const ON_LEVEL: u8 = 0x08;
 const SCAN_ALPHA: u8 = 0x30;
 const SCAN_2ND: u8 = 0x36;
 const SCAN_MODE: u8 = 0x37;
@@ -35,7 +38,8 @@ const SCAN_LAST: u8 = 0x38;
 const NO_KEY: [u8; 7] = [5, 6, 7, 8, 0x10, 0x18, 0x29];
 
 /// `_GetKey`'s code for each scancode from 1, as measured on the reference OS: with no
-/// modifier, after 2nd and after ALPHA. 0 is a key that returns nothing.
+/// modifier, after 2nd and after ALPHA. 0 is a key that returns nothing. The stub's tables are
+/// compared with these by a stub test, and the reference OS by an ignored one.
 const PLAIN: [u8; 56] = [
     0x04, 0x02, 0x01, 0x03, 0, 0, 0, 0, 0x05, 0x80, 0x81, 0x82, 0x83, 0x84, 0x09, 0, 0x8C, 0x91,
     0x94, 0x97, 0x86, 0xBB, 0x35, 0, 0x8D, 0x90, 0x93, 0x96, 0x85, 0xB9, 0x2D, 0x31, 0x8E, 0x8F,
@@ -231,33 +235,62 @@ fn raw_codes(rig: &mut Rig) {
 }
 
 #[test]
-fn the_stub_returns_the_codes_the_reference_os_does() {
+fn the_stubs_tables_equal_the_tables_the_reference_os_test_checks() {
     let mut rig = Rig::stub(LOG_APP);
     raw_codes(&mut rig);
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn the_reference_os_returns_the_codes_this_test_records() {
+fn the_reference_os_returns_the_codes_in_the_tables() {
     let mut rig = Rig::real(LOG_APP);
     raw_codes(&mut rig);
 }
 
-/// The (A, B) `app_key` returns for the key at `scan` after `modifier`, from the model.
+/// The digit or symbol printed on the face of the key at `scan`, as the faceplate has it: the
+/// ten digits, `-` on the subtract key and `.` on the dot key.
+fn face(scan: u8) -> Option<char> {
+    match scan {
+        0x21 => Some('0'),
+        0x22 => Some('1'),
+        0x1A => Some('2'),
+        0x12 => Some('3'),
+        0x23 => Some('4'),
+        0x1B => Some('5'),
+        0x13 => Some('6'),
+        0x24 => Some('7'),
+        0x1C => Some('8'),
+        0x14 => Some('9'),
+        0x0B => Some('-'),
+        0x19 => Some('.'),
+        _ => None,
+    }
+}
+
+/// The (A, B) `app_key` returns for the key at `scan` after `modifier`, from the model: a plain
+/// press of a key that carries a letter gives the letter, else its face character; after ALPHA
+/// the face character and nothing else; after 2nd nothing, but QUIT and Clear.
 fn expected(modifier: Option<u8>, scan: u8) -> (u8, u8) {
     let by_scan = MODEL
         .iter()
         .copied()
         .find(|&k| scancode(k) == Some(scan))
         .map(code);
+    let character = |c: char| (code(Key::Letter(c)), c as u8);
     match modifier {
         Some(SCAN_2ND) if scan == SCAN_MODE => (QUIT, 0),
         Some(SCAN_2ND) if scan == 0x0F => (code(Key::Clear), 0),
         Some(SCAN_2ND) => (0, 0),
-        _ => match (by_scan, letter(scan)) {
+        Some(_) => match (by_scan, face(scan)) {
             (Some(c), _) => (c, 0),
-            (None, Some(l)) => (code(Key::Letter(l)), l as u8),
+            (None, Some(c)) => character(c),
             (None, None) => (0, 0),
+        },
+        None => match (by_scan, letter(scan), face(scan)) {
+            (Some(c), _, _) => (c, 0),
+            (None, Some(l), _) => character(l),
+            (None, None, Some(c)) => character(c),
+            (None, None, None) => (0, 0),
         },
     }
 }
@@ -287,14 +320,14 @@ fn mapping(rig: &mut Rig) {
 }
 
 #[test]
-fn every_model_key_and_letter_maps_and_the_rest_give_none() {
+fn every_model_key_letter_digit_and_symbol_maps_and_the_rest_give_none() {
     let mut rig = Rig::stub(KEYS_APP);
     mapping(&mut rig);
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn on_the_reference_os_every_model_key_and_letter_maps_and_the_rest_give_none() {
+fn on_the_reference_os_every_model_key_letter_digit_and_symbol_maps_and_the_rest_give_none() {
     let mut rig = Rig::real(KEYS_APP);
     mapping(&mut rig);
 }
@@ -305,6 +338,9 @@ fn the_letters_are_the_26_the_keys_carry_and_the_model_keys_are_where_the_facepl
     let mut sorted = letters.clone();
     sorted.sort();
     assert_eq!(sorted, ('A'..='Z').collect::<Vec<_>>());
+    let mut faces: Vec<char> = (1..=SCAN_LAST).filter_map(face).collect();
+    faces.sort();
+    assert_eq!(faces, "-.0123456789".chars().collect::<Vec<_>>());
     for key in MODEL.iter().filter_map(|&k| scancode(k)) {
         assert_eq!(letter(key), None, "a model key is not a letter key");
         assert_ne!(PLAIN[usize::from(key) - 1], 0);
@@ -364,17 +400,28 @@ fn text_drawn_after_the_wait_is_right_when_the_variables_were_zeroed_during_it()
 #[test]
 fn a_press_of_on_is_cleared_and_waited_out_inside_the_wait() {
     let mut rig = Rig::stub(KEYS_APP);
+    assert!(!on_seen(&mut rig), "nothing is pending to start with");
     rig.m().press_key(Machine::KEY_ON);
     rig.run_ms(30);
     assert_ne!(rig.on_flags() & ON_INTERRUPT, 0, "the OS flagged the press");
+    assert!(on_seen(&mut rig), "a long job would see the press held");
     rig.run_ms(30);
     rig.m().release_key(Machine::KEY_ON);
     rig.run_ms(30);
     assert_eq!(rig.count(), 0, "app_key did not return for ON");
     assert_eq!(rig.on_flags() & ON_INTERRUPT, 0, "the break is cleared");
+    assert_eq!(rig.m().in_port(4) & ON_LATCH, 0, "no ON latch is up");
+    assert!(!on_seen(&mut rig), "a long job would see no ON");
     rig.tap(0x04);
     assert_eq!(rig.count(), 1);
     assert_eq!(rig.ram(LOG, 1), [code(Key::Up)], "the next key is Up");
+}
+
+/// What a long job's poll reads (probe/kerndriver.inc, kd_on_seen): ON down on port 4 bit 3, the
+/// latch in bit 0, or the OS break flag.
+fn on_seen(rig: &mut Rig) -> bool {
+    let port = rig.m().in_port(4) ^ ON_LEVEL;
+    port & (ON_LATCH | ON_LEVEL) != 0 || rig.on_flags() & ON_INTERRUPT != 0
 }
 
 #[test]
@@ -414,7 +461,12 @@ fn on_the_reference_os_a_tap_or_a_hold_of_on_leaves_no_break_and_no_return() {
     rig.run_ms(500);
     assert_eq!(rig.count(), 0, "released");
     assert_eq!(rig.on_flags() & ON_INTERRUPT, 0);
-    assert_eq!(rig.m().in_port(4) & 0x01, 0, "no ON interrupt is latched");
+    assert_eq!(
+        rig.m().in_port(4) & ON_LATCH,
+        0,
+        "no ON interrupt is latched"
+    );
+    assert!(!on_seen(&mut rig), "a long job would see no ON");
     rig.tap(0x01);
     assert_eq!(rig.count(), 1);
     assert_eq!(rig.ram(LOG, 1), [code(Key::Down)]);
@@ -422,16 +474,20 @@ fn on_the_reference_os_a_tap_or_a_hold_of_on_leaves_no_break_and_no_return() {
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn on_the_reference_os_alpha_lock_gives_letters_and_leaves_the_model_keys() {
+fn on_the_reference_os_alpha_lock_gives_the_face_characters_and_leaves_the_model_keys() {
     let mut rig = Rig::real(KEYS_APP);
     rig.tap(SCAN_2ND);
     rig.tap(SCAN_ALPHA);
-    for scan in keys().filter(|&s| letter(s).is_some() || scancode_of(s).is_some()) {
+    for scan in keys().filter(|&s| ALPHA[usize::from(s) - 1] != 0) {
         rig.poke(COUNT, &[0]);
         rig.tap(scan);
         let got = (rig.ram(LOG, 1)[0], rig.ram(LOG + 1, 1)[0]);
         assert_eq!(rig.count(), 1, "key {scan:02X}");
-        assert_eq!(got, expected(None, scan), "locked key {scan:02X}");
+        assert_eq!(
+            got,
+            expected(Some(SCAN_ALPHA), scan),
+            "locked key {scan:02X}"
+        );
     }
     rig.tap(SCAN_ALPHA);
     rig.poke(COUNT, &[0]);
@@ -441,10 +497,6 @@ fn on_the_reference_os_alpha_lock_gives_letters_and_leaves_the_model_keys() {
         [code(Key::Letter('A'))],
         "Math is A with no ALPHA"
     );
-}
-
-fn scancode_of(scan: u8) -> Option<Key> {
-    MODEL.iter().copied().find(|&k| scancode(k) == Some(scan))
 }
 
 /// Runs the real OS until its auto power down has fired, which zeroes saveSScreen, and returns
