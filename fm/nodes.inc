@@ -25,11 +25,6 @@ nodes_body:
 	xor a
 	jp fm_leave
 nb_build:
-	call tree_probe
-	jp nz,fm_fail
-	ld a,b
-	or a
-	jr nz,nb_flat
 	ld hl,(fv_cn)
 	ld a,(fv_k)
 	ld b,a
@@ -331,59 +326,6 @@ p2_next:
 	ld b,a
 	xor a
 	jp fm_leave
-
-; out: Z with B = 0 when every statement of assertion fv_cn has a tree and 1 when one has none, as
-; the model flattens all of an assertion's statements when it lacks a tree for any; NZ with A = a
-; status. The answer is kept for the assertion in fv_ca and fv_cs.
-tree_probe:
-	ld hl,(fv_cn)
-	ld de,(fv_ca)
-	or a
-	sbc hl,de
-	jr nz,tp_scan
-	ld a,(fv_cs)
-	or a
-	jr z,tp_scan
-	dec a
-	ld b,a
-	xor a
-	ret
-tp_scan:
-	ld hl,(fv_cn)
-	ld (fv_ca),hl
-	xor a
-	ld (fv_cs),a
-	ld (fv_j),a
-tp_next:
-	ld hl,(fv_cn)
-	ld a,(fv_j)
-	ld b,a
-	ld de,FM_SCRATCH
-	call lib_tree
-	jr z,tp_have
-	cp LIB_ERR_NONE
-	jr z,tp_missing
-	cp LIB_ERR_INDEX
-	jr z,tp_end
-	call fm_reader_status
-	or a
-	ret
-tp_have:
-	ld hl,fv_j
-	inc (hl)
-	jr nz,tp_next
-tp_end:
-	ld a,1
-	ld (fv_cs),a
-	ld b,0
-	xor a
-	ret
-tp_missing:
-	ld a,2
-	ld (fv_cs),a
-	ld b,1
-	xor a
-	ret
 
 ; out: Z with B = 0 for a syntax index and 1 for a variable, DE = the index or the variable's
 ; symbol id, for the next node of the tree; NZ with A = a status. Reads FM_SCRATCH again when it

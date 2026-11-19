@@ -364,3 +364,52 @@ fn a_library_without_titles_puts_every_assertion_in_section_zero() {
     assert!(lib.titles().is_empty());
     assert_eq!((lib.section_of(0), lib.section_of(5)), (0, 0));
 }
+
+const MIXED: &str = "
+$c ( ) -> wff |- $.
+$v ph ps $.
+wph $f wff ph $.
+wps $f wff ps $.
+wi $a wff ( ph -> ps ) $.
+${
+  junk-h $e |- ( ph ph ) $.
+  junk-hyp $a |- ( ph -> ps ) $.
+$}
+${
+  good-h $e |- ( ph -> ps ) $.
+  junk-conc $a |- ( ph ph ) $.
+$}
+";
+
+#[test]
+fn each_statement_is_a_tree_where_the_library_stores_one_and_flat_where_it_does_not() {
+    let db = db(MIXED);
+    let all: Vec<mm::StmtId> = (0..db.stmts.len() as mm::StmtId).collect();
+    let bytes = library::pack(&db, &all).expect("it packs");
+    let n = bytes.len();
+    let lib = Lib::new(
+        Installed {
+            name: "mixed".into(),
+            bytes,
+        },
+        vec![Status::Unchecked; 3],
+    )
+    .unwrap();
+    assert!(n > 0);
+    let by = |label: &str| lib.statement(index(&lib, label));
+    let flat = |e: &mcui::expr::Expr| e.len() == 1 && !e.foldable(0);
+    let tree = |e: &mcui::expr::Expr| e.len() == 3 && e.foldable(0);
+    let hyp = by("junk-hyp");
+    assert!(
+        flat(&hyp.hyps[0]),
+        "the hypothesis the grammar cannot read is one node"
+    );
+    assert!(tree(&hyp.conclusion), "its conclusion keeps its tree");
+    let conc = by("junk-conc");
+    assert!(tree(&conc.hyps[0]), "the hypothesis keeps its tree");
+    assert!(
+        flat(&conc.conclusion),
+        "the conclusion the grammar cannot read is one node"
+    );
+    assert_eq!(hyp.all().len(), 2);
+}

@@ -133,18 +133,18 @@ struct NodeCeilings {
 const NODE_CEILINGS: [NodeCeilings; 3] = [
     NodeCeilings {
         name: "prop",
-        median: 49200,
-        largest: 302505,
+        median: 37609,
+        largest: 119579,
     },
     NodeCeilings {
         name: "pred",
-        median: 55133,
-        largest: 343464,
+        median: 38202,
+        largest: 143258,
     },
     NodeCeilings {
         name: "ring",
-        median: 64216,
-        largest: 850431,
+        median: 41310,
+        largest: 380434,
     },
 ];
 

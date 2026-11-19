@@ -7,7 +7,6 @@ open_body:
 	ld (fv_open+1),a
 	ld (fv_count),a
 	ld (fv_nodes),a
-	ld (fv_cs),a
 	call lib_glyphs
 	jr z,op_got
 	call fm_reader_status

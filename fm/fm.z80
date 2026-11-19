@@ -36,8 +36,8 @@
 ; interrupt state with ld a,i twice, turns interrupts off, reads port 5, maps the spare page, saves
 ; the old port 5 and SP in it, switches to FM_STACK and works there, and on every exit restores SP,
 ; port 5 and the interrupt state. Interrupts stay off for the whole session; the longest one
-; measured is fm_nodes of the largest statement of the ring library, 809,934 T-states (135 ms at
-; 6 MHz), then fm_open on it, 548,618; fm_draw of a full window takes at most 216,215. The
+; measured is fm_open on the ring library, 548,618 T-states (91 ms at 6 MHz), then fm_nodes of its
+; largest statement, 362,318, and fm_draw of a full window, at most 216,215. The
 ; reader and the canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
 ; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
@@ -96,7 +96,9 @@
 ;                      is the nearest earlier node one level up and is not stored. A tree node whose
 ;                      only part is a child has no node of its own: the child takes its place at
 ;                      its depth. A statement the library has no tree for is one node over every
-;                      token, depth 0, as is every statement of a library with no trees. The
+;                      token, depth 0, as is every statement of a library with no trees; the host model, unlike fm,
+;                      parses the grammar itself for a library that exports its database and stores
+;                      no trees. The
 ;                      table is built once for a loaded statement and a second call returns at
 ;                      once; fm_statement marks it not built, and a refused call leaves it not
 ;                      built, the statement loaded. FM_ERR_NOT_OPEN: fm closed or another library

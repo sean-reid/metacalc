@@ -1084,8 +1084,8 @@ fn assemble_layout_probes(out: &Path) {
             "FM",
             "#include \"fm/ram.inc\"\n".to_string(),
             &ui_args[..],
-            "FM_VARS_SIZE=$53",
-            0x50,
+            "FM_VARS_SIZE=$50",
+            0x4D,
             "the fm variables overlap, leave a gap, or run past FM_VARS_SIZE",
         ),
         (
