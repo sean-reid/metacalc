@@ -240,12 +240,13 @@ ${
   wq $a wff Q x ph $.
 $}
 ${
+  $d ph ps $.
   min $e |- ph $.
   maj $e |- ( ph -> ps ) $.
   ax-mp $a |- ps $.
 $}
 ${
-  $d y ch $.
+  $d y ch ps $.
   t.1 $e |- ( Q y ch -> ps ) $.
   t.2 $e |- Q y ch $.
   t $p |- ps $= ? $.
@@ -254,12 +255,13 @@ $}
 
     fn state(s: &Session) -> String {
         format!(
-            "{:?} {} {:?} {} {:?} {:?}",
+            "{:?} {:?} {:?} {} {:?} {:?} {:?}",
             s.goals,
-            s.dvs.len(),
+            s.dvs,
             s.ops,
             s.undo.len(),
             s.sizes(),
+            s.peak,
             s.status()
         )
     }
@@ -276,10 +278,12 @@ $}
         let parsed = s.usable(ax_mp).unwrap();
         let before = state(&s);
         let metas = s.store.meta_count();
+        let peak = s.store.peak();
 
         let broken = s.broken().unwrap();
         let undo = s.checkpoint(Some(0));
         s.apply_unchecked(0, ax_mp, &parsed).unwrap();
+        assert_eq!(s.dvs.len(), 1);
         let Some(GoalState::Applied { metas: at, .. }) = s.goals.first_mut().map(|g| &mut g.state)
         else {
             panic!("the goal was not applied");
@@ -292,6 +296,8 @@ $}
         assert_eq!(s.commit(op, undo, &broken).err(), Some(Error::Corrupt));
         assert_eq!(state(&s), before);
         assert_eq!(s.store.meta_count(), metas);
+        let after = s.store.peak();
+        assert!(after.nodes >= peak.nodes && after.args >= peak.args && after.metas >= peak.metas);
 
         let clean = s.apply(0, ax_mp).unwrap();
         assert_eq!(clean.goals, 1..3);
