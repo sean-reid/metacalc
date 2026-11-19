@@ -107,6 +107,9 @@ impl Editor {
         if !lib.is_theorem(theorem) {
             return Err("an axiom has no proof");
         }
+        if !crate::caps::within(&lib.statement(theorem).all()) {
+            return Err("its statement is too large");
+        }
         let catalog = lib.catalog().ok_or("the library does not export")?;
         if lib
             .statement(theorem)

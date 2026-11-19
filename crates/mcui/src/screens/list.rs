@@ -2,6 +2,7 @@ use super::{
     Ctx, Nav, Screen, State, proving::Proving, reveal, sections::Sections, step, theorem::Theorem,
 };
 use crate::canvas::{Canvas, PREFIX_WIDTH, TEXT_WIDTH, tail};
+use crate::caps::statement_within;
 use crate::fold::{Layout, fitted};
 use crate::key::Key;
 use crate::status::Mark;
@@ -89,12 +90,10 @@ impl List {
 
     /// Recomputes what the preview row shows after the cursor moved.
     fn refresh(&mut self, ctx: &Ctx) {
-        self.preview = self.current().map(|i| {
-            fitted(
-                &ctx.libs[self.library].statement(i).conclusion,
-                TEXT_WIDTH,
-                1,
-            )
+        self.preview = self.current().and_then(|i| {
+            let statement = ctx.libs[self.library].statement(i);
+            statement_within(&statement.conclusion)
+                .then(|| fitted(&statement.conclusion, TEXT_WIDTH, 1))
         });
     }
 
