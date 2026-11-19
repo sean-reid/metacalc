@@ -104,6 +104,12 @@ entry_verify:
 	ld (TEST_VERIFY_STATUS),a
 	halt
 
+entry_chunk:
+	di
+	call kernel_crc_chunk
+	ld (TEST_VERIFY_STATUS),a
+	halt
+
 entry_regs:
 	di
 	ld iy,$1357

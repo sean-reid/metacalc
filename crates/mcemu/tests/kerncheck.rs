@@ -823,7 +823,7 @@ fn kernel_range() -> std::ops::Range<u16> {
 
 fn polls() -> Vec<u16> {
     let polls = poll_sites(CODE, ENTRY);
-    assert!(polls.len() >= 6, "found only {polls:x?}");
+    assert_eq!(polls.len(), 6, "the kernel reads the key at {polls:x?}");
     polls
 }
 
@@ -852,12 +852,15 @@ fn an_on_tap_between_two_polls_of_init_stops_the_run() {
         let mut rig = Rig::new(&bytes, Speed::Mhz15);
         rig.start();
         calls_with_interrupts_on(&mut rig, "KERNEL_INIT");
+        let call = Call::at_entry(&mut rig.m);
         step_to(&mut rig.m, outer, None);
         step_to(&mut rig.m, outer + POLL_LEN, None);
         run_in_kernel(&mut rig.m, &kernel_range(), &polls, wait);
         tap_in_kernel(&mut rig.m, &kernel_range(), &polls, down);
-        rig.finish_from(None, 0);
+        assert!(latched(&mut rig.m), "the tap latched");
         let msg = format!("{wait} T-states after the poll, down for {down}");
+        assert_eq!(call.returns(&mut rig.m).af >> 8, 14, "{msg}: init's status");
+        rig.finish_from(None, 0);
         let (_, result) = screens(&rig.trace());
         assert_eq!(result, INIT_STOPPED, "{msg}");
         assert_eq!(rig.byte(label("K_INIT")), 0, "{msg}");
@@ -882,11 +885,17 @@ fn an_on_tap_inside_a_verify_call_that_reads_no_key_stops_the_run() {
         rig.run_until_trace_has("\rchk 00064/", 5_000);
         step_to(&mut rig.m, label("KERNEL_VERIFY"), None);
         let at = rig.word("K_DONE");
+        let call = Call::at_entry(&mut rig.m);
         rig.m.resume(1);
         run_in_kernel(&mut rig.m, &kernel_range(), &polls, wait);
         tap_in_kernel(&mut rig.m, &kernel_range(), &polls, down);
-        rig.finish_from(None, 0);
         let msg = format!("{wait} T-states into the call, down for {down}");
+        assert_eq!(
+            call.returns(&mut rig.m).af >> 8,
+            14,
+            "{msg}: verify's status"
+        );
+        rig.finish_from(None, 0);
         assert_eq!(rig.byte(label("K_STOPPED")), 2, "{msg}");
         assert_eq!(
             rig.word("K_DONE"),
@@ -916,11 +925,22 @@ fn an_on_tap_inside_a_checksum_chunk_stops_the_run() {
             }
             step_to(&mut rig.m, label("KERNEL_CRC_CHUNK"), None);
             assert_eq!(rig.byte(label("K_CHUNK")), reached as u8);
+            let call = Call::at_entry(&mut rig.m);
             rig.m.resume(1);
             run_in_kernel(&mut rig.m, &kernel_range(), &polls, wait);
             tap_in_kernel(&mut rig.m, &kernel_range(), &polls, down);
-            rig.finish_from(None, 0);
             let msg = format!("chunk {reached}, {wait} T-states in, down for {down}");
+            assert_eq!(
+                call.returns(&mut rig.m).af >> 8,
+                14,
+                "{msg}: the chunk's status"
+            );
+            rig.finish_from(None, 0);
+            assert_eq!(
+                rig.ram(label("K_CRC"), 4),
+                [0; 4],
+                "{msg}: the driver kept no checksum"
+            );
             assert_eq!(rig.byte(label("K_STOPPED")), 1, "{msg}");
             assert_eq!(
                 rig.byte(label("K_CRC_STATE")),
@@ -943,8 +963,13 @@ fn an_on_tap_over_before_a_call_starts_with_interrupts_on_is_not_the_calls() {
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     rig.start();
     calls_with_interrupts_on(&mut rig, "KERNEL_INIT");
+    let call = Call::at_entry(&mut rig.m);
     rig.m.press_key(Machine::KEY_ON);
     rig.m.release_key(Machine::KEY_ON);
+    assert!(latched(&mut rig.m), "the tap latched");
+    step_to(&mut rig.m, label("KE_WINDOW"), None);
+    assert!(!latched(&mut rig.m), "the OS handler acknowledged it");
+    assert_eq!(call.returns(&mut rig.m).af >> 8, 0, "init's status");
     rig.finish_from(None, 0);
     let (_, result) = screens(&rig.trace());
     assert_eq!(result, report(&bytes));
@@ -965,8 +990,16 @@ fn an_on_tap_over_before_a_call_starts_with_interrupts_off_is_reported_by_the_ca
         "the driver calls kernel_verify with interrupts off"
     );
     let at = rig.word("K_DONE");
+    let call = Call::at_entry(&mut rig.m);
     rig.m.press_key(Machine::KEY_ON);
     rig.m.release_key(Machine::KEY_ON);
+    assert!(latched(&mut rig.m), "the tap latched");
+    step_to(&mut rig.m, label("KE_WINDOW"), None);
+    assert!(
+        latched(&mut rig.m),
+        "nothing acknowledged it by the call's start"
+    );
+    assert_eq!(call.returns(&mut rig.m).af >> 8, 14, "verify's status");
     rig.finish_from(None, 0);
     assert_eq!(rig.byte(label("K_STOPPED")), 2);
     assert_eq!(
@@ -1013,5 +1046,35 @@ fn an_on_tap_over_between_two_calls_stops_the_driver_before_it_makes_the_next() 
         };
         assert_eq!(next, label(stopped), "{head}: the driver went on to {call}");
         rig.finish_from(None, 0);
+    }
+}
+
+/// The table build in kernel_crc_begin reads no key. A stopped begin leaves the run unstarted, so
+/// the driver stops at chunk 0 and the checksum is never marked ok or bad.
+#[test]
+fn an_on_tap_inside_the_checksum_begin_stops_the_run_before_the_first_chunk() {
+    let bytes = axioms(2000);
+    let polls = polls();
+    for (wait, down) in [(1000, 1), (100_000, 3000)] {
+        let mut rig = Rig::new(&bytes, Speed::Mhz15);
+        rig.start();
+        step_to(&mut rig.m, label("KERNEL_CRC_BEGIN"), None);
+        let call = Call::at_entry(&mut rig.m);
+        rig.m.resume(1);
+        run_in_kernel(&mut rig.m, &kernel_range(), &polls, wait);
+        tap_in_kernel(&mut rig.m, &kernel_range(), &polls, down);
+        let msg = format!("{wait} T-states into begin, down for {down}");
+        assert_eq!(
+            call.returns(&mut rig.m).af >> 8,
+            14,
+            "{msg}: begin's status"
+        );
+        rig.finish_from(None, 0);
+        assert_eq!(rig.byte(label("K_STOPPED")), 1, "{msg}");
+        assert_eq!(rig.byte(label("K_CRC_STATE")), 3, "{msg}: stopped, not bad");
+        assert_eq!(rig.word("K_STOP_AT"), 0, "{msg}");
+        assert_eq!(rig.word("K_DONE"), 0, "{msg}");
+        let (_, result) = screens(&rig.trace());
+        assert_eq!(result[1], "crc stopped", "{msg}");
     }
 }

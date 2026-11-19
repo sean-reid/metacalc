@@ -169,6 +169,41 @@ pub fn tap_in_kernel(m: &mut Machine, kernel: &Range<u16>, polls: &[u16], tstate
     down
 }
 
+/// A call of a kernel entry point that is about to start: where it returns to and the stack
+/// pointer then.
+pub struct Call {
+    ret: u16,
+    sp: u16,
+}
+
+impl Call {
+    /// Reads the return address of the call whose first instruction is next.
+    pub fn at_entry(m: &mut Machine) -> Call {
+        let sp = m.regs().sp;
+        let ret = m.read_ram(sp, 2);
+        Call {
+            ret: u16::from_le_bytes([ret[0], ret[1]]),
+            sp: sp + 2,
+        }
+    }
+
+    /// Runs on until the call has returned, and gives the registers it returned with.
+    pub fn returns(&self, m: &mut Machine) -> mcemu::Regs {
+        for _ in 0..50_000_000 {
+            if m.pc() == self.ret && m.regs().sp == self.sp {
+                return m.regs();
+            }
+            assert_eq!(m.resume(1).stop, Stop::Limit);
+        }
+        panic!("the call never returned");
+    }
+}
+
+/// Bit 0 of port 4, the ON key's interrupt latch.
+pub fn latched(m: &mut Machine) -> bool {
+    m.in_port(4) & 1 != 0
+}
+
 pub struct Rig {
     pub m: Machine,
 }

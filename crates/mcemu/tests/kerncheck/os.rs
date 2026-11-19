@@ -2,8 +2,8 @@
 
 use crate::realos::*;
 use crate::rig::{
-    axioms, long_name_axioms, poll_sites, run_in_kernel, single_symbol_axioms, step_to,
-    tap_in_kernel,
+    Call, axioms, latched, long_name_axioms, poll_sites, run_in_kernel, single_symbol_axioms,
+    step_to, tap_in_kernel,
 };
 use mcemu::Machine;
 use std::path::{Path, PathBuf};
@@ -249,7 +249,7 @@ fn kernel_range(c: &Check) -> std::ops::Range<u16> {
 fn polls(c: &mut Check) -> Vec<u16> {
     let image = c.os.m.read_ram(0x4000, 0x4000);
     let polls = poll_sites(&image, 0x4000);
-    assert!(polls.len() >= 6, "found only {polls:x?}");
+    assert_eq!(polls.len(), 6, "the kernel reads the key at {polls:x?}");
     polls
 }
 
@@ -305,12 +305,19 @@ fn an_on_tap_between_two_polls_of_init_stops_the_check() {
         );
         launch_to(&mut c, init);
         assert_eq!(c.os.m.regs().iff1, 1, "interrupts are on at the call");
+        let call = Call::at_entry(&mut c.os.m);
         let (polls, range) = (polls(&mut c), kernel_range(&c));
         step_to(&mut c.os.m, outer, Some(BASE));
         step_to(&mut c.os.m, outer + 7, Some(BASE));
         run_in_kernel(&mut c.os.m, &range, &polls, wait);
         tap_in_kernel(&mut c.os.m, &range, &polls, down);
         let msg = format!("{wait} T-states after the poll, down for {down}");
+        assert!(latched(&mut c.os.m), "{msg}: the tap latched");
+        assert_eq!(
+            call.returns(&mut c.os.m).af >> 8,
+            14,
+            "{msg}: init's status"
+        );
         assert_stopped_cleanly(&mut c, (3, None), 300, &msg);
     }
 }
@@ -328,10 +335,17 @@ fn an_on_tap_inside_a_verify_call_that_reads_no_key_stops_the_check_there() {
         step_to(&mut c.os.m, verify, Some(BASE));
         let (polls, range) = (polls(&mut c), kernel_range(&c));
         let at = c.word("K_DONE");
+        let call = Call::at_entry(&mut c.os.m);
         c.os.m.resume(1);
         run_in_kernel(&mut c.os.m, &range, &polls, wait);
         tap_in_kernel(&mut c.os.m, &range, &polls, down);
         let msg = format!("{wait} T-states into the call, down for {down}");
+        assert!(latched(&mut c.os.m), "{msg}: the tap latched");
+        assert_eq!(
+            call.returns(&mut c.os.m).af >> 8,
+            14,
+            "{msg}: verify's status"
+        );
         assert_stopped_cleanly(&mut c, (2, Some(at)), 6000, &msg);
     }
 }
@@ -349,10 +363,17 @@ fn an_on_tap_inside_a_checksum_chunk_stops_the_check_at_that_chunk() {
         step_to(&mut c.os.m, chunk, Some(BASE));
         let (polls, range) = (polls(&mut c), kernel_range(&c));
         let at = u16::from(c.byte("K_CHUNK"));
+        let call = Call::at_entry(&mut c.os.m);
         c.os.m.resume(1);
         run_in_kernel(&mut c.os.m, &range, &polls, wait);
         tap_in_kernel(&mut c.os.m, &range, &polls, down);
         let msg = format!("{wait} T-states into the chunk, down for {down}");
+        assert!(latched(&mut c.os.m), "{msg}: the tap latched");
+        assert_eq!(
+            call.returns(&mut c.os.m).af >> 8,
+            14,
+            "{msg}: the chunk's status"
+        );
         assert_stopped_cleanly(&mut c, (1, Some(at)), 6000, &msg);
     }
 }
@@ -367,8 +388,13 @@ fn an_on_tap_over_before_init_starts_is_not_reported_by_init() {
     let init = label_in(&c.lab, "KERNEL_INIT");
     launch_to(&mut c, init);
     assert_eq!(c.os.m.regs().iff1, 1, "interrupts are on at the call");
+    let call = Call::at_entry(&mut c.os.m);
     c.os.m.press_key(Machine::KEY_ON);
     c.os.m.release_key(Machine::KEY_ON);
+    assert!(latched(&mut c.os.m), "the tap latched");
+    step_to(&mut c.os.m, label_in(&c.lab, "KE_WINDOW"), Some(BASE));
+    assert!(!latched(&mut c.os.m), "the OS handler acknowledged it");
+    assert_eq!(call.returns(&mut c.os.m).af >> 8, 0, "init's status");
     until(&mut c, "the end of the run", |c| c.word("K_DONE") == 300);
     c.os.run_ms(100);
     assert_eq!(c.byte("K_STOPPED"), 0, "nothing stopped the run");

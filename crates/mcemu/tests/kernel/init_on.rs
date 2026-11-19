@@ -132,3 +132,39 @@ fn init_reads_the_on_key_within_one_outer_iteration_of_the_pair_loop() {
 const CEILING_LONGEST_INIT: u32 = 124_000_000;
 const BUDGET_INIT_ON_AT_START: u32 = 1_970_000;
 const BUDGET_POLL_GAP: u32 = 1_000_000;
+
+/// A refusal is a status like any other: with interrupts off and the latch set by a tap that ended
+/// before the call, the exit replaces it with the stop, and with the latch clear it stands.
+#[test]
+fn a_refused_call_returns_the_stop_when_the_latch_is_set_and_its_refusal_when_clear() {
+    for (entry, what) in [
+        ("ENTRY_VERIFY", "kernel_verify after kernel_reset"),
+        ("ENTRY_CHUNK", "kernel_crc_chunk with no run begun"),
+    ] {
+        for tapped in [false, true] {
+            let mut device = Device::with_library(&raw::shared_prefix_library());
+            device.run("ENTRY_RESET_ALONE");
+            device.m.out_port(3, 0x0B);
+            if tapped {
+                device.m.press_key(Machine::KEY_ON);
+                device.m.release_key(Machine::KEY_ON);
+            }
+            assert_eq!(
+                device.m.in_port(4) & 1,
+                u8::from(tapped),
+                "{what}: the latch"
+            );
+            device.run(entry);
+            let want = if tapped {
+                status_code("ST_INTERRUPTED")
+            } else {
+                malformed()
+            };
+            assert_eq!(
+                device.byte("TEST_VERIFY_STATUS"),
+                want,
+                "{what}, tapped {tapped}"
+            );
+        }
+    }
+}
