@@ -1,4 +1,5 @@
 use crate::damaged::{both, last_record, reseal};
+use crate::secrig::ST_TABLE;
 use crate::sections::*;
 use crate::support::*;
 use mcpack::library::{TRAILER_MAGIC, TRAILER_VERSION, decode};
@@ -90,8 +91,11 @@ fn libraries() -> Vec<(String, Vec<u8>)> {
     all
 }
 
+/// Most of these stop at a read past the library in lr_record or lsx_skip, before the end of the
+/// record is compared with the length. Only the proof length of a theorem and the conclusion
+/// length of an axiom get as far as that compare.
 #[test]
-fn a_last_record_that_runs_past_the_library_fails_the_open_with_status_3() {
+fn a_count_or_length_that_runs_far_past_the_library_fails_the_open_with_status_3() {
     let (mut axioms, mut theorems, mut cases) = (0, 0, 0);
     for (name, good) in libraries() {
         if decode(&good).is_err() || decoded(&good).assertions.is_empty() {
@@ -136,4 +140,48 @@ fn a_last_record_that_runs_past_the_library_fails_the_open_with_status_3() {
         "{axioms} axioms, {theorems} theorems last"
     );
     println!("{cases} cases, {axioms} libraries ending in an axiom, {theorems} in a theorem");
+}
+
+/// The end of the last record put exactly `past` bytes beyond the length: through the conclusion
+/// length of an axiom or the proof length of a theorem, the two fields nothing else reads after.
+fn ending_past(cut: &[u8], past: usize) -> Vec<u8> {
+    let f = fields(cut);
+    let more = cut.len() + past - f.end;
+    let mut bytes = cut.to_vec();
+    match &f.theorem {
+        Some(t) => {
+            let len = u16_at(cut, t.proof) + more;
+            bytes[t.proof..t.proof + 2].copy_from_slice(&u16::try_from(len).unwrap().to_le_bytes());
+        }
+        None => {
+            let len = usize::from(cut[f.conclusion]) + more;
+            bytes[f.conclusion] = u8::try_from(len).expect("the conclusion stays under 256");
+        }
+    }
+    reseal(&mut bytes);
+    bytes
+}
+
+#[test]
+fn a_last_record_ending_one_byte_past_the_library_is_refused_with_status_3() {
+    let mut cases = 0;
+    for (name, good) in libraries() {
+        if decode(&good).is_err() || decoded(&good).assertions.is_empty() {
+            continue;
+        }
+        let cut = cut_after_records(&good);
+        if fields(&cut).theorem.is_none() && usize::from(cut[fields(&cut).conclusion]) + 20 > 255 {
+            continue;
+        }
+        let (_, status, host) = both(&ending_past(&cut, 1));
+        assert_eq!((status, host), (ST_BAD, false), "{name}: one byte past");
+        let (_, status, host) = both(&ending_past(&cut, 0));
+        assert_eq!(
+            (status, host),
+            (ST_TABLE, false),
+            "{name}: ending on the length passes the compare and the row refuses it"
+        );
+        cases += 1;
+    }
+    assert!(cases > 5, "{cases} libraries");
 }
