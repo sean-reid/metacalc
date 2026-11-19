@@ -1,5 +1,5 @@
 use mcpack::build;
-use mcpack::library::{self, check, pack};
+use mcpack::library::{self, PackError, check, pack};
 use mcpack::manifest::{Manifest, Pin, sha256_hex};
 use mcpack::mm::{self, Database, Kind, ProofBody, StmtId};
 use std::path::{Path, PathBuf};
@@ -129,6 +129,30 @@ fn the_cut_closure_is_dependency_closed_and_packs() {
     }
     let bytes = pack(&db, &cut).expect("the cut packs");
     assert_eq!(check(&bytes), Ok(3));
+}
+
+const SYNTAX_AFTER_CUT: &str = "
+$c ( ) -> wff |- $.
+$v p q $.
+wp $f wff p $.
+wq $f wff q $.
+ax $a |- ( p -> q ) $.
+mark $a |- p $.
+wi $a wff ( p -> q ) $.
+";
+
+#[test]
+fn a_cut_before_a_syntax_axiom_a_kept_statement_needs_does_not_pack() {
+    let db = mm::parse(SYNTAX_AFTER_CUT.as_bytes().to_vec()).expect("database parses");
+    let cut = build::closure(&db, &manifest("\"ax\"", "before = \"mark\"\n")).unwrap();
+    assert_eq!(labels(&db, &cut), ["wp", "wq", "ax"]);
+    assert_eq!(
+        pack(&db, &cut),
+        Err(PackError::SyntaxAfterCut {
+            statement: "ax".into(),
+            axiom: "wi".into()
+        })
+    );
 }
 
 #[test]
@@ -462,6 +486,31 @@ fn build_exits_2_for_labels_the_database_does_not_have() {
         assert_eq!(text(out.stderr), message, "{name}");
         assert!(!library.exists(), "{name}");
     }
+}
+
+#[test]
+fn build_fails_cleanly_when_the_cut_leaves_out_a_syntax_axiom_a_kept_statement_needs() {
+    let manifest = "name = \"d\"\ntitle = \"D\"\ndescription = \"d\"\norder = 1\nroots = [\"ax\"]\nbefore = \"mark\"\n";
+    let dir = workspace_with(
+        "syntax-after-cut",
+        &sha256_hex(SYNTAX_AFTER_CUT.as_bytes()),
+        manifest,
+    );
+    std::fs::write(dir.join("demo0.mm"), SYNTAX_AFTER_CUT).unwrap();
+    let library = dir.join("demo.mclib");
+    let out = mcpack(&[
+        Path::new("build"),
+        &dir.join("demo.toml"),
+        Path::new("--database"),
+        &dir.join("demo0.mm"),
+        Path::new("-o"),
+        &library,
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = text(out.stderr);
+    assert!(stderr.contains("SyntaxAfterCut"), "{stderr}");
+    assert!(!stderr.contains("panicked"), "{stderr}");
+    assert!(!library.exists());
 }
 
 #[test]
