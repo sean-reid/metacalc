@@ -50,6 +50,7 @@ STOP_VERIFY = 2
 STOP_INIT   = 3
 
 kernchk_run:
+	call kernel_reset
 	call app_find_library
 	ld a, 0Ch
 	call putchar

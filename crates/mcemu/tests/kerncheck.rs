@@ -640,3 +640,37 @@ fn an_on_hold_between_the_poll_after_init_and_the_first_print_stops_the_checksum
     );
     assert_eq!(rig.byte(label("K_STOPPED")), 1, "stopped in the checksum");
 }
+
+const KERNEL_PAGE: u8 = 3;
+const KERNEL_PAGE_FF00: std::ops::Range<usize> = 0x3F00..0x3FC0;
+
+fn seed_kernel_state(rig: &mut Rig) {
+    let page = rig.m.ram_page(KERNEL_PAGE);
+    let at = |name: &str| usize::from(label(name) - 0xC000);
+    page[at("KV_READY")..at("KV_READY") + 2].copy_from_slice(&[0xA5, 0x5A]);
+    page[at("KV_SAVED_SYM_LIMIT")..at("KV_SAVED_SYM_LIMIT") + 2].copy_from_slice(&[0x34, 0x12]);
+    page[KERNEL_PAGE_FF00].fill(0x6D);
+}
+
+#[test]
+fn a_ready_mark_left_in_kernel_ram_does_not_change_the_run_or_write_the_os_part_of_the_page() {
+    let bytes = axioms(40);
+    let mut clean = Rig::new(&bytes, Speed::Mhz15);
+    clean.run_to_end();
+    let want = screens(&clean.trace());
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    seed_kernel_state(&mut rig);
+    rig.run_to_end();
+    assert_eq!(screens(&rig.trace()), want);
+    assert_eq!(rig.m.ram_page(KERNEL_PAGE)[KERNEL_PAGE_FF00], [0x6D; 0xC0]);
+}
+
+#[test]
+fn the_app_clears_the_ready_mark_before_anything_else() {
+    let bytes = axioms(40);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    seed_kernel_state(&mut rig);
+    rig.run_until_trace_has("\x0c", 100);
+    let at = usize::from(label("KV_READY") - 0xC000);
+    assert_eq!(rig.m.ram_page(KERNEL_PAGE)[at..at + 2], [0, 0]);
+}

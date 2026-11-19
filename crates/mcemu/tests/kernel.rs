@@ -26,6 +26,8 @@ mod raw;
 mod records;
 #[path = "kernel/references.rs"]
 mod references;
+#[path = "kernel/reset.rs"]
+mod reset;
 #[path = "kernel/sources.rs"]
 mod sources;
 #[path = "common/stackfree.rs"]
