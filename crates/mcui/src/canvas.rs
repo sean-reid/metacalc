@@ -323,8 +323,9 @@ impl Canvas {
     }
 
     /// The labels of the five keys under the screen. A key with a label is an inverted box
-    /// across its fifth of the width, one column short on the right so neighbours stay apart,
-    /// with the label centred in it, set in the key font; a key without one stays blank.
+    /// below the row's top pixel row, across its fifth of the width, one column short on the right
+    /// so neighbours stay apart, with the label centred in it, set in the key font; a key without
+    /// one stays blank.
     pub fn soft_keys(&mut self, labels: [&str; 5]) {
         let cut: [&str; 5] = std::array::from_fn(|i| {
             let label = labels[i];
@@ -345,7 +346,7 @@ impl Canvas {
                 let ink = key_font().text(label);
                 let x = from + (to - from - ink.width()).div_ceil(2);
                 c.bitmap.blit(&ink, x, Self::top(CONTENT_ROWS + 1) + 1);
-                c.invert(from, Self::top(CONTENT_ROWS + 1), to - from, ROW);
+                c.invert(from, Self::top(CONTENT_ROWS + 1) + 1, to - from, ROW - 1);
             }
         });
     }

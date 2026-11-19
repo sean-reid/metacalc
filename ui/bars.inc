@@ -47,7 +47,7 @@ ui_list_row:
 ; ui_soft_keys   in:  HL = five little endian pointers to label strings encoded for the key font
 ;                     table ui_key_font, not the main one; an empty string leaves its key blank
 ;                a label is centred in its key's box on row 7, rounding the left margin up,
-;                and the box is inverted; a label wider than its box is not handled
+;                and the box is inverted below the row's top scanline; a label wider than its box is not handled
 ;                destroys AF BC DE HL
 ui_soft_keys:
 	ld de,(ui_fontp)
@@ -104,7 +104,7 @@ sk_skip:
 	ld (ui_fontp),hl
 	ret
 
-; Flips a key's box from its record, HL = the record past its two x bytes: eight scanlines, with
+; Flips a key's box from its record, HL = the record past its two x bytes: seven scanlines, with
 ; one or two whole bytes between the edge bytes. Destroys AF BC DE HL.
 #macro FLIP3
 	ld a,(hl)
@@ -159,7 +159,6 @@ sk_flip:
 	FLIP3
 	FLIP3
 	FLIP3
-	FLIP3
 	ret
 sk_flip4:
 	ld de,UI_STRIDE-3
@@ -170,10 +169,10 @@ sk_flip4:
 	FLIP4
 	FLIP4
 	FLIP4
-	FLIP4
 	ret
 
-; A key box record: its first and last column, the address of its top left byte in the frame,
+; A key box record: its first and last column, the address of its top left byte in the frame
+; (the second scanline of the soft key row, which leaves the first one clear),
 ; the mask of the first byte, the number of whole bytes between, and the mask of the last. The
 ; box is inverted up to the column before its last.
 SK_RECORD               .equ 7
@@ -185,7 +184,7 @@ SK_RECORD               .equ 7
  .error "a soft key box must span one or two whole bytes between its edge bytes"
 #endif
 	.db a,b
-	.dw UI_FRAME+(UI_SOFT_ROW*UI_ROW*UI_STRIDE)+(a>>3)
+	.dw UI_FRAME+((UI_SOFT_ROW*UI_ROW+1)*UI_STRIDE)+(a>>3)
 	.db $FF>>(a&7),((b-1)>>3)-(a>>3)-1,($FF<<(7-((b-1)&7)))&$FF
 #endmacro
 sk_boxes:
