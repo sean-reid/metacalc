@@ -1,3 +1,5 @@
+#include "ram_map.inc"
+
 #define bcall(addr) rst 28h \ .dw addr
 #define bjump(addr) call 50h \ .dw addr
 
@@ -23,7 +25,13 @@ OP3              = 848Eh
 appVarObj        = 15h
 plotSScreen      = 9340h
 appBackUpScreen  = 9872h
-libPage          = appBackUpScreen
+#if (plotSScreen < UI_FRAME) || (plotSScreen > UI_FRAME)
+ .error "UI_FRAME in ram_map.inc must be plotSScreen"
+#endif
+#if (appBackUpScreen < KD_SCRATCH) || (appBackUpScreen > KD_SCRATCH)
+ .error "KD_SCRATCH in ram_map.inc must be appBackUpScreen"
+#endif
+libPage          = KD_SCRATCH
 skClear          = 0Fh
 onFlags          = 9
 onInterrupt      = 4

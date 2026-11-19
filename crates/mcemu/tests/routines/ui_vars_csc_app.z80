@@ -1,0 +1,28 @@
+#include "equates.inc"
+#define APP_NAME "uivarscs"
+#include "header.inc"
+
+; Fills UI_VARS with a pattern and waits for CLEAR the way the shell does.
+SEED    = 0A5h
+STEP    = 37
+
+start:
+	xor a
+	ld (0A800h), a
+	ld hl, UI_VARS
+	ld b, UI_VARS_SIZE
+	ld a, SEED
+fill:
+	ld (hl), a
+	inc hl
+	add a, STEP
+	djnz fill
+wait_for_clear:
+	ei
+	halt
+	bcall(_GetCSC)
+	cp skClear
+	jr nz, wait_for_clear
+	ld a, 0EEh
+	ld (0A800h), a
+	bjump(_JForceCmdNoChar)

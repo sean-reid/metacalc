@@ -9,44 +9,40 @@ UI_MARGIN               .equ 1
 UI_SOFT_ROW             .equ 7
 UI_BUSY_LIMIT           .equ 255
 
-#ifndef UI_FRAME
-UI_FRAME                .equ $9340
-#endif
-#ifndef UI_VARS
-UI_VARS                 .equ $9882
-#endif
-UI_FRAME_SIZE           .equ UI_STRIDE*UI_HEIGHT
-UI_VARS_SIZE            .equ $1A
-#if (UI_FRAME + UI_FRAME_SIZE) > $FFFF
- .error "UI_FRAME must end at or below $FFFF"
-#endif
-#if (UI_VARS + UI_VARS_SIZE) > $10000
- .error "UI_VARS must leave 26 bytes"
-#endif
-#if UI_FRAME < (UI_VARS + UI_VARS_SIZE)
-#if UI_VARS < (UI_FRAME + UI_FRAME_SIZE)
- .error "UI_FRAME and UI_VARS overlap"
-#endif
+#include "ram_map.inc"
+#if (UI_FRAME_SIZE < (UI_STRIDE * UI_HEIGHT)) || (UI_FRAME_SIZE > (UI_STRIDE * UI_HEIGHT))
+ .error "UI_FRAME_SIZE in ram_map.inc must be UI_STRIDE*UI_HEIGHT"
 #endif
 
-ui_rowbase              .equ UI_VARS+$00
-ui_dst                  .equ UI_VARS+$02
-ui_src                  .equ UI_VARS+$04
-ui_shift                .equ UI_VARS+$06
-ui_narrow               .equ UI_VARS+$07
-ui_col                  .equ UI_VARS+$08
-ui_cnt                  .equ UI_VARS+$09
-ui_lm                   .equ UI_VARS+$0A
-ui_rm                   .equ UI_VARS+$0B
-ui_mid                  .equ UI_VARS+$0C
-ui_rows                 .equ UI_VARS+$0D
-ui_kp                   .equ UI_VARS+$0E
-ui_kb                   .equ UI_VARS+$10
-ui_kn                   .equ UI_VARS+$12
-ui_fontp                .equ UI_VARS+$14
-ui_sp                   .equ UI_VARS+$16
-ui_iff                  .equ UI_VARS+$18
-ui_blk                  .equ UI_VARS+$19
+#define UI_NEXT 0
+#macro UI_VAR(name, offset, size)
+RAM_VAR(name, UI_VARS, offset, size, UI_VARS_SIZE, UI_NEXT, "the UI variables overlap, leave a gap, or run past UI_VARS_SIZE in ram_map.inc")
+#define UI_NEXT eval(offset + size)
+#endmacro
+#macro UI_AT(offset)
+RAM_AT(offset, UI_VARS_SIZE, UI_NEXT, "UI_AT must not go back or past UI_VARS_SIZE in ram_map.inc")
+#define UI_NEXT eval(offset)
+#endmacro
+
+UI_VAR(ui_rowbase, $00, 2)
+UI_VAR(ui_dst, $02, 2)
+UI_VAR(ui_src, $04, 2)
+UI_VAR(ui_shift, $06, 1)
+UI_VAR(ui_narrow, $07, 1)
+UI_VAR(ui_col, $08, 1)
+UI_VAR(ui_cnt, $09, 1)
+UI_VAR(ui_lm, $0A, 1)
+UI_VAR(ui_rm, $0B, 1)
+UI_VAR(ui_mid, $0C, 1)
+UI_VAR(ui_rows, $0D, 1)
+UI_VAR(ui_kp, $0E, 2)
+UI_VAR(ui_kb, $10, 2)
+UI_VAR(ui_kn, $12, 1)
+UI_AT($14)
+UI_VAR(ui_fontp, $14, 2)
+UI_VAR(ui_sp, $16, 2)
+UI_VAR(ui_iff, $18, 1)
+UI_VAR(ui_blk, $19, 1)
 
 SLOT                    .equ 8
 SPACE_CODE              .equ 1

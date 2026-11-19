@@ -2,14 +2,18 @@
 ; matches crates/mcui/src/canvas.rs, and copies it to the LCD. Nothing else draws.
 ;
 ; Code runs from flash and is position dependent. Assembling this file alone places it at
-; $4000; an including file defines UI_EMBEDDED first and places the code itself. The glyph
-; table is generated: `mcglyph z80 font.inc`, found through the include path as "font.inc".
+; $4000, with -I at ui, at the repository root and at app/src so that "ui/ram.inc" and
+; ram_map.inc are found; an including file defines UI_EMBEDDED first and places the code itself.
+; The glyph table is generated: `mcglyph z80 font.inc`, found through the include path as
+; "font.inc".
 ;
-; RAM, two blocks that default to space TI-OS leaves to an app and can be moved with UI_FRAME
-; and UI_VARS: the frame, 768 bytes at UI_FRAME, default $9340 (plotSScreen), row-major, 12
-; bytes a row, the most significant bit leftmost; and UI_VARS_SIZE ($1A, 26) bytes of variables
-; at UI_VARS, default $9882 (appBackUpScreen + $10), laid out in ram.inc. The blocks must not
-; overlap. Call ui_set_font and ui_clear before the first draw. Registers not listed as
+; RAM, two blocks placed by app/src/ram_map.inc, where UI_FRAME and UI_VARS can be moved: the
+; frame, 768 bytes at UI_FRAME, default $9340 (plotSScreen), row-major, 12 bytes a row, the most
+; significant bit leftmost; and UI_VARS_SIZE ($1A, 26) bytes of variables at UI_VARS, default
+; $86EC (saveSScreen), laid out in ram.inc. The blocks must not overlap another region of the
+; map. Only ui_fontp holds anything between calls, and the OS zeroes saveSScreen when auto power
+; down fires in _GetKey, so call ui_set_font again after any key wait that can power the
+; calculator down. Call ui_set_font and ui_clear before the first draw. Registers not listed as
 ; destroyed are preserved, and IX, IY and the shadow registers are never touched. Counting
 ; the caller's return address, the stack needs 14 bytes for ui_list_row, 12 for ui_title and
 ; ui_soft_keys, and 10 for the text-right and centred routines; an interrupt adds the
@@ -36,7 +40,7 @@
 .org $4000
 #endif
 
-#include "ram.inc"
+#include "ui/ram.inc"
 #include "glyph.inc"
 #include "shapes.inc"
 #include "bars.inc"
