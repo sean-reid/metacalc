@@ -66,8 +66,10 @@ impl KernelError {
 /// 1 per pair of the applied assertion; 1 per symbol of `X`, constant or variable; for each
 /// variable of `X`, 1 per symbol of `Y`; and for each variable of `X` against each variable of `Y`,
 /// `1 + n` more, `n` being the number of pairs in the theorem being checked (both lists), however
-/// early the scan would find a match. A charge that would take the total past `WORK_LIMIT` makes
-/// the call return `WorkLimit`. The limit stops a proof whose disjoint checks, reference lists,
+/// early the scan would find a match. An apply of an assertion with an id of `CACHE_IDS` or more
+/// first charges what the calculator's repeated check of its record does: 1 per pair of each
+/// list, 1 per hypothesis and 1 per symbol of each essential hypothesis and of the conclusion.
+/// A charge that would take the total past `WORK_LIMIT` makes the call return `WorkLimit`. The limit stops a proof whose disjoint checks, reference lists,
 /// substitutions or copies are far beyond any honest proof. It is not a bound on the time of a
 /// call, and the Z80 kernel reads the ON key at least once per proof step and on every 256 units.
 /// Kernel status 14 (ON key pressed) is never produced here.
@@ -101,6 +103,27 @@ fn charge(work: &mut u32, amount: u32) -> Res<()> {
         }
         _ => Err(KernelError::WorkLimit),
     }
+}
+
+/// Assertions below this id have their record check made once per initialisation on the
+/// calculator; an apply of one at or past it makes the check again and is charged for it.
+pub const CACHE_IDS: usize = 0x2000;
+
+/// What `check_record` does on `record`, in three charges: 1 per pair of the mandatory list, 1 per
+/// pair of the extra list, and 1 per hypothesis, per symbol of an essential hypothesis and per
+/// symbol of the conclusion.
+fn charge_record(work: &mut u32, record: &Record) -> Res<()> {
+    charge(work, (record.dv.len() / 2) as u32)?;
+    charge(work, (record.extra_dv.len() / 2) as u32)?;
+    let hyps: usize = record
+        .hyps
+        .iter()
+        .map(|hyp| match hyp {
+            Hyp::Float(_) => 1,
+            Hyp::Essential(expr) => 1 + expr.len(),
+        })
+        .sum();
+    charge(work, (hyps + record.conclusion.len()) as u32)
 }
 
 enum Hyp<'a> {
@@ -543,6 +566,9 @@ impl<'a> Kernel<'a> {
 
     fn apply(&mut self, id: usize, current: &Record) -> Res<()> {
         let used = self.record(id)?;
+        if id >= CACHE_IDS {
+            charge_record(&mut self.work, &used)?;
+        }
         self.require_sound(id, &used)?;
         let base = self
             .starts

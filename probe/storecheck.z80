@@ -42,11 +42,8 @@ CMD_FILL     = 14
 CMD_ROOM     = 15
 CMD_LIST     = 16
 
-LOG         = appBackUpScreen
-LOG_LIMIT   = LOG + 700
-SCRIPT      = 86ECh
-SCRIPT_MAX  = 640
-STATE       = 8A3Ah
+#include "storeram.inc"
+LOG_LIMIT   = LOG + LOG_LIMIT_OFF
 S_PTR       = STATE
 S_AT        = STATE + 2
 S_REPEAT    = STATE + 4
@@ -427,3 +424,4 @@ log_result:
 
 #include "storedraw.inc"
 #include "store.inc"
+#include "storeguard.inc"

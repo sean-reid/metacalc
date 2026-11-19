@@ -1,3 +1,5 @@
+#[path = "ui/bar.rs"]
+mod bar;
 #[path = "ui/blit.rs"]
 mod blit;
 #[path = "ui/draw.rs"]
