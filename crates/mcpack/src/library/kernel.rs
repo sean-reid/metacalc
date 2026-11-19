@@ -29,7 +29,7 @@ pub enum KernelError {
 
 /// The most work one `verify` call may spend. Before the proof runs, the check on the reference
 /// list charges 1 per entry for the dummy check and 1 per comparison for the duplicate check,
-/// `r * (r + 1) / 2` for `r` entries, so a list longer than 511 entries cannot pass them within
+/// `r * (r + 1) / 2` for `r` entries, so a list longer than 670 entries cannot pass them within
 /// the work limit. The count is defined only after a call that returned `Ok`: the Z80 kernel
 /// charges the comparisons of a short list in one step, so after a refusal its count and this
 /// one may differ. The proof steps then charge, in the order they run: 1 per symbol of each entry

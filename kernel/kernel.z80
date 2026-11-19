@@ -91,7 +91,7 @@
 ; Work limit. Before the proof runs, the check on the reference list charges 1 per entry before
 ; it examines the entry for a dummy of a mandatory variable, then compares each entry with the
 ; ones after it and charges 1 per comparison before it is made, r * (r + 1) / 2 for r entries.
-; A reference list longer than 511 entries cannot pass these checks within the work limit.
+; A reference list longer than 670 entries cannot pass these checks within the work limit.
 ; The count is defined only after a call that returned ok: a list of up to 511 entries is charged
 ; in one step, so after a refusal the count may differ from the model's.
 ; The proof steps charge the same count per kernel_verify call, in the order they run:
