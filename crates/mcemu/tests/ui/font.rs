@@ -194,9 +194,9 @@ fn the_descender_entries_run_for_the_glyphs_and_shifts_that_reach_them() {
 }
 
 #[test]
-fn the_jump_tables_sit_on_the_boundaries_the_or_trick_needs() {
+fn the_jump_blocks_and_row_table_sit_on_the_boundaries_the_or_trick_needs() {
     for image in [REAL, MOVED] {
-        assert_eq!(label(image, "ui_vtab") % 64, 0);
+        assert_eq!(label(image, "ui_vblk") % 256, 0);
         assert_eq!(label(image, "ut_rows") % 16, 0);
     }
 }
@@ -304,5 +304,56 @@ fn the_canvas_works_at_another_ram_base_and_writes_nothing_outside_its_two_block
     for image in [REAL, MOVED] {
         let got = run(image, &ops(&calls));
         same_frame("moved base", &got.frame, &pack(&bitmap));
+    }
+}
+
+const FLAT_NINE: &str = "height 7
+
+glyph a
+#########
+#.......#
+#.#####.#
+#.#...#.#
+#.#####.#
+.........
+.........
+
+glyph b
+.#.
+###
+.#.
+.#.
+.#.
+...
+...
+";
+
+#[test]
+fn glyphs_nine_wide_without_descender_rows_draw_at_every_alignment() {
+    let font = Font::parse(FLAT_NINE, "").unwrap();
+    let table = Table::new(&font).unwrap();
+    for text in ["a", "aa", "a b a", "bab", "ababababab"] {
+        for x in (0..=100usize).chain([250, 255, 256]) {
+            for row in [0usize, 7] {
+                let mut model = Bitmap::new(96, 64);
+                model_text(&mut model, &font, x, row, text);
+                let got = run(
+                    REAL,
+                    &[
+                        Op::SetFont(flat(&table)),
+                        Op::Text {
+                            x,
+                            row,
+                            codes: table.encode(text),
+                        },
+                    ],
+                );
+                same_frame(
+                    &format!("{text:?} at {x} on row {row}"),
+                    &got.frame,
+                    &pack(&model),
+                );
+            }
+        }
     }
 }
