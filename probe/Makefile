@@ -43,3 +43,17 @@ clean:
 	rm -rf "$(BUILD)"
 
 .PHONY: all check clean kernchk
+
+all: $(BUILD)/pagecheck.8xk
+
+$(BUILD)/pagecheck.8xk: pagecheck.z80 printnum.inc ../app/src/farcall.inc ../app/src/header.inc ../app/src/equates.inc ../app/src/ram_map.inc
+	mkdir -p "$(BUILD)"
+	$(ASM) -L -I ../app/src -I . pagecheck.z80 $@
+
+check: check-pagecheck
+
+check-pagecheck: $(BUILD)/pagecheck.8xk
+	sh ../app/scripts/check-8xk.sh $(BUILD)/pagecheck.8xk pageschk
+	sh ../app/scripts/test-check-8xk.sh $(BUILD)/pagecheck.8xk pageschk
+
+.PHONY: check-pagecheck

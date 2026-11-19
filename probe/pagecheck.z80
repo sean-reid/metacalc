@@ -1,0 +1,702 @@
+#include "equates.inc"
+
+; The cross-page call on three code pages of one app. Runs these steps, one line each, and
+; stops at the first that fails with the values it saw:
+;   ports   ports 22h and 23h and the base page at entry, shown
+;   call    the entry page calls a routine on page 1 and on page 2
+;   nest    page 1 calls page 2 from inside a call, which calls back into page 0
+;   regs    A, F, BC, DE, HL, with carry and zero each set and clear, both ways
+;   irq     the nested calls again after a second spent on page 2 with interrupts on
+;   reps    the call, nest and regs steps 1000 times, with the count shown
+;   di      the same with interrupts off, a private stack in bank B and RAM page 3 in bank C,
+;           then with the stack in that page
+; Every OS call is on the entry page. Any key leaves.
+
+LEAF_K0 = 30h
+LEAF_K1 = 11h
+LEAF_K2 = 22h
+LEAF = 4100h
+SNOOP = 4108h
+HOP = 4130h
+REPS = 1000
+SPARE_PAGE = 3
+BANK_C_SUM = 3F00h
+STACK_C = 0FFE0h
+SAVE_C = 0FFC0h
+SAVE_C_SIZE = 32
+
+#ifndef PC_RAM
+PC_RAM          .equ $8806
+#endif
+PC_RAM_SIZE     .equ $E0
+PC_STACK_OFFSET .equ $60
+PC_STACK        .equ PC_RAM + PC_STACK_OFFSET
+PC_STACK_TOP    .equ PC_RAM + PC_RAM_SIZE
+
+RAM_WITHIN(PC_RAM, PC_RAM_SIZE, $8000, $C000, "PC_RAM runs past bank B")
+RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, UI_VARS, UI_VARS_SIZE, "PC_RAM and UI_VARS overlap")
+RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, UI_FRAME, UI_FRAME_SIZE, "PC_RAM and UI_FRAME overlap")
+RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "PC_RAM and KD_SCRATCH overlap")
+RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, FAR_VARS, FAR_VARS_SIZE, "PC_RAM and FAR_VARS overlap")
+RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, LIB_STATE, LIB_STATE_SIZE, "PC_RAM and LIB_STATE overlap")
+RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, FM_SCRATCH, FM_SCRATCH_SIZE, "PC_RAM and FM_SCRATCH overlap")
+
+#define PC_NEXT 0
+#macro PC_VAR(name, offset, size)
+RAM_VAR(name, PC_RAM, offset, size, PC_STACK_OFFSET, PC_NEXT, "the pagecheck variables overlap, leave a gap, or run past the stack")
+#define PC_NEXT eval(offset + size)
+#endmacro
+
+PC_VAR(pc_failed, $00, 1)
+PC_VAR(pc_k, $01, 1)
+PC_VAR(pc_case, $02, 1)
+PC_VAR(pc_base, $03, 1)
+PC_VAR(pc_p5, $04, 1)
+PC_VAR(pc_iff, $05, 1)
+PC_VAR(pc_seen_pg, $06, 1)
+PC_VAR(pc_row, $07, 1)
+PC_VAR(pc_steps, $08, 1)
+PC_VAR(pc_tick, $09, 1)
+PC_VAR(pc_step, $0A, 2)
+PC_VAR(pc_got, $0C, 2)
+PC_VAR(pc_want, $0E, 2)
+PC_VAR(pc_rep, $10, 2)
+PC_VAR(pc_sp, $12, 2)
+PC_VAR(pc_sum, $14, 2)
+PC_VAR(pc_iy, $16, 2)
+PC_VAR(pc_nest_hl, $18, 2)
+PC_VAR(P_TMP, $1A, 2)
+PC_VAR(P_TMP2, $1C, 1)
+PC_VAR(P_STR, $1D, 2)
+#macro PC_AT(offset)
+RAM_AT(offset, PC_STACK_OFFSET, PC_NEXT, "PC_AT must not go back or past the stack")
+#define PC_NEXT eval(offset)
+#endmacro
+PC_AT($20)
+PC_VAR(pc_seen, $20, 8)
+PC_VAR(pc_ret, $28, 8)
+PC_VAR(pc_set, $30, 8)
+PC_VAR(pc_reply, $38, 8)
+PC_VAR(pc_save, $40, SAVE_C_SIZE)
+
+pc_seen_af = pc_seen
+pc_seen_bc = pc_seen + 2
+pc_seen_de = pc_seen + 4
+pc_seen_hl = pc_seen + 6
+pc_ret_af = pc_ret
+pc_ret_bc = pc_ret + 2
+pc_ret_de = pc_ret + 4
+pc_ret_hl = pc_ret + 6
+pc_set_af = pc_set
+pc_set_bc = pc_set + 2
+pc_set_de = pc_set + 4
+pc_set_hl = pc_set + 6
+pc_reply_af = pc_reply
+pc_reply_bc = pc_reply + 2
+pc_reply_de = pc_reply + 4
+pc_reply_hl = pc_reply + 6
+
+STEP_PORTS = 1
+STEP_CALL  = 2
+STEP_NEST  = 4
+STEP_REGS  = 8
+STEP_IRQ   = 16
+STEP_REPS  = 32
+STEP_DI    = 64
+STEPS_ALL  = 127
+
+; The routines every page carries at LEAF, whatever else it holds. A = k + B + C, k being
+; the page's own constant.
+#macro PAGE_FNS(k)
+	.fill LEAF - $, 0
+leaf:
+	ld a, (leaf_k)
+	add a, b
+	add a, c
+	ret
+leaf_k:
+	.db k
+	.fill SNOOP - $, 0
+; Records what it was called with and the page it ran on, and returns the registers in pc_reply.
+snoop:
+	ld (pc_seen_hl), hl
+	ld (pc_seen_de), de
+	ld (pc_seen_bc), bc
+	push af
+	pop hl
+	ld (pc_seen_af), hl
+	in a, (6)
+	ld (pc_seen_pg), a
+	ld hl, (pc_reply_af)
+	push hl
+	ld bc, (pc_reply_bc)
+	ld de, (pc_reply_de)
+	ld hl, (pc_reply_hl)
+	pop af
+	ret
+	.fill HOP - $, 0
+; Changes the page itself, to page 2, which holds this same ret.
+hop:
+	ld a, (far_pg + 2)
+	out (6), a
+	ret
+#endmacro
+
+#define APP_NAME "pageschk"
+#include "header.inc"
+	jp start
+#include "farcall.inc"
+
+	PAGE_FNS(LEAF_K0)
+
+start:
+	call far_init
+	in a, (6)
+	ld (pc_base), a
+	push iy
+	pop hl
+	ld (pc_iy), hl
+	xor a
+	ld (pc_failed), a
+	ld (pc_steps), a
+	ld hl, 0
+	ld (pc_rep), hl
+	ld a, 0Ch
+	call putchar
+
+	call show_ports
+	ld a, STEP_PORTS
+	call mark
+
+	ld hl, text_call
+	call begin_step
+	ei
+	call test_call
+	ld a, STEP_CALL
+	call end_step
+
+	ld hl, text_nest
+	call begin_step
+	ei
+	call test_nest
+	ld a, STEP_NEST
+	call end_step
+
+	ld hl, text_regs
+	call begin_step
+	ei
+	call test_regs
+	ld a, STEP_REGS
+	call end_step
+
+	ld hl, text_irq
+	call begin_step
+	ei
+	ld ix, p2_spin
+	call far_page2
+	call test_nest
+	ld a, STEP_IRQ
+	call end_step
+
+	ld hl, text_reps
+	call begin_step
+	ld a, (curRow)
+	ld (pc_row), a
+	ld hl, 0
+	ld (pc_rep), hl
+	ld a, 100
+	ld (pc_tick), a
+	ei
+	call test_reps
+	ld hl, (pc_rep)
+	call show_count
+	ld a, ' '
+	call putchar
+	ld a, STEP_REPS
+	call end_step
+
+	ld hl, text_di
+	call begin_step
+	ei
+	call test_di
+	ld a, STEP_DI
+	call end_step
+
+	ld hl, text_pages
+	call putstr
+wait_key:
+	ei
+	halt
+	bcall(_GetCSC)
+	or a
+	jr z, wait_key
+	bjump(_JForceCmdNoChar)
+
+; Contract: A is one character, 0Ah for a new line, 0Ch to clear the screen and home the cursor.
+putchar:
+	cp 0Ah
+	jr z, newline
+	cp 0Ch
+	jr z, clear
+	bcall(_PutC)
+	ret
+newline:
+	ld a, (curRow)
+	inc a
+	ld (curRow), a
+	xor a
+	ld (curCol), a
+	ret
+clear:
+	bcall(_ClrLCDFull)
+	xor a
+	ld (curRow), a
+	ld (curCol), a
+	ret
+
+#include "printnum.inc"
+
+mark:
+	ld hl, pc_steps
+	or (hl)
+	ld (hl), a
+	ret
+
+show_ports:
+	ld hl, text_ports
+	call putstr
+	in a, (22h)
+	call hexbyte
+	ld hl, text_p23
+	call putstr
+	in a, (23h)
+	call hexbyte
+	ld hl, text_base
+	call putstr
+	ld a, (pc_base)
+	call hexbyte
+	ld a, 0Ah
+	jp putchar
+
+; In: HL = the step's name. Starts its line and remembers the name for a failure.
+begin_step:
+	ld (pc_step), hl
+	jp putstr
+
+; In: A = the step's bit. Ends the line with ok, or shows the failure and never returns.
+end_step:
+	ld c, a
+	ld a, (pc_failed)
+	or a
+	jr nz, show_fail
+	ld a, c
+	call mark
+	ld hl, text_ok
+	call putstr
+	ld a, 0Ah
+	jp putchar
+
+show_fail:
+	ld a, 0Ch
+	call putchar
+	ld hl, text_fail
+	call putstr
+	ld hl, (pc_step)
+	call putstr
+	ld hl, text_got
+	ld de, (pc_got)
+	call show_value
+	ld hl, text_want
+	ld de, (pc_want)
+	call show_value
+	ld hl, text_case
+	ld a, (pc_case)
+	call show_byte
+	ld hl, text_k
+	ld a, (pc_k)
+	call show_byte
+	ld hl, text_rep
+	ld de, (pc_rep)
+	call show_value
+	jp wait_key
+
+; In: HL = a label, DE = a value. Prints the label and the value on a line.
+show_value:
+	push de
+	call putstr
+	pop hl
+	call puthex
+	ld a, 0Ah
+	jp putchar
+
+; In: HL = a label, A = a value.
+show_byte:
+	ld e, a
+	ld d, 0
+	jr show_value
+
+; In: HL = got, DE = want. Records the first mismatch. Keeps BC.
+expect:
+	or a
+	push hl
+	sbc hl, de
+	pop hl
+	ret z
+	ld a, (pc_failed)
+	or a
+	ret nz
+	inc a
+	ld (pc_failed), a
+	ld (pc_got), hl
+	ld (pc_want), de
+	ret
+
+; In: HL = got, DE = want, B = a byte count. Records the first byte that differs.
+compare:
+	ld a, (de)
+	cp (hl)
+	jr nz, compare_bad
+	inc hl
+	inc de
+	djnz compare
+	ret
+compare_bad:
+	ld e, a
+	ld d, 0
+	ld l, (hl)
+	ld h, 0
+	jp expect
+
+; Prints the repetition count over the digits after the label, from the saved row.
+show_count:
+	push hl
+	ld a, (pc_row)
+	ld (curRow), a
+	ld a, 5
+	ld (curCol), a
+	pop hl
+	jp putdec
+
+test_call:
+	ld b, 3
+	ld c, 4
+	ld ix, leaf
+	call far_page1
+	ld l, a
+	ld h, 0
+	ld de, LEAF_K1 + 7
+	call expect
+	ld b, 3
+	ld c, 4
+	ld ix, leaf
+	call far_page2
+	ld l, a
+	ld h, 0
+	ld de, LEAF_K2 + 7
+	jp expect
+
+; Inputs that change with the repetition, so a stale result shows.
+test_nest:
+	ld a, (pc_rep)
+	ld b, a
+	ld a, (pc_rep + 1)
+	xor 5Ah
+	ld c, a
+	ld ix, p1_nest
+	call far_page1
+	ld (pc_nest_hl), hl
+	ld l, a
+	ld h, 0
+	ld a, LEAF_K1
+	add a, b
+	add a, c
+	ld e, a
+	ld d, 0
+	call expect
+	ld a, LEAF_K0
+	add a, b
+	add a, c
+	ld l, a
+	ld a, LEAF_K2
+	add a, b
+	add a, c
+	ld h, a
+	ex de, hl
+	ld hl, (pc_nest_hl)
+	jp expect
+
+#macro SNOOP_CALL(entry)
+	ld hl, (pc_set_af)
+	push hl
+	ld bc, (pc_set_bc)
+	ld de, (pc_set_de)
+	ld hl, (pc_set_hl)
+	ld ix, snoop
+	pop af
+	call entry
+	ld (pc_ret_hl), hl
+	ld (pc_ret_de), de
+	ld (pc_ret_bc), bc
+	push af
+	pop hl
+	ld (pc_ret_af), hl
+#endmacro
+
+snoop_p1:
+	SNOOP_CALL(far_page1)
+	ret
+snoop_p2:
+	SNOOP_CALL(far_page2)
+	ret
+
+; Checks one snoop call: the callee saw what was set, the caller got what was replied, the
+; callee ran on page base - k, and IY is as it was.
+verify:
+	ld hl, pc_seen
+	ld de, pc_set
+	ld b, 8
+	call compare
+	ld hl, pc_ret
+	ld de, pc_reply
+	ld b, 8
+	call compare
+	ld a, (pc_base)
+	ld hl, pc_k
+	sub (hl)
+	ld e, a
+	ld d, 0
+	ld a, (pc_seen_pg)
+	ld l, a
+	ld h, 0
+	call expect
+	push iy
+	pop hl
+	ld de, (pc_iy)
+	jp expect
+
+test_regs:
+	xor a
+	ld (pc_case), a
+regs_next:
+	ld l, a
+	ld h, 0
+	add hl, hl
+	add hl, hl
+	add hl, hl
+	add hl, hl
+	ld de, regs_rows
+	add hl, de
+	ld de, pc_set
+	ld bc, 16
+	ldir
+	ld a, 1
+	ld (pc_k), a
+	call snoop_p1
+	call verify
+	ld a, 2
+	ld (pc_k), a
+	call snoop_p2
+	call verify
+	ld a, (pc_case)
+	inc a
+	ld (pc_case), a
+	cp 8
+	jr nz, regs_next
+	ret
+
+pass:
+	call test_call
+	call test_nest
+	jp test_regs
+
+test_reps:
+	call pass
+	ld hl, (pc_rep)
+	inc hl
+	ld (pc_rep), hl
+	ld a, (pc_failed)
+	or a
+	ret nz
+	ld a, (pc_tick)
+	dec a
+	ld (pc_tick), a
+	jr nz, test_reps_more
+	ld a, 100
+	ld (pc_tick), a
+	call show_count
+	ei
+test_reps_more:
+	ld hl, (pc_rep)
+	ld de, REPS
+	or a
+	sbc hl, de
+	jr nz, test_reps
+	ret
+
+; Interrupts off, SP in bank B, RAM page 3 in bank C: the state of a kernel or fm session. The
+; far calls run first with the stack in bank B, then with it at the top of page 3. Bank C below
+; the stack must come out as it went in.
+test_di:
+	ld a, i
+	jp pe, di_on
+	ld a, i
+	jp pe, di_on
+	xor a
+	jr di_save
+di_on:
+	ld a, 1
+di_save:
+	di
+	ld (pc_iff), a
+	in a, (5)
+	ld (pc_p5), a
+	ld (pc_sp), sp
+	ld sp, PC_STACK_TOP
+	ld a, SPARE_PAGE
+	out (5), a
+	call sum_bank_c
+	ld (pc_sum), hl
+	ld b, 20
+	call passes
+	call sum_bank_c
+	ld de, (pc_sum)
+	call expect
+	ld hl, SAVE_C
+	ld de, pc_save
+	ld bc, SAVE_C_SIZE
+	ldir
+	ld sp, STACK_C
+	ld b, 20
+	call passes
+	ld sp, PC_STACK_TOP
+	call sum_bank_c
+	ld de, (pc_sum)
+	call expect
+	ld hl, pc_save
+	ld de, SAVE_C
+	ld bc, SAVE_C_SIZE
+	ldir
+	ld a, (pc_p5)
+	out (5), a
+	ld sp, (pc_sp)
+	ld a, (pc_iff)
+	or a
+	ret z
+	ei
+	ret
+
+passes:
+	push bc
+	call pass
+	pop bc
+	djnz passes
+	ret
+
+; Out: HL = the sum of the bytes of bank C below the stack area.
+sum_bank_c:
+	ld hl, 0C000h
+	ld bc, BANK_C_SUM
+	ld de, 0
+sum_next:
+	ld a, (hl)
+	add a, e
+	ld e, a
+	adc a, d
+	sub e
+	ld d, a
+	inc hl
+	dec bc
+	ld a, b
+	or c
+	jr nz, sum_next
+	ex de, hl
+	ret
+
+text_ports:
+	.db "22 ", 0
+text_p23:
+	.db " 23 ", 0
+text_base:
+	.db " B", 0
+text_call:
+	.db "call ", 0
+text_nest:
+	.db "nest ", 0
+text_regs:
+	.db "regs ", 0
+text_irq:
+	.db "irq ", 0
+text_reps:
+	.db "reps 00000 ", 0
+text_di:
+	.db "di ", 0
+text_ok:
+	.db "ok", 0
+text_pages:
+	.db "pages ok", 0
+text_fail:
+	.db "FAIL ", 0
+text_got:
+	.db "got  ", 0
+text_want:
+	.db "want ", 0
+text_case:
+	.db "case ", 0
+text_k:
+	.db "k    ", 0
+text_rep:
+	.db "rep  ", 0
+
+regs_rows:
+	.db $00, $35, $34, $12, $78, $56, $BC, $9A, $D7, $CA, $CB, $ED, $DD, $F3, $E6, $C0
+	.db $01, $60, $45, $13, $9A, $58, $EF, $9D, $D6, $9F, $BA, $EC, $3F, $FD, $B5, $C7
+	.db $40, $8B, $56, $14, $BC, $5A, $22, $A1, $97, $74, $A9, $EB, $19, $FF, $78, $FB
+	.db $41, $B6, $67, $15, $DE, $5C, $55, $A4, $96, $49, $98, $EA, $7B, $F9, $0F, $FE
+	.db $96, $E1, $78, $16, $00, $5F, $88, $A7, $41, $1E, $87, $E9, $A5, $FA, $D2, $FD
+	.db $97, $0C, $89, $17, $22, $61, $BB, $AA, $40, $F3, $76, $E8, $87, $C4, $E1, $F0
+	.db $D6, $37, $9A, $18, $44, $63, $EE, $AD, $01, $C8, $65, $E7, $E1, $C6, $B4, $F7
+	.db $D7, $62, $AB, $19, $66, $65, $21, $B1, $00, $9D, $54, $E6, $C3, $C0, $7B, $EB
+
+.fill 8000h - $, 0
+.org 4000h
+#define FAR_PAD
+#include "farcall.inc"
+	PAGE_FNS(LEAF_K1)
+
+; In: B, C. Out: A = page 1's constant + B + C, HL = (page 2's leaf result << 8) + page 0's
+; leaf result, both reached from here.
+p1_nest:
+	call leaf
+	ld d, a
+	ld ix, p2_nest
+	call far_page2
+	ld a, d
+	ret
+
+.fill 8000h - $, 0
+.org 4000h
+#include "farcall.inc"
+	PAGE_FNS(LEAF_K2)
+
+p2_nest:
+	call leaf
+	ld h, a
+	ld ix, leaf
+	call far_page0
+	ld l, a
+	ret
+
+; About a second at 6 MHz, with interrupts as the caller left them.
+p2_spin:
+	ld e, 4
+spin_outer:
+	ld bc, 62500
+spin_inner:
+	dec bc
+	ld a, b
+	or c
+	jp nz, spin_inner
+	dec e
+	jp nz, spin_outer
+	ret
+	.fill 1000, 0
