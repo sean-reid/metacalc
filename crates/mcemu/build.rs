@@ -464,6 +464,13 @@ fn main() {
         );
     }
     spasm(
+        Path::new("../../probe/ramprobe.z80"),
+        &out.join("ramprobe.bin"),
+        &[],
+        &["-I", "../../app/src", "-L"],
+    );
+    println!("cargo:rerun-if-changed=../../probe/ramprobe.z80");
+    spasm(
         Path::new("../../probe/storecheck.z80"),
         &out.join("storecheck.8xk"),
         &[],
