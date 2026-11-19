@@ -27,6 +27,31 @@ pub enum KernelError {
     BadSymbol,
 }
 
+impl KernelError {
+    /// Whether the error says only that the theorem's own proof is wrong, so its statement is still
+    /// one the kernel stands behind. Every other error leaves the statement, or whether it can be
+    /// decided at all, in doubt.
+    pub fn is_proof_rejection(self) -> bool {
+        match self {
+            KernelError::ForwardReference
+            | KernelError::StackUnderflow
+            | KernelError::BadBackReference
+            | KernelError::TypecodeMismatch
+            | KernelError::HypothesisMismatch
+            | KernelError::DisjointViolation
+            | KernelError::StackNotSingleton
+            | KernelError::WrongConclusion
+            | KernelError::LooseReference => true,
+            KernelError::Malformed
+            | KernelError::BadRecord
+            | KernelError::NotATheorem
+            | KernelError::OutOfMemory
+            | KernelError::WorkLimit
+            | KernelError::BadSymbol => false,
+        }
+    }
+}
+
 /// The most work one `verify` call may spend. Before the proof runs, the check on the reference
 /// list charges 1 per entry for the dummy check and 1 per comparison for the duplicate check,
 /// `r * (r + 1) / 2` for `r` entries, so a list longer than 670 entries cannot pass them within

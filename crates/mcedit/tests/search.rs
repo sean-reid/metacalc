@@ -182,3 +182,58 @@ fn auto_declines_goals_with_metavariables() {
     assert_eq!(s.auto(1, AUTO_DEPTH, AUTO_BUDGET), None);
     assert_eq!(s.auto(2, AUTO_DEPTH, AUTO_BUDGET), None);
 }
+
+const TWO_PROOFS: &str = "
+$c |- wff A $.
+wa $a wff A $.
+ax-1 $a |- A $.
+ax-2 $a |- A $.
+t $p |- A $= ax-1 $.
+";
+
+fn applied(ops: Option<Vec<Op>>) -> Vec<mcpack::mm::StmtId> {
+    ops.expect("auto finds a proof")
+        .iter()
+        .map(|op| match op {
+            Op::Apply { assertion, .. } => *assertion,
+            other => panic!("{other:?}"),
+        })
+        .collect()
+}
+
+#[test]
+fn auto_skips_what_the_session_is_told_to_and_finds_the_other_proof() {
+    let db = mcpack::mm::parse(TWO_PROOFS.as_bytes().to_vec()).unwrap();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "t");
+    assert_eq!(
+        applied(s.auto(0, AUTO_DEPTH, AUTO_BUDGET)),
+        [id(&db, "ax-1")]
+    );
+    s.skip([id(&db, "ax-1")]);
+    assert_eq!(
+        applied(s.auto(0, AUTO_DEPTH, AUTO_BUDGET)),
+        [id(&db, "ax-2")]
+    );
+    assert_eq!(
+        list(s.candidates(0, 99).unwrap()),
+        named(&db, &[("ax-2", 0)])
+    );
+    s.skip([]);
+    assert_eq!(
+        list(s.candidates(0, 99).unwrap()),
+        named(&db, &[("ax-1", 0), ("ax-2", 0)])
+    );
+}
+
+#[test]
+fn auto_with_everything_skipped_finds_nothing_and_leaves_no_operation() {
+    let db = mcpack::mm::parse(TWO_PROOFS.as_bytes().to_vec()).unwrap();
+    let g = grammar(&db);
+    let cat = catalog(&db, &g);
+    let mut s = session(&cat, "t");
+    s.skip([id(&db, "ax-1"), id(&db, "ax-2")]);
+    assert_eq!(s.auto(0, AUTO_DEPTH, AUTO_BUDGET), None);
+    assert!(s.ops().is_empty());
+}
