@@ -16,8 +16,8 @@
 ; calculator down. Call ui_set_font and ui_clear before the first draw. Registers not listed as
 ; destroyed are preserved, and IX, IY and the shadow registers are never touched. Counting
 ; the caller's return address, the stack needs 14 bytes for ui_list_row, 12 for ui_title and
-; ui_soft_keys, and 10 for the text-right and centred routines; an interrupt adds the
-; handler's pushes.
+; ui_soft_keys, 10 for the text-right and centred routines, and 8 for ui_bar; an interrupt adds
+; the handler's pushes.
 ;
 ; Fonts: every routine that draws or measures text reads the table given to ui_set_font. A
 ; table is what mcglyph z80 writes: a slot of 8 bytes per glyph, the width then seven row
@@ -32,8 +32,8 @@
 ;
 ; Routines (details at each): ui_set_font, ui_clear, ui_text, ui_text_width, ui_text_right,
 ; ui_text_centered, ui_invert, ui_invert_row, ui_marker, ui_title, ui_list_row, ui_soft_keys,
-; ui_blit. ui_blit waits on the busy flag, bit 7 of port 10h, before every LCD write, runs with
-; interrupts off and restores the caller's state, and leaves the controller in 8 bit mode with
+; ui_bar, ui_blit. ui_blit waits on the busy flag, bit 7 of port 10h, before every LCD write,
+; runs with interrupts off and restores the caller's state, and leaves the controller in 8 bit mode with
 ; increment mode 5, as TI-OS expects it.
 
 #ifndef UI_EMBEDDED
@@ -44,5 +44,6 @@
 #include "glyph.inc"
 #include "shapes.inc"
 #include "bars.inc"
+#include "progress.inc"
 #include "blit.inc"
 #include "font.inc"

@@ -168,6 +168,50 @@ parse_hyps_done:
 	ld (ix+D_PROOF+1),h
 	jp pr_skip
 
+; in: IX = descriptor of the record to apply, its page mapped. Charges what check_record will
+; do when its id is past the cache: 1 per pair of each list, then 1 per hypothesis and per symbol
+; of an essential one and of the conclusion, each charge at most $FFFF. Destroys AF BC DE HL.
+charge_record:
+	ld a,(ix+D_ID+1)
+	cp CACHE_IDS>>8
+	ret c
+	ld e,(ix+D_NDV)
+	ld d,(ix+D_NDV+1)
+	call work_charge
+	ld e,(ix+D_NEXTRA)
+	ld d,(ix+D_NEXTRA+1)
+	call work_charge
+	ld e,(ix+D_NCONC)
+	ld d,0
+	ld a,(ix+D_NHYPS)
+	or a
+	jr z,chr_go
+	ld b,a
+	ld l,(ix+D_HYPS)
+	ld h,(ix+D_HYPS+1)
+chr_hyp:
+	inc de
+	ld a,(hl)
+	inc hl
+	or a
+	jr nz,chr_essential
+	inc hl
+	jr chr_next
+chr_essential:
+	ld a,(hl)
+	inc hl
+	ld c,a
+	call add_hl_a
+	ld a,c
+	add a,e
+	ld e,a
+	jr nc,chr_next
+	inc d
+chr_next:
+	djnz chr_hyp
+chr_go:
+	jp work_charge
+
 ; in: IX = descriptor of the record just parsed, its page mapped.
 ; out: returns if the record passes check_record, using and filling the cache.
 require_sound:

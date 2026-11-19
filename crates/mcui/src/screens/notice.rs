@@ -33,16 +33,7 @@ impl Notice {
 
     pub fn draw(&self, canvas: &mut Canvas) {
         canvas.title(&self.title, "");
-        let lines: Vec<String> = self
-            .lines
-            .iter()
-            .flat_map(|line| wrap(line, TEXT_WIDTH))
-            .take(CONTENT_ROWS)
-            .collect();
-        let first = 1 + (CONTENT_ROWS - lines.len()) / 2;
-        for (i, line) in lines.iter().enumerate() {
-            canvas.text_centered(first + i, line);
-        }
+        body(canvas, &self.lines);
         canvas.soft_keys(KEYS);
     }
 
@@ -50,5 +41,18 @@ impl Notice {
         State::Notice {
             title: self.title.clone(),
         }
+    }
+}
+
+/// Draws `lines` wrapped and centred in the content rows.
+pub(super) fn body<S: AsRef<str>>(canvas: &mut Canvas, lines: &[S]) {
+    let lines: Vec<String> = lines
+        .iter()
+        .flat_map(|line| wrap(line.as_ref(), TEXT_WIDTH))
+        .take(CONTENT_ROWS)
+        .collect();
+    let first = 1 + (CONTENT_ROWS - lines.len()) / 2;
+    for (i, line) in lines.iter().enumerate() {
+        canvas.text_centered(first + i, line);
     }
 }

@@ -114,7 +114,12 @@ SUBST               .equ KERNEL_RAM_HIGH+$000
 STACK_BUF           .equ KERNEL_RAM_HIGH+$800
 SAVED_BUF           .equ KERNEL_RAM_HIGH+$1400
 
+#ifndef CACHE_IDS
 CACHE_IDS           .equ $2000
+#endif
+#if CACHE_IDS & $FF
+ .error "CACHE_IDS must be a multiple of $100, the id compares test its high byte"
+#endif
 CAP_STACK_SYMS      .equ $0C00
 CAP_STACK_ENTRIES   .equ 256
 CAP_SAVED_SYMS      .equ $0C00
