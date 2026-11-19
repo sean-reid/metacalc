@@ -16,7 +16,7 @@ $(BUILD)/sparecheck.8xk: sparecheck.z80 sparecore.inc sparescreen.inc printnum.i
 	mkdir -p "$(BUILD)"
 	$(ASM) -I ../app/src -I . sparecheck.z80 $@
 
-$(BUILD)/storecheck.8xk: storecheck.z80 storedraw.inc ../app/src/store.inc ../app/src/store_count.inc ../app/src/store_open.inc ../app/src/header.inc ../app/src/equates.inc ../app/src/ram_map.inc
+$(BUILD)/storecheck.8xk: storecheck.z80 storeram.inc storedraw.inc ../app/src/store.inc ../app/src/store_count.inc ../app/src/store_open.inc ../app/src/header.inc ../app/src/equates.inc ../app/src/ram_map.inc
 	mkdir -p "$(BUILD)"
 	"$(SPASM)" -I ../app/src -I . storecheck.z80 $@
 

@@ -3,13 +3,17 @@
 VERSION    = 2
 BANKC_PORT = 05h
 
+#ifndef S_PORT5
 S_PORT5  = appBackUpScreen
+#endif
 S_PAGE   = S_PORT5 + 1
 S_ADDR   = S_PORT5 + 2
 S_CUR    = S_PORT5 + 3
 S_ACC    = S_PORT5 + 4
 S_RES    = S_PORT5 + 8
 S_PRE    = S_PORT5 + 16
+RAM_SIZE = 24
+RAM_WITHIN(S_PORT5, RAM_SIZE, $8000, $C000, "ramprobe's RAM runs past bank B")
 
 FIRST_PAGE = 2
 END_PAGE   = 8

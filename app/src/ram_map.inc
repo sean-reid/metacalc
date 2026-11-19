@@ -1,5 +1,5 @@
 ; The RAM map: the regions of RAM the kernel, the kernel driver, the UI and the reader use, in
-; address order. The probes that keep their own scratch (probe/storecheck.z80) are not in it.
+; address order. The probes keep scratch outside it and check it against the regions of what they link.
 ; Each region is NAME for its base, NAME_SIZE for its size, and can be moved with -DNAME=$address.
 ; The file that owns a region lays out the bytes inside it. Assembling any image that includes
 ; this file fails when two regions overlap or a region leaves its bank.

@@ -442,6 +442,7 @@ fn main() {
     assemble_ui(&out);
     assemble_reader(&out);
     assemble_layout_probes(&out);
+    assemble_probe_ram_probes(&out);
     spasm(
         &Path::new("tests/routines").join("launch_state.z80"),
         &out.join("launch_state.8xk"),
@@ -527,6 +528,7 @@ fn main() {
     ] {
         println!("cargo:rerun-if-changed={f}");
     }
+    println!("cargo:rerun-if-changed=../../probe/storeram.inc");
     println!("cargo:rerun-if-changed=../../probe/sparecore.inc");
     println!("cargo:rerun-if-changed=../../probe/sparescreen.inc");
     println!("cargo:rerun-if-changed=../../probe/printnum.inc");
@@ -1000,6 +1002,150 @@ fn expect(source: &Path, out: &Path, defines: &[&str], args: &[&str], want: Opti
             source.display(),
             want.unwrap_or("success")
         )),
+    }
+}
+
+/// Each probe refuses RAM of its own that leaves bank B, overlaps another of its regions or overlaps
+/// a map region its image links, and accepts the default addresses and a move clear of them. The
+/// canvas, fm, the reader and the kernel driver are each included before storecheck's regions.
+fn assemble_probe_ram_probes(out: &Path) {
+    let args = [
+        "-I",
+        "../../app/src",
+        "-I",
+        "../../probe",
+        "-I",
+        "../../kernel",
+        "-I",
+        "../../ui",
+        "-I",
+        "../..",
+    ];
+    for (probe, defines, want) in [
+        ("ramprobe", &[][..], None),
+        ("ramprobe", &["S_PORT5=$8100"][..], None),
+        (
+            "ramprobe",
+            &["S_PORT5=$7FF0"][..],
+            Some("ramprobe's RAM runs past bank B"),
+        ),
+        (
+            "ramprobe",
+            &["S_PORT5=$BFE9"][..],
+            Some("ramprobe's RAM runs past bank B"),
+        ),
+        ("sparecheck", &[][..], None),
+        ("sparecheck", &["KERNEL_RAM_LOW=$C000"][..], None),
+        (
+            "sparecheck",
+            &["S_PORT5=$7FF0"][..],
+            Some("sparecheck's RAM runs past bank B"),
+        ),
+        (
+            "sparecheck",
+            &["S_PORT5=$BFEE"][..],
+            Some("sparecheck's RAM runs past bank B"),
+        ),
+        (
+            "sparecheck",
+            &["KERNEL_RAM_LOW=$9880"][..],
+            Some("sparecheck's RAM overlaps KERNEL_RAM_LOW"),
+        ),
+        (
+            "sparecheck",
+            &["KERNEL_RAM_HIGH=$9880"][..],
+            Some("sparecheck's RAM overlaps KERNEL_RAM_HIGH"),
+        ),
+    ] {
+        expect(
+            Path::new(&format!("../../probe/{probe}.z80")),
+            &out.join("probe_ram_probe.bin"),
+            defines,
+            &args,
+            want,
+        );
+    }
+
+    let driver = fs::read_to_string("tests/routines/kerncheck_test.z80").unwrap();
+    let with = |part: &str| format!("#include \"equates.inc\"\n#include \"{part}\"\n");
+    let images = [
+        ("store_alone", "#include \"equates.inc\"\n".to_string()),
+        ("store_canvas", with("ui/ram.inc")),
+        ("store_fm", with("fm/ram.inc")),
+        ("store_reader", with("lib/ram.inc")),
+        ("store_driver", driver),
+    ];
+    let clear = ["SCRIPT=$8C00", "LOG=$9B80"];
+    for (name, head) in &images {
+        let source = out.join(format!("{name}_probe.z80"));
+        fs::write(&source, format!("{head}#include \"storeram.inc\"\n")).unwrap();
+        let bin = out.join(format!("{name}_probe.bin"));
+        let ui = "storecheck's RAM overlaps UI_VARS";
+        let frame = "storecheck's RAM overlaps UI_FRAME";
+        let fm = "storecheck's RAM overlaps FM_SCRATCH";
+        let reader = "storecheck's RAM overlaps LIB_STATE";
+        let kd = "storecheck's RAM overlaps KD_SCRATCH";
+        let cases: Vec<(Vec<&str>, Option<&str>)> = match *name {
+            "store_alone" => vec![(vec![], None)],
+            "store_canvas" => vec![
+                (vec![], Some(ui)),
+                (clear.to_vec(), None),
+                (vec!["SCRIPT=$8C00", "STATE=$86F0"], Some(ui)),
+                (vec!["SCRIPT=$8C00", "LOG=$86F0"], Some(ui)),
+                (vec!["SCRIPT=$9340", "LOG=$9B80"], Some(frame)),
+                (vec!["SCRIPT=$8C00", "STATE=$9340"], Some(frame)),
+                (vec!["SCRIPT=$8C00", "LOG=$9340"], Some(frame)),
+            ],
+            "store_fm" => vec![
+                (vec![], Some(fm)),
+                (vec!["SCRIPT=$8C00"], None),
+                (vec!["SCRIPT=$8C00", "STATE=$8710"], Some(fm)),
+                (vec!["SCRIPT=$8C00", "LOG=$8710"], Some(fm)),
+            ],
+            "store_reader" => vec![
+                (vec![], Some(reader)),
+                (vec!["LOG=$9B80"], None),
+                (vec!["LOG=$9B80", "STATE=$98A0"], Some(reader)),
+                (vec!["LOG=$9B80", "SCRIPT=$98A0"], Some(reader)),
+            ],
+            _ => vec![
+                (vec![], Some(kd)),
+                (vec!["LOG=$9B80"], None),
+                (vec!["LOG=$9B80", "STATE=$9880"], Some(kd)),
+                (vec!["LOG=$9B80", "SCRIPT=$9880"], Some(kd)),
+            ],
+        };
+        for (defines, want) in cases {
+            expect(&source, &bin, &defines, &args, want);
+        }
+    }
+
+    let source = out.join("store_alone_probe.z80");
+    for (defines, want) in [
+        (
+            &["SCRIPT=$7F00"][..],
+            "storecheck's SCRIPT runs past bank B",
+        ),
+        (
+            &["SCRIPT=$BF00"][..],
+            "storecheck's SCRIPT runs past bank B",
+        ),
+        (&["STATE=$BFE0"][..], "storecheck's STATE runs past bank B"),
+        (&["LOG=$BF00"][..], "storecheck's LOG runs past bank B"),
+        (
+            &["STATE=$8700"][..],
+            "storecheck's SCRIPT and STATE overlap",
+        ),
+        (&["LOG=$8700"][..], "storecheck's SCRIPT and LOG overlap"),
+        (&["STATE=$9880"][..], "storecheck's STATE and LOG overlap"),
+    ] {
+        expect(
+            &source,
+            &out.join("store_alone_probe.bin"),
+            defines,
+            &args,
+            Some(want),
+        );
     }
 }
 
