@@ -463,6 +463,24 @@ fn main() {
             ],
         );
     }
+    match spasm_try(
+        &Path::new("tests/routines").join("kerncheck_test.z80"),
+        &out.join("kerncheck_probe.bin"),
+        &["KD_SCRATCH_SIZE=35"],
+        &[
+            "-I",
+            "../../app/src",
+            "-I",
+            "../../probe",
+            "-I",
+            "../../kernel",
+        ],
+    ) {
+        Err(why) if why.contains("the driver's scratch runs past KD_SCRATCH_SIZE") => {}
+        other => fail(&format!(
+            "a driver scratch too small for its variables gave {other:?}"
+        )),
+    }
     let font_dir = out.join("ui_font");
     spasm(
         &Path::new("tests/routines").join("kerncheck_test.z80"),
@@ -571,7 +589,7 @@ fn assemble_kernel(out: &Path) {
             &["-I", include, "-I", "../../app/src"],
         )
     };
-    let overlap = "the low and high regions overlap";
+    let overlap = "KERNEL_RAM_LOW and KERNEL_RAM_HIGH overlap";
     for (defines, refusal) in [
         (&["KERNEL_RAM_LOW=$C000", "KERNEL_RAM_HIGH=$E000"][..], None),
         (&["KERNEL_RAM_LOW=$EE00", "KERNEL_RAM_HIGH=$C000"][..], None),
@@ -583,7 +601,7 @@ fn assemble_kernel(out: &Path) {
         (&["KERNEL_RAM_LOW=$D000"][..], Some(overlap)),
         (
             &["KERNEL_RAM_LOW=$BF00"][..],
-            Some("KERNEL_RAM_LOW must be in bank C"),
+            Some("KERNEL_RAM_LOW runs past bank C"),
         ),
         (
             &["KERNEL_RAM_LOW=$C080"][..],
@@ -591,15 +609,15 @@ fn assemble_kernel(out: &Path) {
         ),
         (
             &["KERNEL_RAM_LOW=$EF00"][..],
-            Some("the low region does not fit below $10000"),
+            Some("KERNEL_RAM_LOW runs past bank C"),
         ),
         (
             &["KERNEL_RAM_HIGH=$BF00"][..],
-            Some("KERNEL_RAM_HIGH must be in bank C"),
+            Some("KERNEL_RAM_HIGH runs past bank C"),
         ),
         (
             &["KERNEL_RAM_HIGH=$E100"][..],
-            Some("the high region does not fit below $10000"),
+            Some("KERNEL_RAM_HIGH runs past bank C"),
         ),
         (
             &["KERNEL_RAM_HIGH=$D880"][..],
@@ -690,34 +708,56 @@ fn assemble_ui(out: &Path) {
             fail(&format!("spasm failed on the canvas image {name}: {why}"));
         }
     }
-    match assemble(&["UI_VARS=$9400"], &out.join("ui_probe.bin")) {
-        Err(why) if why.contains("UI_FRAME and UI_VARS overlap") => {}
-        other => fail(&format!(
-            "overlapping canvas blocks gave {other:?}, not an overlap error"
-        )),
-    }
     for (defines, want) in [
-        (&["UI_VARS=$9340"][..], "UI_FRAME and UI_VARS overlap"),
-        (&["UI_VARS=$9880"][..], "UI_VARS and KD_SCRATCH overlap"),
-        (&["UI_VARS=$9B60"][..], "UI_VARS and LIB_STATE overlap"),
-        (&["UI_FRAME=$9860"][..], "UI_FRAME and KD_SCRATCH overlap"),
-        (&["UI_FRAME=$9B00"][..], "UI_FRAME and LIB_STATE overlap"),
-        (&["LIB_STATE=$9890"][..], "KD_SCRATCH and LIB_STATE overlap"),
-        (&["UI_VARS=$BFF0"][..], "UI_VARS runs past bank B"),
-        (&["UI_VARS=$7FF0"][..], "UI_VARS runs past bank B"),
+        (&["UI_VARS=$9326"][..], None),
+        (&["UI_VARS=$9640"][..], None),
+        (&["UI_FRAME=$9572"][..], None),
+        (&["UI_FRAME=$9B6C"][..], None),
+        (&["KD_SCRATCH=$9640"][..], None),
+        (&["LIB_STATE=$9896"][..], None),
+        (&["KERNEL_RAM_HIGH=$D700"][..], None),
+        (&["UI_VARS=$9340"][..], Some("UI_FRAME and UI_VARS overlap")),
+        (
+            &["UI_VARS=$9880"][..],
+            Some("UI_VARS and KD_SCRATCH overlap"),
+        ),
+        (
+            &["UI_VARS=$9B60"][..],
+            Some("UI_VARS and LIB_STATE overlap"),
+        ),
+        (
+            &["UI_FRAME=$9860"][..],
+            Some("UI_FRAME and KD_SCRATCH overlap"),
+        ),
+        (
+            &["UI_FRAME=$9B00"][..],
+            Some("UI_FRAME and LIB_STATE overlap"),
+        ),
+        (
+            &["LIB_STATE=$9890"][..],
+            Some("KD_SCRATCH and LIB_STATE overlap"),
+        ),
+        (&["UI_VARS=$BFF0"][..], Some("UI_VARS runs past bank B")),
+        (&["UI_VARS=$7FF0"][..], Some("UI_VARS runs past bank B")),
         (
             &["KERNEL_RAM_HIGH=$C000"][..],
-            "KERNEL_RAM_LOW and KERNEL_RAM_HIGH overlap",
+            Some("KERNEL_RAM_LOW and KERNEL_RAM_HIGH overlap"),
         ),
         (
             &["KERNEL_RAM_LOW=$F000"][..],
-            "KERNEL_RAM_LOW runs past bank C",
+            Some("KERNEL_RAM_LOW runs past bank C"),
+        ),
+        (
+            &["UI_VARS_SIZE=$19"][..],
+            Some("the UI variables run past UI_VARS_SIZE"),
         ),
     ] {
-        match assemble(defines, &out.join("ui_probe.bin")) {
-            Err(why) if why.contains(want) => {}
-            other => fail(&format!(
-                "the RAM map with {defines:?} gave {other:?}, wanted {want}"
+        match (assemble(defines, &out.join("ui_probe.bin")), want) {
+            (Ok(()), None) => {}
+            (Err(why), Some(want)) if why.contains(want) => {}
+            (got, _) => fail(&format!(
+                "the RAM map with {defines:?} gave {got:?}, wanted {}",
+                want.unwrap_or("success")
             )),
         }
     }
@@ -784,6 +824,19 @@ fn assemble_reader(out: &Path) {
         (&["LIB_BOUNCE=$C500"][..], None),
         (&["LIB_BOUNCE=$D600"][..], None),
         (&["LIB_BOUNCE=$DF00"][..], None),
+        (&["KERNEL_RAM_LOW=$EE00", "KERNEL_RAM_HIGH=$C100"][..], None),
+        (
+            &[
+                "KERNEL_RAM_LOW=$EE00",
+                "KERNEL_RAM_HIGH=$C100",
+                "LIB_BOUNCE=$E100",
+            ][..],
+            Some(regions),
+        ),
+        (
+            &["LIB_STATE_SIZE=$2CF"][..],
+            Some("the reader's state runs past LIB_STATE_SIZE"),
+        ),
         (&["LIB_BOUNCE=$FE80", "LIB_BOUNCE_ANYWHERE"][..], None),
         (
             &["LIB_BOUNCE=$BF00"][..],

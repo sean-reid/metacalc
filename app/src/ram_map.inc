@@ -17,7 +17,9 @@
 #ifndef UI_VARS
 UI_VARS             .equ $86EC
 #endif
+#ifndef UI_VARS_SIZE
 UI_VARS_SIZE        .equ $1A
+#endif
 #ifndef UI_FRAME
 UI_FRAME            .equ $9340
 #endif
@@ -25,11 +27,15 @@ UI_FRAME_SIZE       .equ 768
 #ifndef KD_SCRATCH
 KD_SCRATCH          .equ $9872
 #endif
+#ifndef KD_SCRATCH_SIZE
 KD_SCRATCH_SIZE     .equ 36
+#endif
 #ifndef LIB_STATE
 LIB_STATE           .equ $989C
 #endif
+#ifndef LIB_STATE_SIZE
 LIB_STATE_SIZE      .equ $2D0
+#endif
 #ifndef KERNEL_RAM_LOW
 KERNEL_RAM_LOW      .equ $C500
 #endif
@@ -38,13 +44,20 @@ LOW_SIZE            .equ $1200
 KERNEL_RAM_HIGH     .equ $DF00
 #endif
 HIGH_SIZE           .equ $2000
-#ifndef LIB_BOUNCE
-LIB_BOUNCE          .equ $FE00
-#endif
 LIB_BOUNCE_SIZE     .equ $100
+#ifndef LIB_BOUNCE
+LIB_BOUNCE          .equ KERNEL_RAM_HIGH + HIGH_SIZE - LIB_BOUNCE_SIZE
+#endif
 
 #macro RAM_DISJOINT(a_base, a_size, b_base, b_size, message)
 #if (a_base < (b_base + b_size)) && (b_base < (a_base + a_size))
+ .error message
+#endif
+#endmacro
+
+#macro RAM_VAR(name, base, offset, size, limit, message)
+name .equ base + offset
+#if (offset + size) > limit
  .error message
 #endif
 #endmacro

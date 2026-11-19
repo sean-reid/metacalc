@@ -19,28 +19,29 @@ KD_MORE       = 0FFh
 KD_INTERRUPT  = 14
 
 K_PARAMS     = libPage
-K_LIMITS     = K_PARAMS + 1
-K_COUNT      = K_PARAMS + 9
-K_CHUNKS     = K_PARAMS + 11
-K_DONE       = K_PARAMS + 12
-K_ACCEPTED   = K_PARAMS + 14
-K_FIRST      = K_PARAMS + 16
-K_FIRST_ST   = K_PARAMS + 18
-K_HAVE_FIRST = K_PARAMS + 19
-K_INIT       = K_PARAMS + 20
-K_CRC_STATE  = K_PARAMS + 21
-K_CRC        = K_PARAMS + 22
-K_CHUNK      = K_PARAMS + 26
-K_STOPPED    = K_PARAMS + 27
-K_STOP_AT    = K_PARAMS + 28
-K_SPEED      = K_PARAMS + 30
-P_TMP        = K_PARAMS + 31
-P_TMP2       = K_PARAMS + 33
-P_STR        = K_PARAMS + 34
-K_END        = K_PARAMS + 36
-#if ((K_END - K_PARAMS) < KD_SCRATCH_SIZE) || ((K_END - K_PARAMS) > KD_SCRATCH_SIZE)
- .error "KD_SCRATCH_SIZE in ram_map.inc must be K_END - K_PARAMS"
-#endif
+#macro KD_VAR(name, offset, size)
+RAM_VAR(name, K_PARAMS, offset, size, KD_SCRATCH_SIZE, "the driver's scratch runs past KD_SCRATCH_SIZE in ram_map.inc")
+#endmacro
+
+KD_VAR(K_LIMITS, 1, 8)
+KD_VAR(K_COUNT, 9, 2)
+KD_VAR(K_CHUNKS, 11, 1)
+KD_VAR(K_DONE, 12, 2)
+KD_VAR(K_ACCEPTED, 14, 2)
+KD_VAR(K_FIRST, 16, 2)
+KD_VAR(K_FIRST_ST, 18, 1)
+KD_VAR(K_HAVE_FIRST, 19, 1)
+KD_VAR(K_INIT, 20, 1)
+KD_VAR(K_CRC_STATE, 21, 1)
+KD_VAR(K_CRC, 22, 4)
+KD_VAR(K_CHUNK, 26, 1)
+KD_VAR(K_STOPPED, 27, 1)
+KD_VAR(K_STOP_AT, 28, 2)
+KD_VAR(K_SPEED, 30, 1)
+KD_VAR(P_TMP, 31, 2)
+KD_VAR(P_TMP2, 33, 1)
+KD_VAR(P_STR, 34, 2)
+K_END        = K_PARAMS + KD_SCRATCH_SIZE
 
 CRC_NONE    = 0
 CRC_OK      = 1

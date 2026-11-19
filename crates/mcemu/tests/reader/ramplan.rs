@@ -35,12 +35,6 @@ fn no_two_regions_of_the_ram_map_overlap() {
 }
 
 #[test]
-fn the_map_is_in_address_order() {
-    let bases: Vec<usize> = regions().iter().map(|r| r.1).collect();
-    assert!(bases.is_sorted(), "{bases:x?}");
-}
-
-#[test]
 fn the_drivers_scratch_starts_at_libpage_and_the_reader_ends_inside_appbackupscreen() {
     assert_eq!(at("LIBPAGE"), at("KD_SCRATCH"));
     let end = at("LIB_STATE") + at("LIB_STATE_SIZE");

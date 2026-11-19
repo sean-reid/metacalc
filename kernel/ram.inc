@@ -14,25 +14,8 @@ KERNEL_RAM_PAGE             .equ 3
 #if KERNEL_RAM_HIGH & $FF
  .error "KERNEL_RAM_HIGH must be a multiple of $100"
 #endif
-#if KERNEL_RAM_LOW < $C000
- .error "KERNEL_RAM_LOW must be in bank C"
-#endif
-#if KERNEL_RAM_HIGH < $C000
- .error "KERNEL_RAM_HIGH must be in bank C"
-#endif
 KERNEL_RAM_LOW_END          .equ KERNEL_RAM_LOW+LOW_SIZE
 KERNEL_RAM_HIGH_END         .equ KERNEL_RAM_HIGH+HIGH_SIZE
-#if KERNEL_RAM_LOW_END > $10000
- .error "the low region does not fit below $10000"
-#endif
-#if KERNEL_RAM_HIGH_END > $10000
- .error "the high region does not fit below $10000"
-#endif
-#if KERNEL_RAM_LOW < KERNEL_RAM_HIGH_END
-#if KERNEL_RAM_HIGH < KERNEL_RAM_LOW_END
- .error "the low and high regions overlap"
-#endif
-#endif
 KERNEL_LIB_PAGE             .equ KERNEL_RAM_LOW+$00
 KERNEL_LIMIT_STACK_SYMS     .equ KERNEL_RAM_LOW+$01
 KERNEL_LIMIT_STACK_ENTRIES  .equ KERNEL_RAM_LOW+$03

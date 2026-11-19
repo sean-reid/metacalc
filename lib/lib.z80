@@ -5,8 +5,8 @@
 ; nothing it reads past the bounds it checks.
 ;
 ; Code runs from flash in bank A and is position dependent. Assembling this file alone places it
-; at $4000, with -I at the repository root so that "lib/ram.inc" is found; an including file
-; defines LIB_EMBEDDED first and places the code itself. Either way LIB_FONT_FINGERPRINT (or
+; at $4000, with -I at the repository root and at app/src so that "lib/ram.inc" and ram_map.inc
+; are found; an including file defines LIB_EMBEDDED first and places the code itself. Either way LIB_FONT_FINGERPRINT (or
 ; UI_FONT_FINGERPRINT, already assembled from the font include) must be defined before this file.
 ;
 ; Memory. The app's RAM (page 81h) is in bank B, which is also where a library page has to be
@@ -14,8 +14,8 @@
 ; copies in two hops through a bounce buffer on the spare RAM page (default page 3, mapped in
 ; bank C through port 5): flash to the bounce buffer with the library page in bank B, then the
 ; bounce buffer to the caller's buffer with the caller's bank B back.
-;   LIB_BOUNCE, default $FE00, 256 bytes: the last 256 bytes of the kernel's saved-symbols
-;     buffer, which is the end of the kernel's high region. The kernel uses that buffer only
+;   LIB_BOUNCE, default $FE00 with the kernel's regions in place: the last 256 bytes of the
+;     kernel's saved-symbols buffer, which is the end of the kernel's high region. The kernel uses that buffer only
 ;     during a kernel_verify call, so a reader call between two kernel calls leaves the kernel
 ;     alone; no other byte of the spare page and no byte of page 80h is written.
 ;   LIB_STATE, default $989C, 720 bytes, in bank B after the kernel driver's scratch in appBackUpScreen:
