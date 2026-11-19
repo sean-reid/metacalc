@@ -100,6 +100,10 @@ calculator_attached() {
 	fi
 }
 
+# What mcsend says with no calculator: on Linux without a USB bus (nothing under /dev/bus/usb) libusb cannot start.
+expected="no TI-84 Plus found on USB"
+if [ "$os" = linux ] && [ -z "$(ls -A /dev/bus/usb 2>/dev/null)" ]; then expected="this computer has no USB bus"; fi
+
 # install SHELL VERSION [NAME=value...]: runs install.sh with output in $tmp/out and its exit status in $code.
 install() {
 	shell=$1 version=$2
@@ -138,7 +142,7 @@ for sh_name in $shells; do
 		echo "note $name: a TI calculator is on USB, so the run that reaches mcsend is skipped and nothing is sent"
 	else
 		install "$shell" v1.0.0
-		if [ "$want_exit" -ne 0 ] && [ "$code" = "$want_exit" ] && grep -qxF "$nocalc" "$tmp/out" && grep -q 'no TI-84 Plus found on USB' "$tmp/out"; then
+		if [ "$want_exit" -ne 0 ] && [ "$code" = "$want_exit" ] && grep -qxF "$nocalc" "$tmp/out" && grep -q "$expected" "$tmp/out"; then
 			pass "$name mcsend's message and exit status $code come through"
 		else
 			fail "$name expected exit $want_exit and the line '$nocalc', got exit $code: $(cat "$tmp/out")"
