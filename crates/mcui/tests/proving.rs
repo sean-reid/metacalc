@@ -987,6 +987,7 @@ fn a_saved_proof_that_applies_a_rejected_theorem_is_refused() {
         ui.restore_proof(saved.clone()),
         Err(mcui::RestoreError::Unreadable(refused))
     );
+    assert_eq!(ui.saved_proofs().count(), 0);
     let clean = crafted(&sound, "ta1", &["a1i"], vec![1]);
     let mut ui = ui_over(sound, &[], &[]);
     assert_eq!(ui.restore_proof(clean), Ok(()));

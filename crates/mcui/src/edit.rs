@@ -80,12 +80,13 @@ fn barred(lib: &Lib) -> Vec<StmtId> {
         .collect()
 }
 
-/// Whether some operation of `session` applies a theorem of `barred`.
+/// Whether some operation of `session` cites a theorem of `barred`.
 fn rests_on(session: &Session<'_>, barred: &[StmtId]) -> bool {
-    session
-        .ops()
-        .iter()
-        .any(|op| matches!(op, Op::Apply { assertion, .. } if barred.contains(assertion)))
+    session.ops().iter().any(|op| match op {
+        Op::Apply { assertion, .. } => barred.contains(assertion),
+        Op::Refine { syntax, .. } => barred.contains(syntax),
+        _ => false,
+    })
 }
 
 fn refusal(error: &Error) -> &'static str {
