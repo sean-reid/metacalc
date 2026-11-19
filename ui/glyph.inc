@@ -20,15 +20,12 @@ tw_loop:
 	inc hl
 	or a
 	jr z,tw_done
-	rlca
-	rlca
-	rlca
-	ld c,a
-	and 7
-	ld b,a
-	xor c
-	ld c,a
 	push hl
+	ld l,a
+	ld h,ui_toff>>8
+	ld c,(hl)
+	inc h
+	ld b,(hl)
 	ld hl,(ui_fontp)
 	add hl,bc
 	ld a,(hl)
