@@ -5,6 +5,7 @@
 //! calculator's screens with these frames pixel for pixel.
 
 pub mod canvas;
+pub mod caps;
 pub mod data;
 mod edit;
 pub mod expr;

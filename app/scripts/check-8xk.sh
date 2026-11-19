@@ -155,8 +155,10 @@ def verdict(data):
     f = 0
     if rest[:1] == b"\x01" and rest[1:2] in (b"\x01", b"\x02", b"\x03"):
         f, rest = rest[1], rest[2:]
+        trailer = "01 0%d" % f
     elif rest[:1] == b"\x00":
         rest = rest[1:]
+        trailer = "00"
     else:
         return "field"
     if rest.strip(b"\xff"):
@@ -170,7 +172,9 @@ def verdict(data):
         m *= 2
     if f in (0, 1):
         m = MODULUS - m
-    return str(n) if pow(int.from_bytes(sig, "little"), 2, MODULUS) == m else "verify"
+    if pow(int.from_bytes(sig, "little"), 2, MODULUS) != m:
+        return "verify"
+    return "%d:%s" % (n, trailer)
 
 
 print(verdict(bytes.fromhex(sys.stdin.read())))
@@ -180,8 +184,8 @@ case $verdict in
 	leading) fail "the signature has a zero byte at the top, which the signer never writes" ;;
 	range) fail "the signature is not below the modulus, so the signer cannot have written it" ;;
 	verify) fail "the signature does not verify against the data" ;;
-	[0-9]*) siglen=$verdict ;;
+	[0-9]*) siglen=${verdict%%:*}; trailer=${verdict#*:} ;;
 	*) fail "the signature check failed: $verdict" ;;
 esac
 
-echo "check-8xk: ok: $f ($(wc -c < "$f" | tr -d ' ') bytes, $pages pages, name $name, $siglen-byte signature)"
+echo "check-8xk: ok: $f ($(wc -c < "$f" | tr -d ' ') bytes, $pages pages, name $name, $siglen-byte signature, trailer $trailer)"
