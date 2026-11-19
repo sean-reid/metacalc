@@ -97,8 +97,9 @@
 ; The proof steps charge the same count per kernel_verify call, in the order they run:
 ;   1 per symbol of each entry pushed on the stack (a hypothesis, a dummy variable, a saved step
 ;   named again) and of each entry saved, before it is copied;
-;   1 per symbol of an expression substituted into and 1 per symbol it writes, once it is built,
-;   which the stack symbol limit bounds;
+;   APPLY_COST (ram.inc) for each assertion applied, once its record is read;
+;   1 per symbol of an expression substituted into, 2 more per variable in it and 1 per symbol it
+;   writes, once it is built, which the stack symbol limit bounds;
 ;   the disjoint-variable check below.
 ; The disjoint-variable check of a proof step takes the pairs of the applied
 ; assertion one at a time, with X and Y the expressions that replace its two variables, and
@@ -110,9 +111,10 @@
 ;   (both lists) of the theorem being checked, whether or not the scan finds its match early.
 ; A charge that would take the count past WORK_LIMIT (ram.inc, equal to WORK_LIMIT in the model)
 ; ends the call with ST_WORK_LIMIT; the assertion counts as refused.
-; The slowest charged unit measured is 288 T-states (a variable against a run of constants), so
-; one call spends at most 64.8 million T-states on charged work, 10.8 s at 6 MHz, besides the
-; proof steps themselves, which the size of the library bounds.
+; The slowest charged unit measured is 234 T-states (a saved entry with no symbols pushed over
+; and over), so one call spends at most 81.9 million T-states, 13.7 s at 6 MHz. The step loop and
+; the float binding loop of an apply are not charged: each float bound takes an entry that a
+; charged push or apply made.
 ;
 ; Interruption. kernel_verify reads the ON key (port 4, bit 3, clear while pressed) once per proof
 ; step and whenever a charge changes the second byte of the work count. The read comes before the

@@ -22,9 +22,9 @@ fn describe(error: &KernelError) -> String {
                 l.stack_syms, l.stack_entries, l.saved_syms, l.saved_entries
             )
         }
-        KernelError::WorkLimit => format!(
-            "WorkLimit: the disjoint-variable checks need more than {WORK_LIMIT} units of work"
-        ),
+        KernelError::WorkLimit => {
+            format!("WorkLimit: the proof needs more than {WORK_LIMIT} units of work")
+        }
         other => format!("{other:?}"),
     }
 }

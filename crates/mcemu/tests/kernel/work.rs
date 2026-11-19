@@ -1,12 +1,13 @@
 use crate::edges::REGISTERS;
 use crate::support::*;
 use mcemu::{Machine, Stop};
-use mcpack::library::{Kernel, KernelError, WORK_LIMIT, pack};
+use mcpack::library::{APPLY_COST, Kernel, KernelError, WORK_LIMIT, pack};
 use mcpack::mm::Database;
 
 #[test]
 fn the_kernel_and_the_model_share_one_work_limit() {
     assert_eq!(constant("WORK_LIMIT"), WORK_LIMIT);
+    assert_eq!(constant("APPLY_COST"), APPLY_COST);
     assert_eq!(label("ST_WORK_LIMIT"), 13);
     assert_eq!(label("ST_INTERRUPTED"), 14);
 }
@@ -17,8 +18,8 @@ fn the_kernel_stops_where_the_model_stops() {
         (two_terms(1, 1, 0, 0), 2, Ok(())),
         (two_terms(4, 4, 7, 9), 8, Ok(())),
         (two_terms(27, 8, 7, 77), 35, Ok(())),
-        (two_terms(31, 9, 36, 51), 40, Ok(())),
-        (two_terms(31, 9, 37, 51), 40, Err(KernelError::WorkLimit)),
+        (two_terms(34, 10, 40, 106), 44, Ok(())),
+        (two_terms(34, 10, 41, 106), 44, Err(KernelError::WorkLimit)),
         (two_terms(4, 60, 0, 0), 64, Err(KernelError::WorkLimit)),
     ] {
         let (db, bytes) = disjoint_library(&terms, nv, true);
@@ -38,19 +39,22 @@ fn constants_after(first: Tok, constants: usize) -> Vec<Tok> {
 /// T-states one verify call spends after the library is loaded, and the work the model charges.
 fn call_cost(terms: &[Vec<Tok>], nv: usize) -> (u32, u32) {
     let (db, bytes) = disjoint_library(terms, nv, true);
-    let id = number(&db, "t");
-    let mut kernel = Kernel::new(&bytes, clamped(ASKED_UNBOUNDED)).unwrap();
+    library_cost(&bytes, number(&db, "t"))
+}
+
+fn library_cost(bytes: &[u8], id: usize) -> (u32, u32) {
+    let mut kernel = Kernel::new(bytes, clamped(ASKED_UNBOUNDED)).unwrap();
     let units = match kernel.verify(id) {
         Ok(()) => kernel.work(),
         Err(KernelError::WorkLimit) => WORK_LIMIT,
         Err(error) => panic!("{error:?}"),
     };
-    let call = Device::with_library(&bytes).verify(id, ASKED_UNBOUNDED);
-    (call.tstates - init_tstates(&bytes), units)
+    let call = Device::with_library(bytes).verify(id, ASKED_UNBOUNDED);
+    (call.tstates - init_tstates(bytes), units)
 }
 
 #[test]
-fn the_worst_call_per_unit_of_work_stays_under_ten_seconds_at_6_mhz() {
+fn the_worst_call_per_unit_of_work_stays_under_14_seconds_at_6_mhz() {
     let var = |i| Tok::Var(i);
     let many_pairs: Vec<Vec<Tok>> = (0..20).map(|i| constants_after(var(i), 10)).collect();
     let mut repeated = vec![var(0); 100];
@@ -78,9 +82,56 @@ fn the_worst_call_per_unit_of_work_stays_under_ten_seconds_at_6_mhz() {
         ),
         ("190 pairs on the applied assertion", many_pairs, 20),
     ];
+    let join = "$c wff $. E $a wff $. ${ J.1 $e wff $. J.2 $e wff $. J $a wff $. $}\n";
+    let joins = 1000;
+    let sources = [
+        (
+            "254 variables bound to nothing, 800 applies",
+            empty_binding_source(254, 800),
+            "big",
+        ),
+        (
+            "one variable bound to nothing",
+            empty_binding_source(1, 400),
+            "big",
+        ),
+        (
+            "joins of nothing",
+            format!("{join} big $p wff $= E{} $.", " E J".repeat(joins)),
+            "big",
+        ),
+        (
+            "pushes of a hypothesis of nothing",
+            format!(
+                "{join} ${{ h.1 $e wff $. big $p wff $= h.1{} $. $}}",
+                " h.1 J".repeat(joins)
+            ),
+            "big",
+        ),
+        (
+            "pushes of a saved entry of nothing",
+            format!("{join} big $p wff $= ( E J ) A Z{} $.", "CB".repeat(joins)),
+            "big",
+        ),
+        (
+            "copies of a doubled term",
+            copying_source(COPY_STEPS / 4),
+            "big",
+        ),
+    ];
     let mut worst = 0.0f64;
+    let mut measured: Vec<(String, u32, u32)> = Vec::new();
+    for (name, src, theorem) in &sources {
+        let db = parse(src);
+        let bytes = pack_all(&db);
+        let (tstates, work) = library_cost(&bytes, number(&db, theorem));
+        measured.push((name.to_string(), tstates, work));
+    }
     for (name, terms, nv) in shapes {
         let (tstates, work) = call_cost(&terms, nv);
+        measured.push((name.to_string(), tstates, work));
+    }
+    for (name, tstates, work) in measured {
         let per_unit = f64::from(tstates) / f64::from(work.max(1));
         println!("{name}: {work} units, {tstates} T-states, {per_unit:.1} T-states per unit");
         worst = worst.max(per_unit);
@@ -90,14 +141,14 @@ fn the_worst_call_per_unit_of_work_stays_under_ten_seconds_at_6_mhz() {
         "worst: {worst:.1} T-states per unit, {total:.0} T-states at the limit, {:.2} s at 6 MHz",
         total / 6.0e6
     );
-    assert!(total < 60.0e6, "{total} T-states at the limit");
+    assert!(total < 84.0e6, "{total} T-states at the limit");
 }
 
-const BUDGET_OVER_LIMIT: u32 = 17_800_000;
+const BUDGET_OVER_LIMIT: u32 = 26_700_000;
 
 #[test]
 fn a_check_over_the_limit_returns_within_budget() {
-    let (db, bytes) = disjoint_library(&two_terms(31, 9, 37, 51), 40, true);
+    let (db, bytes) = disjoint_library(&two_terms(34, 10, 41, 106), 44, true);
     let got = Device::with_library(&bytes).verify(number(&db, "t"), ASKED_UNBOUNDED);
     println!("over the limit: {} T-states", got.tstates);
     assert_eq!(got.verify, status(Err(KernelError::WorkLimit)));
@@ -343,29 +394,29 @@ fn pair(terms: Vec<Vec<Tok>>) -> (Vec<Tok>, Vec<Tok>) {
 }
 
 /// Proofs of `|- R k` that apply the disjoint axiom twice, the first with all but a little of the
-/// work the limit allows; the second is refused for a variable outside the 35 listed.
+/// work the limit allows; the second is refused for a variable outside the 40 listed.
 fn joined_cases() -> Vec<(&'static str, Applies, usize, usize, KernelError)> {
     let var = |i| (vec![Tok::Var(0)], vec![Tok::Var(i)]);
     vec![
         (
             "each apply alone is under the limit",
-            vec![pair(two_terms(27, 8, 0, 0)), pair(two_terms(27, 8, 0, 0))],
-            35,
-            35,
+            vec![pair(two_terms(30, 10, 0, 0)), pair(two_terms(30, 10, 0, 0))],
+            40,
+            40,
             KernelError::WorkLimit,
         ),
         (
             "a violation whose comparison charge is the last the limit allows",
-            vec![pair(two_terms(20, 15, 61, 158)), var(35)],
-            36,
-            35,
+            vec![pair(two_terms(13, 27, 60, 141)), var(40)],
+            41,
+            40,
             KernelError::DisjointViolation,
         ),
         (
             "a violation whose comparison charge crosses the limit",
-            vec![pair(two_terms(12, 23, 114, 164)), var(35)],
-            36,
-            35,
+            vec![pair(two_terms(24, 16, 51, 92)), var(40)],
+            41,
+            40,
             KernelError::WorkLimit,
         ),
     ]
@@ -397,18 +448,22 @@ const COPY_STEPS: usize = 15_900;
 /// copies, compares them with a rule and joins the result into the one entry kept. Every step
 /// is one byte; the copies and substitutions are most of the work and none of it is a disjoint
 /// check.
-fn copying_library(cycles: usize) -> (Database, Vec<u8>) {
+fn copying_source(cycles: usize) -> String {
     let proof = format!(
         "( a0 wd del join ) A{}ZEC{}",
         "B".repeat(DOUBLINGS),
         "EECD".repeat(cycles - 1)
     );
-    let db = parse(&format!(
+    format!(
         "$c T wff $. $v p $. wp $f wff p $. a0 $a wff T $. wd $a wff p p $.\n\
          ${{ del.1 $e wff p $. del $a wff T $. $}}\n\
          ${{ join.1 $e wff T $. join.2 $e wff T $. join $a wff T $. $}}\n\
          big $p wff T $= {proof} $.\n"
-    ));
+    )
+}
+
+fn copying_library(cycles: usize) -> (Database, Vec<u8>) {
+    let db = parse(&copying_source(cycles));
     let bytes = pack_all(&db);
     (db, bytes)
 }
@@ -419,7 +474,7 @@ fn model_work(bytes: &[u8], id: usize) -> (Result<(), KernelError>, u32) {
     (result, kernel.work())
 }
 
-const BUDGET_COPYING: u32 = 18_200_000;
+const BUDGET_COPYING: u32 = 27_100_000;
 
 #[test]
 fn thousands_of_steps_that_copy_a_term_stop_at_the_work_limit_within_budget() {

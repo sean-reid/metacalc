@@ -3,9 +3,9 @@ use mcpack::library::{Kernel, WORK_LIMIT};
 
 // T-state ceilings per library, 5 percent above the measured cost; they fail a kernel change that slows verification.
 const CEILINGS: [(&str, u32); 3] = [
-    ("prop", 74_400_000),
-    ("pred", 140_800_000),
-    ("ring", 827_600_000),
+    ("prop", 75_300_000),
+    ("pred", 142_600_000),
+    ("ring", 839_300_000),
 ];
 
 // T-state ceilings of kernel_init alone, 5 percent above the measured cost.

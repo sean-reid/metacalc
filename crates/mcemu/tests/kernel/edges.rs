@@ -395,8 +395,8 @@ fn the_substitution_serial_wraps_without_changing_a_result() {
 
 #[test]
 fn enough_applies_in_one_initialisation_wrap_the_serial() {
-    const DROPS: usize = 6600;
-    const THEOREMS: usize = 10;
+    const DROPS: usize = 3900;
+    const THEOREMS: usize = 17;
     let mut src = String::from(
         "$c T wff $.\n${ d.1 $e wff T $. d.2 $e wff T $. drop $a wff T $. $}\nn0 $a wff T $.\n",
     );

@@ -91,6 +91,9 @@ fn the_on_key_interrupts_the_check_for_equal_entries_and_the_call_can_be_run_aga
 
 const BUDGET_DUMMY_PASS: u32 = 1_500_000;
 
+// One-unit charges read ON every 256 units, about 165 T-states each, whatever the phase.
+const BUDGET_DUMMY_POLL: u32 = 45_000;
+
 #[test]
 fn a_list_of_thousands_of_dummy_entries_is_charged_and_stays_within_budget() {
     for (entries, mandatory) in [(2500, true), (2500, false), (511, true)] {
@@ -108,7 +111,7 @@ fn a_list_of_thousands_of_entries_stops_at_the_work_limit_within_budget() {
     agree(&bytes, 2500, Err(KernelError::WorkLimit), "2500 entries");
     let got = Device::with_library(&bytes).verify(2500, ASKED_UNBOUNDED);
     println!("2500 entries: {} T-states", got.tstates);
-    assert!(got.tstates < 68_000_000, "{} T-states", got.tstates);
+    assert!(got.tstates < 105_700_000, "{} T-states", got.tstates);
 }
 
 #[test]
@@ -128,7 +131,7 @@ fn the_on_key_interrupts_the_dummy_check_and_the_call_can_be_run_again() {
         ("WORK_ONE", "PAIR_ALLOWED"),
     ];
     assert!(crate::work::in_code(pc, &ranges), "pc {pc:#06x}");
-    assert!(after < 25_000, "{after} T-states");
+    assert!(after < BUDGET_DUMMY_POLL, "{after} T-states");
     assert_eq!(
         device.byte("TEST_VERIFY_STATUS"),
         crate::work::status_code("ST_INTERRUPTED")

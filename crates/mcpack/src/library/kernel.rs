@@ -34,7 +34,8 @@ pub enum KernelError {
 /// charges the comparisons of a short list in one step, so after a refusal its count and this
 /// one may differ. The proof steps then charge, in the order they run: 1 per symbol of each entry
 /// pushed on the stack (a hypothesis, a dummy variable, a saved step named again) and of each entry
-/// saved, before it is copied; 1 per symbol of an expression substituted into and 1 per symbol it
+/// saved, before it is copied; `APPLY_COST` for each assertion applied, once its record is read;
+/// 1 per symbol of an expression substituted into, 2 more per variable in it and 1 per symbol it
 /// writes, once it is built; and the disjoint-variable check. The check of each proof step applies
 /// one pair of the applied assertion at a time, to the two substituted expressions `X` and `Y` that
 /// replace its variables, and every loop iteration is charged before it runs:
@@ -43,7 +44,10 @@ pub enum KernelError {
 /// `1 + n` more, `n` being the number of pairs in the theorem being checked (both lists), however
 /// early the scan would find a match. A charge that would take the total past `WORK_LIMIT` makes
 /// the call return `WorkLimit`. Kernel status 14 (ON key pressed) is never produced here.
-pub const WORK_LIMIT: u32 = 225000;
+pub const WORK_LIMIT: u32 = 350000;
+
+/// The units each apply of an assertion charges before it looks at the stack.
+pub const APPLY_COST: u32 = 36;
 
 /// The working memory a check may use, in the units the calculator budgets.
 #[derive(Debug, Clone, Copy)]
@@ -516,6 +520,7 @@ impl<'a> Kernel<'a> {
     fn apply(&mut self, id: usize, current: &Record) -> Res<()> {
         let used = self.record(id)?;
         self.require_sound(id, &used)?;
+        charge(&mut self.work, APPLY_COST)?;
         let base = self
             .starts
             .len()
@@ -591,8 +596,10 @@ impl<'a> Kernel<'a> {
 
     fn substitute(&mut self, expr: &[u8]) -> Res<()> {
         self.scratch.clear();
+        let mut vars = 0;
         for &sym in expr {
             if self.is_var(sym) {
+                vars += 1;
                 let (start, end) = self.subst[sym as usize].ok_or(KernelError::BadRecord)?;
                 self.scratch.extend_from_slice(&self.stack[start..end]);
             } else {
@@ -600,6 +607,9 @@ impl<'a> Kernel<'a> {
             }
             self.within_limits()?;
         }
-        charge(&mut self.work, (expr.len() + self.scratch.len()) as u32)
+        charge(
+            &mut self.work,
+            (expr.len() + self.scratch.len() + 2 * vars) as u32,
+        )
     }
 }
