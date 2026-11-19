@@ -231,6 +231,10 @@ fn html_fails_for_an_assertion_on_no_page() {
 }
 
 fn spell(input: &str) -> Output {
+    spell_bytes(input.as_bytes())
+}
+
+fn spell_bytes(input: &[u8]) -> Output {
     use std::io::Write;
     let mut child = Command::new(env!("CARGO_BIN_EXE_mcpack"))
         .arg("spell")
@@ -243,7 +247,7 @@ fn spell(input: &str) -> Output {
         .stdin
         .take()
         .unwrap()
-        .write_all(input.as_bytes())
+        .write_all(input)
         .unwrap();
     child.wait_with_output().unwrap()
 }
@@ -260,6 +264,14 @@ fn spell_prints_each_line_in_unicode_and_fails_on_an_unknown_token() {
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(out.stdout, b"");
     assert_eq!(out.stderr, b"no Unicode spelling for zz yy\n");
+}
+
+#[test]
+fn spell_exits_2_when_standard_input_is_not_text() {
+    let out = spell_bytes(b"ph \xff\xfe\n");
+    assert_eq!(out.status.code(), Some(2));
+    assert_eq!(out.stdout, b"");
+    assert!(String::from_utf8_lossy(&out.stderr).starts_with("standard input: "));
 }
 
 const SYMBOLS: &str = "
