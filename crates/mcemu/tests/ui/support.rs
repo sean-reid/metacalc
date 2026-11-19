@@ -91,6 +91,11 @@ pub enum Op {
         selected: bool,
     },
     Marker(u8),
+    Bar {
+        row: u8,
+        done: u16,
+        total: u16,
+    },
     Blit,
     Clear,
     /// An LCD command, after a delay that lets the controller take it.
@@ -113,6 +118,11 @@ pub enum Op {
 /// `value` as a byte; a model value that does not fit is a bug in the test.
 pub fn byte(value: usize) -> u8 {
     u8::try_from(value).unwrap_or_else(|_| panic!("{value} does not fit a byte"))
+}
+
+/// A count as the 16 bits the Z80 takes; one past them is a bug in the test.
+pub fn count(value: usize) -> u16 {
+    u16::try_from(value).unwrap_or_else(|_| panic!("{value} does not fit 16 bits"))
 }
 
 pub fn ops(calls: &[Call]) -> Vec<Op> {
@@ -163,6 +173,11 @@ pub fn ops(calls: &[Call]) -> Vec<Op> {
                 selected: *selected,
             },
             Call::Marker(row) => Op::Marker(byte(*row)),
+            Call::Bar { row, done, total } => Op::Bar {
+                row: byte(*row),
+                done: count(*done),
+                total: count(*total),
+            },
             Call::Ink(layer) => Op::Ink(layer.clone()),
         })
         .collect()
@@ -269,6 +284,12 @@ impl Script {
                 self.word(&[0x01], u16::from_be_bytes([*row, u8::from(*selected)]));
                 self.run("ui_list_row", &[], call);
             }
+            Op::Bar { row, done, total } => {
+                self.code.extend_from_slice(&[0x3E, *row]);
+                self.word(&[0x21], *done);
+                self.word(&[0x11], *total);
+                self.run("ui_bar", &[], call);
+            }
             Op::Blit => self.run("ui_blit", &[], call),
             Op::Clear => self.run("ui_clear", &[], call),
             Op::Command(value) if call => {
@@ -339,8 +360,9 @@ pub struct Outcome {
 pub const MARK: u8 = 0xA5;
 const FRAME_LEN: u16 = 768;
 const VARS_LEN: u16 = 0x1A;
-/// RAM guarded on each side of the two blocks.
+/// RAM guarded below the two blocks, and above them up to the script, at most `GUARD_ABOVE`.
 const GUARD: u16 = 0x200;
+const GUARD_ABOVE: u16 = 0x800;
 /// Marked bytes below the stack, to measure how deep it goes.
 const STACK_WINDOW: u16 = 0x80;
 
@@ -374,7 +396,7 @@ pub fn run_code_on(
     ops: &[Op],
     call: bool,
 ) -> Outcome {
-    run_marked(rom, timer, image, code, settings, ops, call, MARK)
+    run_marked(rom, timer, image, code, settings, ops, call, MARK, &[])
 }
 
 /// The deepest the stack goes in a run of `ops`, as the larger of two measures with different
@@ -385,7 +407,15 @@ pub fn stack_depth(image: Image, ops: &[Op]) -> usize {
         .map(|mark| {
             let settings = (Speed::Mhz6, true);
             run_marked(
-                STUB_ROM, false, image, image.code, settings, ops, true, mark,
+                STUB_ROM,
+                false,
+                image,
+                image.code,
+                settings,
+                ops,
+                true,
+                mark,
+                &[],
             )
             .stack
         })
@@ -403,6 +433,7 @@ fn run_marked(
     ops: &[Op],
     call: bool,
     stack_mark: u8,
+    watch: &[(u16, u16)],
 ) -> Outcome {
     let mut script = Script {
         code: vec![],
@@ -435,9 +466,12 @@ fn run_marked(
     m.load_flash(FLASH_TEST_PAGE, 0, code);
     let (lo, hi) = (
         image.frame.min(image.vars) - GUARD,
-        (image.frame + FRAME_LEN).max(image.vars + VARS_LEN) + GUARD,
+        ((image.frame + FRAME_LEN).max(image.vars + VARS_LEN) + GUARD_ABOVE).min(SCRIPT),
     );
     m.load_ram(lo, &vec![MARK; usize::from(hi - lo)]);
+    for &(at, len) in watch {
+        m.load_ram(at, &vec![MARK; usize::from(len)]);
+    }
     m.load_ram(
         STACK - STACK_WINDOW,
         &vec![stack_mark; usize::from(STACK_WINDOW)],
@@ -475,6 +509,12 @@ fn run_marked(
             "RAM outside the two blocks changed at {at:04X}"
         );
     }
+    for &(at, len) in watch {
+        assert!(
+            m.read_ram(at, usize::from(len)).iter().all(|&b| b == MARK),
+            "RAM watched at {at:04X} changed"
+        );
+    }
     let window = m.read_ram(STACK - STACK_WINDOW, usize::from(STACK_WINDOW));
     let stack = window
         .iter()
@@ -494,6 +534,15 @@ fn run_marked(
         pc,
         stack,
     }
+}
+
+/// `run` that also marks the `(address, length)` ranges in `watch` and fails when a run changes
+/// one; the ranges must lie clear of the script, the data and the stack.
+pub fn run_watched(image: Image, ops: &[Op], watch: &[(u16, u16)]) -> Outcome {
+    let settings = (Speed::Mhz6, true);
+    run_marked(
+        STUB_ROM, false, image, image.code, settings, ops, true, MARK, watch,
+    )
 }
 
 pub fn run(image: Image, ops: &[Op]) -> Outcome {
