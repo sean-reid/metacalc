@@ -418,6 +418,8 @@ fn the_shipped_libraries_carry_the_grammars_trees_and_none_is_missing() {
         let bytes = std::fs::read(Path::new(&dir).join(format!("{name}.mclib"))).unwrap();
         library::check(&bytes).unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(trees_of(&bytes).without_tree(), 0, "{name}");
+        let shapes = decode(&bytes).unwrap().sections.unwrap().shapes.unwrap();
+        assert_eq!(shapes, trees_of(&bytes).shapes(), "{name}");
         let exported = library::export(&bytes).unwrap();
         let db = mm::parse(exported.into_bytes()).unwrap();
         let compared = agree(&db, &bytes, &everything(&db));
