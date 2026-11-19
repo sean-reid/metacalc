@@ -51,13 +51,21 @@ fn the_on_key_held_from_the_start_stops_init_and_leaves_nothing_ready() {
     let got = device.verify(0, ASKED_UNBOUNDED);
     println!("ON held through init: {} T-states", got.tstates);
     assert_eq!(got.init, status_code("ST_INTERRUPTED"));
-    assert_eq!(got.verify, malformed(), "no state is ready after the stop");
+    assert_eq!(
+        got.verify,
+        status_code("ST_INTERRUPTED"),
+        "ON is still down at the verify's exit"
+    );
     assert!(
         got.tstates < BUDGET_INIT_ON_AT_START,
         "{} T-states",
         got.tstates
     );
-    assert_eq!(verify_again(&mut device), malformed());
+    assert_eq!(
+        verify_again(&mut device),
+        malformed(),
+        "no state is ready after the stop"
+    );
     accepted_then_fresh(&mut device, "after");
 }
 
@@ -73,9 +81,17 @@ fn the_on_key_pressed_midway_through_init_stops_it_and_a_fresh_init_succeeds() {
         device.byte("TEST_INIT_STATUS"),
         status_code("ST_INTERRUPTED")
     );
-    assert_eq!(device.byte("TEST_VERIFY_STATUS"), malformed());
+    assert_eq!(
+        device.byte("TEST_VERIFY_STATUS"),
+        status_code("ST_INTERRUPTED"),
+        "ON is still down at the verify's exit"
+    );
     assert!(after < BUDGET_POLL_GAP, "{after} T-states");
-    assert_eq!(verify_again(&mut device), malformed());
+    assert_eq!(
+        verify_again(&mut device),
+        malformed(),
+        "no state is ready after the stop"
+    );
     accepted_then_fresh(&mut device, "midway");
 }
 

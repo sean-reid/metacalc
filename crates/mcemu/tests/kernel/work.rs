@@ -148,12 +148,12 @@ pub fn init_tstates(bytes: &[u8]) -> u32 {
 }
 
 /// Runs `entry` until init, which takes `init` T-states, has just ended, then holds ON and
-/// finishes the run. The last read of ON in init is far earlier, so only kernel_verify sees it.
+/// finishes the run. Init has read the key for the last time, so only kernel_verify sees it.
 pub fn run_with_on_after_init(device: &mut Device, entry: &str, init: u32) {
-    let first = device.m.run(device.label(entry), init - 500);
+    let first = device.m.run(device.label(entry), init);
     assert_eq!(first.stop, Stop::Limit, "{entry} ended before init did");
     device.m.press_key(Machine::KEY_ON);
-    let rest = device.m.run(device.m.pc(), RUN_LIMIT);
+    let rest = device.m.resume(RUN_LIMIT);
     assert_eq!(rest.stop, Stop::Halted, "{entry}");
 }
 
