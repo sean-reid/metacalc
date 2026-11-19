@@ -295,8 +295,8 @@ fn a_proof_past_the_host_limits_fails_the_whole_export() {
 
 #[test]
 fn a_proof_past_the_work_limit_fails_the_whole_export() {
-    let bytes = references::pack_source(&references::long_source(512));
-    refused_whole("512 reference entries", &bytes, KernelError::WorkLimit);
+    let bytes = references::pack_source(&references::long_source(references::LONGEST));
+    refused_whole("the longest reference list", &bytes, KernelError::WorkLimit);
 }
 
 /// The shipped libraries, as scripts/build-libraries.sh writes them into `MC_LIBRARIES`, give the

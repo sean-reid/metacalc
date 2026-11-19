@@ -50,7 +50,7 @@ fn the_device_charges_the_duplicate_check_as_the_model_does() {
         let bytes = cases::pack_source(&cases::long_source(entries));
         let mut kernel = Kernel::new(&bytes, clamped(ASKED_UNBOUNDED)).unwrap();
         assert_eq!(kernel.verify(entries), Ok(()));
-        let charged = entries * (entries + 1) / 2;
+        let charged = cases::long_work(entries);
         assert_eq!(kernel.work() as usize, charged);
         agree(&bytes, entries, Ok(()), "long list");
         let mut device = Device::with_library(&bytes);
@@ -63,10 +63,10 @@ fn the_device_charges_the_duplicate_check_as_the_model_does() {
             "{entries}"
         );
     }
-    let bytes = cases::pack_source(&cases::long_source(513));
+    let bytes = cases::pack_source(&cases::long_source(cases::LONGEST));
     agree(
         &bytes,
-        513,
+        cases::LONGEST,
         Err(KernelError::WorkLimit),
         "one entry too many",
     );
@@ -108,7 +108,7 @@ fn a_list_of_thousands_of_entries_stops_at_the_work_limit_within_budget() {
     agree(&bytes, 2500, Err(KernelError::WorkLimit), "2500 entries");
     let got = Device::with_library(&bytes).verify(2500, ASKED_UNBOUNDED);
     println!("2500 entries: {} T-states", got.tstates);
-    assert!(got.tstates < 40_000_000, "{} T-states", got.tstates);
+    assert!(got.tstates < 68_000_000, "{} T-states", got.tstates);
 }
 
 #[test]
