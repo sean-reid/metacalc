@@ -19,6 +19,7 @@ pub enum SectionError {
     Titles,
     Glyphs,
     Trees,
+    Shapes,
 }
 
 impl std::fmt::Display for SectionError {
@@ -29,6 +30,9 @@ impl std::fmt::Display for SectionError {
             SectionError::Titles => "the titles section is damaged",
             SectionError::Glyphs => "the glyph map is damaged",
             SectionError::Trees => "the parse tree section is damaged",
+            SectionError::Shapes => {
+                "the shapes section is damaged or does not match the parse trees"
+            }
         })
     }
 }
@@ -96,6 +100,20 @@ impl Writer {
 
     pub fn len(&self) -> usize {
         self.out.len()
+    }
+
+    /// Opens a section of `len` bytes that starts at a chunk boundary when it would cross one
+    /// otherwise.
+    pub fn open_whole(&mut self, id: u8, len: usize) -> Result<(), TooLarge> {
+        if len > CHUNK {
+            return Err(TooLarge);
+        }
+        let start = self.out.len().next_multiple_of(4);
+        if start % CHUNK + len > CHUNK {
+            self.out.resize(start.next_multiple_of(CHUNK), 0);
+        }
+        self.open(id);
+        Ok(())
     }
 
     pub fn open(&mut self, id: u8) {

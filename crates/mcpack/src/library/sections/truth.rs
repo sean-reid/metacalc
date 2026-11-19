@@ -1,5 +1,5 @@
 use super::trees::PROVABLE;
-use super::{GlyphMap, Node, Part, Title, Tree, Trees};
+use super::{GlyphMap, Node, Part, Shapes, Title, Tree, Trees};
 use crate::library::{Hypothesis, Library};
 use std::fmt;
 
@@ -58,6 +58,9 @@ pub fn verify_sections(library: &Library) -> Result<(), SectionCheckError> {
     }
     if let Some(trees) = &sections.trees {
         check_trees(library, trees)?;
+        if let Some(shapes) = &sections.shapes {
+            check_shapes(library, trees, shapes)?;
+        }
     }
     Ok(())
 }
@@ -107,6 +110,23 @@ fn measure<'a>(
     }
     let root = values.pop()?;
     values.is_empty().then_some(root)
+}
+
+fn check_shapes(
+    library: &Library,
+    trees: &Trees,
+    shapes: &Shapes,
+) -> Result<(), SectionCheckError> {
+    let want = trees.shapes();
+    for ((axiom, got), want) in trees.syntax.iter().zip(&shapes.axioms).zip(&want.axioms) {
+        if got != want {
+            return Err(SectionCheckError(format!(
+                "the shape stored for {} is not the parts of its statement",
+                library.assertions[axiom.assertion].label
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn check_trees(library: &Library, trees: &Trees) -> Result<(), SectionCheckError> {

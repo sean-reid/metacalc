@@ -17,7 +17,7 @@ fn everything(db: &Database) -> Vec<StmtId> {
 }
 
 /// The closure of every assertion of `db`, or `None` when it has no grammar or does not close.
-fn kept(db: &Database) -> Option<Vec<StmtId>> {
+pub(super) fn kept(db: &Database) -> Option<Vec<StmtId>> {
     let grammar = Grammar::new(db, &[("|-", "wff")]).ok()?;
     let roots: Vec<StmtId> = everything(db)
         .into_iter()
@@ -26,7 +26,7 @@ fn kept(db: &Database) -> Option<Vec<StmtId>> {
     mm::closure(db, &grammar, &roots).ok()
 }
 
-fn corpus() -> Vec<(String, Database)> {
+pub(super) fn corpus() -> Vec<(String, Database)> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
     let mut files: Vec<_> = std::fs::read_dir(dir)
         .unwrap()

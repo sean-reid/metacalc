@@ -58,6 +58,13 @@
 //!            constants + byte - 80h, FFh then n the one with 127 + n; a library whose
 //!            database has no grammar has no trees section; identical trees are stored once
 //!            per use, and storing them once would save about 17.6 KB in the ring library
+//! shapes     id 4: syntax axiom count (u16, equal to the trees section's), one u16 offset from the
+//!            section's start per axiom and one past the last, then per axiom, in the syntax
+//!            table's order, its parts after the typecode in reading order, one byte each: 00h
+//!            a constant, k + 1 the child k (0-based, in the order the tree lists children); an
+//!            axiom has 1 to 255 parts, every child 0 to arity - 1 appears exactly once, and
+//!            the count of non-zero bytes is the arity; a library has a shapes section exactly
+//!            when it has a trees section; the packer keeps the whole section inside one chunk
 //! ```
 //!
 //! A record is only usable if its float hypotheses come before its essential ones and name
@@ -82,10 +89,10 @@ pub use read::{
     Assertion, Hypothesis, Library, ReadError, Reference, Step, Variable, decode, read,
 };
 pub use sections::{
-    AXIOM_CAPACITY, ENTRY_LEN, Entry, GLYPHS, GlyphMap, Glyphs, Node, Part, SectionCheckError,
-    SectionError, Sections, SyntaxAxiom, TITLES, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION,
-    TREES, Title, Tree, Trees, VARIABLE_CAPACITY, locate as locate_sections, titles_in_order,
-    verify_sections,
+    AXIOM_CAPACITY, ENTRY_LEN, Entry, GLYPHS, GlyphMap, Glyphs, Node, Part, SHAPE_CAPACITY, SHAPES,
+    SectionCheckError, SectionError, Sections, Shapes, SyntaxAxiom, TITLES, TRAILER_LEN,
+    TRAILER_MAGIC, TRAILER_VERSION, TREES, Title, Tree, Trees, VARIABLE_CAPACITY,
+    locate as locate_sections, titles_in_order, verify_sections,
 };
 
 pub const MAGIC: &[u8; 4] = b"MCL1";
