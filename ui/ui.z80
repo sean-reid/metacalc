@@ -36,7 +36,7 @@
 .org $4000
 #endif
 
-#include "ram.inc"
+#include "ui/ram.inc"
 #include "glyph.inc"
 #include "shapes.inc"
 #include "bars.inc"

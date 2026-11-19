@@ -463,6 +463,27 @@ fn main() {
             ],
         );
     }
+    let font_dir = out.join("ui_font");
+    spasm(
+        &Path::new("tests/routines").join("kerncheck_test.z80"),
+        &out.join("kerncheck_ui.bin"),
+        &["WITH_UI"],
+        &[
+            "-I",
+            "../../app/src",
+            "-I",
+            "../../probe",
+            "-I",
+            "../../kernel",
+            "-I",
+            "../../ui",
+            "-I",
+            "../..",
+            "-I",
+            font_dir.to_str().unwrap(),
+            "-L",
+        ],
+    );
     spasm(
         Path::new("../../probe/storecheck.z80"),
         &out.join("storecheck.8xk"),
@@ -649,6 +670,8 @@ fn assemble_ui(out: &Path) {
                 font_dir.to_str().unwrap(),
                 "-I",
                 "../../app/src",
+                "-I",
+                "../..",
                 "-L",
             ],
         )

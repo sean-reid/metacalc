@@ -248,6 +248,42 @@ fn on_pressed_inside_a_proof_makes_the_kernel_return_14_and_the_driver_stop() {
     assert!(by_kernel > 0, "the kernel never returned 14 to the driver");
 }
 
+const UI_CODE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kerncheck_ui.bin"));
+const UI_LABELS: &str = include_str!(concat!(env!("OUT_DIR"), "/kerncheck_ui.lab"));
+
+fn ui_label(name: &str) -> u16 {
+    UI_LABELS
+        .lines()
+        .find_map(|line| {
+            let (key, value) = line.split_once(" = ")?;
+            (key == name).then(|| u16::from_str_radix(&value[1..], 16).unwrap())
+        })
+        .unwrap_or_else(|| panic!("no label {name}"))
+}
+
+#[test]
+fn a_kernel_driver_run_leaves_the_uis_font_and_row_base_pointers_alone() {
+    let bytes = axioms(300);
+    let mut rig = Rig::with_code(&bytes, Speed::Mhz15, UI_CODE);
+    rig.run_to_end();
+    let (_, result) = screens(&rig.trace());
+    assert_eq!(result, report(&bytes));
+    assert_eq!(rig.word_at(ui_label("K_ACCEPTED")), 300);
+    let font = ui_label("UI_FONT");
+    assert_eq!(rig.word_at(ui_label("UI_FONTP")), font - ui_label("SLOT"));
+    assert_eq!(
+        rig.word_at(ui_label("UI_ROWBASE")),
+        ui_label("UI_FRAME") + ui_label("UI_STRIDE")
+    );
+    let scratch = ui_label("K_PARAMS")..ui_label("K_END");
+    for name in ["UI_FONTP", "UI_ROWBASE"] {
+        assert!(
+            !scratch.contains(&ui_label(name)),
+            "{name} is in the driver's scratch"
+        );
+    }
+}
+
 #[test]
 fn the_driver_leaves_no_trace_of_the_kernel_in_the_pages_it_does_not_own() {
     let bytes = corpus("demo0.mm");

@@ -21,6 +21,14 @@ main:
 	ld hl, OUT_BUF
 	ld (OUT_PTR), hl
 	ld iy, IY_TEST
+#ifdef WITH_UI
+	ld hl, ui_font
+	call ui_set_font
+	ld hl, ui_probe_text
+	ld de, 0
+	ld b, 0
+	call ui_text
+#endif
 	ei
 	nop
 	call kernchk_run
@@ -74,3 +82,9 @@ putchar_done:
 #include "libpage.inc"
 #include "kernel.z80"
 #include "kerndriver.inc"
+#ifdef WITH_UI
+#define UI_EMBEDDED
+#include "ui.z80"
+ui_probe_text:
+	.db 2, 3, 0
+#endif
