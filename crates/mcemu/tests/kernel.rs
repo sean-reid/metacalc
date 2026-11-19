@@ -34,6 +34,8 @@ mod sources;
 mod stackfree;
 #[path = "kernel/state.rs"]
 mod state;
+#[path = "common/stubos.rs"]
+mod stubos;
 #[path = "kernel/support.rs"]
 mod support;
 #[path = "kernel/sweep.rs"]

@@ -4,6 +4,8 @@ mod os;
 mod realos;
 #[path = "kerncheck/rig.rs"]
 mod rig;
+#[path = "common/stubos.rs"]
+mod stubos;
 
 use mcemu::{Machine, Speed, Stop};
 use mcpack::library::{CHUNK, crc32};

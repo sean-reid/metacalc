@@ -1,11 +1,10 @@
+use crate::stubos::{TIMER_PERIOD_15MHZ, kbd_key, kbd_scan_code};
 use crate::support::*;
 use mcemu::FLASH_TEST_PAGE;
 use mcpack::library::{KernelError, Limits};
 use mcpack::mm::Database;
 
 const CODE_BASE: u16 = 0x4000;
-const SUBST_LEN: usize = 2048;
-const TABLE_ENTRY: usize = 8;
 
 fn init_only(device: &mut Device) -> u8 {
     device.params(ASKED_UNBOUNDED);
@@ -22,7 +21,12 @@ fn verify_only(device: &mut Device, id: usize) -> u8 {
 }
 
 fn table(device: &mut Device) -> Vec<u8> {
-    device.kram(device.label("SUBST"), SUBST_LEN)
+    let len = usize::from(device.label("STACK_BUF") - device.label("SUBST"));
+    device.kram(device.label("SUBST"), len)
+}
+
+fn table_len(device: &mut Device) -> usize {
+    table(device).len()
 }
 
 fn serial(device: &mut Device) -> u16 {
@@ -48,20 +52,18 @@ fn init_leaves_no_binding_from_an_earlier_run_in_the_substitution_table() {
         assert_eq!(device.verify(both, ASKED_UNBOUNDED).verify, status(Ok(())));
         assert_ne!(
             table(&mut device),
-            vec![0; SUBST_LEN],
+            vec![0; table_len(&mut device)],
             "{layout}: the first proof leaves bindings"
         );
         assert_eq!(init_only(&mut device), 0, "{layout}");
         assert_eq!(
             table(&mut device),
-            vec![0; SUBST_LEN],
+            vec![0; table_len(&mut device)],
             "{layout}: bindings after init"
         );
         assert_eq!(verify_only(&mut device, good), want, "{layout}");
         assert_eq!(table(&mut device), fresh_table, "{layout}: table");
         assert_eq!(serial(&mut device), fresh_serial, "{layout}: serial");
-        let z = 5 * TABLE_ENTRY;
-        assert_eq!(table(&mut device)[z..z + TABLE_ENTRY], [0; TABLE_ENTRY]);
     }
 }
 
@@ -130,7 +132,10 @@ fn verify_reads_the_page_and_limits_init_validated_and_not_the_block_it_copied_f
         let mut device = Device::with_image_library(image, &bytes);
         assert_eq!(device.verify(id, limits(6)).verify, ok, "{layout}");
         let copy = device.label("KERNEL_LIB_PAGE");
-        assert_eq!(device.kram(copy, 9), device.param_block(limits(6)));
+        assert_eq!(
+            device.kram(copy, device.param_block(limits(6)).len()),
+            device.param_block(limits(6))
+        );
 
         device.kram_write(copy, &device.param_block(limits(5)));
         device.kram_write(copy, &[0x20]);
@@ -146,7 +151,11 @@ fn verify_reads_the_page_and_limits_init_validated_and_not_the_block_it_copied_f
         let page = device.label("KV_LIB_PAGE");
         assert_eq!(device.kram(page, 1), [device.lib_page]);
         device.kram_write(page, &[0x20]);
-        assert_ne!(verify_only(&mut device, id), ok, "{layout}: other page");
+        assert_eq!(
+            verify_only(&mut device, id),
+            status(Err(KernelError::Malformed)),
+            "{layout}: other page"
+        );
         device.kram_write(page, &[device.lib_page]);
         assert_eq!(verify_only(&mut device, id), ok, "{layout}: page back");
     }
@@ -173,14 +182,15 @@ fn a_library_wrong_in_any_one_magic_byte_is_refused() {
 
 const THEOREMS: usize = 6;
 const DROPS: usize = 150;
-/// The test image's timer ticks every 1953 us, 29,295 T-states at 15 MHz.
 const SLICE: u32 = 20_000;
+const _: () = assert!(
+    SLICE < TIMER_PERIOD_15MHZ,
+    "a slice is shorter than a timer period"
+);
 const MAX_SLICES: usize = 20_000;
 const PORT_MASK: u8 = 3;
 const MASK_ON_AND_TIMER: u8 = 0x0B;
 const KEY_2: u8 = 0x1A;
-const KBD_SCAN_CODE: usize = 0x043F;
-const KBD_KEY: usize = 0x0445;
 
 fn long_proofs() -> (Database, Vec<u8>) {
     let mut src = String::from(
@@ -259,10 +269,10 @@ fn interrupted(bytes: &[u8], count: usize) -> Outcome {
     for _ in 0..MAX_SLICES {
         tstates += u64::from(run.tstates);
         let page = device.m.ram_page(1);
-        if page[KBD_SCAN_CODE] != 0 {
+        if page[kbd_scan_code()] != 0 {
             ticks += 1;
-            page[KBD_SCAN_CODE] = 0;
-            page[KBD_KEY] = 0;
+            page[kbd_scan_code()] = 0;
+            page[kbd_key()] = 0;
         }
         if (done..=done + 1).contains(&device.m.pc()) {
             return finish(&mut device, size, count, tstates, ticks);
@@ -292,11 +302,118 @@ fn interrupts_taken_around_the_kernel_calls_change_neither_a_verdict_nor_the_wor
         (0, 1),
         "interrupts as they were at entry"
     );
-    let periods = busy.tstates / 29_295;
+    let periods = busy.tstates / u64::from(TIMER_PERIOD_15MHZ);
     assert!(periods >= 20, "the run spans {periods} timer periods");
     assert!(
         busy.interrupts >= THEOREMS,
         "{} interrupts taken in {periods} timer periods",
         busy.interrupts
+    );
+}
+
+const SYNC_CODE: u16 = 0x9000;
+const SLED: u16 = 0x9010;
+const SLED_LEN: usize = 8000;
+const STEP: usize = 5;
+const IRQ_VECTOR: u16 = 0x38;
+const STEPS_IN_WINDOW: usize = 150;
+
+struct Call {
+    status: u8,
+    work: Vec<u8>,
+    stack: usize,
+}
+
+fn call(device: &mut Device, size: usize) -> Call {
+    let used = device.kram(device.label("KSTACK"), size);
+    Call {
+        status: device.byte("TEST_VERIFY_STATUS"),
+        work: device.kram_label("KV_WORK", 3),
+        stack: size - used.iter().position(|&b| b != 0xCC).unwrap_or(size),
+    }
+}
+
+/// The halt that ends `ENTRY_VERIFY`: `ei`, `ld hl,(nn)`, `call nn`, `ld (nn),a` come first.
+fn verify_end(device: &Device) -> u16 {
+    device.label("ENTRY_VERIFY") + 10
+}
+
+/// Starts `ENTRY_VERIFY` with interrupts on, `burn` T-states after a timer tick, and steps one
+/// T-state at a time until `kernel_enter` has turned them off. Returns where the first interrupt
+/// was taken from, if it was taken in that stretch.
+fn entry_with_tick_at(device: &mut Device, burn: u32) -> Option<u16> {
+    let (entry, done) = (device.label("ENTRY_VERIFY"), verify_end(device));
+    device.m.run(SYNC_CODE, 2 * TIMER_PERIOD_15MHZ);
+    if burn > 0 {
+        device.m.run(SLED, burn);
+    }
+    let last = device.label("KE_SAVE");
+    let mut taken = None;
+    device.m.run(entry, 1);
+    for _ in 0..STEPS_IN_WINDOW {
+        if device.m.pc() == IRQ_VECTOR {
+            let sp = device.m.regs().sp;
+            let ret = device.m.read_ram(sp, 2);
+            taken = Some(u16::from_le_bytes([ret[0], ret[1]]));
+            break;
+        }
+        if device.m.pc() > last {
+            break;
+        }
+        device.m.resume(1);
+    }
+    for _ in 0..MAX_SLICES {
+        if (done..=done + 1).contains(&device.m.pc()) {
+            return taken;
+        }
+        device.m.resume(SLICE);
+    }
+    panic!("no end, at pc {:04x}", device.m.pc());
+}
+
+#[test]
+fn an_interrupt_taken_inside_kernel_enter_changes_neither_the_verdict_nor_the_work_nor_the_stack() {
+    let (db, bytes) = small_library();
+    let id = number(&db, "both");
+    let mut device = Device::with_library(&bytes);
+    assert_eq!(device.verify(id, ASKED_UNBOUNDED).verify, status(Ok(())));
+    let size = usize::from(device.label("KSTACK_TOP") - device.label("KSTACK"));
+    let fill = |device: &mut Device| device.kram_write(device.label("KSTACK"), &vec![0xCC; size]);
+    fill(&mut device);
+    assert_eq!(verify_only(&mut device, id), status(Ok(())));
+    let quiet = call(&mut device, size);
+    assert_ne!(quiet.work, [0; 3]);
+
+    let entry = device.label("ENTRY_VERIFY");
+    let at = usize::from(entry - CODE_BASE);
+    assert_eq!(device.image.code[at], 0xF3, "the entry starts with di");
+    device.m.load_flash(FLASH_TEST_PAGE, at, &[0xFB]);
+    let end = usize::from(verify_end(&device) - CODE_BASE);
+    assert_eq!(device.image.code[end], 0x76, "the entry ends with halt");
+    device.m.load_flash(FLASH_TEST_PAGE, end, &[0x18, 0xFE]);
+    device.m.load_ram(SYNC_CODE, &[0xFB, 0x76, 0xF3, 0x76]);
+    device.m.load_ram(SLED, &vec![0; SLED_LEN]);
+    device.m.out_port(PORT_MASK, MASK_ON_AND_TIMER);
+    device
+        .m
+        .load_ram(device.label("TEST_ASSERTION"), &(id as u16).to_le_bytes());
+
+    let window = device.label("KERNEL_ENTER")..=device.label("KE_SAVE");
+    let mut inside = Vec::new();
+    for burn in (0..TIMER_PERIOD_15MHZ - 400).step_by(STEP) {
+        fill(&mut device);
+        let taken = entry_with_tick_at(&mut device, burn);
+        let got = call(&mut device, size);
+        assert_eq!(got.status, quiet.status, "status, tick {burn} T-states in");
+        assert_eq!(got.work, quiet.work, "work, tick {burn} T-states in");
+        assert_eq!(got.stack, quiet.stack, "stack, tick {burn} T-states in");
+        if taken.is_some_and(|pc| window.contains(&pc)) {
+            inside.push(burn);
+        }
+    }
+    println!("interrupts taken inside kernel_enter at offsets {inside:?}");
+    assert!(
+        !inside.is_empty(),
+        "no offset took its interrupt inside kernel_enter"
     );
 }
