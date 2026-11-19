@@ -64,5 +64,5 @@ fn cost(entry: &str) -> u32 {
 fn the_entry_and_exit_overhead_per_call() {
     let overhead = cost("ENTRY_OVERHEAD") - cost("ENTRY_BASELINE");
     println!("overhead of one call: {overhead} T-states");
-    assert_eq!(overhead, 374);
+    assert_eq!(overhead, 415);
 }

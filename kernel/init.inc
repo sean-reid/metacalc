@@ -380,9 +380,14 @@ init_cache_clear:
 	call subst_clear
 	ld hl,0
 	ld (kv_serial),hl
+	in a,(4)
+	xor 8
+	and 9
+	jp nz,fail_interrupted
 	ld hl,READY_MAGIC
 	ld (kv_ready),hl
-	ret
+	ld c,0
+	jp leave_c
 
 init_refused:
 	ld hl,0

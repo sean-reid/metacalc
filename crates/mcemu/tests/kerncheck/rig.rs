@@ -1,6 +1,7 @@
 use mcemu::{FLASH_TEST_PAGE, Machine, STUB_ROM, Speed, Stop};
 use mcpack::library::{CHUNK, Kernel, KernelError, Limits, crc32, pack};
 use mcpack::mm;
+use std::ops::Range;
 use std::path::Path;
 
 pub const CODE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kerncheck_test.bin"));
@@ -83,8 +84,25 @@ pub fn single_symbol_axioms(count: usize) -> Vec<u8> {
     library_of_axioms(count, "T")
 }
 
+/// The axioms of `axioms`, with `names` more constants whose names share a prefix of 30 bytes, so
+/// that kernel_init spends about 100,000 T-states between two reads of the ON key.
+pub fn long_name_axioms(count: usize, names: usize) -> Vec<u8> {
+    library_with("|- T", &format!("$c {} $.\n", long_names(names)), count)
+}
+
+fn long_names(names: usize) -> String {
+    (0..names)
+        .map(|i| format!("{}{i:03}", "n".repeat(30)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn library_of_axioms(count: usize, conclusion: &str) -> Vec<u8> {
-    let mut src = String::from("$c T wff |- $.\n");
+    library_with(conclusion, "", count)
+}
+
+fn library_with(conclusion: &str, extra: &str, count: usize) -> Vec<u8> {
+    let mut src = format!("$c T wff |- $.\n{extra}");
     for i in 0..count {
         src += &format!("a-long-label-to-fill-the-page-{i} $a {conclusion} $.\n");
     }
@@ -96,6 +114,94 @@ fn library_of_axioms(count: usize, conclusion: &str) -> Vec<u8> {
 pub fn reseal(bytes: &mut [u8]) {
     let crc = crc32(&bytes[8..]);
     bytes[4..8].copy_from_slice(&crc.to_le_bytes());
+}
+
+/// Where the kernel reads the ON key and gates on it, `in a,(4)` then `and 8`, in the image
+/// `bytes` loaded at `base`. The exit check reads it with `xor 8` and does not match.
+pub fn poll_sites(bytes: &[u8], base: u16) -> Vec<u16> {
+    let at = |i: usize| base + u16::try_from(i).expect("the image fits a bank");
+    (0..bytes.len().saturating_sub(3))
+        .filter(|&i| bytes[i..i + 4] == [0xDB, 0x04, 0xE6, 0x08])
+        .map(at)
+        .collect()
+}
+
+/// Steps one instruction at a time until the pc is `target` in the app's page. Returns the T-states
+/// that took.
+pub fn step_to(m: &mut Machine, target: u16, page: Option<u8>) -> u32 {
+    let mut total = 0;
+    for _ in 0..50_000_000 {
+        if m.pc() == target && page.is_none_or(|p| m.in_port(6) == p) {
+            return total;
+        }
+        let run = m.resume(1);
+        assert_eq!(run.stop, Stop::Limit, "the run ended before {target:04x}");
+        total += run.tstates;
+    }
+    panic!("never reached {target:04x}");
+}
+
+/// Runs one instruction at a time for at least `tstates` T-states, with ON down if `down`, and
+/// proves meanwhile that the code stays inside the kernel with interrupts off and reaches none of
+/// the `polls`, so that the level poll cannot have seen the key. Returns the T-states run.
+pub fn run_in_kernel(m: &mut Machine, kernel: &Range<u16>, polls: &[u16], tstates: u32) -> u32 {
+    let mut total = 0;
+    while total < tstates {
+        let (pc, iff) = (m.pc(), m.regs().iff1);
+        assert!(kernel.contains(&pc) && iff == 0, "pc {pc:04x}, iff {iff}");
+        assert!(
+            !polls.contains(&pc),
+            "the code reached the poll at {pc:04x}"
+        );
+        total += m.resume(1).tstates;
+    }
+    let (pc, iff) = (m.pc(), m.regs().iff1);
+    assert!(kernel.contains(&pc) && iff == 0, "pc {pc:04x}, iff {iff}");
+    total
+}
+
+/// Presses ON, holds it for `tstates` T-states inside the kernel, and releases it. Returns the
+/// T-states it was down.
+pub fn tap_in_kernel(m: &mut Machine, kernel: &Range<u16>, polls: &[u16], tstates: u32) -> u32 {
+    m.press_key(Machine::KEY_ON);
+    let down = run_in_kernel(m, kernel, polls, tstates);
+    m.release_key(Machine::KEY_ON);
+    down
+}
+
+/// A call of a kernel entry point that is about to start: where it returns to and the stack
+/// pointer then.
+pub struct Call {
+    ret: u16,
+    sp: u16,
+}
+
+impl Call {
+    /// Reads the return address of the call whose first instruction is next.
+    pub fn at_entry(m: &mut Machine) -> Call {
+        let sp = m.regs().sp;
+        let ret = m.read_ram(sp, 2);
+        Call {
+            ret: u16::from_le_bytes([ret[0], ret[1]]),
+            sp: sp + 2,
+        }
+    }
+
+    /// Runs on until the call has returned, and gives the registers it returned with.
+    pub fn returns(&self, m: &mut Machine) -> mcemu::Regs {
+        for _ in 0..50_000_000 {
+            if m.pc() == self.ret && m.regs().sp == self.sp {
+                return m.regs();
+            }
+            assert_eq!(m.resume(1).stop, Stop::Limit);
+        }
+        panic!("the call never returned");
+    }
+}
+
+/// Bit 0 of port 4, the ON key's interrupt latch.
+pub fn latched(m: &mut Machine) -> bool {
+    m.in_port(4) & 1 != 0
 }
 
 pub struct Rig {
@@ -149,6 +255,11 @@ impl Rig {
 
     pub fn run_to_end(&mut self) -> usize {
         self.finish(ENTRY, 0)
+    }
+
+    /// Runs the first instruction, so that `resume` and the stepping helpers can go on from it.
+    pub fn start(&mut self) {
+        assert_eq!(self.m.run(ENTRY, 1).stop, Stop::Limit);
     }
 
     /// True while the code is in the loop of `on_release_and_clear`, which ends where it clears the

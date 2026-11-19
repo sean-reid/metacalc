@@ -51,13 +51,21 @@ fn the_on_key_held_from_the_start_stops_init_and_leaves_nothing_ready() {
     let got = device.verify(0, ASKED_UNBOUNDED);
     println!("ON held through init: {} T-states", got.tstates);
     assert_eq!(got.init, status_code("ST_INTERRUPTED"));
-    assert_eq!(got.verify, malformed(), "no state is ready after the stop");
+    assert_eq!(
+        got.verify,
+        status_code("ST_INTERRUPTED"),
+        "ON is still down at the verify's exit"
+    );
     assert!(
         got.tstates < BUDGET_INIT_ON_AT_START,
         "{} T-states",
         got.tstates
     );
-    assert_eq!(verify_again(&mut device), malformed());
+    assert_eq!(
+        verify_again(&mut device),
+        malformed(),
+        "no state is ready after the stop"
+    );
     accepted_then_fresh(&mut device, "after");
 }
 
@@ -73,9 +81,17 @@ fn the_on_key_pressed_midway_through_init_stops_it_and_a_fresh_init_succeeds() {
         device.byte("TEST_INIT_STATUS"),
         status_code("ST_INTERRUPTED")
     );
-    assert_eq!(device.byte("TEST_VERIFY_STATUS"), malformed());
+    assert_eq!(
+        device.byte("TEST_VERIFY_STATUS"),
+        status_code("ST_INTERRUPTED"),
+        "ON is still down at the verify's exit"
+    );
     assert!(after < BUDGET_POLL_GAP, "{after} T-states");
-    assert_eq!(verify_again(&mut device), malformed());
+    assert_eq!(
+        verify_again(&mut device),
+        malformed(),
+        "no state is ready after the stop"
+    );
     accepted_then_fresh(&mut device, "midway");
 }
 
@@ -116,3 +132,39 @@ fn init_reads_the_on_key_within_one_outer_iteration_of_the_pair_loop() {
 const CEILING_LONGEST_INIT: u32 = 124_000_000;
 const BUDGET_INIT_ON_AT_START: u32 = 1_970_000;
 const BUDGET_POLL_GAP: u32 = 1_000_000;
+
+/// A refusal is a status like any other: with interrupts off and the latch set by a tap that ended
+/// before the call, the exit replaces it with the stop, and with the latch clear it stands.
+#[test]
+fn a_refused_call_returns_the_stop_when_the_latch_is_set_and_its_refusal_when_clear() {
+    for (entry, what) in [
+        ("ENTRY_VERIFY", "kernel_verify after kernel_reset"),
+        ("ENTRY_CHUNK", "kernel_crc_chunk with no run begun"),
+    ] {
+        for tapped in [false, true] {
+            let mut device = Device::with_library(&raw::shared_prefix_library());
+            device.run("ENTRY_RESET_ALONE");
+            device.m.out_port(3, 0x0B);
+            if tapped {
+                device.m.press_key(Machine::KEY_ON);
+                device.m.release_key(Machine::KEY_ON);
+            }
+            assert_eq!(
+                device.m.in_port(4) & 1,
+                u8::from(tapped),
+                "{what}: the latch"
+            );
+            device.run(entry);
+            let want = if tapped {
+                status_code("ST_INTERRUPTED")
+            } else {
+                malformed()
+            };
+            assert_eq!(
+                device.byte("TEST_VERIFY_STATUS"),
+                want,
+                "{what}, tapped {tapped}"
+            );
+        }
+    }
+}

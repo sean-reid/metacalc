@@ -162,6 +162,8 @@ kd_crc:
 	call kd_newline
 	call kd_show_crc
 	call kernel_crc_begin
+	cp KD_INTERRUPT
+	jr z, kd_crc_stopped
 	or a
 	jr nz, kd_crc_bad
 kd_crc_next:
@@ -170,6 +172,8 @@ kd_crc_next:
 	call kernel_crc_chunk
 	cp KD_MORE
 	jr z, kd_crc_more
+	cp KD_INTERRUPT
+	jr z, kd_crc_stopped
 	or a
 	jr nz, kd_crc_bad
 	ld (K_CRC), hl

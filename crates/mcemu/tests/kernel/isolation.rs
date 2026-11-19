@@ -3,7 +3,7 @@ use crate::edges::failing_libraries;
 use crate::support::*;
 use crate::work::{init_tstates, run_with_on_after_init};
 use mcemu::Machine;
-use mcpack::library::{CHUNK, KernelError};
+use mcpack::library::CHUNK;
 use std::ops::Range;
 
 const OS_PAGE: u8 = 0;
@@ -175,10 +175,7 @@ fn an_interrupted_call_leaves_the_other_pages_alone() {
         let (init, got) = run_one(&mut device, id);
         assert_eq!(
             (init, got),
-            (
-                label("ST_INTERRUPTED") as u8,
-                status(Err(KernelError::Malformed))
-            )
+            (label("ST_INTERRUPTED") as u8, label("ST_INTERRUPTED") as u8)
         );
         let stray = stray_writes(&mut device, 0, layout_regions(layout, image));
         assert!(stray.is_empty(), "init stopped, {layout}: {stray:x?}");
@@ -325,7 +322,7 @@ fn port_5_is_restored_on_every_exit_path() {
             );
             assert_eq!(
                 device.byte("TEST_VERIFY_STATUS"),
-                status(Err(KernelError::Malformed))
+                label("ST_INTERRUPTED") as u8
             );
             let mut device = p5_run(DEFAULT, &small, id, initial, interrupts, On::AfterInit);
             let what = format!("ON down after init, port 5 {initial}, interrupts {interrupts}");
