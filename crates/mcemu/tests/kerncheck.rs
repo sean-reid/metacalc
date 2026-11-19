@@ -773,3 +773,46 @@ fn the_break_flag_is_cleared_only_once_on_is_up() {
     }
     panic!("the wait did not end within 100 slices of the release");
 }
+
+const KERNEL_PAGE: u8 = 3;
+const KERNEL_PAGE_FF00: std::ops::Range<usize> = 0x3F00..0x3FC0;
+
+fn seed_kernel_state(rig: &mut Rig) {
+    let page = rig.m.ram_page(KERNEL_PAGE);
+    let at = |name: &str| usize::from(label(name) - 0xC000);
+    page[at("KV_READY")..at("KV_READY") + 2].copy_from_slice(&[0xA5, 0x5A]);
+    page[at("KV_SAVED_SYM_LIMIT")..at("KV_SAVED_SYM_LIMIT") + 2].copy_from_slice(&[0x34, 0x12]);
+    page[KERNEL_PAGE_FF00].fill(0x6D);
+}
+
+#[test]
+fn a_ready_mark_left_in_kernel_ram_does_not_change_the_run_or_write_the_os_part_of_the_page() {
+    let bytes = axioms(40);
+    let mut clean = Rig::new(&bytes, Speed::Mhz15);
+    clean.run_to_end();
+    let want = screens(&clean.trace());
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    seed_kernel_state(&mut rig);
+    rig.run_to_end();
+    assert_eq!(screens(&rig.trace()), want);
+    assert_eq!(rig.m.ram_page(KERNEL_PAGE)[KERNEL_PAGE_FF00], [0x6D; 0xC0]);
+}
+
+#[test]
+fn the_app_clears_the_ready_mark_before_it_reaches_kernel_init() {
+    let bytes = axioms(40);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    seed_kernel_state(&mut rig);
+    let init = label("KERNEL_INIT");
+    let mut run = rig.m.run(ENTRY, 1);
+    for _ in 0..1_000_000 {
+        if rig.m.pc() == init {
+            break;
+        }
+        assert_eq!(run.stop, Stop::Limit, "the app ended before kernel_init");
+        run = rig.m.resume(1);
+    }
+    assert_eq!(rig.m.pc(), init, "kernel_init was never reached");
+    let at = usize::from(label("KV_READY") - 0xC000);
+    assert_eq!(rig.m.ram_page(KERNEL_PAGE)[at..at + 2], [0, 0]);
+}

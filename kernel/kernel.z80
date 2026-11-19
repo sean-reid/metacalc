@@ -36,6 +36,8 @@
 ;                        port 7 changes, so the block may be in bank B. HL above $BFF7, a block
 ;                        that touches bank C, is refused with Malformed before it is read.
 ;                   out: A = status
+;   kernel_reset    in:  nothing
+;                   out: A = 0. Clears the ready mark and the CRC-32 run state.
 ;   kernel_verify   in:  HL = assertion number, kernel_init returned 0
 ;                   out: A = status, 0 meaning accepted
 ;   kernel_crc_begin  in:  kernel_init returned 0
@@ -47,10 +49,12 @@
 ;                          low 16; with Malformed, DE:HL = 0; otherwise DE and HL are destroyed.
 ;
 ; kernel_verify returns Malformed unless the ready mark, which kernel_init sets when it succeeds
-; and clears when it fails, is in place. The mark guards the init sequence, not the contents
-; of the regions: the regions belong to the kernel between calls, and a caller that writes them
-; gets undefined results. The mark can survive an app's exit, so every app session must call
-; kernel_init before kernel_verify. Once it has, kernel_verify may be called any number of times.
+; and clears when it fails, is in place. The mark shows that kernel_init completed since the last
+; kernel_reset. An app calls kernel_reset first at start, so a session never verifies on state an
+; earlier session left, then calls kernel_init before kernel_verify; once init has succeeded,
+; kernel_verify may be called any number of times. The mark does not show that the kernel's RAM
+; regions are intact: they belong to the kernel between calls, and a caller that writes them gets
+; undefined results.
 ; The library is stored the way TI-OS stores an app: chunk c of 16 KB at flash page KERNEL_LIB_PAGE - c.
 ; kernel_init refuses a library page >= $80 and a library that needs more than
 ; KERNEL_LIB_PAGE + 1 chunks; one that ends exactly at page 0 is accepted. The page is
@@ -172,6 +176,10 @@ kernel_init:
 	ld ix,init_body
 	jr kernel_enter
 
+kernel_reset:
+	ld ix,reset_body
+	jr kernel_enter
+
 kernel_verify:
 	ld ix,verify_body
 
@@ -227,6 +235,12 @@ leave_window_end:
 	ret z
 	ei
 	ret
+
+reset_body:
+	ld hl,0
+	ld (kv_ready),hl
+	ld (kv_crc_state),hl
+	jp exit_ok
 
 fail_malformed:
 	ld a,ST_MALFORMED

@@ -3,6 +3,7 @@
 ; includes the kernel and equates.inc, and calls kernchk_run with interrupts on, from the page
 ; and port 6 value the app was entered with, and with a usable stack. Scratch is in bank B, which
 ; the kernel restores after every call; the parameter block for kernel_init is its first nine bytes.
+; kernchk_run begins with kernel_reset, so no earlier session's ready mark survives into the run.
 ; Checks the library whose first chunk is on the page below the app: kernel_init, the CRC-32 run
 ; chunk by chunk, then kernel_verify for assertion 0 to count - 1, with a progress line between
 ; calls. Stops when a call returns 14, or between calls when ON is down, was pressed since the
@@ -54,6 +55,7 @@ STOP_VERIFY = 2
 STOP_INIT   = 3
 
 kernchk_run:
+	call kernel_reset
 	call app_find_library
 	ld a, 0Ch
 	call putchar
