@@ -8,8 +8,8 @@
 ; kernel_init and kernel_verify can return ST_INTERRUPTED, which the model never does.
 ;
 ; Code runs from flash in bank A and is position dependent. Assembling this file
-; alone places it at $4000; an including file defines KERNEL_EMBEDDED first and
-; places the code itself.
+; alone places it at $4000, with -I app/src so that ram_map.inc is found; an including file
+; defines KERNEL_EMBEDDED first and places the code itself.
 ;
 ; Memory. Every entry point maps RAM page KERNEL_RAM_PAGE (default 3, the calculator's spare
 ; page) into bank C through port 5 and keeps all its storage there, in two regions that TI-OS

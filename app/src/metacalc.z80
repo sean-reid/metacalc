@@ -8,13 +8,13 @@ start:
 	call app_find_library
 #endif
 	bcall(_ClrLCDFull)
-	ld hl, plotSScreen
-	ld de, plotSScreen + 1
-	ld bc, 767
+	ld hl, UI_FRAME
+	ld de, UI_FRAME + 1
+	ld bc, UI_FRAME_SIZE - 1
 	ld (hl), 0
 	ldir
 	ld hl, title
-	ld de, plotSScreen + (TITLE_ROW * 12) + TITLE_COL
+	ld de, UI_FRAME + (TITLE_ROW * 12) + TITLE_COL
 	ld b, 8
 draw:
 	push bc

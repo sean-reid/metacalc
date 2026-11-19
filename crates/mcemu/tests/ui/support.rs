@@ -16,7 +16,7 @@ pub const REAL: Image = Image {
     code: include_bytes!(concat!(env!("OUT_DIR"), "/ui_test.bin")),
     labels: include_str!(concat!(env!("OUT_DIR"), "/ui_test.lab")),
     frame: 0x9340,
-    vars: 0x9882,
+    vars: 0x86EC,
 };
 
 pub const MOVED: Image = Image {
@@ -104,6 +104,8 @@ pub enum Op {
     Iff,
     SetFont(Vec<u8>),
     BuiltinFont,
+    /// Zeroes the whole variable block, as the OS does to saveSScreen when auto power down fires.
+    ClearVars,
     /// Pixels only the host draws, ORed into the frame between two Z80 calls.
     Ink(Bitmap),
 }
@@ -296,6 +298,14 @@ impl Script {
                 let at = self.put(table);
                 self.word(&[0x21], at);
                 self.run("ui_set_font", &[], call);
+            }
+            Op::ClearVars => {
+                if call {
+                    self.word(&[0x21], self.image.vars);
+                    self.word(&[0x11], self.image.vars + 1);
+                    self.word(&[0x01], VARS_LEN - 1);
+                    self.code.extend_from_slice(&[0x36, 0x00, 0xED, 0xB0]);
+                }
             }
             Op::BuiltinFont => {
                 self.word(&[0x21], label(self.image, "ui_font"));

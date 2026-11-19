@@ -1,3 +1,5 @@
+#ifndef KERNEL_RAM_INC
+#define KERNEL_RAM_INC
 #ifndef KERNEL_RAM_PAGE
 KERNEL_RAM_PAGE             .equ 3
 #endif
@@ -7,39 +9,15 @@ KERNEL_RAM_PAGE             .equ 3
 #if KERNEL_RAM_PAGE > 7
  .error "KERNEL_RAM_PAGE must be 2 to 7, there are no pages above 7"
 #endif
-#ifndef KERNEL_RAM_LOW
-KERNEL_RAM_LOW              .equ $C500
-#endif
-#ifndef KERNEL_RAM_HIGH
-KERNEL_RAM_HIGH             .equ $DF00
-#endif
-LOW_SIZE                    .equ $1200
-HIGH_SIZE                   .equ $2000
+#include "ram_map.inc"
 #if KERNEL_RAM_LOW & $FF
  .error "KERNEL_RAM_LOW must be a multiple of $100"
 #endif
 #if KERNEL_RAM_HIGH & $FF
  .error "KERNEL_RAM_HIGH must be a multiple of $100"
 #endif
-#if KERNEL_RAM_LOW < $C000
- .error "KERNEL_RAM_LOW must be in bank C"
-#endif
-#if KERNEL_RAM_HIGH < $C000
- .error "KERNEL_RAM_HIGH must be in bank C"
-#endif
 KERNEL_RAM_LOW_END          .equ KERNEL_RAM_LOW+LOW_SIZE
 KERNEL_RAM_HIGH_END         .equ KERNEL_RAM_HIGH+HIGH_SIZE
-#if KERNEL_RAM_LOW_END > $10000
- .error "the low region does not fit below $10000"
-#endif
-#if KERNEL_RAM_HIGH_END > $10000
- .error "the high region does not fit below $10000"
-#endif
-#if KERNEL_RAM_LOW < KERNEL_RAM_HIGH_END
-#if KERNEL_RAM_HIGH < KERNEL_RAM_LOW_END
- .error "the low and high regions overlap"
-#endif
-#endif
 KERNEL_LIB_PAGE             .equ KERNEL_RAM_LOW+$00
 KERNEL_LIMIT_STACK_SYMS     .equ KERNEL_RAM_LOW+$01
 KERNEL_LIMIT_STACK_ENTRIES  .equ KERNEL_RAM_LOW+$03
@@ -174,4 +152,5 @@ WORK_LIMIT          .equ 225000
 MAX_BULK_CHARGE     .equ 511*512/2
 #if WORK_LIMIT < MAX_BULK_CHARGE
  .error "WORK_LIMIT must be at least MAX_BULK_CHARGE, the reference list check subtracts it unchecked"
+#endif
 #endif
