@@ -178,14 +178,21 @@ impl Lib {
         self.assertions[i].theorem
     }
 
-    /// The recorded status of assertion `i`; a damaged library gives back the table it was
-    /// installed with, though every mark and count reads unchecked.
+    /// The status of assertion `i` as the session sees it: an entry installed as checked that the
+    /// kernel refuses reads failed here. A damaged library gives back the table it was installed
+    /// with, though every mark and count reads unchecked. `installed_status` is the table as given.
     pub fn status(&self, i: usize) -> Status {
         if self.damaged() {
             self.installed[i]
         } else {
             self.ledger.status(i)
         }
+    }
+
+    /// The status of assertion `i` exactly as the caller installed it, whatever the session has
+    /// since found.
+    pub fn installed_status(&self, i: usize) -> Status {
+        self.installed[i]
     }
 
     pub fn mark(&self, i: usize) -> Mark {

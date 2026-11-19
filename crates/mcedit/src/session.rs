@@ -5,6 +5,7 @@ use crate::term::{Mark, MetaId, Peak, Store, TermId};
 use crate::vars::Vars;
 use mcpack::mm::{Database, Kind, ProofError, StmtId, Sym, Tree};
 use std::cell::Cell;
+use std::collections::HashSet;
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -100,6 +101,7 @@ pub struct Session<'a> {
     pub(crate) undo: Vec<Undo>,
     pub(crate) peak: Sizes,
     pub(crate) auto_nodes: usize,
+    pub(crate) skip: HashSet<StmtId>,
     pub(crate) walks: Cell<usize>,
     pub(crate) visits: Cell<usize>,
     pub(crate) work: Cell<usize>,
@@ -139,6 +141,7 @@ impl<'a> Session<'a> {
             undo: Vec::new(),
             peak: Sizes::default(),
             auto_nodes: 0,
+            skip: HashSet::new(),
             walks: Cell::new(0),
             visits: Cell::new(0),
             work: Cell::new(0),

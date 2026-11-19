@@ -6,7 +6,9 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fmt;
 
-const WIDTH: usize = 79;
+mod lines;
+
+use lines::Lines;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ExportError {
@@ -91,7 +93,8 @@ pub fn export_accepted(bytes: &[u8]) -> Result<Export, ExportError> {
     export_within(bytes, HOST_LIMITS)
 }
 
-/// `export_accepted` with the kernel held to `limits`.
+/// `export_accepted` with the kernel held to `limits`. Callers use `export_accepted`.
+#[doc(hidden)]
 pub fn export_within(bytes: &[u8], limits: Limits) -> Result<Export, ExportError> {
     let (count, rejected) = check_each(bytes, limits, true)?;
     let text = write(bytes, count, &rejected)?;
@@ -433,70 +436,4 @@ fn step_letters(proof: &[Step]) -> String {
         out.extend(digits.iter().rev().map(|&d| d as char));
     }
     out
-}
-
-/// Appends tokens to a string, breaking lines before they pass `WIDTH` columns.
-struct Lines<'a> {
-    out: &'a mut String,
-    indent: usize,
-    used: usize,
-    empty: bool,
-}
-
-impl<'a> Lines<'a> {
-    fn new(out: &'a mut String, indent: usize) -> Self {
-        out.extend(std::iter::repeat_n(' ', indent));
-        Lines {
-            out,
-            indent,
-            used: indent,
-            empty: true,
-        }
-    }
-
-    fn newline(&mut self) {
-        self.out.push('\n');
-        self.out.extend(std::iter::repeat_n(' ', self.indent + 2));
-        self.used = self.indent + 2;
-        self.empty = true;
-    }
-
-    fn separate(&mut self) {
-        if !self.empty {
-            self.out.push(' ');
-            self.used += 1;
-        }
-    }
-
-    fn token(&mut self, token: &str) {
-        if !self.empty && self.used + 1 + token.len() > WIDTH {
-            self.newline();
-        }
-        self.separate();
-        self.out.push_str(token);
-        self.used += token.len();
-        self.empty = false;
-    }
-
-    /// Letters may split anywhere, so each line is filled to the margin.
-    fn run(&mut self, letters: &str) {
-        let mut rest = letters;
-        while !rest.is_empty() {
-            let room = WIDTH.saturating_sub(self.used + usize::from(!self.empty));
-            if room == 0 {
-                self.newline();
-                continue;
-            }
-            let (head, tail) = rest.split_at(room.min(rest.len()));
-            self.separate();
-            self.out.push_str(head);
-            self.used += head.len();
-            self.empty = false;
-            rest = tail;
-        }
-    }
-
-    fn finish(self) {
-        self.out.push('\n');
-    }
 }

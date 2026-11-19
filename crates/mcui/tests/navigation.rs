@@ -589,6 +589,19 @@ fn a_table_that_calls_a_rejected_theorem_checked_does_not_get_a_check_mark() {
 }
 
 #[test]
+fn the_installed_table_is_unchanged_by_a_demotion() {
+    let (bytes, _) = support::rejected_a1i();
+    let table = support::statuses(&bytes, &[], &[]);
+    let lib = lib_with(bytes, table.clone());
+    let a1i = index_in(&lib, "a1i");
+    assert_eq!(lib.status(a1i), mcui::Status::Failed);
+    for (i, &status) in table.iter().enumerate() {
+        assert_eq!(lib.installed_status(i), status, "{}", lib.label(i));
+    }
+    assert_eq!(lib.installed_status(a1i), mcui::Status::Checked);
+}
+
+#[test]
 fn a_table_that_calls_a_sound_theorem_failed_still_lets_why_read_its_proof() {
     let (bytes, _) = support::rejected_a1i();
     let table = support::statuses(&bytes, &[], &["a2i"]);

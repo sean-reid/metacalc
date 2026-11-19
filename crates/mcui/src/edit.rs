@@ -72,6 +72,22 @@ pub struct Editor {
     barred: Vec<StmtId>,
 }
 
+/// The statements of the theorems the kernel rejects, which no step may rest on.
+fn barred(lib: &Lib) -> Vec<StmtId> {
+    (0..lib.len())
+        .filter(|&i| lib.unproved(i))
+        .filter_map(|i| lib.stmt_of(i))
+        .collect()
+}
+
+/// Whether some operation of `session` applies a theorem of `barred`.
+fn rests_on(session: &Session<'_>, barred: &[StmtId]) -> bool {
+    session
+        .ops()
+        .iter()
+        .any(|op| matches!(op, Op::Apply { assertion, .. } if barred.contains(assertion)))
+}
+
 fn refusal(error: &Error) -> &'static str {
     match error {
         Error::Unify(_) => "No match",
@@ -102,7 +118,8 @@ impl Editor {
             return Err("it proves a syntax statement");
         }
         let id = lib.stmt_of(theorem).ok_or("the library does not export")?;
-        let (session, groups) = match saved {
+        let barred = barred(lib);
+        let (mut session, groups) = match saved {
             Some(saved) => {
                 let session = Session::restore(catalog, &saved.session).map_err(|e| match e {
                     Error::WrongLibrary => "the library has changed",
@@ -113,6 +130,9 @@ impl Editor {
                 });
                 if total != Some(session.ops().len()) {
                     return Err("the saved proof is damaged");
+                }
+                if rests_on(&session, &barred) {
+                    return Err("the saved proof uses a theorem that failed its check");
                 }
                 (session, saved.groups.clone())
             }
@@ -129,10 +149,7 @@ impl Editor {
         }
         let lead = lib.statement(theorem).conclusion.lead.clone();
         let replayed = session.ops().len();
-        let barred = (0..lib.len())
-            .filter(|&i| lib.unproved(i))
-            .filter_map(|i| lib.stmt_of(i))
-            .collect();
+        session.skip(barred.iter().copied());
         Ok(Editor {
             session,
             lead,
@@ -353,10 +370,6 @@ impl Editor {
                 .session
                 .auto(goal, AUTO_DEPTH, AUTO_BUDGET)
                 .ok_or("Auto found nothing")?;
-            let rests = |op: &Op| matches!(op, Op::Apply { assertion, .. } if me.barred.contains(assertion));
-            if ops.iter().any(rests) {
-                return Err("Auto found nothing");
-            }
             me.session.play(&ops).map_err(|_| "Auto found nothing")
         })
     }
@@ -391,12 +404,10 @@ impl Editor {
             .filter(|&g| self.is_open(g))
             .or_else(|| self.following(&order, after));
         let picks = match goal {
-            Some(g) => match self.session.candidates(g, CANDIDATES + self.barred.len()) {
+            Some(g) => match self.session.candidates(g, CANDIDATES) {
                 Ok(Candidates::List(found)) => Picks::List(
                     found
                         .iter()
-                        .filter(|c| !self.barred.contains(&c.assertion))
-                        .take(CANDIDATES)
                         .map(|c| Pick {
                             assertion: c.assertion,
                             label: self.session.db().stmt(c.assertion).label.clone(),
@@ -444,62 +455,4 @@ impl Editor {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use mcedit::Catalog;
-    use mcpack::mm::{self, Grammar};
-
-    const SRC: &str = "
-$c ( ) -> wff |- setvar Q $.
-$v ph ps ch x $.
-wph $f wff ph $.
-wps $f wff ps $.
-wch $f wff ch $.
-vx $f setvar x $.
-wi $a wff ( ph -> ps ) $.
-${ $d x ph $. wq $a wff Q x ph $. $}
-${
-  min $e |- ph $.
-  maj $e |- ( ph -> ps ) $.
-  ax-mp $a |- ps $.
-$}
-${
-  t.1 $e |- ph $.
-  t.2 $e |- ( ph -> ps ) $.
-  t $p |- ps $= ? $.
-$}
-";
-
-    fn editor() -> Editor {
-        let db: &'static mm::Database =
-            Box::leak(Box::new(mm::parse(SRC.as_bytes().to_vec()).unwrap()));
-        let grammar: &'static Grammar<'static> =
-            Box::leak(Box::new(Grammar::new(db, &[("|-", "wff")]).unwrap()));
-        let catalog = Catalog::new(db, grammar, 1);
-        let session = Session::start_in(catalog, db.find("t").unwrap()).unwrap();
-        Editor {
-            session,
-            lead: vec![PROVABLE.to_string()],
-            groups: Vec::new(),
-            replayed: 0,
-            barred: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn a_proof_that_cannot_be_checked_is_not_finished() {
-        let mut editor = editor();
-        let db = editor.session.db();
-        let (ax_mp, min, maj) = (
-            db.find("ax-mp").unwrap(),
-            db.find("t.1").unwrap(),
-            db.find("t.2").unwrap(),
-        );
-        editor.session.apply(0, ax_mp).unwrap();
-        editor.session.close(1, min).unwrap();
-        editor.session.close(2, maj).unwrap();
-        assert!(editor.snap(None, None).finished);
-        editor.session.corrupt_metas();
-        assert!(!editor.snap(None, None).finished);
-    }
-}
+mod tests;

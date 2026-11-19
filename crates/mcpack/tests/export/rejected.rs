@@ -156,6 +156,51 @@ fn a_library_that_does_not_decode_or_export_fails_either_way() {
     }
 }
 
+#[test]
+fn every_way_a_proof_can_be_wrong_is_tolerated_and_written_as_unknown() {
+    let original = packed(SRC);
+    let clean = export(&original).unwrap();
+    let t3 = LABELS.iter().position(|l| *l == "t3").unwrap();
+    let at = record(&original, t3);
+    let refs = |bytes: &mut [u8], list: [u16; 2]| {
+        for (slot, value) in list.into_iter().enumerate() {
+            bytes[at.refs + 2 * slot..][..2].copy_from_slice(&value.to_le_bytes());
+        }
+    };
+    type Damage<'a> = Box<dyn Fn(&mut [u8]) + 'a>;
+    let cases: Vec<(KernelError, Damage)> = vec![
+        (KernelError::ForwardReference, Box::new(|b| refs(b, [6, 2]))),
+        (
+            KernelError::LooseReference,
+            Box::new(|b| b[at.proof..at.proof + 4].copy_from_slice(&[0, 0, 2, 1])),
+        ),
+        (
+            KernelError::StackUnderflow,
+            Box::new(|b| b[at.proof..at.proof + 4].copy_from_slice(&[1, 0, 1, 2])),
+        ),
+        (
+            KernelError::BadBackReference,
+            Box::new(|b| b[at.proof..at.proof + 4].copy_from_slice(&[0, 9, 1, 2])),
+        ),
+    ];
+    for (error, damage) in cases {
+        let bytes = patched(original.clone(), |b| damage(b));
+        let out = export_accepted(&bytes).unwrap_or_else(|e| panic!("{error:?}: {e}"));
+        assert_eq!(out.rejected, [("t3".to_string(), error)], "{error:?}");
+        assert_eq!(out.text, with_unknown_proofs(&clean, &["t3"]), "{error:?}");
+        let db = mm::parse(out.text.into_bytes()).unwrap();
+        let mut verifier = Verifier::new(&db);
+        let unproved: Vec<String> = db
+            .theorems()
+            .filter(|&id| verifier.verify(id) == Err(ProofError::Incomplete))
+            .map(|id| db.stmt(id).label.clone())
+            .collect();
+        assert_eq!(unproved, ["t3"], "{error:?}");
+        let others = db.theorems().filter(|&id| verifier.verify(id).is_ok());
+        assert_eq!(others.count(), 4, "{error:?}");
+    }
+}
+
 const SOUND: &str = "$c |- wff R $. $v x y $. vx $f wff x $. vy $f wff y $.
     ${ $d x y $. ax-d $a |- R x y $. $}
     ${ m.1 $e |- R x y $. ax-m $a |- R x x $. $}

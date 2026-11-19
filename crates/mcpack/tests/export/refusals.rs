@@ -43,7 +43,7 @@ pub(super) struct Record {
     pub(super) hyps: usize,
     pub(super) conclusion: usize,
     pub(super) refs: usize,
-    proof: usize,
+    pub(super) proof: usize,
 }
 
 pub(super) fn record(bytes: &[u8], id: usize) -> Record {
