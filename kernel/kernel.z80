@@ -35,18 +35,22 @@
 ;                        stack entries, saved symbols, saved entries. 9 bytes, copied before
 ;                        port 7 changes, so the block may be in bank B. HL above $BFF7, a block
 ;                        that touches bank C, is refused with Malformed before it is read.
-;                   out: A = status
+;                   out: A = status; ST_INTERRUPTED replaces it when ON is down or latched at exit
 ;   kernel_reset    in:  nothing
 ;                   out: A = 0. Clears the ready mark and the CRC-32 run state.
 ;   kernel_verify   in:  HL = assertion number, kernel_init returned 0
-;                   out: A = status, 0 meaning accepted
+;                   out: A = status, 0 meaning accepted; ST_INTERRUPTED replaces it when ON is
+;                        down or latched at exit
 ;   kernel_crc_begin  in:  kernel_init returned 0
-;                     out: A = status, 0 or Malformed
+;                     out: A = status, 0 or Malformed; ST_INTERRUPTED replaces it when ON is down
+;                          or latched at exit
 ;   kernel_crc_chunk  in:  kernel_crc_begin returned 0
 ;                     out: A = ST_CRC_MORE until the last chunk, then 0 if the CRC-32 of the
 ;                          library bytes from offset 8 to its end equals the header's, else
 ;                          Malformed. With 0, DE:HL = the CRC-32, DE the high 16 bits and HL the
 ;                          low 16; with Malformed, DE:HL = 0; otherwise DE and HL are destroyed.
+;                          ST_INTERRUPTED replaces any of these when ON is down or latched at
+;                          exit, and DE:HL are then undefined, whatever the chunk had computed.
 ;
 ; kernel_verify returns Malformed unless the ready mark, which kernel_init sets when it succeeds
 ; and clears when it fails, is in place. The mark holds the magic from a completed kernel_init until
@@ -155,11 +159,11 @@
 ; take it unseen: its handler acknowledges the latch and sets its break flag only for a key still
 ; down. The read replaces any status, a verdict, a refusal or ST_CRC_MORE, so the caller repeats the
 ; call. A kernel_init that had finished returns the stop with the ready mark clear, so it is run
-; again. A kernel_crc_chunk that ended the run returns the stop and no checksum; kernel_crc_begin
+; again. A kernel_crc_chunk that ended the run returns the stop and no defined checksum; kernel_crc_begin
 ; starts the run again. The latch is left as it was, for the OS or the caller to acknowledge. Only a
 ; tap that ends before the call starts, with interrupts on, was acknowledged by the OS already; with
-; interrupts off the latch is still set and the call reports it. A tap in the 110 T-states between
-; the read and the return, 165 for a kernel_init that succeeds, is not seen.
+; interrupts off the latch is still set and the call reports it. A tap in the 149 T-states between
+; the read and the return, 196 for a kernel_init that succeeds (counted in the emulator), is not seen.
 ;
 ; Status (ST_* in ram.inc)
 ;           0 ok               1 Malformed        2 BadRecord
