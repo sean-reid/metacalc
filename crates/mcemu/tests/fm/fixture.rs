@@ -1,6 +1,7 @@
 use crate::support::*;
-use mcpack::library::{GLYPHS, pack_kernel};
+use mcpack::library::{ENTRY_LEN, GLYPHS, SHAPES, TRAILER_LEN, TREES, crc32, pack_kernel};
 use mcpack::mm::StmtId;
+use std::sync::OnceLock;
 
 const HEAD: &str = "$c ( ) -> -. <-> /\\ \\/ A. E. = e. { } | , wff |- setvar class $.\n\
     $v ph ps ch th ta x y z A B $.\n\
@@ -50,6 +51,62 @@ pub fn source() -> String {
     format!("{HEAD}{AXIOMS}{}", longest())
 }
 
+/// Constants that are each a syntax axiom of their own, so that a later syntax axiom has an index
+/// of 127 or more and its nodes take two bytes in a tree.
+pub const FILLERS: usize = 130;
+
+/// The most operators a statement of 255 symbols can hold in front of a variable.
+pub const CHAIN: usize = 253;
+
+/// What the base fixture lacks: a wrapper over a wrapper, a statement that is only a wrapper
+/// chain, a wrapper below a root, a prefix operator whose index takes two bytes in a tree and a
+/// statement of it 253 deep with a tree of 507 bytes, which fm reads in three pieces.
+fn structure() -> String {
+    let mut src = format!("$c ~ {} $.\n", names("F", FILLERS).join(" "));
+    src += "wcl $a wff A $.\n";
+    for i in 0..FILLERS {
+        src += &format!("wf{i} $a wff F{i} $.\n");
+    }
+    src += "wun $a wff ~ ph $.\n";
+    src += "nest-root $a |- x $.\nnest-below $a |- ( ph -> x ) $.\n";
+    src += "onec $a |- ( F3 -> ph ) $.\n";
+    src += "wrapc $a |- ( ( ch -> { x | ps } ) -> th ) $.\n";
+    let fillers = names("F", FILLERS);
+    let wide: Vec<&str> = (0..250).map(|i| fillers[i % FILLERS].as_str()).collect();
+    let ten = fillers[..10].join(" ");
+    src += &format!("wten $a wff {ten} $.\nten $a |- {ten} $.\n");
+    src += "wbig $a wff ";
+    src += &wide.join(" ");
+    src += " $.\n";
+    src += &format!("big $a |- {} $.\n", wide.join(" "));
+    for (label, lead) in [("t255", ""), ("t256", "-. "), ("t257", "-. -. ")] {
+        src += &format!("{label} $a |- {lead}{}ph $.\n", "~ ".repeat(127));
+    }
+    for (n, chunk) in names("F", FILLERS).chunks(13).enumerate() {
+        let nested = chunk
+            .iter()
+            .rev()
+            .skip(1)
+            .fold(chunk.last().unwrap().clone(), |inner, f| {
+                format!("( {f} /\\ {inner} )")
+            });
+        src += &format!("fill{n} $a |- {nested} $.\n");
+    }
+    src + &format!("deep $a |- {}ph $.\n", "~ ".repeat(CHAIN))
+}
+
+fn names(prefix: &str, count: usize) -> Vec<String> {
+    (0..count).map(|i| format!("{prefix}{i}")).collect()
+}
+
+/// The base fixture and `structure`.
+pub fn nodes_library() -> Vec<u8> {
+    static PACKED: OnceLock<Vec<u8>> = OnceLock::new();
+    PACKED
+        .get_or_init(|| pack_all(&parse(&format!("{}{}", source(), structure()))))
+        .clone()
+}
+
 pub fn library() -> Vec<u8> {
     pack_all(&parse(&source()))
 }
@@ -57,6 +114,38 @@ pub fn library() -> Vec<u8> {
 /// A second library over the same symbols, so with a glyph section somewhere else.
 pub fn other() -> Vec<u8> {
     pack_all(&parse(&format!("{HEAD}ax-a $a |- ( ph -> ph ) $.\n")))
+}
+
+/// The file offset of the section table's row for `id`.
+pub fn row_of(bytes: &[u8], id: u8) -> usize {
+    let count = usize::from(bytes[bytes.len() - TRAILER_LEN]);
+    let first = bytes.len() - TRAILER_LEN - count * ENTRY_LEN;
+    (0..count)
+        .map(|i| first + i * ENTRY_LEN)
+        .find(|&at| bytes[at] == id)
+        .expect("the library has the row")
+}
+
+/// `bytes` with `change` applied and the length and checksum of the header made right again.
+pub fn with(bytes: &[u8], change: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
+    let mut out = bytes.to_vec();
+    change(&mut out);
+    let len = out.len() as u32;
+    out[8..12].copy_from_slice(&len.to_le_bytes());
+    let crc = crc32(&out[8..]);
+    out[4..8].copy_from_slice(&crc.to_le_bytes());
+    out
+}
+
+/// The fixture with its trees and shapes sections renamed to ids nobody reads: a glyph map and
+/// neither of the two.
+pub fn unstructured() -> Vec<u8> {
+    let good = library();
+    let (trees, shapes) = (row_of(&good, TREES), row_of(&good, SHAPES));
+    with(&good, |b| {
+        b[trees] = 40;
+        b[shapes] = 41;
+    })
 }
 
 /// The fixture packed without sections.

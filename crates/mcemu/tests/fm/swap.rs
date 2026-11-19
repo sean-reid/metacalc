@@ -48,6 +48,12 @@ fn each_part_of_the_key_alone_is_enough_to_refuse() {
         ("length low byte", "LS_GL", 3, 1),
         ("length high byte", "LS_GL", 4, 1),
         ("flash page", "LR_PAGE", 0, 1),
+        ("shapes offset low byte", "LS_SH", 0, 1),
+        ("shapes offset high byte", "LS_SH", 1, 1),
+        ("shapes length low byte", "LS_SH", 3, 1),
+        ("shapes length high byte", "LS_SH", 4, 1),
+        ("syntax count low byte", "LS_TR_N", 0, 1),
+        ("syntax count high byte", "LS_TR_N", 1, 1),
     ] {
         let mut fm = Fm::new(&a);
         assert_eq!(fm.statement(0, 0xFF).status(), 0);
@@ -57,5 +63,22 @@ fn each_part_of_the_key_alone_is_enough_to_refuse() {
         assert_eq!(fm.statement(0, 0xFF).status(), code(NOT_OPEN), "{what}");
         fm.rig.poke(place, &[old]);
         assert_eq!(fm.statement(0, 0xFF).status(), 0, "{what} put back");
+    }
+}
+
+#[test]
+fn a_library_with_shapes_is_another_library_to_fm_than_one_with_the_same_glyph_section_and_none() {
+    let (with, without) = (fixture::library(), fixture::unstructured());
+    for (opened, replaced) in [(&with, &without), (&without, &with)] {
+        let mut fm = Fm::new(opened);
+        assert_eq!(fm.statement(0, 0xFF).status(), 0);
+        assert_eq!(fm.nodes().status(), 0);
+        fm.rig.load(replaced);
+        fm.rig.open_ok();
+        assert_eq!(fm.statement(0, 0xFF).status(), code(NOT_OPEN));
+        assert_eq!(fm.nodes().status(), code(NOT_OPEN));
+        assert_eq!(fm.open().status(), 0);
+        assert_eq!(fm.statement(0, 0xFF).status(), 0);
+        assert_eq!(fm.nodes().status(), 0);
     }
 }

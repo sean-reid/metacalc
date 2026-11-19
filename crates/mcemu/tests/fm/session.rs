@@ -4,7 +4,6 @@ use crate::rig::*;
 use crate::support::*;
 
 const IY: u16 = 0x2468;
-const SPARE_BASE: u16 = 0xC000;
 
 fn longest(bytes: &[u8]) -> (u16, u8, Vec<String>) {
     let all = statements(&decoded(bytes));
@@ -23,12 +22,16 @@ fn calls(n: u16, k: u8) -> Vec<(&'static str, Regs, u8)> {
     let ok = 0;
     vec![
         ("FM_OPEN", regs(0, 0, 0), ok),
+        ("FM_NODES", regs(0, 0, 0), code("FM_ERR_INDEX")),
         ("FM_STATEMENT", regs(n, u16::from(k), 0), ok),
+        ("FM_NODES", regs(0, 0, 0), ok),
+        ("FM_NODES", regs(0, 0, 0), ok),
         ("FM_ROWS", regs(0, 94 << 8, 0), ok),
         ("FM_DRAW", regs(0xFFFF, (94 << 8) | 1, 8), ok),
         ("FM_DRAW", regs(2, (20 << 8) | 3, (3 << 8) | 5), ok),
         ("FM_DRAW", regs(0, 94 << 8, (6 << 8) | 2), ok),
         ("FM_STATEMENT", regs(n, 0x77, 0), code("FM_ERR_INDEX")),
+        ("FM_NODES", regs(0, 0, 0), code("FM_ERR_INDEX")),
         ("FM_STATEMENT", regs(0x7FFF, 0xFF, 0), code("FM_ERR_INDEX")),
     ]
 }
@@ -69,6 +72,7 @@ fn a_routine_on_a_closed_fm_returns_not_open_and_hands_the_state_back_too() {
         fm.rig.ei = ei;
         for (target, regs) in [
             ("FM_STATEMENT", Regs::default()),
+            ("FM_NODES", Regs::default()),
             ("FM_ROWS", Regs::default()),
             ("FM_DRAW", Regs::default()),
         ] {
@@ -105,18 +109,32 @@ fn span(fm: &mut Fm, target: &str, regs: Regs) -> (u32, u32) {
 /// first instruction to the driver's code after its return. Each time the status and result, the
 /// frame, the ports, SP and the interrupt flag must be those of the run with no interrupt, and
 /// the interrupt must have been taken.
-fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8) -> usize {
+fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8, cached: bool) -> usize {
     fm.rig.install_handler();
     fm.rig.ei = true;
-    let clear = |fm: &mut Fm| {
-        if target == "FM_DRAW" {
-            fm.clear();
+    let (n, k, _) = longest(&fixture::library());
+    let clear = |fm: &mut Fm| match target {
+        "FM_DRAW" => fm.clear(),
+        "FM_NODES" if !cached => {
+            assert_eq!(fm.statement(n, k).status(), 0);
         }
+        _ => {}
     };
     clear(fm);
+    if cached {
+        assert_eq!(fm.statement(n, k).status(), 0);
+        assert_eq!(fm.nodes().status(), 0);
+    }
     let want = fm.rig.call(target, regs);
     let frame = fm.frame();
     let rows = fm.rows(94).bc;
+    let nodes = target == "FM_NODES";
+    let table = if nodes {
+        fm.table(count(want))
+    } else {
+        Vec::new()
+    };
+    clear(fm);
     let (start, end) = span(fm, target, regs);
     let mut trials = 0;
     for after in (start..=start + 450).chain(end.saturating_sub(450)..=end) {
@@ -129,6 +147,9 @@ fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8) -> usize {
         assert_eq!(fm.rig.m.regs().sp, fm.rig.sp, "{what}: SP");
         assert_eq!(fm.frame(), frame, "{what}: frame");
         assert_eq!(fm.rows(94).bc, rows, "{what}: rows");
+        if nodes {
+            assert_eq!(fm.table(count(want)), table, "{what}: node table");
+        }
         trials += 1;
     }
     trials
@@ -146,18 +167,21 @@ fn an_interrupt_in_the_entry_or_the_exit_of_a_session_changes_nothing() {
             de: u16::from(k),
             ..Regs::default()
         };
-        assert!(sweep(&mut fm, "FM_STATEMENT", statement, port7) > 800);
+        assert!(sweep(&mut fm, "FM_STATEMENT", statement, port7, false) > 800);
+        assert!(sweep(&mut fm, "FM_NODES", Regs::default(), port7, false) > 800);
+        let early = sweep(&mut fm, "FM_NODES", Regs::default(), port7, true);
+        assert!(early > 400, "the built table's early exit: {early} trials");
         let rows = Regs {
             de: 94 << 8,
             ..Regs::default()
         };
-        assert!(sweep(&mut fm, "FM_ROWS", rows, port7) > 800);
+        assert!(sweep(&mut fm, "FM_ROWS", rows, port7, false) > 800);
         let draw = Regs {
             de: (94 << 8) | 1,
             bc: 8,
             ..Regs::default()
         };
-        assert!(sweep(&mut fm, "FM_DRAW", draw, port7) > 800);
+        assert!(sweep(&mut fm, "FM_DRAW", draw, port7, false) > 800);
         fm.clear();
         fm.draw(1, 0, 94, (0, 8));
         crate::ui_support::same_frame(
@@ -173,6 +197,111 @@ const BANK_B_EXTRA: [(&str, &str); 3] = [
     ("UI_FRAME", "UI_FRAME_SIZE"),
     ("UI_VARS", "UI_VARS_SIZE"),
 ];
+
+/// The node table and what fm_nodes builds it from: label and size.
+const NODE_MEMORY: [(&str, usize); 7] = [
+    ("FM_FIRST", 0x100),
+    ("FM_LAST", 0x100),
+    ("FM_DEPTH", 0x100),
+    ("FM_TLEN", 0x100),
+    ("FM_TCNT", 0x100),
+    ("FM_TSIZE", 0x100),
+    ("FM_PILE", 0x200),
+];
+
+/// Where a run of fm may write, listed by label: its variables, stack, glyph copy and per-token
+/// arrays, the kernel's mark, and bank B's scratch, frame and variables, besides the reader's;
+/// the node table, its scratch arrays and the stack only when `nodes`, and the shapes copy only
+/// when `shapes`.
+pub fn allowed_for(nodes: bool, shapes: bool) -> Allowed {
+    let at = |name: &str| label_in(WITH_FM, name);
+    let size = |name: &str| constant_of(WITH_FM.labels, name) as usize;
+    let mut allowed = Allowed::of(WITH_FM);
+    for (base, len) in BANK_B_EXTRA {
+        allowed.extra.push((APP_PAGE, at(base), size(len)));
+    }
+    let mut spare = vec![
+        (at("FM_RAM"), size("FM_VARS_SIZE")),
+        (
+            at("FM_STACK"),
+            usize::from(at("FM_STACK_TOP") - at("FM_STACK")),
+        ),
+        (at("FM_GLYPHS"), size("FM_GLYPHS_SIZE")),
+        (at("FM_IDS"), usize::from(at("FM_FIRST") - at("FM_IDS"))),
+        (at("KV_READY"), 2),
+    ];
+    if shapes {
+        spare.push((at("FM_SECOND"), size("FM_SECOND_SIZE")));
+    }
+    if nodes {
+        spare.extend(NODE_MEMORY.iter().map(|&(name, len)| (at(name), len)));
+    }
+    allowed
+        .extra
+        .extend(spare.into_iter().map(|(base, len)| (SPARE_PAGE, base, len)));
+    allowed
+}
+
+/// Writes the priming pattern over `len` bytes of fm's memory at `label`, so that a later write
+/// there shows.
+fn reprime(fm: &mut Fm, label: &str, len: usize) {
+    let at = usize::from(fm.rig.label(label) - SPARE_BASE);
+    let page = fm.rig.m.ram_page(SPARE_PAGE);
+    for (i, byte) in page[at..at + len].iter_mut().enumerate() {
+        *byte = pattern(SPARE_PAGE, at + i);
+    }
+}
+
+#[test]
+fn each_routine_writes_the_node_arrays_and_the_shapes_copy_only_when_it_is_the_one_that_may() {
+    let bytes = fixture::nodes_library();
+    let library = decoded(&bytes);
+    let (n, k, _) = longest(&bytes);
+    let deep = library
+        .assertions
+        .iter()
+        .position(|a| a.label == "deep")
+        .unwrap() as u16;
+    let check = |fm: &mut Fm, nodes, shapes, what: &str| {
+        let found = stray(&mut fm.rig, &allowed_for(nodes, shapes));
+        assert!(found.is_empty(), "{what}: stray writes at {found:x?}");
+    };
+    let mut fm = Fm::primed(&bytes);
+    assert_eq!(fm.open().status(), 0);
+    check(&mut fm, false, true, "fm_open");
+    let second = usize::from(fm.rig.label("FM_SECOND") - SPARE_BASE);
+    let page = fm.rig.m.ram_page(SPARE_PAGE);
+    assert!((0..0x40).any(|i| page[second + i] != pattern(SPARE_PAGE, second + i)));
+    let copy = fm.memory("FM_SECOND", 0x800);
+    reprime(&mut fm, "FM_SECOND", 0x800);
+    for (what, call) in [
+        ("fm_statement", fm.statement(n, k)),
+        ("fm_rows", fm.rows(94)),
+        ("fm_draw", fm.draw(1, -3, 94, (0, 8))),
+        ("fm_statement again", fm.statement(n, k)),
+    ] {
+        assert_eq!(call.status(), 0, "{what}");
+        check(&mut fm, false, false, what);
+    }
+    let at = usize::from(fm.rig.label("FM_SECOND") - SPARE_BASE);
+    fm.rig.m.ram_page(SPARE_PAGE)[at..at + 0x800].copy_from_slice(&copy);
+    assert_eq!(fm.statement(deep, 0xFF).status(), 0);
+    assert_eq!(fm.nodes().status(), 0);
+    assert_eq!(
+        fm.memory("FM_SECOND", 0x800),
+        copy,
+        "fm_nodes only reads the shapes copy"
+    );
+    check(&mut fm, true, true, "fm_nodes");
+    let first = usize::from(fm.rig.label("FM_FIRST") - SPARE_BASE);
+    let page = fm.rig.m.ram_page(SPARE_PAGE);
+    assert!((0..0x400).any(|i| page[first + i] != pattern(SPARE_PAGE, first + i)));
+}
+
+/// Where a run of fm may write, whatever the routine.
+pub fn allowed() -> Allowed {
+    allowed_for(true, true)
+}
 
 #[test]
 fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_the_readers() {
@@ -196,6 +325,7 @@ fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_
         fm.rig.ei = ei;
         assert_eq!(fm.open().status(), 0);
         assert_eq!(fm.statement(n, k).status(), 0);
+        assert_eq!(fm.nodes().status(), 0);
         assert_eq!(fm.rows(94).status(), 0);
         assert_eq!(fm.draw(1, -3, 94, (0, 8)).status(), 0);
         assert_eq!(fm.statement(0x7FFF, 0).status(), code("FM_ERR_INDEX"));
@@ -222,39 +352,15 @@ fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_
         fm.rig.open_ok();
         let want = if status.is_empty() { 0 } else { code(status) };
         assert_eq!(fm.statement(n, k).status(), want, "{what}: statement");
+        assert_eq!(fm.nodes().status(), want, "{what}: nodes");
     }
     fm.rig.load(&bytes);
     fm.rig.open_ok();
     let row = fm.rig.label("LS_GL") + 3;
     fm.rig.poke(row, &[0x01, 0x08, 0]);
     assert_eq!(fm.open().status(), code("FM_ERR_TOO_BIG"));
+    let allowed = allowed();
     let at = |name: &str| label_in(WITH_FM, name);
-    let mut allowed = Allowed::of(WITH_FM);
-    for (base, size) in BANK_B_EXTRA {
-        let size = constant_of(WITH_FM.labels, size) as usize;
-        allowed.extra.push((APP_PAGE, at(base), size));
-    }
-    for (base, size) in [
-        (
-            at("FM_RAM"),
-            constant_of(WITH_FM.labels, "FM_VARS_SIZE") as usize,
-        ),
-        (
-            at("FM_STACK"),
-            usize::from(at("FM_STACK_TOP") - at("FM_STACK")),
-        ),
-        (
-            at("FM_GLYPHS"),
-            constant_of(WITH_FM.labels, "FM_GLYPHS_SIZE") as usize,
-        ),
-        (
-            at("FM_IDS"),
-            usize::from(at("FM_FLAGS") + (at("FM_WIDTHS") - at("FM_IDS")) - at("FM_IDS")),
-        ),
-    ] {
-        allowed.extra.push((SPARE_PAGE, base, size));
-    }
-    allowed.extra.push((SPARE_PAGE, at("KV_READY"), 2));
     let found = stray(&mut fm.rig, &allowed);
     assert!(found.is_empty(), "stray writes at {found:x?}");
     let page = fm.rig.m.ram_page(SPARE_PAGE);
@@ -268,7 +374,7 @@ fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_
 
 #[test]
 fn a_session_reaches_a_stack_depth_the_header_states() {
-    let bytes = fixture::library();
+    let bytes = fixture::nodes_library();
     let all = statements(&decoded(&bytes));
     let depth = [0xA5u8, 0x5A]
         .into_iter()
@@ -281,6 +387,7 @@ fn a_session_reaches_a_stack_depth_the_header_states() {
             assert_eq!(fm.open().status(), 0);
             for (n, k, _) in &all {
                 assert_eq!(fm.statement(*n, *k).status(), 0);
+                assert_eq!(fm.nodes().status(), 0);
                 assert_eq!(fm.rows(20).status(), 0);
                 assert_eq!(fm.draw(1, -2, 94, (0, 8)).status(), 0);
                 assert_eq!(fm.draw(1, 0, 20, (0, 8)).status(), 0);

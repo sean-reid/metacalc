@@ -174,6 +174,7 @@ jobs:
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test kernel -- --ignored --exact libraries::no_honest_proof_in_a_shipped_library_charges_over_an_eighth_of_the_work_limit --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test reader -- --ignored --exact libraries::the_shipped_libraries_read_back_as_the_decoder_decodes_them --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact libraries::the_shipped_libraries_lay_out_and_draw_as_the_model_does --nocapture
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact libraries::the_shipped_libraries_build_the_node_tables_the_model_has --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact speed::the_heaviest_six_row_frame_in_ring_redraws_within_50_ms_at_6_mhz --nocapture
 
   library-exports:

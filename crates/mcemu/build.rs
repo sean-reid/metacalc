@@ -872,7 +872,12 @@ fn assemble_reader(out: &Path) {
         ("reader_kernel_test", &["WITH_KERNEL"][..]),
         (
             "reader_moved",
-            &["LIB_STATE=$B000", "LIB_BOUNCE=$F800", "LIB_SPARE_PAGE=5"][..],
+            &[
+                "LIB_STATE=$B000",
+                "LIB_BOUNCE=$F800",
+                "LIB_SPARE_PAGE=5",
+                "FM_RAM_SIZE=$1000",
+            ][..],
         ),
         (
             "reader_straddle",
@@ -893,12 +898,12 @@ fn assemble_reader(out: &Path) {
         &fm_args,
     );
     for (defines, refusal) in [
-        (&["FM_RAM_SIZE=$1600"][..], None),
+        (&["FM_RAM_SIZE=$1E00"][..], None),
         (&["FM_VARS_SIZE=$100"][..], None),
         (&["FM_RAM_SIZE=$1F00"][..], None),
         (&["FM_RAM=$E000"][..], None),
         (
-            &["FM_RAM_SIZE=$15FF"][..],
+            &["FM_RAM_SIZE=$1DFF"][..],
             Some("FM_RAM_SIZE in ram_map.inc is smaller than what fm lays out"),
         ),
         (
@@ -924,7 +929,7 @@ fn assemble_reader(out: &Path) {
     for (defines, refusal) in [
         (&[][..], None),
         (&["LIB_BOUNCE=$F300", "FM_RAM_SIZE=$1400"][..], None),
-        (&["LIB_BOUNCE=$F800"][..], None),
+        (&["LIB_BOUNCE=$F800", "FM_RAM_SIZE=$1400"][..], None),
         (&["LIB_BOUNCE=$C500"][..], Some(regions)),
         (&["LIB_BOUNCE=$D600"][..], Some(regions)),
         (&["LIB_BOUNCE=$DF00"][..], Some(regions)),
@@ -1068,8 +1073,8 @@ fn assemble_layout_probes(out: &Path) {
             "FM",
             "#include \"fm/ram.inc\"\n".to_string(),
             &ui_args[..],
-            "FM_VARS_SIZE=$30",
-            0x2C,
+            "FM_VARS_SIZE=$56",
+            0x53,
             "the fm variables overlap, leave a gap, or run past FM_VARS_SIZE",
         ),
         (

@@ -315,20 +315,24 @@ impl Lib {
         }
     }
 
-    /// The statement from the library's own trees; none when one of its statements has no tree.
+    /// The statement from the library's own trees: each statement is a tree where the library
+    /// stores one and a flat run of tokens where it stores none.
     fn stored_statement(&self, trees: &Trees, i: usize) -> Option<Statement> {
         let shapes = trees.items[i]
             .iter()
-            .map(|tree| self.stored_shape(trees, tree.as_ref()?))
-            .collect::<Option<Vec<Shape>>>()?;
+            .map(|tree| tree.as_ref().and_then(|t| self.stored_shape(trees, t)))
+            .collect::<Vec<Option<Shape>>>();
         let (last, hyps) = shapes.split_last()?;
-        let build = |lead: &str, shape: &Shape| Expr::build(vec![lead.to_string()], shape);
+        let build = |expr: &Vec<String>, shape: &Option<Shape>| match shape {
+            Some(shape) => Expr::build(vec![expr[0].clone()], shape),
+            None => Expr::flat(vec![expr[0].clone()], &expr[1..]),
+        };
         let hyps = self
             .essentials(i)
             .zip(hyps)
-            .map(|(expr, shape)| build(&expr[0], shape))
+            .map(|(expr, shape)| build(expr, shape))
             .collect();
-        let conclusion = build(&self.assertions[i].conclusion[0], last);
+        let conclusion = build(&self.assertions[i].conclusion, last);
         Some(Statement { hyps, conclusion })
     }
 

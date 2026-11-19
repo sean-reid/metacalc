@@ -1,3 +1,5 @@
+#[path = "fm/damaged.rs"]
+mod damaged;
 #[path = "fm/errors.rs"]
 mod errors;
 #[path = "fm/fixture.rs"]
@@ -10,6 +12,8 @@ mod kernel;
 mod layout;
 #[path = "fm/libraries.rs"]
 mod libraries;
+#[path = "fm/nodes.rs"]
+mod nodes;
 #[path = "fm/rig.rs"]
 mod rig;
 #[allow(dead_code)]

@@ -14,6 +14,10 @@ fm_rows:
 	ld ix,rows_body
 	jr fm_enter
 
+fm_nodes:
+	ld ix,nodes_body
+	jr fm_enter
+
 fm_draw:
 	ld ix,draw_body
 

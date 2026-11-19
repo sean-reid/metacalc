@@ -1,10 +1,15 @@
-; fm_open: copies the library's glyph section into FM_GLYPHS and checks every entry of it.
+; fm_open: copies the library's glyph section into FM_GLYPHS and checks every entry of it, then
+; copies the shapes section into FM_SECOND and checks every item of it.
 
 open_body:
 	xor a
 	ld (fv_open),a
 	ld (fv_open+1),a
 	ld (fv_count),a
+	ld (fv_nodes),a
+	ld (fv_sk+5),a
+	ld (fv_ns),a
+	ld (fv_ns+1),a
 	call lib_glyphs
 	jr z,op_got
 	call fm_reader_status
@@ -31,11 +36,16 @@ op_got:
 	ld (fv_left),bc
 	ld hl,FM_GLYPHS
 	ld (fv_dst),hl
-op_chunk:
+	call fm_copy
+	jr op_check
+
+; Copies fv_left bytes of the library from the offset in fv_src to fv_dst, a chunk at a time
+; through FM_SCRATCH.
+fm_copy:
 	ld bc,(fv_left)
 	ld a,b
 	or c
-	jr z,op_check
+	ret z
 	ld a,b
 	or a
 	jr z,op_read
@@ -67,7 +77,7 @@ op_copy:
 	or a
 	sbc hl,bc
 	ld (fv_left),hl
-	jr op_chunk
+	jr fm_copy
 
 ; Every symbol's offset is inside the copy and its entry, flags, count and codes, ends inside it,
 ; with no flag above bit 3.
@@ -88,7 +98,7 @@ op_check:
 op_table:
 	ld a,(fv_nsyms)
 	or a
-	jr z,op_done
+	jp z,op_shapes
 	ld b,a
 	ld hl,FM_GLYPHS+3
 op_entry:
@@ -103,6 +113,7 @@ op_entry:
 	pop hl
 	jr nz,op_bad
 	djnz op_entry
+	jp op_shapes
 op_done:
 	ld hl,FM_OPEN_MAGIC
 	ld (fv_open),hl
