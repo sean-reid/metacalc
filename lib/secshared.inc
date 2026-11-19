@@ -263,6 +263,10 @@ lsx_within:
 	call lr_cmp24
 	pop hl
 	jp c,lr_bad
+
+; in: HL = a section's struct, ls_te = the end of an item. out: Z when the item ends inside the
+; section, else NZ and A = LIB_ERR_BAD. Destroys all but IX, IY.
+lsx_item_ends:
 	push hl
 	call lsx_ld3
 	pop de
