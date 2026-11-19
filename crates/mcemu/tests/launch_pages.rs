@@ -41,6 +41,8 @@ fn the_reference_os_protects_every_page_below_the_apps_last_one() {
     }
 }
 
+/// The expected values here are the formula, base minus the page count. The ignored test above,
+/// run on the reference ROM, is the evidence that the OS leaves them.
 #[test]
 fn launch_leaves_the_ports_the_reference_os_leaves_for_one_to_three_pages() {
     for (n, app) in APPS.iter().enumerate() {
@@ -79,4 +81,15 @@ fn every_page_of_the_app_runs_and_the_page_below_it_is_refused() {
             );
         }
     }
+}
+
+#[test]
+fn launch_uses_the_page_count_of_the_app_installed_at_its_own_base() {
+    let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
+    m.install_app(APPS[2], BASE).expect("the app installs");
+    m.install_app(APPS[0], 0x50)
+        .expect("the other app installs");
+    m.launch(BASE).expect("the app launches");
+    assert_eq!(m.run_app(LIMIT).stop, Stop::Limit);
+    assert_eq!(recorded(&mut m), [BASE, 0x08, BASE - 3, DONE]);
 }

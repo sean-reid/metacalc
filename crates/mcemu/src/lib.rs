@@ -131,15 +131,18 @@ impl Lcd {
 
 pub struct Machine {
     calc: ffi::Calc,
-    /// The base page and page count of the last app installed, which `launch` reads.
-    app: Option<(u8, usize)>,
+    /// The page count of each app installed, by base page, which `launch` reads.
+    apps: std::collections::HashMap<u8, usize>,
 }
 
 impl Machine {
     /// Loads `rom`, resets, and runs the boot code up to `ENTRY`.
     pub fn new(rom: &[u8]) -> Result<Machine, BootError> {
         ffi::Calc::new(rom)
-            .map(|calc| Machine { calc, app: None })
+            .map(|calc| Machine {
+                calc,
+                apps: Default::default(),
+            })
             .ok_or(BootError)
     }
 
@@ -148,7 +151,10 @@ impl Machine {
     /// `run_time` is the way to let the OS run.
     pub fn new_os(rom: &[u8]) -> Result<Machine, BootError> {
         ffi::Calc::new_os(rom)
-            .map(|calc| Machine { calc, app: None })
+            .map(|calc| Machine {
+                calc,
+                apps: Default::default(),
+            })
             .ok_or(BootError)
     }
 

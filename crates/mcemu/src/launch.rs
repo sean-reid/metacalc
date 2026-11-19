@@ -25,7 +25,7 @@ impl Machine {
     }
 
     /// Writes page k of the app file to flash page `base - k`, and remembers how many pages that
-    /// is for `launch`.
+    /// is for `launch`, per base page.
     pub fn install_app(&mut self, file: &[u8], base: u8) -> Result<(), AppError> {
         self.check_base(base)?;
         let pages = decode_app(file)?;
@@ -35,7 +35,7 @@ impl Machine {
         for (k, page) in pages.iter().enumerate() {
             self.load_flash(base - k as u8, 0, page);
         }
-        self.app = Some((base, pages.len()));
+        self.apps.insert(base, pages.len());
         Ok(())
     }
 
@@ -45,10 +45,7 @@ impl Machine {
     /// page.
     pub fn launch(&mut self, base: u8) -> Result<(), AppError> {
         self.check_base(base)?;
-        let pages = match self.app {
-            Some((installed, pages)) if installed == base => pages,
-            _ => 1,
-        };
+        let pages = self.apps.get(&base).copied().unwrap_or(1);
         let init = self.run(stub::OS_INIT, INIT_LIMIT);
         assert_eq!(init.stop, Stop::Halted, "the stub's launch setup finishes");
         self.set_speed(Speed::Mhz6);
