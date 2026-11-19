@@ -49,6 +49,8 @@ const CLR_LCD_FULL_INTS_MODE6: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full_ints_mode6.bin"));
 const CLR_LCD_FULL_INTS_MODE7: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/os_clr_lcd_full_ints_mode7.bin"));
+const ON_IRQ_FLAGS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_on_irq_flags.bin"));
+const ON_IRQ_OTHER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_on_irq_other.bin"));
 const RELIANT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_reliant.bin"));
 
 const ENTRY: u16 = 0x9000;
@@ -556,4 +558,52 @@ fn an_lcd_that_never_comes_ready_stops_the_stub_with_lcd_stuck() {
     m.stick_lcd_busy(true);
     m.stick_lcd_busy(false);
     assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::Halted);
+}
+
+/// What `os_on_irq` recorded: AF, BC, DE, HL, IX and IY, then port 4, the byte at 89F9h and the one
+/// at BEF8h.
+fn on_irq(code: &[u8], on: Option<bool>) -> (Vec<u16>, [u8; 3]) {
+    let mut m = machine_with(code);
+    if let Some(held) = on {
+        m.press_key(0x29);
+        if !held {
+            m.release_key(0x29);
+        }
+    }
+    assert_eq!(m.run(ENTRY, LIMIT).stop, Stop::Halted);
+    let b = m.read_ram(RESULT, 15);
+    let w = b[..12]
+        .chunks(2)
+        .map(|w| u16::from_le_bytes([w[0], w[1]]))
+        .collect();
+    (w, [b[12], b[13], b[14]])
+}
+
+const ON_IRQ_REGS: [u16; 6] = [0xC6A9, 0x1234, 0x5678, 0x9ABC, 0xDEF0, 0];
+
+#[test]
+fn an_interrupt_with_on_held_sets_the_break_flag_and_keeps_the_registers() {
+    let (w, [_, flag, other]) = on_irq(ON_IRQ_FLAGS, Some(true));
+    assert_eq!(w[..5], ON_IRQ_REGS[..5], "AF, BC, DE, HL, IX");
+    assert_eq!(w[5], 0x89F0, "IY");
+    assert_eq!(flag, 0x10, "the break flag");
+    assert_eq!(other, 0);
+}
+
+#[test]
+fn an_interrupt_after_an_on_tap_leaves_the_flag_clear_and_acknowledges_the_latch() {
+    let (w, [port4, flag, _]) = on_irq(ON_IRQ_FLAGS, Some(false));
+    assert_eq!(w[..5], ON_IRQ_REGS[..5], "AF, BC, DE, HL, IX");
+    assert_eq!(flag, 0, "no break flag");
+    assert_eq!(port4 & 1, 0, "the ON latch is acknowledged");
+    let (_, [port4, flag, _]) = on_irq(ON_IRQ_FLAGS, None);
+    assert_eq!((port4 & 1, flag), (0, 0), "no key");
+}
+
+#[test]
+fn the_break_flag_is_written_only_through_the_flags_pointer() {
+    let (w, [_, flag, other]) = on_irq(ON_IRQ_OTHER, Some(true));
+    assert_eq!(w[..5], ON_IRQ_REGS[..5], "AF, BC, DE, HL, IX");
+    assert_eq!(w[5], 0xBEEF, "IY");
+    assert_eq!((flag, other), (0, 0), "nothing is written");
 }

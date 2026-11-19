@@ -303,6 +303,16 @@ const OS_ROUTINES: &[(&str, &str, &[&str])] = &[
         &["ENTRY=$9000", "RESULT=$A000"],
     ),
     ("os_irq.z80", "os_irq.bin", &["ENTRY=$9000", "RESULT=$A000"]),
+    (
+        "os_on_irq.z80",
+        "os_on_irq_flags.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "IYVAL=$89F0"],
+    ),
+    (
+        "os_on_irq.z80",
+        "os_on_irq_other.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "IYVAL=$BEEF"],
+    ),
 ];
 
 /// Kernel images with the test entry stub: output name and spasm defines. The first is the
