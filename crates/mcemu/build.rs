@@ -654,6 +654,15 @@ fn assemble_kernel(out: &Path) {
         (&["WORK_LIMIT=130816"][..], None),
         (&["WORK_LIMIT=16777215"][..], None),
         (&["WORK_LIMIT=16777216"][..], Some("WORK_LIMIT must fit")),
+        (&["CACHE_IDS=$2100"][..], None),
+        (
+            &["CACHE_IDS=$2080"][..],
+            Some("CACHE_IDS must be a multiple of $100"),
+        ),
+        (
+            &["CACHE_IDS=$1FFF"][..],
+            Some("CACHE_IDS must be a multiple of $100"),
+        ),
     ] {
         match (assemble(defines), refusal) {
             (Ok(()), None) => {}
