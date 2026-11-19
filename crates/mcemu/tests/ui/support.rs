@@ -360,9 +360,39 @@ pub fn run_code_on(
     timer: bool,
     image: Image,
     code: &[u8],
+    settings: (Speed, bool),
+    ops: &[Op],
+    call: bool,
+) -> Outcome {
+    run_marked(rom, timer, image, code, settings, ops, call, MARK)
+}
+
+/// The deepest the stack goes in a run of `ops`, as the larger of two measures with different
+/// marks, so a byte the run writes that equals one mark is still seen.
+pub fn stack_depth(image: Image, ops: &[Op]) -> usize {
+    [MARK, !MARK]
+        .into_iter()
+        .map(|mark| {
+            let settings = (Speed::Mhz6, true);
+            run_marked(
+                STUB_ROM, false, image, image.code, settings, ops, true, mark,
+            )
+            .stack
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_marked(
+    rom: &[u8],
+    timer: bool,
+    image: Image,
+    code: &[u8],
     (speed, ports): (Speed, bool),
     ops: &[Op],
     call: bool,
+    stack_mark: u8,
 ) -> Outcome {
     let mut script = Script {
         code: vec![],
@@ -398,7 +428,10 @@ pub fn run_code_on(
         (image.frame + FRAME_LEN).max(image.vars + VARS_LEN) + GUARD,
     );
     m.load_ram(lo, &vec![MARK; usize::from(hi - lo)]);
-    m.load_ram(STACK - STACK_WINDOW, &vec![MARK; usize::from(STACK_WINDOW)]);
+    m.load_ram(
+        STACK - STACK_WINDOW,
+        &vec![stack_mark; usize::from(STACK_WINDOW)],
+    );
     m.load_ram(SCRIPT, &script.code);
     m.load_ram(DATA, &script.data);
     m.set_speed(speed);
@@ -435,7 +468,7 @@ pub fn run_code_on(
     let window = m.read_ram(STACK - STACK_WINDOW, usize::from(STACK_WINDOW));
     let stack = window
         .iter()
-        .position(|&b| b != MARK)
+        .position(|&b| b != stack_mark)
         .map_or(0, |at| window.len() - at);
     let pc = m.regs().pc;
     let lcd = m.lcd();

@@ -428,6 +428,9 @@ ui_v0:	TAIL(0)
 #if (ui_v0&255) != $80
  .error "a jump block's head must fit below its tail"
 #endif
+#if (ui_tv0-ui_vblk) != 0
+ .error "one byte form block ui_tv0 is not at ui_vblk+0*256: a tail or head outgrew its 256 bytes"
+#endif
 	.fill (256-($&255))&255,0
 ui_tw1:	HEAD1(1)
 	jr ui_w1
@@ -435,6 +438,9 @@ ui_tw1:	HEAD1(1)
 ui_w1:	TAIL1(1)
 #if (ui_w1&255) != $80
  .error "a jump block's head must fit below its tail"
+#endif
+#if (ui_tw1-ui_vblk) != 256
+ .error "one byte form block ui_tw1 is not at ui_vblk+1*256: a tail or head outgrew its 256 bytes"
 #endif
 	.fill (256-($&255))&255,0
 ui_tw2:	HEAD1(2)
@@ -444,6 +450,9 @@ ui_w2:	TAIL1(2)
 #if (ui_w2&255) != $80
  .error "a jump block's head must fit below its tail"
 #endif
+#if (ui_tw2-ui_vblk) != 512
+ .error "one byte form block ui_tw2 is not at ui_vblk+2*256: a tail or head outgrew its 256 bytes"
+#endif
 	.fill (256-($&255))&255,0
 ui_tw3:	HEAD1(3)
 	jr ui_w3
@@ -451,6 +460,9 @@ ui_tw3:	HEAD1(3)
 ui_w3:	TAIL1(3)
 #if (ui_w3&255) != $80
  .error "a jump block's head must fit below its tail"
+#endif
+#if (ui_tw3-ui_vblk) != 768
+ .error "one byte form block ui_tw3 is not at ui_vblk+3*256: a tail or head outgrew its 256 bytes"
 #endif
 	.fill (256-($&255))&255,0
 ui_tw4:	HEAD1(4)
@@ -460,6 +472,9 @@ ui_w4:	TAIL1(4)
 #if (ui_w4&255) != $80
  .error "a jump block's head must fit below its tail"
 #endif
+#if (ui_tw4-ui_vblk) != 1024
+ .error "one byte form block ui_tw4 is not at ui_vblk+4*256: a tail or head outgrew its 256 bytes"
+#endif
 	.fill (256-($&255))&255,0
 ui_tw5:	HEAD1(5)
 	jr ui_w5
@@ -467,6 +482,9 @@ ui_tw5:	HEAD1(5)
 ui_w5:	TAIL1(5)
 #if (ui_w5&255) != $80
  .error "a jump block's head must fit below its tail"
+#endif
+#if (ui_tw5-ui_vblk) != 1280
+ .error "one byte form block ui_tw5 is not at ui_vblk+5*256: a tail or head outgrew its 256 bytes"
 #endif
 	.fill (256-($&255))&255,0
 ui_tw6:	HEAD1(6)
@@ -476,6 +494,9 @@ ui_w6:	TAIL1(6)
 #if (ui_w6&255) != $80
  .error "a jump block's head must fit below its tail"
 #endif
+#if (ui_tw6-ui_vblk) != 1536
+ .error "one byte form block ui_tw6 is not at ui_vblk+6*256: a tail or head outgrew its 256 bytes"
+#endif
 	.fill (256-($&255))&255,0
 ui_tw7:	HEAD1(7)
 	jr ui_w7
@@ -483,6 +504,9 @@ ui_tw7:	HEAD1(7)
 ui_w7:	TAIL1(7)
 #if (ui_w7&255) != $80
  .error "a jump block's head must fit below its tail"
+#endif
+#if (ui_tw7-ui_vblk) != 1792
+ .error "one byte form block ui_tw7 is not at ui_vblk+7*256: a tail or head outgrew its 256 bytes"
 #endif
 	.fill (256-($&255))&255,0
 	.fill 256,0
@@ -493,6 +517,9 @@ ui_v1:	TAIL(1)
 #if (ui_v1&255) != $80
  .error "a jump block's head must fit below its tail"
 #endif
+#if (ui_tv1-ui_vblk) != 2304
+ .error "two byte form block ui_tv1 is not at ui_vblk+9*256: a tail or head outgrew its 256 bytes"
+#endif
 	.fill (256-($&255))&255,0
 ui_tv2:	HEAD(2)
 	jr ui_v2
@@ -500,6 +527,9 @@ ui_tv2:	HEAD(2)
 ui_v2:	TAIL(2)
 #if (ui_v2&255) != $80
  .error "a jump block's head must fit below its tail"
+#endif
+#if (ui_tv2-ui_vblk) != 2560
+ .error "two byte form block ui_tv2 is not at ui_vblk+10*256: a tail or head outgrew its 256 bytes"
 #endif
 	.fill (256-($&255))&255,0
 ui_tv3:	HEAD(3)
@@ -509,6 +539,9 @@ ui_v3:	TAIL(3)
 #if (ui_v3&255) != $80
  .error "a jump block's head must fit below its tail"
 #endif
+#if (ui_tv3-ui_vblk) != 2816
+ .error "two byte form block ui_tv3 is not at ui_vblk+11*256: a tail or head outgrew its 256 bytes"
+#endif
 	.fill (256-($&255))&255,0
 ui_tv4:	HEAD(4)
 	jr ui_v4
@@ -516,6 +549,9 @@ ui_tv4:	HEAD(4)
 ui_v4:	TAIL(4)
 #if (ui_v4&255) != $80
  .error "a jump block's head must fit below its tail"
+#endif
+#if (ui_tv4-ui_vblk) != 3072
+ .error "two byte form block ui_tv4 is not at ui_vblk+12*256: a tail or head outgrew its 256 bytes"
 #endif
 	.fill (256-($&255))&255,0
 ui_tv5:	HEAD(5)
@@ -525,6 +561,9 @@ ui_v5:	TAIL(5)
 #if (ui_v5&255) != $80
  .error "a jump block's head must fit below its tail"
 #endif
+#if (ui_tv5-ui_vblk) != 3328
+ .error "two byte form block ui_tv5 is not at ui_vblk+13*256: a tail or head outgrew its 256 bytes"
+#endif
 	.fill (256-($&255))&255,0
 ui_tv6:	HEAD(6)
 	jr ui_v6
@@ -532,6 +571,9 @@ ui_tv6:	HEAD(6)
 ui_v6:	TAIL(6)
 #if (ui_v6&255) != $80
  .error "a jump block's head must fit below its tail"
+#endif
+#if (ui_tv6-ui_vblk) != 3584
+ .error "two byte form block ui_tv6 is not at ui_vblk+14*256: a tail or head outgrew its 256 bytes"
 #endif
 	.fill (256-($&255))&255,0
 ui_tv7:	HEAD(7)
@@ -541,7 +583,14 @@ ui_v7:	TAIL(7)
 #if (ui_v7&255) != $80
  .error "a jump block's head must fit below its tail"
 #endif
+#if (ui_tv7-ui_vblk) != 3840
+ .error "two byte form block ui_tv7 is not at ui_vblk+15*256: a tail or head outgrew its 256 bytes"
+#endif
 	.fill (256-($&255))&255,0
+ui_vend:
+#if (ui_vend-ui_vblk) != 4096
+ .error "the jump blocks do not end at ui_vblk+16*256"
+#endif
 ; Pages indexed by x below 96, on consecutive pages: the room left in the byte, the high byte of
 ; the ONE form block for the shift, and the byte column. ui_toff is indexed by a glyph code: the
 ; low bytes of the offsets of the slots on its first page, the high bytes on the next.
@@ -620,6 +669,12 @@ ui_tcol:
 	BYTES8(10)
 	BYTES8(11)
 	.fill 160,0
+#if ((ui_toff&255) != 0) || (((ui_toff+256)&255) != 0) || ((ui_tfit&255) != 0) || ((ui_tblk&255) != 0) || ((ui_tcol&255) != 0)
+ .error "ui_toff, its high half, ui_tfit, ui_tblk and ui_tcol must each start a page"
+#endif
+#if (ui_toff+512) != ui_tfit
+ .error "ui_tfit must follow the two ui_toff pages"
+#endif
 #if (ui_tblk-ui_tfit) != 256
  .error "the x tables must be consecutive pages"
 #endif

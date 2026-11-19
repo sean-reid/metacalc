@@ -297,7 +297,7 @@ fn text_reaches_at_most_eight_bytes_of_stack() {
     ];
     for text in texts {
         for (x, row) in [(0, 0), (1, 3), (7, 7), (88, 7), (95, 7), (200, 2), (1, 9)] {
-            let got = run(
+            let depth = stack_depth(
                 REAL,
                 &[Op::Text {
                     x,
@@ -306,9 +306,8 @@ fn text_reaches_at_most_eight_bytes_of_stack() {
                 }],
             );
             assert!(
-                got.stack <= 8,
-                "{text:?} at {x} on row {row} reached {} bytes of stack",
-                got.stack
+                depth <= 8,
+                "{text:?} at {x} on row {row} reached {depth} bytes of stack"
             );
         }
     }
