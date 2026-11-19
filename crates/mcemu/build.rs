@@ -442,6 +442,7 @@ fn main() {
     assemble_ui(&out);
     assemble_reader(&out);
     assemble_layout_probes(&out);
+    assemble_page_ports(&out);
     spasm(
         &Path::new("tests/routines").join("launch_state.z80"),
         &out.join("launch_state.8xk"),
@@ -1147,5 +1148,17 @@ fn assemble_layout_probes(out: &Path) {
             fs::write(&source, format!("{base}\n{lines}\n")).unwrap();
             expect(&source, &out.join("layout_probe.bin"), &defines, args, want);
         }
+    }
+}
+
+/// An app of one, two and three pages that records the ports it is entered with.
+fn assemble_page_ports(out: &Path) {
+    for pages in 1..=3 {
+        spasm(
+            &Path::new("tests/routines").join("page_ports.z80"),
+            &out.join(format!("page_ports{pages}.8xk")),
+            &[&format!("PAGES={pages}")],
+            &["-I", "../../app/src"],
+        );
     }
 }
