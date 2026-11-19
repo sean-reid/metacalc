@@ -1,7 +1,7 @@
 #!/bin/sh
 # Usage: check-mcsend-links.sh binary
 # Prints the dynamic dependencies of binary and fails on any that is not part of the base system:
-# on Linux libc, libm, libgcc_s, libpthread, libdl, librt, the loader and libudev.so.1, on macOS
+# on Linux libc, libm, libgcc_s, libpthread, libdl, librt and the loader, on macOS
 # libSystem, libobjc, libiconv and the system frameworks.
 set -eu
 
@@ -20,7 +20,7 @@ for lib in $libs; do
 	echo "  $lib"
 	case $lib in
 	/usr/lib/libSystem* | /usr/lib/system/* | /usr/lib/libobjc* | /usr/lib/libiconv* | /System/Library/Frameworks/*) ;;
-	linux-vdso.so.* | */ld-linux* | ld-linux* | libc.so.* | libm.so.* | libgcc_s.so.* | libpthread.so.* | libdl.so.* | librt.so.* | libudev.so.1) ;;
+	linux-vdso.so.* | */ld-linux* | ld-linux* | libc.so.* | libm.so.* | libgcc_s.so.* | libpthread.so.* | libdl.so.* | librt.so.*) ;;
 	statically | not) ;;
 	*)
 		echo "check-mcsend-links: $lib is not in the allow list" >&2

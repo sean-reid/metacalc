@@ -13,6 +13,8 @@ pub enum Error {
     /// The calculator kept asking for more time and never finished.
     Stalled(Duration),
     Usb(String),
+    /// libusb found no USB bus to start on.
+    NoUsbBus,
     Protocol(String),
     Calculator(u16),
     File(String),
@@ -79,6 +81,9 @@ impl fmt::Display for Error {
                 spent.as_secs()
             ),
             Error::Usb(message) => write!(f, "USB error: {message}"),
+            Error::NoUsbBus => f.write_str(
+                "this computer has no USB bus for libusb to use (nothing under /dev/bus/usb); run mcsend on a machine with USB ports, not in a container or virtual machine without USB passthrough",
+            ),
             Error::Protocol(message) => write!(f, "unexpected answer from the calculator: {message}"),
             Error::Calculator(code) => write!(f, "the calculator reported error {code:#06x}"),
             Error::File(message) | Error::WrongModel(message) => f.write_str(message),

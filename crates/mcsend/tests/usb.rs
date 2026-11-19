@@ -2,7 +2,7 @@
 //! is drawn from one deadline.
 
 use mcsend::error::Error;
-use mcsend::usb::{libusb_wait, write_all};
+use mcsend::usb::{libusb_wait, map_step, start_error, write_all};
 use std::cell::Cell;
 use std::time::Duration;
 
@@ -83,4 +83,40 @@ fn a_write_that_times_out_in_libusb_reports_the_whole_wait() {
         Duration::from_secs(7),
     );
     assert!(matches!(result, Err(Error::Timeout(d)) if d == Duration::from_secs(7)));
+}
+
+#[test]
+fn a_failed_start_without_a_usb_bus_says_so() {
+    let error = start_error(rusb::Error::Other, false);
+    assert!(matches!(error, Error::NoUsbBus));
+    let text = error.to_string();
+    assert!(
+        text.contains("no USB bus") && text.contains("/dev/bus/usb"),
+        "{text}"
+    );
+    assert!(!text.contains("no TI-84 Plus found"), "{text}");
+}
+
+#[test]
+fn a_failed_start_with_a_bus_names_the_step() {
+    assert_eq!(
+        start_error(rusb::Error::Other, true).to_string(),
+        "USB error: could not start USB: Other error"
+    );
+}
+
+#[test]
+fn steps_name_the_failure_unless_the_error_has_its_own_message() {
+    assert_eq!(
+        map_step("could not list USB devices", rusb::Error::Other).to_string(),
+        "USB error: could not list USB devices: Other error"
+    );
+    assert!(matches!(
+        map_step("could not open the calculator", rusb::Error::Access),
+        Error::Denied
+    ));
+    assert!(matches!(
+        map_step("could not open the calculator", rusb::Error::Busy),
+        Error::Busy
+    ));
 }

@@ -20,20 +20,32 @@ pub struct UsbTransport {
 impl UsbTransport {
     /// Opens the first calculator found.
     pub fn open() -> Result<UsbTransport, Error> {
-        let context = Context::new().map_err(map)?;
-        for device in context.devices().map_err(map)?.iter() {
+        let context = Context::new().map_err(|e| start_error(e, usb_bus_present()))?;
+        let devices = context
+            .devices()
+            .map_err(|e| map_step("could not list USB devices", e))?;
+        for device in devices.iter() {
             let Ok(descriptor) = device.device_descriptor() else {
                 continue;
             };
             if descriptor.vendor_id() != VENDOR || !PRODUCTS.contains(&descriptor.product_id()) {
                 continue;
             }
-            let handle = device.open().map_err(map)?;
+            let handle = device
+                .open()
+                .map_err(|e| map_step("could not open the calculator", e))?;
             let _ = handle.set_auto_detach_kernel_driver(true);
-            if handle.active_configuration().map_err(map)? != 1 {
-                handle.set_active_configuration(1).map_err(map)?;
+            let configured = handle
+                .active_configuration()
+                .map_err(|e| map_step("could not read the calculator's configuration", e))?;
+            if configured != 1 {
+                handle
+                    .set_active_configuration(1)
+                    .map_err(|e| map_step("could not configure the calculator", e))?;
             }
-            handle.claim_interface(INTERFACE).map_err(map)?;
+            handle
+                .claim_interface(INTERFACE)
+                .map_err(|e| map_step("could not claim the calculator's interface", e))?;
             let _ = handle.set_alternate_setting(INTERFACE, 0);
             return Ok(UsbTransport {
                 handle,
@@ -126,6 +138,30 @@ pub fn map_timed(error: rusb::Error, timeout: Duration) -> Error {
     match error {
         rusb::Error::Timeout => Error::Timeout(timeout),
         other => map(other),
+    }
+}
+
+/// Whether libusb has a bus to start on: on Linux it needs an entry under /dev/bus/usb.
+pub fn usb_bus_present() -> bool {
+    !cfg!(target_os = "linux")
+        || std::fs::read_dir("/dev/bus/usb").is_ok_and(|mut entries| entries.next().is_some())
+}
+
+/// Maps the error from starting libusb; `bus_present` is what `usb_bus_present` found.
+pub fn start_error(error: rusb::Error, bus_present: bool) -> Error {
+    if bus_present {
+        map_step("could not start USB", error)
+    } else {
+        Error::NoUsbBus
+    }
+}
+
+/// Maps a libusb error from the step named by `step`, which an error without its own message
+/// carries in its text.
+pub fn map_step(step: &str, error: rusb::Error) -> Error {
+    match map(error) {
+        Error::Usb(_) => Error::Usb(format!("{step}: {error}")),
+        known => known,
     }
 }
 
