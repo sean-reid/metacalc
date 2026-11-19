@@ -30,6 +30,9 @@
 ; below the top. Pixels outside the frame are dropped as the model drops them. Cutting a
 ; string to a width is ui_truncate, ui_tail and ui_wrap; folding is decided by the caller.
 ;
+; GLYPH_ADV, a macro in glyph.inc, is the advance of one glyph code in A; ui_text_width and the
+; fitting routines expand it.
+;
 ; Routines (details at each): ui_set_font, ui_clear, ui_text, ui_text_width, ui_text_right,
 ; ui_text_centered, ui_truncate, ui_tail, ui_wrap, ui_invert, ui_invert_row, ui_marker,
 ; ui_title, ui_list_row, ui_soft_keys, ui_bar, ui_blit. ui_blit waits on the busy flag, bit 7 of

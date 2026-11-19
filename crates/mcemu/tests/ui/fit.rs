@@ -456,3 +456,45 @@ fn wrap_takes_a_line_into_exactly_its_size_and_refuses_one_byte_less() {
         );
     }
 }
+
+/// The model breaks words at any whitespace, but a tab or a newline encodes as the question
+/// mark glyph, so the Z80 sees one word. Cutting agrees, since both measure it as a `?`.
+#[test]
+fn a_tab_or_newline_is_a_question_mark_to_the_z80_and_a_break_to_the_model() {
+    let t = table();
+    for c in ['\t', '\n'] {
+        assert_eq!(
+            t.code(c),
+            t.code('?'),
+            "{c:?} is not the question mark glyph"
+        );
+    }
+    let text = "ab\tcd\nef";
+    assert_eq!(wrap(text, 255), ["ab cd ef"]);
+    let joined = t.encode("ab?cd?ef");
+    assert_eq!(t.encode(text), joined);
+    let mut probes = vec![Probe::once("ui_wrap", &t.encode(text), joined.len(), 255)];
+    for limit in [12, 20, 30] {
+        let cut = t.encode(&truncate(text, limit));
+        probes.push(Probe::once(
+            "ui_truncate",
+            &t.encode(text),
+            cut.len(),
+            limit,
+        ));
+    }
+    let seen = run_probes(&probes);
+    assert_eq!(seen[0].status, [0]);
+    assert_eq!(
+        seen[0].buffers[0], joined,
+        "the Z80 wrapped at a tab or newline"
+    );
+    for (limit, one) in [12, 20, 30].into_iter().zip(&seen[1..]) {
+        assert_eq!(one.status, [0]);
+        assert_eq!(
+            one.buffers[0],
+            t.encode(&truncate(text, limit)),
+            "cut at {limit}"
+        );
+    }
+}

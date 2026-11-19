@@ -27,80 +27,107 @@ TF_WORDEND              .equ SPACE_CODE+1
 ; tf_take   in:  A = a glyph code, not 0, DE = a budget in pixels
 ;           out: A = its advance; DE less that and carry clear, or DE kept and carry set when
 ;                the advance is more
-;           destroys AF
+;           keeps HL BC, destroys F
 tf_take:
 	push hl
 	push bc
-	push de
-	ld l,a
-	ld h,0
-	push hl
-	ld hl,0
-	add hl,sp
-	call ui_text_width
-	pop bc
-	pop de
-	inc l
-	ld a,l
+	GLYPH_ADV
+	ld c,a
+	ld b,0
 	ex de,hl
 	or a
-	sbc hl,de
+	sbc hl,bc
 	jr nc,fit_tk_ok
-	add hl,de
+	add hl,bc
 fit_tk_ok:
 	ex de,hl
 	pop bc
 	pop hl
 	ret
 
+; tf_run   in:  HL = string, DE = budget up to 256
+;          out: carry set when it ran to a 0 or a space: HL there, DE what is left; carry clear
+;               when a glyph did not fit: HL at it, DE what was left before it
+;          destroys AF BC
+tf_run:
+	ld a,(hl)
+	cp TF_WORDEND
+	ret c
+	push hl
+	GLYPH_ADV
+	pop hl
+	ld c,a
+	ld a,e
+	sub c
+	ld e,a
+	jr nc,fit_tr_ok
+	dec d
+	jr nz,fit_tr_fail
+fit_tr_ok:
+	inc hl
+	jr tf_run
+fit_tr_fail:
+	inc d
+	ld a,e
+	add a,c
+	ld e,a
+	or a
+	ret
+
+; tf_run_text   as tf_run, but only a 0 ends it
+tf_run_text:
+	ld a,(hl)
+	or a
+	scf
+	ret z
+	push hl
+	GLYPH_ADV
+	pop hl
+	ld c,a
+	ld a,e
+	sub c
+	ld e,a
+	jr nc,fit_trt_ok
+	dec d
+	jr nz,fit_tr_fail
+fit_trt_ok:
+	inc hl
+	jr tf_run_text
+
 ; tf_runb   in:  HL = the end of a string, DE = budget
-;           out: HL = the start of the longest tail that fits, DE = what is left
-;           destroys AF
+;           out: HL = the start of the longest tail that fits
+;           destroys AF BC DE
 tf_runb:
 	dec hl
 	ld a,(hl)
-	call tf_take
+	push hl
+	GLYPH_ADV
+	pop hl
+	ld c,a
+	ld a,e
+	sub c
+	ld e,a
 	jr nc,tf_runb
+	dec d
+	jr z,tf_runb
 	inc hl
 	ret
 
-; tf_cut   in:  HL = start, DE = width + 1, A = the first code that does not end the run
+; tf_cut   in:  HL = start, DE = width + 1, carry set to end at a space as well as at a 0
 ;          out: HL = the end of the glyphs kept, DE = their advance with the ellipsis when one
 ;               follows, carry set when one follows
 ;          keeps BC, destroys AF
 tf_cut:
 	push bc
-	ld c,a
-	push de
 	push de
 	push hl
-	push de
-	ld de,$FFFF
-	ld a,TF_ELLIPSIS
-	call tf_take
-	pop de
-	ld b,a
-fit_tc_loop:
-	ld a,(hl)
-	cp c
-	jr c,fit_tc_whole
-	call tf_take
-	jr c,fit_tc_cut
-	inc hl
-	ld a,d
-	or a
-	jr nz,fit_tc_note
-	ld a,e
-	cp b
-	jr c,fit_tc_loop
-fit_tc_note:
-	pop af
-	pop af
-	push de
-	push hl
-	jr fit_tc_loop
-fit_tc_whole:
-	pop af
+	jr c,fit_tc_word
+	call tf_run_text
+	jr fit_tc_ran
+fit_tc_word:
+	call tf_run
+fit_tc_ran:
+	jr nc,fit_tc_cut
 	pop af
 	ex (sp),hl
 	or a
@@ -111,14 +138,43 @@ fit_tc_whole:
 	or a
 	ret
 fit_tc_cut:
+	push hl
+	ld a,TF_ELLIPSIS
+	GLYPH_ADV
+	ld c,a
+	ld b,0
 	pop hl
-	pop de
+	ex de,hl
+	or a
+	sbc hl,bc
+	ex de,hl
+fit_tc_rw:
+	bit 7,d
+	jr z,fit_tc_done
+	pop bc
+	push bc
+	ld a,l
+	cp c
+	jr nz,fit_tc_step
+	ld a,h
+	cp b
+	jr z,fit_tc_done
+fit_tc_step:
+	dec hl
+	ld a,(hl)
+	push hl
+	GLYPH_ADV
+	pop hl
+	add a,e
+	ld e,a
+	jr nc,fit_tc_rw
+	inc d
+	jr fit_tc_rw
+fit_tc_done:
+	pop af
 	ex (sp),hl
 	or a
 	sbc hl,de
-	ld e,b
-	ld d,0
-	add hl,de
 	ex de,hl
 	pop hl
 	pop bc
@@ -182,7 +238,7 @@ ui_truncate:
 	ld e,c
 	ld d,0
 	inc de
-	ld a,1
+	or a
 	call tf_cut
 	pop de
 fit_tt_slice:
@@ -232,7 +288,9 @@ fit_tl_cut:
 	call tf_take
 	jr c,fit_tl_none
 	push hl
+	push bc
 	call tf_runb
+	pop bc
 	ex de,hl
 	pop hl
 	jr fit_tl_go
@@ -268,7 +326,7 @@ tf_word:
 	ld e,c
 	ld d,0
 	inc de
-	ld a,TF_WORDEND
+	scf
 	call tf_cut
 	ld a,l
 	adc a,0
@@ -381,7 +439,7 @@ fit_wr_count:
 	ld e,c
 	ld d,0
 	inc de
-	ld a,TF_WORDEND
+	scf
 	call tf_cut
 	ld a,l
 	pop de
