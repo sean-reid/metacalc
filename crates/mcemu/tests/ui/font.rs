@@ -306,3 +306,54 @@ fn the_canvas_works_at_another_ram_base_and_writes_nothing_outside_its_two_block
         same_frame("moved base", &got.frame, &pack(&bitmap));
     }
 }
+
+const FLAT_NINE: &str = "height 7
+
+glyph a
+#########
+#.......#
+#.#####.#
+#.#...#.#
+#.#####.#
+.........
+.........
+
+glyph b
+.#.
+###
+.#.
+.#.
+.#.
+...
+...
+";
+
+#[test]
+fn glyphs_nine_wide_without_descender_rows_draw_at_every_alignment() {
+    let font = Font::parse(FLAT_NINE, "").unwrap();
+    let table = Table::new(&font).unwrap();
+    for text in ["a", "aa", "a b a", "bab", "ababababab"] {
+        for x in (0..=100usize).chain([250, 255, 256]) {
+            for row in [0usize, 7] {
+                let mut model = Bitmap::new(96, 64);
+                model_text(&mut model, &font, x, row, text);
+                let got = run(
+                    REAL,
+                    &[
+                        Op::SetFont(flat(&table)),
+                        Op::Text {
+                            x,
+                            row,
+                            codes: table.encode(text),
+                        },
+                    ],
+                );
+                same_frame(
+                    &format!("{text:?} at {x} on row {row}"),
+                    &got.frame,
+                    &pack(&model),
+                );
+            }
+        }
+    }
+}
