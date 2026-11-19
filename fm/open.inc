@@ -80,7 +80,7 @@ op_copy:
 	jr fm_copy
 
 ; Every symbol's offset is inside the copy and its entry, flags, count and codes, ends inside it,
-; with no flag above bit 3.
+; with no flag above bit 3 and at least one code: the font gives every token a glyph.
 op_check:
 	ld a,(FM_GLYPHS+2)
 	ld (fv_nsyms),a
@@ -157,6 +157,9 @@ op_entry_ok:
 oe_head:
 	dec hl
 	ld c,(hl)
+	ld a,c
+	or a
+	jr z,oe_bad
 	dec hl
 	ld a,(hl)
 	and $F0

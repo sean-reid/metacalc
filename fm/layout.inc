@@ -154,12 +154,8 @@ dw_copy:
 	add hl,bc
 	ld c,(hl)
 	inc hl
-	ld a,c
-	or a
-	jr z,dw_back
 	ld b,0
 	ldir
-dw_back:
 	exx
 dw_next:
 	ld a,b

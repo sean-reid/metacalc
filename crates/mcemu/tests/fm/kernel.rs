@@ -266,14 +266,28 @@ fn only_the_whole_word_fm_owned_keeps_fm_open() {
 #[derive(Debug, PartialEq)]
 struct KernelRun {
     init: u8,
+    /// The typecode table and the part of the check cache kernel_init clears, read back after it.
+    tables: Vec<u8>,
     verdicts: Vec<u8>,
     begin: u8,
     chunks: Vec<u8>,
     crc: u32,
 }
 
+fn init_tables(rig: &mut Rig, assertions: usize) -> Vec<u8> {
+    let at = |name: &str| usize::from(rig.label(name) - SPARE_BASE);
+    let ids = usize::from(rig.label("CACHE_IDS"));
+    let cleared = assertions.min(ids).div_ceil(8);
+    let (typecodes, cache) = (at("TYPECODES"), at("CACHE"));
+    let page = rig.m.ram_page(SPARE_PAGE);
+    let mut out = page[typecodes..typecodes + 256].to_vec();
+    out.extend_from_slice(&page[cache..cache + cleared]);
+    out
+}
+
 fn kernel_run(rig: &mut Rig, assertions: usize) -> KernelRun {
     let init = rig.kernel_init();
+    let tables = init_tables(rig, assertions);
     let verdicts = (0..assertions).map(|id| rig.kernel_verify(id)).collect();
     let begin = rig.call("KERNEL_CRC_BEGIN", Regs::default()).status();
     let mut chunks = Vec::new();
@@ -286,6 +300,7 @@ fn kernel_run(rig: &mut Rig, assertions: usize) -> KernelRun {
     };
     KernelRun {
         init,
+        tables,
         verdicts,
         begin,
         chunks,

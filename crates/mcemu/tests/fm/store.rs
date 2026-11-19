@@ -139,6 +139,28 @@ fn chains(hyps: &[usize], conclusion: usize) -> Vec<u8> {
     fixture::custom(&src)
 }
 
+/// `|-` and `constants` copies of F, which a syntax axiom of that many constants makes one node.
+fn wide(constants: usize) -> String {
+    format!("|- {}", "F ".repeat(constants).trim_end())
+}
+
+/// Like `chains`, with statements of `constants` F's: many tokens and one node each.
+fn wides(hyps: &[usize], conclusion: usize) -> Vec<u8> {
+    let mut lengths: Vec<usize> = hyps.iter().copied().chain([conclusion]).collect();
+    lengths.sort_unstable();
+    lengths.dedup();
+    let mut src = String::from("$c F $.\n");
+    for k in &lengths {
+        src += &format!("wf{k} $a wff {} $.\n", "F ".repeat(*k).trim_end());
+    }
+    src += "${\n";
+    for (i, k) in hyps.iter().enumerate() {
+        src += &format!("h{i} $e {} $.\n", wide(*k));
+    }
+    src += &format!("thm $a {} $.\n$}}\n", wide(conclusion));
+    fixture::custom(&src)
+}
+
 fn thm(bytes: &[u8]) -> u16 {
     decoded(bytes)
         .assertions
@@ -164,7 +186,7 @@ fn assert_nothing_loaded(fm: &mut Fm, what: &str) {
 #[test]
 fn an_assertion_of_768_tokens_loads_and_one_of_769_is_refused_with_nothing_left() {
     let limit = code("FM_ERR_LIMIT");
-    let fits = chains(&[253, 253, 253], 1);
+    let fits = wides(&[254, 254, 254], 2);
     let mut fm = Fm::new(&fits);
     let n = thm(&fits);
     let tokens: usize = by_assertion(&fits)[usize::from(n)]
@@ -173,10 +195,12 @@ fn an_assertion_of_768_tokens_loads_and_one_of_769_is_refused_with_nothing_left(
         .map(|(_, t)| t.len())
         .sum();
     assert_eq!(tokens, 768);
+    assert!(Model::new(&fits).within(n), "the model's caps hold it");
     let out = fm.assertion(n);
     assert_eq!((out.status(), count(out)), (0, 4));
     assert_eq!(count(fm.select(0xFF)), 3);
-    let over = chains(&[253, 253, 253], 2);
+    let over = wides(&[254, 254, 254], 3);
+    assert!(!Model::new(&over).within(thm(&over)), "and not this one");
     let mut fm = Fm::new(&over);
     let out = fm.assertion(thm(&over));
     assert_eq!((out.status(), count(out)), (limit, 0));
@@ -188,6 +212,7 @@ fn an_assertion_of_32_statements_loads_and_one_of_33_is_refused_with_nothing_lef
     let limit = code("FM_ERR_LIMIT");
     let hyps = |count: usize| chains(&vec![0; count], 0);
     let fits = hyps(31);
+    assert!(Model::new(&fits).within(thm(&fits)));
     let mut fm = Fm::new(&fits);
     let out = fm.assertion(thm(&fits));
     assert_eq!((out.status(), count(out)), (0, 32));
@@ -196,6 +221,7 @@ fn an_assertion_of_32_statements_loads_and_one_of_33_is_refused_with_nothing_lef
     }
     assert_eq!(fm.select(31).status(), code("FM_ERR_INDEX"));
     let over = hyps(32);
+    assert!(!Model::new(&over).within(thm(&over)));
     let mut fm = Fm::new(&over);
     let out = fm.assertion(thm(&over));
     assert_eq!((out.status(), count(out)), (limit, 0));
@@ -222,6 +248,7 @@ fn tables_of_384_nodes_build_and_a_385th_node_refuses_that_table_and_keeps_the_r
     assert_eq!(node_counts(&over), [128, 128, 129]);
     for (bytes, want) in [(&fits, 0), (&over, limit)] {
         let (model, n) = (Model::new(bytes), thm(bytes));
+        assert_eq!(model.within(n), want == 0, "the model's caps agree");
         let mut fm = Fm::new(bytes);
         assert_eq!(fm.assertion(n).status(), 0);
         for k in [0, 1] {
@@ -328,11 +355,15 @@ fn the_shipped_libraries_load_every_assertion_and_select_every_statement_within_
         let base = fm.rig.call("CALL_NOP", Regs::default()).tstates;
         assert_eq!(fm.open().status(), 0, "{name}: fm_open");
         let all = statements(&decoded(&bytes));
-        let (n, k, _) = all.iter().max_by_key(|(_, _, t)| t.len()).unwrap();
+        let distinct = |t: &Vec<String>| t.iter().collect::<std::collections::BTreeSet<_>>().len();
+        let (n, k, tokens) = all.iter().max_by_key(|(_, _, t)| distinct(t)).unwrap();
+        assert_eq!(fm.open().status(), 0);
         let cold = fm.statement(*n, *k).tstates - base;
         let warm = fm.statement(*n, *k).tstates - base;
         println!(
-            "{name}: fm_statement of the longest statement, {cold} the first time after fm_open and {warm} once its symbols are measured"
+            "{name}: fm_statement of {} tokens with {} symbols, all new: {cold} after fm_open, {warm} when measured",
+            tokens.len(),
+            distinct(tokens)
         );
         let (mut loads, mut selects, mut body) = (Vec::new(), 0, 0);
         for (n, all) in by_assertion(&bytes) {
@@ -369,5 +400,19 @@ fn the_shipped_libraries_load_every_assertion_and_select_every_statement_within_
             largest <= ceiling.largest,
             "{name}: fm_assertion largest {largest}"
         );
+    }
+}
+
+#[test]
+fn fms_caps_are_the_models() {
+    use mcui::caps::*;
+    for (name, model) in [
+        ("FM_MAX_STMTS", MAX_STATEMENTS),
+        ("FM_MAX_TOKENS", MAX_TOKENS),
+        ("FM_MAX_NODES", MAX_NODES),
+        ("FM_MAX_STMT_TOKENS", MAX_STATEMENT_TOKENS),
+        ("FM_MAX_STMT_NODES", MAX_STATEMENT_NODES),
+    ] {
+        assert_eq!(constant_of(WITH_FM.labels, name) as usize, model, "{name}");
     }
 }

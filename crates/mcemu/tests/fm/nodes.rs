@@ -26,6 +26,11 @@ impl Model {
         }
     }
 
+    /// Whether the model's caps hold the whole of assertion `n`.
+    pub fn within(&self, n: u16) -> bool {
+        mcui::caps::within(&self.lib.statement(usize::from(n)).all())
+    }
+
     /// The nodes of statement `k` of assertion `n`, from the model's `Expr`.
     pub fn table(&self, n: u16, k: u8) -> Table {
         let statement = self.lib.statement(usize::from(n));

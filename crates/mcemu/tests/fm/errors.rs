@@ -90,6 +90,14 @@ fn refusals() -> Vec<Refusal> {
             "FM_ERR_BAD",
         ),
         open_with(
+            "an entry with no codes",
+            &patched(|b| {
+                let at = entry(b, 1);
+                b[at + 1] = 0;
+            }),
+            "FM_ERR_BAD",
+        ),
+        open_with(
             "a flag above bit 3",
             &patched(|b| {
                 let at = entry(b, 1);
@@ -252,5 +260,23 @@ fn a_refused_statement_leaves_nothing_loaded() {
         assert_eq!(fm.draw(1, 0, 94, (0, 8)).status(), 0);
         assert_eq!(fm.frame(), [0; FRAME_LEN]);
         assert_eq!(fm.statement(one, 0xFF).status(), 0);
+    }
+}
+
+#[test]
+fn an_entry_of_one_code_opens_and_one_of_none_is_bad() {
+    let bytes = fixture::library();
+    let glyphs = decoded(&bytes).sections.unwrap().glyphs.unwrap();
+    let symbol = glyphs
+        .symbols
+        .iter()
+        .position(|g| g.codes.len() >= 2)
+        .unwrap();
+    for (codes, status) in [(1, 0), (0, code("FM_ERR_BAD"))] {
+        let short = patched(|b| {
+            let at = entry(b, symbol);
+            b[at + 1] = codes;
+        });
+        assert_eq!(Fm::bare(&short).open().status(), status, "{codes} codes");
     }
 }
