@@ -13,6 +13,11 @@
 ;   KERNEL_RAM_LOW    C     the kernel's low region
 ;   KERNEL_RAM_HIGH   C     the kernel's high region
 ;   LIB_BOUNCE        C     an overlay on the last 256 bytes of the kernel's high region
+;   FM_SCRATCH        B     fm's 256 byte buffer for the reader's accessors, in saveSScreen after
+;                           UI_VARS; it holds nothing across calls
+;   FM_RAM            C     fm's working memory, an overlay on the kernel's high region from its
+;                           start; the kernel uses that region only inside a kernel call, so fm
+;                           and the kernel share it through the ready mark (fm/fm.z80)
 #ifndef RAM_MAP
 #define RAM_MAP
 
@@ -51,6 +56,17 @@ HIGH_SIZE           .equ $2000
 LIB_BOUNCE_SIZE     .equ $100
 #ifndef LIB_BOUNCE
 LIB_BOUNCE          .equ KERNEL_RAM_HIGH + HIGH_SIZE - LIB_BOUNCE_SIZE
+#endif
+
+#ifndef FM_SCRATCH
+FM_SCRATCH          .equ UI_VARS + UI_VARS_SIZE
+#endif
+FM_SCRATCH_SIZE     .equ $100
+#ifndef FM_RAM
+FM_RAM              .equ KERNEL_RAM_HIGH
+#endif
+#ifndef FM_RAM_SIZE
+FM_RAM_SIZE         .equ $1600
 #endif
 
 #macro RAM_DISJOINT(a_base, a_size, b_base, b_size, message)
@@ -92,5 +108,13 @@ RAM_DISJOINT(UI_FRAME, UI_FRAME_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "UI_FRAME and
 RAM_DISJOINT(UI_FRAME, UI_FRAME_SIZE, LIB_STATE, LIB_STATE_SIZE, "UI_FRAME and LIB_STATE overlap")
 RAM_DISJOINT(KD_SCRATCH, KD_SCRATCH_SIZE, LIB_STATE, LIB_STATE_SIZE, "KD_SCRATCH and LIB_STATE overlap")
 RAM_DISJOINT(KERNEL_RAM_LOW, LOW_SIZE, KERNEL_RAM_HIGH, HIGH_SIZE, "KERNEL_RAM_LOW and KERNEL_RAM_HIGH overlap")
+
+RAM_WITHIN(FM_SCRATCH, FM_SCRATCH_SIZE, $8000, $C000, "FM_SCRATCH runs past bank B")
+RAM_WITHIN(FM_RAM, FM_RAM_SIZE, KERNEL_RAM_HIGH, KERNEL_RAM_HIGH + HIGH_SIZE, "FM_RAM runs outside the kernel's high region")
+RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, UI_VARS, UI_VARS_SIZE, "FM_SCRATCH and UI_VARS overlap")
+RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, UI_FRAME, UI_FRAME_SIZE, "FM_SCRATCH and UI_FRAME overlap")
+RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "FM_SCRATCH and KD_SCRATCH overlap")
+RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, LIB_STATE, LIB_STATE_SIZE, "FM_SCRATCH and LIB_STATE overlap")
+RAM_DISJOINT(FM_RAM, FM_RAM_SIZE, LIB_BOUNCE, LIB_BOUNCE_SIZE, "FM_RAM and LIB_BOUNCE overlap")
 
 #endif

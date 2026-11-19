@@ -713,7 +713,7 @@ fn assemble_ui(out: &Path) {
         }
     }
     for (defines, want) in [
-        (&["UI_VARS=$9326"][..], None),
+        (&["UI_VARS=$9326", "FM_SCRATCH=$A000"][..], None),
         (&["UI_VARS=$9640"][..], None),
         (&["UI_FRAME=$9572"][..], None),
         (&["UI_FRAME=$9B6C"][..], None),
@@ -766,6 +766,47 @@ fn assemble_ui(out: &Path) {
         (
             &["UI_FRAME_SIZE=$2FF"][..],
             Some("UI_FRAME_SIZE in ram_map.inc must be UI_STRIDE*UI_HEIGHT"),
+        ),
+        (&["FM_SCRATCH=$9100"][..], None),
+        (&["FM_SCRATCH=$BF00"][..], None),
+        (&["FM_RAM_SIZE=$1F00"][..], None),
+        (&["FM_RAM=$E000"][..], None),
+        (
+            &["FM_SCRATCH=$86F0"][..],
+            Some("FM_SCRATCH and UI_VARS overlap"),
+        ),
+        (
+            &["FM_SCRATCH=$9300"][..],
+            Some("FM_SCRATCH and UI_FRAME overlap"),
+        ),
+        (
+            &["FM_SCRATCH=$9800"][..],
+            Some("FM_SCRATCH and KD_SCRATCH overlap"),
+        ),
+        (
+            &["FM_SCRATCH=$9900"][..],
+            Some("FM_SCRATCH and LIB_STATE overlap"),
+        ),
+        (
+            &["FM_SCRATCH=$BF80"][..],
+            Some("FM_SCRATCH runs past bank B"),
+        ),
+        (
+            &["FM_SCRATCH=$7F80"][..],
+            Some("FM_SCRATCH runs past bank B"),
+        ),
+        (
+            &["FM_RAM_SIZE=$2000"][..],
+            Some("FM_RAM and LIB_BOUNCE overlap"),
+        ),
+        (&["FM_RAM=$FE00"][..], Some("FM_RAM and LIB_BOUNCE overlap")),
+        (
+            &["FM_RAM=$DE00"][..],
+            Some("FM_RAM runs outside the kernel's high region"),
+        ),
+        (
+            &["FM_RAM=$EA00"][..],
+            Some("FM_RAM runs outside the kernel's high region"),
         ),
         (&["UI_VARS_SIZE=$30"][..], None),
         (
@@ -843,7 +884,7 @@ fn assemble_reader(out: &Path) {
     let regions = "LIB_BOUNCE must lie inside the kernel's saved symbols buffer";
     for (defines, refusal) in [
         (&[][..], None),
-        (&["LIB_BOUNCE=$F300"][..], None),
+        (&["LIB_BOUNCE=$F300", "FM_RAM_SIZE=$1400"][..], None),
         (&["LIB_BOUNCE=$F800"][..], None),
         (&["LIB_BOUNCE=$C500"][..], Some(regions)),
         (&["LIB_BOUNCE=$D600"][..], Some(regions)),
