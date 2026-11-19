@@ -139,7 +139,14 @@ pub(super) fn prepare(
             let mut pending = vec![tree];
             while let Some(node) = pending.pop() {
                 if db.stmt(node.stmt).kind != Kind::Float {
-                    used.insert(local_stmt[&node.stmt]);
+                    let n =
+                        local_stmt
+                            .get(&node.stmt)
+                            .ok_or_else(|| PackError::SyntaxAfterCut {
+                                statement: stmt.label.clone(),
+                                axiom: db.stmt(node.stmt).label.clone(),
+                            })?;
+                    used.insert(*n);
                 }
                 pending.extend(&node.children);
             }

@@ -21,6 +21,8 @@ pub enum PackError {
     TreeCapacity(&'static str, usize),
     /// The display font cannot draw a character of the symbol.
     NoGlyphs(String),
+    /// The statement's expression needs a syntax axiom the library leaves out because it is declared at or after the cut.
+    SyntaxAfterCut { statement: String, axiom: String },
 }
 
 /// A proof step before the reference list is ordered.

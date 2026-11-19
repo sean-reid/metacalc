@@ -37,3 +37,8 @@ fn the_kernel_verifies_libraries_with_bad_labels_as_the_model_does() {
 fn symbol_names_are_checked_at_init_as_the_model_checks_them() {
     agree_on(raw::name_cases());
 }
+
+#[test]
+fn typecode_bytes_are_checked_at_init_as_the_model_checks_them() {
+    agree_on(raw::typecode_cases());
+}
