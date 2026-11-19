@@ -16,6 +16,7 @@ pub const FONT_MATCHES: u8 = 8;
 pub const FOREIGN: Image = Image {
     code: include_bytes!(concat!(env!("OUT_DIR"), "/reader_foreign.bin")),
     labels: include_str!(concat!(env!("OUT_DIR"), "/reader_foreign.lab")),
+    org: 0x4000,
 };
 
 pub struct Tree {
