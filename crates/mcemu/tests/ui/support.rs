@@ -108,6 +108,25 @@ pub enum Op {
     ClearVars,
     /// Pixels only the host draws, ORed into the frame between two Z80 calls.
     Ink(Bitmap),
+    /// `lines` calls of a fitting routine, `ui_truncate`, `ui_tail` or `ui_wrap`, each into its
+    /// own buffer of `cap` bytes between `FIT_GUARD` bytes of `MARK` on each side; every call
+    /// after the first starts where the one before it left HL.
+    Fit {
+        routine: &'static str,
+        text: Vec<u8>,
+        cap: u8,
+        limit: u8,
+        lines: usize,
+    },
+}
+
+/// Bytes of `MARK` before and after each buffer of an `Op::Fit`.
+pub const FIT_GUARD: usize = 4;
+
+/// Where an `Op::Fit` put its text and its buffers, guard bytes included.
+pub struct Placed {
+    pub text: u16,
+    pub buffers: Vec<u16>,
 }
 
 /// `value` as a byte; a model value that does not fit is a bug in the test.
@@ -174,6 +193,7 @@ struct Script {
     image: Image,
     results: u16,
     inks: Vec<(u16, Bitmap)>,
+    placed: Vec<Placed>,
 }
 
 impl Script {
@@ -311,6 +331,28 @@ impl Script {
                 self.word(&[0x21], label(self.image, "ui_font"));
                 self.run("ui_set_font", &[], call);
             }
+            Op::Fit {
+                routine,
+                text,
+                cap,
+                limit,
+                lines,
+            } => {
+                let text = self.put(text);
+                let region = vec![MARK; usize::from(*cap) + 2 * FIT_GUARD];
+                let buffers: Vec<u16> = (0..*lines).map(|_| self.put(&region)).collect();
+                self.word(&[0x21], text);
+                for &buffer in &buffers {
+                    self.word(&[0x11], buffer + FIT_GUARD as u16);
+                    self.word(&[0x01], u16::from_be_bytes([*cap, *limit]));
+                    self.run(routine, &[], call);
+                    if call {
+                        self.keep_a();
+                        self.keep(&[0x22]);
+                    }
+                }
+                self.placed.push(Placed { text, buffers });
+            }
         }
     }
 
@@ -334,6 +376,17 @@ pub struct Outcome {
     pub pc: u16,
     /// Bytes of stack the run reached below its starting point, calls from the script included.
     pub stack: usize,
+    /// The data the script's strings and buffers were put in, from `DATA`.
+    pub data: Vec<u8>,
+    pub placed: Vec<Placed>,
+}
+
+impl Outcome {
+    /// `len` bytes of the script's data at `at`.
+    pub fn bytes(&self, at: u16, len: usize) -> &[u8] {
+        let from = usize::from(at - DATA);
+        &self.data[from..from + len]
+    }
 }
 
 pub const MARK: u8 = 0xA5;
@@ -410,6 +463,7 @@ fn run_marked(
         image,
         results: 0,
         inks: vec![],
+        placed: vec![],
     };
     script.word(&[0x31], STACK);
     script.word(&[0x21], label(image, "ui_font"));
@@ -459,6 +513,7 @@ fn run_marked(
     }
     assert_eq!(ENTRY, 0x4000);
     let frame = m.read_ram(image.frame, FRAME_BYTES);
+    let data = m.read_ram(DATA, script.data.len());
     let raw = m.read_ram(RESULTS, usize::from(script.results));
     let results = raw
         .chunks(2)
@@ -493,6 +548,8 @@ fn run_marked(
         lcd,
         pc,
         stack,
+        data,
+        placed: script.placed,
     }
 }
 
