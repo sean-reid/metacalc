@@ -2,9 +2,10 @@
 # Usage: build-site.sh pagedir sitedir [docsdir]
 # Copies docs/ (or docsdir) into sitedir, which must not exist, fills in every library page and the
 # index table that build-libraries.sh wrote into pagedir, draws the worked example images, and
-# builds the book into sitedir/book, and fails when the built worked examples page links a library
-# page as .md instead of .html. Refuses to run when the table, a marker line of the index or
-# the generated page for a library page in docs is missing, and fails when a page repeats an id.
+# builds the book into sitedir/book, and fails when the built worked examples page is missing, has no
+# tree link to a library page as .html, or links a library page as .md. Refuses to run when the
+# table, a marker line of the index or the generated page for a library page in docs is missing, and
+# fails when a page repeats an id.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -46,9 +47,12 @@ mdbook build "$sitedir"
 
 status=0
 guide=$sitedir/book/guide/worked-examples.html
-if [ -f "$guide" ]; then
-	grep -q 'href="\.\./libraries/[a-z]*\.html#' "$guide" ||
-		{ echo "build-site: $guide has no link to a library page" >&2; status=1; }
+if [ ! -f "$guide" ]; then
+	echo "build-site: $guide was not built" >&2
+	status=1
+else
+	grep -q '<a class="lb" href="\.\./libraries/[a-z]*\.html#' "$guide" ||
+		{ echo "build-site: $guide has no tree link to a library page as .html" >&2; status=1; }
 	if grep -q 'href="[^"]*libraries/[a-z]*\.md#' "$guide"; then
 		echo "build-site: $guide links to a library .md file, which mdBook did not rewrite" >&2
 		status=1
