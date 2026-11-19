@@ -24,34 +24,51 @@ fn label(name: &str) -> u16 {
         .unwrap_or_else(|| panic!("no label {name}"))
 }
 
-/// What the probe should report for each of pages 2 to 7 on this machine, found with plain
-/// writes through port 5: 0, or 88h minus the lowest other page that shows the same byte.
-fn expected(m: &mut Machine) -> Vec<u8> {
-    const ADDR: u16 = 0xD000;
-    let port5 = m.in_port(5);
+/// Pages 82h to 87h are one page: the lowest other page that shows a byte written through
+/// page 2 is 3, and through pages 3 to 7 it is 2.
+const ALIAS_CODES: [u8; 6] = [133, 134, 134, 134, 134, 134];
+
+/// What a machine reports for each of pages 2 to 7 behind one bank, found with plain writes: 0, or
+/// 88h minus the lowest other page that shows the same byte. `port` selects the bank, `ram` is
+/// what its value needs to carry to pick a RAM page, and `addr` is an address the bank covers.
+fn alias_codes(m: &mut Machine, port: u8, ram: u8, addr: u16) -> Vec<u8> {
+    let saved = m.in_port(port);
     let mut original = Vec::new();
     for q in 0..8 {
-        m.out_port(5, q);
-        original.push(m.read_ram(ADDR, 1)[0]);
+        m.out_port(port, ram | q);
+        original.push(m.read_ram(addr, 1)[0]);
     }
     let mut result = Vec::new();
     for p in PAGES {
-        m.out_port(5, p);
+        m.out_port(port, ram | p);
         let marker = !original[usize::from(p)];
-        m.load_ram(ADDR, &[marker]);
+        m.load_ram(addr, &[marker]);
         let mut found = 0;
         for q in (0..8).filter(|&q| q != p) {
-            m.out_port(5, q);
-            if found == 0 && m.read_ram(ADDR, 1)[0] == marker {
+            m.out_port(port, ram | q);
+            if found == 0 && m.read_ram(addr, 1)[0] == marker {
                 found = 0x88 - q;
             }
         }
         result.push(found);
-        m.out_port(5, p);
-        m.load_ram(ADDR, &[original[usize::from(p)]]);
+        m.out_port(port, ram | p);
+        m.load_ram(addr, &[original[usize::from(p)]]);
     }
-    m.out_port(5, port5);
+    m.out_port(port, saved);
     result
+}
+
+#[test]
+fn the_machine_that_boots_an_os_image_shares_pages_2_to_7_behind_every_bank() {
+    let mut m = Machine::new_os(STUB_ROM).expect("the stub image boots as an OS");
+    m.out_port(4, 0);
+    for (name, port, ram, addr) in [
+        ("port 5", 5, 0, 0xC000),
+        ("port 7", 7, 0x80, 0x8000),
+        ("port 6", 6, 0x80, 0x4000),
+    ] {
+        assert_eq!(alias_codes(&mut m, port, ram, addr), ALIAS_CODES, "{name}");
+    }
 }
 
 #[test]
@@ -68,8 +85,7 @@ fn the_probe_reports_pages_2_to_7_as_aliases_and_restores_what_it_touched() {
     let run = m.run(label("START"), LIMIT);
     assert_eq!(run.stop, Stop::UnsupportedBcall(NEW_LINE));
     let got = m.ram_page(1)[RESULTS..RESULTS + PAGES.len()].to_vec();
-    assert_eq!(got, expected(&mut m), "result per page");
-    assert_ne!(got, [0; 6], "pages 82h to 87h are one page");
+    assert_eq!(got, ALIAS_CODES, "result per page");
     assert_eq!(m.ram_page(2), pattern, "the shared page is as it was");
     assert_eq!(m.in_port(5), m.ram_page(1)[SCRATCH], "port 5 is restored");
 }
@@ -111,8 +127,7 @@ fn on_the_reference_os_the_probe_prints_a_line_per_page_and_leaves_on_a_key() {
         assert!(lit_rows(&screen, row * 8..row * 8 + 8) > 0, "line {row}");
     }
     let got = os.ram(RESULTS, PAGES.len());
-    assert_eq!(got, expected(&mut os.m), "result per page");
-    assert_ne!(got, [0; 6], "pages 82h to 87h are one page");
+    assert_eq!(got, ALIAS_CODES, "result per page");
     os.tap(realos::KEY_CLEAR, 150, 600);
     let screen = os.screen();
     assert_eq!(
