@@ -320,7 +320,8 @@ fn trees_of_255_256_and_257_bytes_split_across_the_buffer_where_the_chain_says()
 fn the_symbol_id_of_a_variable_in_a_tree_is_always_one_byte() {
     let bytes = fixture::nodes_library();
     let mut fm = Fm::new(&bytes);
-    let symbols = u16::from(fm.rig.counts().0) + u16::from(fm.rig.counts().1);
+    let counts = fm.rig.counts();
+    let symbols = u16::from(counts.0) + counts.1;
     let mut seen = 0;
     for first in 0x80..=0xFFu8 {
         for second in 0..=255u8 {

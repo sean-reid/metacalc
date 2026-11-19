@@ -36,8 +36,8 @@
 ; interrupt state with ld a,i twice, turns interrupts off, reads port 5, maps the spare page, saves
 ; the old port 5 and SP in it, switches to FM_STACK and works there, and on every exit restores SP,
 ; port 5 and the interrupt state. Interrupts stay off for the whole session; the longest one
-; measured is fm_open on the ring library, 548,618 T-states (91 ms at 6 MHz), then fm_nodes of its
-; largest statement, 362,318, and fm_draw of a full window, at most 216,215. The reader and the
+; measured is fm_open on the ring library, 548,734 T-states (91 ms at 6 MHz), then fm_nodes of its
+; largest statement, 362,966, and fm_draw of a full window, at most 216,215. The reader and the
 ; canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
 ; touches only bank B, the stack and the font table it was given. A session calls no OS routine.

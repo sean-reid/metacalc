@@ -247,8 +247,8 @@ pub fn allowed_for(nodes: bool, shapes: bool) -> Allowed {
 fn reprime(fm: &mut Fm, label: &str, len: usize) {
     let at = usize::from(fm.rig.label(label) - SPARE_BASE);
     let page = fm.rig.m.ram_page(SPARE_PAGE);
-    for i in at..at + len {
-        page[i] = pattern(SPARE_PAGE, i);
+    for (i, byte) in page[at..at + len].iter_mut().enumerate() {
+        *byte = pattern(SPARE_PAGE, at + i);
     }
 }
 

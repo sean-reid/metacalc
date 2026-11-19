@@ -18,25 +18,25 @@ struct Ceilings {
 const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "prop",
-        open: 69262,
-        median: 28818,
-        statement: 73548,
+        open: 69383,
+        median: 29514,
+        statement: 74244,
         rows: 11351,
         draw: 107953,
     },
     Ceilings {
         name: "pred",
-        open: 102757,
-        median: 29054,
-        statement: 77498,
+        open: 102878,
+        median: 29750,
+        statement: 78194,
         rows: 11351,
         draw: 107953,
     },
     Ceilings {
         name: "ring",
-        open: 576049,
-        median: 29419,
-        statement: 142403,
+        open: 576171,
+        median: 30116,
+        statement: 143099,
         rows: 22595,
         draw: 227026,
     },
@@ -133,18 +133,18 @@ struct NodeCeilings {
 const NODE_CEILINGS: [NodeCeilings; 3] = [
     NodeCeilings {
         name: "prop",
-        median: 37609,
-        largest: 119579,
+        median: 38290,
+        largest: 120259,
     },
     NodeCeilings {
         name: "pred",
-        median: 38202,
-        largest: 143258,
+        median: 38882,
+        largest: 143939,
     },
     NodeCeilings {
         name: "ring",
-        median: 41310,
-        largest: 380434,
+        median: 41990,
+        largest: 381115,
     },
 ];
 

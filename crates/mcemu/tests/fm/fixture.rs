@@ -73,6 +73,8 @@ fn structure() -> String {
     src += "wrapc $a |- ( ( ch -> { x | ps } ) -> th ) $.\n";
     let fillers = names("F", FILLERS);
     let wide: Vec<&str> = (0..250).map(|i| fillers[i % FILLERS].as_str()).collect();
+    let ten = fillers[..10].join(" ");
+    src += &format!("wten $a wff {ten} $.\nten $a |- {ten} $.\n");
     src += "wbig $a wff ";
     src += &wide.join(" ");
     src += " $.\n";

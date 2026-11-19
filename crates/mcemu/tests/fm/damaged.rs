@@ -227,12 +227,13 @@ pub fn cases() -> Vec<Damaged> {
             |_| {},
         ),
         open_case(
-            "an item of 257 parts",
+            "an item of 258 parts, the first two a valid shape and the rest the next item's",
             "FM_ERR_BAD",
             |b| {
                 let (start, _) = shapes(b);
-                let first = get(b, start + 2);
-                word(b, start + 4, first as u16 + 257);
+                let ten = shape_with(b, &[0; 10]);
+                let first = get(b, start + 2 + 2 * ten);
+                word(b, start + 4 + 2 * ten, first as u16 + 258);
             },
             |_| {},
         ),
