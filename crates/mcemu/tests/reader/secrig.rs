@@ -17,6 +17,7 @@ pub const HAVE_SHAPES: u8 = 16;
 pub const FOREIGN: Image = Image {
     code: include_bytes!(concat!(env!("OUT_DIR"), "/reader_foreign.bin")),
     labels: include_str!(concat!(env!("OUT_DIR"), "/reader_foreign.lab")),
+    org: 0x4000,
 };
 
 pub struct Tree {
@@ -68,6 +69,13 @@ impl Rig {
     pub fn glyph_map(&mut self) -> (u8, u16) {
         let out = self.call("LIB_GLYPH_MAP", Regs::default());
         (out.status(), out.hl)
+    }
+
+    /// (status, offset, length) of the glyph section.
+    pub fn glyphs(&mut self) -> (u8, u32, u16) {
+        let out = self.call("LIB_GLYPHS", Regs::default());
+        let offset = (u32::from(out.de as u8) << 16) | u32::from(out.hl);
+        (out.status(), offset, out.bc)
     }
 
     /// (status, flags, codes).

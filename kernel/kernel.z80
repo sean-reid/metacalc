@@ -49,12 +49,14 @@
 ;                          low 16; with Malformed, DE:HL = 0; otherwise DE and HL are destroyed.
 ;
 ; kernel_verify returns Malformed unless the ready mark, which kernel_init sets when it succeeds
-; and clears when it fails, is in place. The mark shows that kernel_init completed since the last
-; kernel_reset. An app calls kernel_reset first at start, so a session never verifies on state an
+; and clears when it fails, is in place. The mark holds the magic from a completed kernel_init until
+; kernel_reset, a refused kernel_init, or code that writes the kernel's regions replaces it. An app calls kernel_reset first at start, so a session never verifies on state an
 ; earlier session left, then calls kernel_init before kernel_verify; once init has succeeded,
 ; kernel_verify may be called any number of times. The mark does not show that the kernel's RAM
 ; regions are intact: they belong to the kernel between calls, and a caller that writes them gets
 ; undefined results.
+; Code that writes the kernel's regions between kernel calls leaves the mark holding something
+; other than the magic first.
 ; The library is stored the way TI-OS stores an app: chunk c of 16 KB at flash page KERNEL_LIB_PAGE - c.
 ; kernel_init refuses a library page >= $80 and a library that needs more than
 ; KERNEL_LIB_PAGE + 1 chunks; one that ends exactly at page 0 is accepted. The page is
@@ -68,7 +70,9 @@
 ; 46.1 million T-states at most, 7.7 s at 6 MHz. Call chunk until it does not return
 ; ST_CRC_MORE. A chunk call without a begin since the last kernel_init, or after the run has
 ; ended, is refused (1); kernel_crc_begin restarts. The call that ends the run on a match
-; returns the CRC-32 in DE:HL, which the app can key its status cache on.
+; returns the CRC-32 in DE:HL, which the app can key its status cache on. Code that takes the mark
+; from the magic between kernel_crc_begin and the last kernel_crc_chunk ends the run: the next
+; chunk call is refused.
 ;
 ; Symbols. kernel_init refuses with BadSymbol a name that is empty, has a byte outside $21 to $7E
 ; or a $, or equals another name, constants and variables together, once every Malformed rule has

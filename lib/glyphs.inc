@@ -22,6 +22,21 @@ lib_glyph_map:
 	ld hl,(ls_gl_fp)
 	jr lgl_state
 
+lib_glyphs:
+	call lib_glyph_map
+	ret nz
+	ld hl,(ls_gl)
+	ld a,(ls_gl+2)
+	ld e,a
+	ld bc,(ls_gl+3)
+	ld a,(ls_gl+5)
+	or a
+	jr z,lgs_done
+	ld bc,$FFFF
+lgs_done:
+	xor a
+	ret
+
 lib_glyph:
 	ld (lr_bufp),de
 	ld (lr_id),a

@@ -1,6 +1,6 @@
 use crate::secrig::*;
 use crate::support::*;
-use mcpack::library::{Library, Node, Sections, decode, pack_kernel};
+use mcpack::library::{GLYPHS, Library, Node, Sections, decode, pack_kernel};
 use mcpack::mm::{self, Database, StmtId};
 
 /// A grammar with a few rules over the variables p q r s.
@@ -212,10 +212,14 @@ fn check_glyphs(
 ) {
     let Some(map) = &sections.glyphs else {
         assert_eq!(rig.glyph_map().0, ST_NONE, "{what}");
+        assert_eq!(rig.glyphs().0, ST_NONE, "{what}");
         assert_eq!(rig.glyph(0).0, ST_NONE, "{what}");
         return;
     };
     assert_eq!(rig.glyph_map(), (ST_OK, map.fingerprint), "{what}");
+    let row = sections.table.iter().find(|e| e.id == GLYPHS).unwrap();
+    let section = (ST_OK, row.offset as u32, row.length as u16);
+    assert_eq!(rig.glyphs(), section, "{what}: glyph section");
     for id in order(map.symbols.len()) {
         let g = &map.symbols[id];
         assert_eq!(
@@ -366,7 +370,12 @@ fn a_library_packed_without_sections_opens_and_reads_as_before() {
         let mut rig = opened(&bytes);
         assert_eq!(rig.sections(), (ST_OK, 0), "{name}");
         assert_eq!(rig.section_state().have, 0, "{name}");
-        for call in ["LIB_TITLE_COUNT", "LIB_GLYPH_MAP", "LIB_SYNTAX_COUNT"] {
+        for call in [
+            "LIB_TITLE_COUNT",
+            "LIB_GLYPH_MAP",
+            "LIB_GLYPHS",
+            "LIB_SYNTAX_COUNT",
+        ] {
             assert_eq!(rig.call(call, Regs::default()).status(), ST_NONE, "{name}");
         }
         let library = decode(&bytes).unwrap();
@@ -417,7 +426,7 @@ fn crc16(bytes: &[u8]) -> u16 {
 fn a_library_packed_against_the_font_table_the_image_carries_is_usable_with_it() {
     let image = DEFAULT;
     let slots = constant_of(image.labels, "UI_FONT_GLYPHS") as usize;
-    let at = usize::from(label_in(image, "UI_FONT")) - 0x4000;
+    let at = usize::from(label_in(image, "UI_FONT") - image.org);
     let table = &image.code[at..at + 8 * slots];
     let carried = constant_of(image.labels, "UI_FONT_FINGERPRINT") as u16;
     assert_eq!(

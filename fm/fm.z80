@@ -1,0 +1,92 @@
+; metacalc formula drawing for the TI-84 Plus SE, first slice. Lays out one statement of the
+; library, unfolded, and draws it on the canvas pixel for pixel as the host model does
+; (crates/mcui, crates/mcglyph): the tokens of the statement, each the glyph codes of its symbol
+; from the library's glyph map, placed in lines by mcglyph's place, drawn with ui_text at x plus
+; the token's column on the text row of its line, only on rows inside a window. Folding, the
+; ellipsis, the cursor and parse trees are not here.
+;
+; Code runs from flash in bank A and is position dependent. An including file defines FM_EMBEDDED
+; first and places the code itself, after the reader (lib/) and the canvas (ui/) it calls, with -I
+; at the repository root and at app/src. The canvas's ui_set_font must have been called before
+; fm_statement measures a token and before fm_draw draws one.
+;
+; Memory, placed by app/src/ram_map.inc. FM_RAM is in bank C of the kernel's spare page
+; KERNEL_RAM_PAGE, from KERNEL_RAM_HIGH, $1600 bytes, which the kernel uses only inside a kernel
+; call; fm maps the page in every public routine and keeps everything there:
+;   +$000 $100  variables (fm/ram.inc)
+;   +$100 $100  fm's private stack, FM_STACK_TOP at +$200
+;   +$200 $800  FM_GLYPHS, the library's glyph map section as lib_glyphs finds it
+;   +$A00 $800  FM_SECOND, room for a second section of at most 2,048 bytes, unused
+;   +$1200 $100 symbol ids of the loaded statement, at most 255
+;   +$1300 $100 token widths in pixels
+;   +$1400 $100 the columns between a token and the one before it, 1 or 3
+;   +$1500 $100 token spacing flags
+; FM_SCRATCH is 256 bytes in bank B, in saveSScreen after UI_VARS, for the buffers the reader's
+; accessors write; it holds nothing between calls.
+;
+; Sessions. Every public routine runs as a session, as the kernel's calls do: it reads the
+; interrupt state with ld a,i twice, turns interrupts off, reads port 5, maps the spare page, saves
+; the old port 5 and SP in it, switches to FM_STACK and works there, and on every exit restores SP,
+; port 5 and the interrupt state. Interrupts stay off for the whole session; the longest one
+; measured is fm_draw of a full window on the ring library, 216,215 T-states (36 ms at 6 MHz). The
+; reader and the canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
+; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
+; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
+; Port 7 changes only inside lib_read, which puts it back.
+;
+; The kernel's contract. The ready mark kv_ready holds READY_MAGIC after a good kernel_init and
+; nothing else makes the kernel treat it as set. On entry a session reads the mark: unless it holds
+; FM_OWNED, some kernel entry (kernel_init, good or refused, or kernel_reset) has run since the last
+; fm session and may have written the high region, so fm is closed: every routine but fm_open then
+; returns FM_ERR_NOT_OPEN and draws nothing. Then the session always writes FM_OWNED to the mark,
+; so kernel_verify, kernel_crc_begin and kernel_crc_chunk refuse until kernel_init runs again. An fm call between
+; kernel_crc_begin and the last kernel_crc_chunk therefore ends the CRC run: the next chunk is
+; refused. A caller opens fm again with fm_open, which copies the glyph section afresh; fm_open
+; also keeps where the section was and the flash page of the library, and fm_statement returns
+; FM_ERR_NOT_OPEN unless the reader's glyph section lies at the same offset, has the same length and
+; is in the same flash page. A kernel_reset at the start of an app closes fm.
+;
+; The test image (crates/mcemu/tests/routines/reader_test.z80) starts at $3000, in page 0, because
+; the kernel, the reader, the canvas and fm together are longer than one 16 KB page. That is the
+; test's layout and not the app's.
+;
+; Calling. Status comes back in A, 0 meaning ok, with the zero flag set exactly when A is 0. Every
+; routine destroys all registers but IY and keeps the reader's rule for ports 5 and 7 and for the
+; interrupt state, which are the caller's again on every exit. The private stack is 256 bytes, FM_STACK
+; to FM_STACK_TOP, and the fm variables lie right below it. The tests measure 14 bytes pushed, the
+; deepest of any session they run; that is a measurement and not a bound, since the reader alone may
+; push 16 bytes below its return address.
+;
+;   fm_open       in:  the reader open with lib_open
+;                 out: A = status. Copies the whole glyph section into FM_GLYPHS, checks that
+;                      every entry lies inside it, and marks fm open. Closed until it returns 0.
+;                      FM_ERR_CLOSED: the reader is not open. FM_ERR_NO_MAP: the library has no
+;                      glyph map. FM_ERR_FONT: its map is for another font. FM_ERR_TOO_BIG: the
+;                      section is longer than 2,048 bytes. FM_ERR_BAD: an entry the section
+;                      cannot hold. FM_ERR_READ: the reader refused a read.
+;   fm_statement  in:  HL = assertion number, E = statement, numbered as lib_tree numbers them:
+;                      the essential hypotheses in record order from 0, FFh the conclusion
+;                 out: A = status, B = the number of tokens. The tokens are the statement's
+;                      symbols as lib_hypothesis and lib_conclusion give them, the typecode
+;                      first. FM_ERR_INDEX: no such assertion or statement. FM_ERR_BAD: a
+;                      symbol past the glyph map, or a token wider than 255 pixels. A refused
+;                      call leaves no statement loaded.
+;   fm_rows       in:  D = width in pixels, 0 to 255
+;                 out: A = status, B = the number of lines the loaded statement takes. A token
+;                      wider than the width sits alone on its line.
+;   fm_draw       in:  HL = text row of the statement's first line, signed, -16384 to 16383;
+;                      D = width in pixels; E = x of the statement's first column; B = the first
+;                      text row of the window, C = one past its last
+;                 out: A = status. Draws each line whose row is in the window, with ui_text,
+;                      and nothing else.
+; Other statuses: FM_ERR_NOT_OPEN, from fm_statement, fm_rows and fm_draw.
+
+#ifndef FM_EMBEDDED
+.org $4000
+#endif
+
+#include "fm/ram.inc"
+#include "fm/session.inc"
+#include "fm/open.inc"
+#include "fm/statement.inc"
+#include "fm/layout.inc"

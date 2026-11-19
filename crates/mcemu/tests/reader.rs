@@ -10,6 +10,8 @@ mod differential;
 mod escapes;
 #[path = "reader/flags.rs"]
 mod flags;
+#[path = "common/guard.rs"]
+mod guard;
 #[path = "reader/guards.rs"]
 mod guards;
 #[path = "reader/inside.rs"]

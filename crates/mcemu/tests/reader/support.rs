@@ -7,6 +7,8 @@ use std::path::Path;
 pub struct Image {
     pub code: &'static [u8],
     pub labels: &'static str,
+    /// The address of the first byte of `code`; below $4000 the image starts in page 0.
+    pub org: u16,
 }
 
 macro_rules! image {
@@ -14,6 +16,7 @@ macro_rules! image {
         Image {
             code: include_bytes!(concat!(env!("OUT_DIR"), "/", $name, ".bin")),
             labels: include_str!(concat!(env!("OUT_DIR"), "/", $name, ".lab")),
+            org: 0x4000,
         }
     };
 }
@@ -109,7 +112,13 @@ impl Rig {
         m.out_port(0x2A, 0x27);
         m.out_port(0x2E, 0x45);
         m.set_speed(Speed::Mhz6);
-        m.load_flash(FLASH_TEST_PAGE, 0, image.code);
+        let (head, tail) = image
+            .code
+            .split_at(usize::from(0x4000 - image.org).min(image.code.len()));
+        if !head.is_empty() {
+            m.load_flash(0, usize::from(image.org), head);
+        }
+        m.load_flash(FLASH_TEST_PAGE, 0, tail);
         Rig {
             m,
             image,
@@ -177,15 +186,16 @@ impl Rig {
 
     /// Puts the interrupt handler in RAM and points the interrupt vector at it.
     pub fn install_handler(&mut self) {
-        let start = usize::from(self.label("IRQ_BODY_START") - 0x4000);
-        let end = usize::from(self.label("IRQ_BODY_END") - 0x4000);
+        let org = self.image.org;
+        let start = usize::from(self.label("IRQ_BODY_START") - org);
+        let end = usize::from(self.label("IRQ_BODY_END") - org);
         let code = self.image.code[start..end].to_vec();
         self.poke(self.label("IRQ_HANDLER"), &code);
         let at = self.label("IRQ_HANDLER").to_le_bytes();
         self.m.load_flash(0, 0x38, &[0xC3, at[0], at[1]]);
     }
 
-    fn prepare(&mut self, target: &str, regs: Regs) {
+    pub fn prepare(&mut self, target: &str, regs: Regs) {
         let word = |value: u16| value.to_le_bytes();
         let image = self.image;
         let at = |name: &str| label_in(image, name);
@@ -242,6 +252,28 @@ impl Rig {
 
     pub fn open_ok(&mut self) {
         assert_eq!(self.open(), ST_OK);
+    }
+
+    /// `kernel_init` on the loaded library with every limit at its largest.
+    pub fn kernel_init(&mut self) -> u8 {
+        let mut block = vec![self.lib_page];
+        for value in [0xFFFFu16; 4] {
+            block.extend(value.to_le_bytes());
+        }
+        self.poke(KERNEL_PARAMS, &block);
+        let regs = Regs {
+            hl: KERNEL_PARAMS,
+            ..Regs::default()
+        };
+        self.call("KERNEL_INIT", regs).status()
+    }
+
+    pub fn kernel_verify(&mut self, id: usize) -> u8 {
+        let regs = Regs {
+            hl: id as u16,
+            ..Regs::default()
+        };
+        self.call("KERNEL_VERIFY", regs).status()
     }
 
     pub fn read_call(&mut self, offset: u32, len: u16, dest: u16) -> Out {

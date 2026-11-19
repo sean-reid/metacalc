@@ -1,4 +1,7 @@
 #define LIB_EMBEDDED
+#ifdef WITH_FM
+#define WITH_KERNEL
+#endif
 #ifdef WITH_KERNEL
 #define KERNEL_EMBEDDED
 #endif
@@ -29,7 +32,11 @@ NODES		.equ $AC00
 IRQ_COUNT	.equ $A5F0
 IRQ_HANDLER	.equ $A600
 
+#ifdef IMAGE_ORG
+.org IMAGE_ORG
+#else
 .org $4000
+#endif
 	jp call_entry
 
 call_entry:
@@ -138,10 +145,19 @@ call_iff_off:
 #ifdef WITH_KERNEL
 #include "kernel.z80"
 #endif
+#ifdef WITH_FM
+#define UI_EMBEDDED
+#include "ui/ui.z80"
+#else
 #ifndef FONT_AFTER_LIB
 #include "font.inc"
 #endif
+#endif
 #include "lib/lib.z80"
+#ifdef WITH_FM
+#define FM_EMBEDDED
+#include "fm/fm.z80"
+#endif
 #ifdef FONT_AFTER_LIB
 #include "font.inc"
 #endif
