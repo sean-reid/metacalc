@@ -60,14 +60,12 @@ eb_done:
 ; in: HL = expression in the used record, C = length.
 ; out: the expression with the bound variables replaced, built at the stack top and ending at
 ; kv_wr; refused if it would pass the stack symbol limit. Charges one unit per symbol of the
-; expression, two more per variable in it and one per symbol written. Destroys AF BC DE HL.
+; expression and one per symbol written. Destroys AF BC DE HL.
 substitute:
 	ld de,(kv_stack_top)
 	ld a,c
 	or a
 	jr z,sub_empty
-	xor a
-	ld (kv_nvars),a
 	ld b,c
 sub_symbol:
 	ld a,(hl)
@@ -90,8 +88,6 @@ sub_symbol:
 	inc de
 	jr sub_next
 sub_variable:
-	ld hl,kv_nvars
-	inc (hl)
 	ld a,c
 	push de
 	call subst_get
@@ -121,12 +117,8 @@ sub_next:
 	ex de,hl
 	or a
 	sbc hl,de
-	ld a,(kv_nvars)
-	ld e,a
-	ld d,0
-	add hl,de
-	add hl,de
 	ld e,c
+	ld d,0
 	add hl,de
 	ex de,hl
 	jp work_charge
@@ -230,8 +222,6 @@ apply:
 	ld ix,USED_DESC
 	call parse_record
 	call require_sound
-	ld de,APPLY_COST
-	call work_charge
 	ld hl,(kv_nstack)
 	ld a,(USED_DESC+D_NHYPS)
 	ld e,a
@@ -319,6 +309,13 @@ ap_float:
 ap_float_next:
 	inc de
 	inc de
+	ld a,b
+	and $3F
+	jr nz,ap_float_more
+	in a,(4)
+	and 8
+	jp z,fail_interrupted
+ap_float_more:
 	djnz ap_float_pass
 
 	ld a,(USED_DESC+D_NHYPS)

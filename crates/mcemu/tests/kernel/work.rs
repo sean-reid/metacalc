@@ -1,13 +1,12 @@
 use crate::edges::REGISTERS;
 use crate::support::*;
 use mcemu::{Machine, Stop};
-use mcpack::library::{APPLY_COST, Kernel, KernelError, WORK_LIMIT, pack};
+use mcpack::library::{Kernel, KernelError, WORK_LIMIT, pack};
 use mcpack::mm::Database;
 
 #[test]
 fn the_kernel_and_the_model_share_one_work_limit() {
     assert_eq!(constant("WORK_LIMIT"), WORK_LIMIT);
-    assert_eq!(constant("APPLY_COST"), APPLY_COST);
     assert_eq!(label("ST_WORK_LIMIT"), 13);
     assert_eq!(label("ST_INTERRUPTED"), 14);
 }
@@ -18,8 +17,8 @@ fn the_kernel_stops_where_the_model_stops() {
         (two_terms(1, 1, 0, 0), 2, Ok(())),
         (two_terms(4, 4, 7, 9), 8, Ok(())),
         (two_terms(27, 8, 7, 77), 35, Ok(())),
-        (two_terms(34, 10, 40, 106), 44, Ok(())),
-        (two_terms(34, 10, 41, 106), 44, Err(KernelError::WorkLimit)),
+        (two_terms(31, 9, 36, 51), 40, Ok(())),
+        (two_terms(31, 9, 37, 51), 40, Err(KernelError::WorkLimit)),
         (two_terms(4, 60, 0, 0), 64, Err(KernelError::WorkLimit)),
     ] {
         let (db, bytes) = disjoint_library(&terms, nv, true);
@@ -36,43 +35,62 @@ fn constants_after(first: Tok, constants: usize) -> Vec<Tok> {
     term
 }
 
-/// T-states one verify call spends after the library is loaded, and the work the model charges.
-fn call_cost(terms: &[Vec<Tok>], nv: usize) -> (u32, u32) {
-    let (db, bytes) = disjoint_library(terms, nv, true);
-    library_cost(&bytes, number(&db, "t"))
-}
-
-fn library_cost(bytes: &[u8], id: usize) -> (u32, u32) {
-    let mut kernel = Kernel::new(bytes, clamped(ASKED_UNBOUNDED)).unwrap();
-    let units = match kernel.verify(id) {
-        Ok(()) => kernel.work(),
-        Err(KernelError::WorkLimit) => WORK_LIMIT,
-        Err(error) => panic!("{error:?}"),
-    };
-    let call = Device::with_library(bytes).verify(id, ASKED_UNBOUNDED);
+/// What the device and the model say about one assertion: the T-states of the call after the
+/// library is loaded, the work each counts, and a failure if they disagree on status or count.
+fn agree_on_work(name: &str, bytes: &[u8], id: usize) -> (u32, u32) {
+    let (result, model) = model_work(bytes, id);
+    let mut device = Device::with_library(bytes);
+    let call = device.verify(id, ASKED_UNBOUNDED);
+    assert_eq!(call.verify, status(result), "{name}: status");
+    if result == Ok(()) {
+        assert_eq!(device.work_charged(), model, "{name}: work");
+    }
+    let units = if result == Ok(()) { model } else { WORK_LIMIT };
     (call.tstates - init_tstates(bytes), units)
 }
 
 #[test]
-fn the_worst_call_per_unit_of_work_stays_under_14_seconds_at_6_mhz() {
+fn the_kernel_and_the_model_count_the_same_work_on_shapes_that_cost_a_unit_differently() {
     let var = |i| Tok::Var(i);
     let many_pairs: Vec<Vec<Tok>> = (0..20).map(|i| constants_after(var(i), 10)).collect();
     let mut repeated = vec![var(0); 100];
     repeated.push(Tok::Const);
-    let shapes: Vec<(&str, Vec<Vec<Tok>>, usize)> = vec![
+    let mut libraries: Vec<(&str, Database, Vec<u8>, &str)> = Vec::new();
+    let mut add = |name, src: String, theorem| {
+        let db = parse(&src);
+        let bytes = pack_all(&db);
+        libraries.push((name, db, bytes, theorem));
+    };
+    add(
+        "254 variables bound to nothing",
+        empty_binding_source(254, 800),
+        "big",
+    );
+    add(
+        "one variable bound to nothing",
+        empty_binding_source(1, 400),
+        "big",
+    );
+    add(
+        "250 floats bound to one symbol",
+        many_floats_source(250),
+        "big",
+    );
+    add(
+        "4950 pairs bound to nothing",
+        empty_pairs_source(100),
+        "big",
+    );
+    add(
+        "copies of a doubled term",
+        copying_source(COPY_STEPS / 4),
+        "big",
+    );
+    for (name, terms, nv) in [
         ("27 x 8 variables, 595 pairs", two_terms(27, 8, 7, 77), 35),
         (
             "60 x 60 variables, 7140 pairs",
             two_terms(60, 60, 0, 0),
-            120,
-        ),
-        (
-            "60 x 60 reversed",
-            {
-                let mut t = two_terms(60, 60, 0, 0);
-                t.reverse();
-                t
-            },
             120,
         ),
         (
@@ -81,74 +99,21 @@ fn the_worst_call_per_unit_of_work_stays_under_14_seconds_at_6_mhz() {
             2,
         ),
         ("190 pairs on the applied assertion", many_pairs, 20),
-    ];
-    let join = "$c wff $. E $a wff $. ${ J.1 $e wff $. J.2 $e wff $. J $a wff $. $}\n";
-    let joins = 1000;
-    let sources = [
-        (
-            "254 variables bound to nothing, 800 applies",
-            empty_binding_source(254, 800),
-            "big",
-        ),
-        (
-            "one variable bound to nothing",
-            empty_binding_source(1, 400),
-            "big",
-        ),
-        (
-            "joins of nothing",
-            format!("{join} big $p wff $= E{} $.", " E J".repeat(joins)),
-            "big",
-        ),
-        (
-            "pushes of a hypothesis of nothing",
-            format!(
-                "{join} ${{ h.1 $e wff $. big $p wff $= h.1{} $. $}}",
-                " h.1 J".repeat(joins)
-            ),
-            "big",
-        ),
-        (
-            "pushes of a saved entry of nothing",
-            format!("{join} big $p wff $= ( E J ) A Z{} $.", "CB".repeat(joins)),
-            "big",
-        ),
-        (
-            "copies of a doubled term",
-            copying_source(COPY_STEPS / 4),
-            "big",
-        ),
-    ];
-    let mut worst = 0.0f64;
-    let mut measured: Vec<(String, u32, u32)> = Vec::new();
-    for (name, src, theorem) in &sources {
-        let db = parse(src);
-        let bytes = pack_all(&db);
-        let (tstates, work) = library_cost(&bytes, number(&db, theorem));
-        measured.push((name.to_string(), tstates, work));
+    ] {
+        add(name, disjoint_source(&terms, nv, true), "t");
     }
-    for (name, terms, nv) in shapes {
-        let (tstates, work) = call_cost(&terms, nv);
-        measured.push((name.to_string(), tstates, work));
-    }
-    for (name, tstates, work) in measured {
+    for (name, db, bytes, theorem) in &libraries {
+        let (tstates, work) = agree_on_work(name, bytes, number(db, theorem));
         let per_unit = f64::from(tstates) / f64::from(work.max(1));
         println!("{name}: {work} units, {tstates} T-states, {per_unit:.1} T-states per unit");
-        worst = worst.max(per_unit);
     }
-    let total = worst * f64::from(WORK_LIMIT);
-    println!(
-        "worst: {worst:.1} T-states per unit, {total:.0} T-states at the limit, {:.2} s at 6 MHz",
-        total / 6.0e6
-    );
-    assert!(total < 84.0e6, "{total} T-states at the limit");
 }
 
-const BUDGET_OVER_LIMIT: u32 = 26_700_000;
+const BUDGET_OVER_LIMIT: u32 = 17_800_000;
 
 #[test]
 fn a_check_over_the_limit_returns_within_budget() {
-    let (db, bytes) = disjoint_library(&two_terms(34, 10, 41, 106), 44, true);
+    let (db, bytes) = disjoint_library(&two_terms(31, 9, 37, 51), 40, true);
     let got = Device::with_library(&bytes).verify(number(&db, "t"), ASKED_UNBOUNDED);
     println!("over the limit: {} T-states", got.tstates);
     assert_eq!(got.verify, status(Err(KernelError::WorkLimit)));
@@ -394,29 +359,29 @@ fn pair(terms: Vec<Vec<Tok>>) -> (Vec<Tok>, Vec<Tok>) {
 }
 
 /// Proofs of `|- R k` that apply the disjoint axiom twice, the first with all but a little of the
-/// work the limit allows; the second is refused for a variable outside the 40 listed.
+/// work the limit allows; the second is refused for a variable outside the 35 listed.
 fn joined_cases() -> Vec<(&'static str, Applies, usize, usize, KernelError)> {
     let var = |i| (vec![Tok::Var(0)], vec![Tok::Var(i)]);
     vec![
         (
             "each apply alone is under the limit",
-            vec![pair(two_terms(30, 10, 0, 0)), pair(two_terms(30, 10, 0, 0))],
-            40,
-            40,
+            vec![pair(two_terms(27, 8, 0, 0)), pair(two_terms(27, 8, 0, 0))],
+            35,
+            35,
             KernelError::WorkLimit,
         ),
         (
             "a violation whose comparison charge is the last the limit allows",
-            vec![pair(two_terms(13, 27, 60, 141)), var(40)],
-            41,
-            40,
+            vec![pair(two_terms(20, 15, 61, 158)), var(35)],
+            36,
+            35,
             KernelError::DisjointViolation,
         ),
         (
             "a violation whose comparison charge crosses the limit",
-            vec![pair(two_terms(24, 16, 51, 92)), var(40)],
-            41,
-            40,
+            vec![pair(two_terms(12, 23, 114, 164)), var(35)],
+            36,
+            35,
             KernelError::WorkLimit,
         ),
     ]
@@ -474,7 +439,7 @@ fn model_work(bytes: &[u8], id: usize) -> (Result<(), KernelError>, u32) {
     (result, kernel.work())
 }
 
-const BUDGET_COPYING: u32 = 27_100_000;
+const BUDGET_COPYING: u32 = 18_200_000;
 
 #[test]
 fn thousands_of_steps_that_copy_a_term_stop_at_the_work_limit_within_budget() {
@@ -513,4 +478,54 @@ fn thousands_of_steps_that_copy_a_term_stop_at_the_work_limit_within_budget() {
         Err(KernelError::WorkLimit),
         "the first cycle that does not",
     );
+}
+
+// Measured 270,049 T-states (4950 pairs), 238,206 (250 floats), 167,246 and 27,465; 300,000 is 50 ms at 6 MHz.
+const BUDGET_GAP: u32 = 300_000;
+
+/// The most T-states ON can wait to be seen, found by pressing it at 100 points of the call.
+fn longest_wait(bytes: &[u8], id: usize) -> u32 {
+    let init = init_tstates(bytes);
+    let whole = Device::with_library(bytes)
+        .verify(id, ASKED_UNBOUNDED)
+        .tstates;
+    let stride = ((whole - init) / 100).max(1);
+    let mut worst = 0;
+    let mut press_at = init;
+    while press_at + 2_000 < whole {
+        let mut device = Device::with_library(bytes);
+        let (_, after) = press_on_during(&mut device, id, press_at);
+        let ended = device.byte("TEST_VERIFY_STATUS");
+        assert!(
+            ended == status_code("ST_INTERRUPTED") || ended == status(Ok(())),
+            "status {ended}"
+        );
+        worst = worst.max(after);
+        press_at += stride;
+    }
+    worst
+}
+
+#[test]
+fn the_on_key_waits_at_most_50_ms_at_6_mhz_in_long_applies_and_in_copying() {
+    let mut worst = 0;
+    for (name, src) in [
+        ("4950 pairs bound to nothing", empty_pairs_source(100)),
+        ("250 floats bound to one symbol", many_floats_source(250)),
+        ("copies of a doubled term", copying_source(COPY_STEPS / 4)),
+        (
+            "254 variables bound to nothing",
+            empty_binding_source(254, 60),
+        ),
+    ] {
+        let db = parse(&src);
+        let bytes = pack_all(&db);
+        let wait = longest_wait(&bytes, number(&db, "big"));
+        println!(
+            "{name}: ON seen at most {wait} T-states after it went down, {:.1} ms at 6 MHz",
+            f64::from(wait) / 6.0e3
+        );
+        worst = worst.max(wait);
+    }
+    assert!(worst < BUDGET_GAP, "{worst} T-states");
 }

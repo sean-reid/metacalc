@@ -97,9 +97,7 @@
 ; The proof steps charge the same count per kernel_verify call, in the order they run:
 ;   1 per symbol of each entry pushed on the stack (a hypothesis, a dummy variable, a saved step
 ;   named again) and of each entry saved, before it is copied;
-;   APPLY_COST (ram.inc) for each assertion applied, once its record is read;
-;   1 per symbol of an expression substituted into, 2 more per variable in it and 1 per symbol it
-;   writes, once it is built, which the stack symbol limit bounds;
+;   1 per symbol of an expression substituted into and 1 per symbol it writes, once it is built;
 ;   the disjoint-variable check below.
 ; The disjoint-variable check of a proof step takes the pairs of the applied
 ; assertion one at a time, with X and Y the expressions that replace its two variables, and
@@ -110,22 +108,20 @@
 ;   for each variable of X against each variable of Y, 1 + n more, n being the number of pairs
 ;   (both lists) of the theorem being checked, whether or not the scan finds its match early.
 ; A charge that would take the count past WORK_LIMIT (ram.inc, equal to WORK_LIMIT in the model)
-; ends the call with ST_WORK_LIMIT; the assertion counts as refused.
-; The slowest charged unit measured is 234 T-states (a saved entry with no symbols pushed over
-; and over), so one call spends at most 81.9 million T-states, 13.7 s at 6 MHz. The step loop and
-; the float binding loop of an apply are not charged: each float bound takes an entry that a
-; charged push or apply made.
+; ends the call with ST_WORK_LIMIT; the assertion counts as refused. The limit stops a proof whose
+; disjoint checks, reference lists, substitutions or copies are far beyond any honest proof. It
+; is not a bound on the time of a call: a unit costs a different number of T-states in different
+; shapes, and the loops of a proof step that no charge covers are not counted.
 ;
-; Interruption. kernel_verify reads the ON key (port 4, bit 3, clear while pressed) once per proof
-; step and whenever a charge changes the second byte of the work count. The read comes before the
-; scan of the pair list that a comparison charges for, and the scan itself is not interrupted. The longest
-; stretch without a read is one scan, 96 T-states per pair listed, plus up to 255 one-unit charges
-; of 288 T-states before the second byte next changes. The reference list check on a list of up to
-; 511 entries reads it before each row of at most 510 comparisons, 39 T-states each, after one
-; pass over the entries of at most 511 steps of constant time; on a longer list every entry and
-; every comparison is a one-unit charge. A record holds at most 7,750 pairs in this
-; shape (about 8,000 fit a 16 KB page), so ON waits at most 0.83 million T-states, 0.14 s at
-; 6 MHz; with 600 pairs, 130,000 T-states, 22 ms. With ON down kernel_verify returns
+; Interruption. kernel_verify reads the ON key (port 4, bit 3, clear while pressed) at least once
+; per proof step and whenever a charge changes the second byte of the work count, so a long call
+; can always be interrupted. It also reads it every 256 pairs of a record being checked and
+; every 64 hypotheses of an apply. The read comes before the scan of the pair list that a
+; comparison charges for, and the scan itself is not interrupted. The longest stretch without a
+; read is one scan plus up to 255 one-unit charges before the second byte next changes. The
+; reference list check on a list of up to 511 entries reads it before each row of at most 510
+; comparisons, after one pass over the entries of at most 511 steps of constant time; on a longer
+; list every entry and every comparison is a one-unit charge. With ON down kernel_verify returns
 ; ST_INTERRUPTED, restoring the stack, port 7 and the interrupt state as for any other exit and
 ; leaving the ready mark valid. The assertion has no verdict; call it again. The model never
 ; produces this status.

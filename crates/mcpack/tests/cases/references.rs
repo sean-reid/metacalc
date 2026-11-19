@@ -120,12 +120,10 @@ pub fn long_source(entries: usize) -> String {
 }
 
 /// The units `long_source(entries)`'s theorem charges: its reference list, then the symbols its
-/// proof charges: `APPLY_COST` and 4 symbols read and written for each of the `entries - 1` axioms,
-/// and `APPLY_COST` and 12 for the two hypotheses and the conclusion of each of the `entries - 2`
-/// uses of `drop`.
+/// proof reads and writes, 4 for `n0` and 16 for each further `n` and `drop` pair (4 for the axiom,
+/// 12 for the two hypotheses and the conclusion of `drop`).
 pub fn long_work(entries: usize) -> usize {
-    let apply = mcpack::library::APPLY_COST as usize;
-    entries * (entries + 1) / 2 + (entries - 1) * (apply + 4) + (entries - 2) * (apply + 12)
+    entries * (entries + 1) / 2 + 16 * entries - 28
 }
 
 fn letters(mut number: usize) -> String {
@@ -233,7 +231,7 @@ fn long(entries: usize, repeat: Option<(usize, usize)>) -> (Vec<u8>, usize) {
 }
 
 /// A list longer than any the work limit lets through the duplicate check.
-pub const LONGEST: usize = 840;
+pub const LONGEST: usize = 671;
 
 /// The pair of entries of a list of `n` whose comparison is the last the work limit allows once
 /// the entries themselves have been charged.

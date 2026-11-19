@@ -516,23 +516,17 @@ fn two_term_work(x: usize, y: usize, xk: usize, yk: usize) -> u32 {
     (1 + (x + xk) + x * (y + yk) + x * y * (1 + n)) as u32
 }
 
-/// The units the proof of `t` charges, from the tokens of each term and how many of them are
-/// constants: 2 for a variable pushed; for `wk` applied `APPLY_COST` and 4; for each `wc` that
-/// joins a token to the `i` before it `APPLY_COST`, 3 symbols read, 4 for its two variables and
-/// `i + 2` written; and for the conclusion `|- R z0 ..` `APPLY_COST`, its symbols read, two more
-/// for each variable and its symbols written.
+/// The units the proof of `t` charges for substitution and copying, from the tokens of each term
+/// and how many of them are constants: 2 for a variable pushed, 4 for `wk` applied, for each `wc`
+/// that joins a token to the `i` before it 3 symbols read and `i + 2` written, and for the
+/// conclusion `|- R z0 ..` its symbols read and written.
 fn term_work(tokens: usize, consts: usize) -> u32 {
-    let apply = library::APPLY_COST as usize;
-    (2 * (tokens - consts)
-        + (apply + 4) * consts
-        + (1..tokens).map(|i| i + 9 + apply).sum::<usize>()) as u32
+    (2 * (tokens - consts) + 4 * consts + (1..tokens).map(|i| i + 5).sum::<usize>()) as u32
 }
 
 fn copy_work(terms: &[(usize, usize)]) -> u32 {
     let tokens: usize = terms.iter().map(|t| t.0).sum();
-    terms.iter().map(|&(n, k)| term_work(n, k)).sum::<u32>()
-        + library::APPLY_COST
-        + (4 + 3 * terms.len() + tokens) as u32
+    terms.iter().map(|&(n, k)| term_work(n, k)).sum::<u32>() + (4 + terms.len() + tokens) as u32
 }
 
 /// `x` variables then `xk` constants, and `y` other variables then `yk` constants.
@@ -585,10 +579,9 @@ fn the_work_of_a_disjoint_check_is_charged_as_documented() {
 
 #[test]
 fn a_disjoint_check_stops_at_the_work_limit() {
-    assert_eq!(library::WORK_LIMIT, 350000);
-    assert_eq!(library::APPLY_COST, 36);
-    let at = (34, 10, 40, 106);
-    let (result, work, duplicates) = work_of(&two_terms(at.0, at.1, at.2, at.3), 44);
+    assert_eq!(library::WORK_LIMIT, 225000);
+    let at = (31, 9, 36, 51);
+    let (result, work, duplicates) = work_of(&two_terms(at.0, at.1, at.2, at.3), 40);
     assert_eq!(
         duplicates
             + two_term_work(at.0, at.1, at.2, at.3)
@@ -596,7 +589,7 @@ fn a_disjoint_check_stops_at_the_work_limit() {
         library::WORK_LIMIT
     );
     assert_eq!((result, work), (Ok(()), Some(library::WORK_LIMIT)));
-    let (result, ..) = work_of(&two_terms(at.0, at.1, at.2 + 1, at.3), 44);
+    let (result, ..) = work_of(&two_terms(at.0, at.1, at.2 + 1, at.3), 40);
     assert_eq!(result, Err(KernelError::WorkLimit));
     let (result, ..) = work_of(&two_terms(4, 60, 0, 0), 64);
     assert_eq!(result, Err(KernelError::WorkLimit));
@@ -673,30 +666,30 @@ fn pair(terms: Vec<Vec<Tok>>) -> (Vec<Tok>, Vec<Tok>) {
 }
 
 /// Three proofs of `|- R k` that apply the disjoint axiom twice. The second apply is refused for a
-/// variable outside the 40 listed; its comparison charge is the last the limit allows in one case
+/// variable outside the 35 listed; its comparison charge is the last the limit allows in one case
 /// and one unit too many in the other.
 fn joined_cases() -> Vec<(&'static str, Applies, usize, usize, KernelError)> {
     let var = |i| (vec![Tok::Var(0)], vec![Tok::Var(i)]);
     vec![
         (
             "each apply alone is under the limit",
-            vec![pair(two_terms(30, 10, 0, 0)), pair(two_terms(30, 10, 0, 0))],
-            40,
-            40,
+            vec![pair(two_terms(27, 8, 0, 0)), pair(two_terms(27, 8, 0, 0))],
+            35,
+            35,
             KernelError::WorkLimit,
         ),
         (
             "a violation whose comparison charge is the last the limit allows",
-            vec![pair(two_terms(13, 27, 60, 141)), var(40)],
-            41,
-            40,
+            vec![pair(two_terms(20, 15, 61, 158)), var(35)],
+            36,
+            35,
             KernelError::DisjointViolation,
         ),
         (
             "a violation whose comparison charge crosses the limit",
-            vec![pair(two_terms(24, 16, 51, 92)), var(40)],
-            41,
-            40,
+            vec![pair(two_terms(12, 23, 114, 164)), var(35)],
+            36,
+            35,
             KernelError::WorkLimit,
         ),
     ]
@@ -704,7 +697,7 @@ fn joined_cases() -> Vec<(&'static str, Applies, usize, usize, KernelError)> {
 
 #[test]
 fn the_work_of_all_the_applies_of_a_call_is_added_up() {
-    let alone = db(&joined_source(&[pair(two_terms(30, 10, 0, 0))], 40, 40));
+    let alone = db(&joined_source(&[pair(two_terms(27, 8, 0, 0))], 35, 35));
     let bytes = pack(&alone, &everything(&alone)).unwrap();
     let mut kernel = Kernel::new(&bytes, Limits::UNBOUNDED).unwrap();
     assert_eq!(kernel.verify(number(&alone, "t")), Ok(()));

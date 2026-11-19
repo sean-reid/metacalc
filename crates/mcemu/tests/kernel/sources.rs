@@ -136,3 +136,34 @@ pub fn empty_binding_source(vars: usize, steps: usize) -> String {
         " F".repeat(steps)
     )
 }
+
+/// Theorem `big` applying `H`, whose `floats` variables all appear in its statement, to `floats`
+/// entries of one symbol each.
+pub fn many_floats_source(floats: usize) -> String {
+    let vars: Vec<String> = (0..floats).map(|i| format!("v{i}")).collect();
+    let mut src = format!("$c wff k $. $v {} $.\nK $a wff k $.\n", vars.join(" "));
+    for v in &vars {
+        src += &format!("f{v} $f wff {v} $.\n");
+    }
+    src + &format!(
+        "H $a wff {} $.\nbig $p wff {} $= {}H $.\n",
+        vars.join(" "),
+        "k ".repeat(floats),
+        "K ".repeat(floats)
+    )
+}
+
+/// Theorem `big` applying `P`, whose `vars` variables are pairwise disjoint, to `vars` entries
+/// that are only a typecode, so every pair names a variable bound to nothing.
+pub fn empty_pairs_source(vars: usize) -> String {
+    let names: Vec<String> = (0..vars).map(|i| format!("v{i}")).collect();
+    let mut src = format!("$c wff $. $v {} $.\nE $a wff $.\n", names.join(" "));
+    for v in &names {
+        src += &format!("f{v} $f wff {v} $.\n");
+    }
+    src + &format!(
+        "${{ $d {0} $. P $a wff {0} $. $}}\nbig $p wff $= {1}P $.\n",
+        names.join(" "),
+        "E ".repeat(vars)
+    )
+}
