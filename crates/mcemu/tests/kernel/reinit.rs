@@ -329,6 +329,17 @@ struct Call {
     stack: usize,
 }
 
+fn assert_kernel_enter_opens_with_ld_a_i_and_jp_pe(device: &Device) {
+    let enter = usize::from(device.label("KERNEL_ENTER") - CODE_BASE);
+    let code = &device.image.code;
+    assert_eq!(
+        code[enter..enter + 2],
+        LD_A_I,
+        "kernel_enter starts with ld a,i"
+    );
+    assert_eq!(code[enter + 2], JP_PE, "then jp pe");
+}
+
 fn call(device: &mut Device, size: usize) -> Call {
     let used = device.kram(device.label("KSTACK"), size);
     Call {
@@ -409,6 +420,7 @@ fn an_interrupt_taken_inside_kernel_enter_changes_neither_the_verdict_nor_the_wo
         .m
         .load_ram(device.label("TEST_ASSERTION"), &(id as u16).to_le_bytes());
 
+    assert_kernel_enter_opens_with_ld_a_i_and_jp_pe(&device);
     let (first, second) = (
         device.label("KERNEL_ENTER"),
         device.label("KERNEL_ENTER") + LD_A_I_LEN,
@@ -453,14 +465,7 @@ fn kernel_enter_reads_the_interrupt_flag_again_when_the_first_read_comes_back_cl
     assert_eq!(device.verify(id, ASKED_UNBOUNDED).verify, status(Ok(())));
     interrupts_on_through_the_entry(&mut device);
     device.m.out_port(PORT_MASK, 0);
-    let enter = usize::from(device.label("KERNEL_ENTER") - CODE_BASE);
-    let code = &device.image.code;
-    assert_eq!(
-        code[enter..enter + 2],
-        LD_A_I,
-        "kernel_enter starts with ld a,i"
-    );
-    assert_eq!(code[enter + 2], JP_PE, "then jp pe");
+    assert_kernel_enter_opens_with_ld_a_i_and_jp_pe(&device);
     let (first_jp, entry) = (
         device.label("KERNEL_ENTER") + LD_A_I_LEN,
         device.label("ENTRY_VERIFY"),
@@ -478,6 +483,8 @@ fn kernel_enter_reads_the_interrupt_flag_again_when_the_first_read_comes_back_cl
     assert_eq!(device.m.pc(), first_jp, "the first ld a,i has run");
     let mut regs = device.m.regs();
     assert_eq!(regs.iff1, 1, "interrupts are on");
+    assert_eq!(regs.iff2, 1, "iff2 is set");
+    assert_ne!(regs.af & FLAG_PV, 0, "the first ld a,i set P/V");
     regs.af &= !FLAG_PV;
     device.m.set_regs(&regs);
     let done = verify_end(&device);
