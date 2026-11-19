@@ -343,6 +343,13 @@ cp_next:
 	or c
 	ret z
 	dec bc
+	ld a,c
+	or a
+	jr nz,cp_checked
+	in a,(4)
+	and 8
+	jp z,fail_interrupted
+cp_checked:
 	ld d,(hl)
 	inc hl
 	ld e,(hl)

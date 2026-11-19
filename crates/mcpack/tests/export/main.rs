@@ -461,6 +461,7 @@ fn the_shipped_libraries_repack_from_their_export_to_the_same_records() {
 }
 
 mod refusals;
+mod rejected;
 
 /// Whether the export of a library the kernel accepts parses and verifies in the reference
 /// verifier.

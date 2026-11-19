@@ -310,7 +310,7 @@ pub fn failing_libraries() -> Vec<(Vec<u8>, usize)> {
          wrong $p |- ph $= vx ax $.",
     );
     cases.push((pack_all(&typecodes), number(&typecodes, "wrong")));
-    let (db, over) = disjoint_library(&two_terms(4, 38, 0, 0), 42, true);
+    let (db, over) = disjoint_library(&two_terms(4, 60, 0, 0), 64, true);
     cases.push((over, number(&db, "t")));
     let mut magic = bytes;
     magic[0] = b'X';
@@ -395,7 +395,7 @@ fn the_substitution_serial_wraps_without_changing_a_result() {
 
 #[test]
 fn enough_applies_in_one_initialisation_wrap_the_serial() {
-    const DROPS: usize = 7000;
+    const DROPS: usize = 6600;
     const THEOREMS: usize = 10;
     let mut src = String::from(
         "$c T wff $.\n${ d.1 $e wff T $. d.2 $e wff T $. drop $a wff T $. $}\nn0 $a wff T $.\n",

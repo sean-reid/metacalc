@@ -662,7 +662,7 @@ fn a_group_of_two_operations_comes_back_from_a_restore_as_one_undo() {
 
 /// A saved proof built straight from mcedit: goal 0 of `label` gets each of `apply` in turn.
 fn crafted(bytes: &[u8], label: &str, apply: &[&str], groups: Vec<usize>) -> SavedProof {
-    let text = library::export(bytes).unwrap();
+    let text = library::export_accepted(bytes).unwrap().text;
     let db = mm::parse(text.into_bytes()).unwrap();
     let grammar = Grammar::new(&db, &[("|-", "wff")]).unwrap();
     let catalog = Catalog::new(&db, &grammar, library_crc(bytes));
@@ -903,4 +903,104 @@ fn no_key_press_replays_the_operations_before_it() {
         "{} keys: total {total:.1} ms, worst {max:.1} ms, first ten {first:.1} ms, last ten {last:.1} ms",
         times.len()
     );
+}
+
+/// The labels of the candidates the screen lists for its open goal, top to bottom.
+fn offered(ui: &mut Ui) -> Vec<String> {
+    let mut seen: Vec<String> = Vec::new();
+    for _ in 0..400 {
+        match at(ui).candidate {
+            Some(label) if !seen.contains(&label) => seen.push(label),
+            _ => break,
+        }
+        ui.press(Down);
+    }
+    seen
+}
+
+#[test]
+fn a_rejected_theorem_is_not_offered_for_a_goal_it_matches() {
+    for (bytes, expected) in [
+        (proving_bytes(), true),
+        (support::rejected_proving_bytes(), false),
+    ] {
+        let mut ui = prove(&bytes, "syl");
+        select(&mut ui, "mpd");
+        press(&mut ui, &[F1]);
+        press(&mut ui, &[F5, Down, Down, Enter]);
+        let listed = offered(&mut ui);
+        assert_eq!(listed.iter().any(|l| l == "a1i"), expected, "{listed:?}");
+        assert!(listed.iter().any(|l| l == "ax-mp"), "{listed:?}");
+    }
+}
+
+#[test]
+fn auto_does_not_use_a_rejected_theorem() {
+    let mut sound = prove(&proving_bytes(), "ta1");
+    press(&mut sound, &[F3]);
+    assert!(at(&sound).finished);
+    let mut ui = prove(&support::rejected_proving_bytes(), "ta1");
+    press(&mut ui, &[F3]);
+    assert!(matches!(ui.state(), State::Notice { .. }));
+    press(&mut ui, &[Clear]);
+    assert_eq!(
+        (at(&ui).finished, at(&ui).steps, at(&ui).open),
+        (false, 0, 1)
+    );
+    press(&mut ui, &[F4]);
+    assert!(
+        matches!(ui.state(), State::Notice { .. }),
+        "nothing to undo"
+    );
+    press(&mut ui, &[Clear]);
+    assert_eq!(at(&ui).steps, 0);
+}
+
+const TWO_ROUTES: &str = "
+${ a1b.1 $e |- ph $. a1b $p |- ( ps -> ph ) $= wph wps a1b.1 a1i $. $}
+${ tb.1 $e |- ph $. tb $p |- ( ps -> ph ) $= wph wps tb.1 a1i $. $}
+";
+
+#[test]
+fn auto_finds_the_route_that_avoids_a_rejected_theorem() {
+    let src = format!("{}{TWO_ROUTES}", support::LOGIC);
+    let sound = support::pack_all(&support::db(&src)).unwrap();
+    let alid = index_of(&sound, "alid") as u16;
+    let bytes = support::refreshed(support::patch_reference(&sound, "a1i", 0, alid));
+    let mut ui = prove(&bytes, "tb");
+    press(&mut ui, &[F3]);
+    assert!(at(&ui).finished);
+    let saved = ui.saved_proofs().next().unwrap().clone();
+    let mut again = ui_over(bytes, &[], &[]);
+    assert_eq!(again.restore_proof(saved), Ok(()));
+}
+
+#[test]
+fn a_saved_proof_that_applies_a_rejected_theorem_is_refused() {
+    let sound = proving_bytes();
+    let alid = index_of(&sound, "alid") as u16;
+    let bytes = support::refreshed(support::patch_reference(&sound, "a1i", 0, alid));
+    let saved = crafted(&bytes, "ta1", &["a1i"], vec![1]);
+    let mut ui = ui_over(bytes.clone(), &[], &[]);
+    let refused = "the saved proof uses a theorem that failed its check";
+    assert_eq!(
+        ui.restore_proof(saved.clone()),
+        Err(mcui::RestoreError::Unreadable(refused))
+    );
+    assert_eq!(ui.saved_proofs().count(), 0);
+    let clean = crafted(&sound, "ta1", &["a1i"], vec![1]);
+    let mut ui = ui_over(sound, &[], &[]);
+    assert_eq!(ui.restore_proof(clean), Ok(()));
+}
+
+#[test]
+fn a_theorem_the_library_proves_through_a_rejected_one_still_opens_in_try() {
+    let bytes = support::rejected_proving_bytes();
+    for label in ["syl", "ta1", "a1i"] {
+        let ui = prove(&bytes, label);
+        assert!(
+            matches!(ui.state(), State::Proving { label: ref l, .. } if l == label),
+            "{label}"
+        );
+    }
 }

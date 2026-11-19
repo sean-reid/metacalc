@@ -35,6 +35,12 @@ impl Session<'_> {
         }
     }
 
+    /// Assertions that `candidates` does not list and `auto` does not apply. Operations already in
+    /// the session, and `apply` itself, are not affected.
+    pub fn skip(&mut self, assertions: impl IntoIterator<Item = StmtId>) {
+        self.skip = assertions.into_iter().collect();
+    }
+
     pub fn candidates(&mut self, goal: GoalId, limit: usize) -> Result<Candidates, Error> {
         self.open_goal(goal)?;
         let target = self.goals[goal as usize].term;
@@ -47,6 +53,9 @@ impl Session<'_> {
         for assertion in 0..self.theorem {
             if found.len() >= limit {
                 break;
+            }
+            if self.skip.contains(&assertion) {
+                continue;
             }
             let Ok(parsed) = self.usable(assertion) else {
                 continue;
@@ -103,6 +112,9 @@ impl Session<'_> {
         for assertion in 0..self.theorem {
             if self.auto_nodes >= budget {
                 return false;
+            }
+            if self.skip.contains(&assertion) {
+                continue;
             }
             let Ok(parsed) = self.usable(assertion) else {
                 continue;

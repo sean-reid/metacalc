@@ -278,6 +278,12 @@ impl Device {
         self.m.read_ram(self.label(name), 1)[0]
     }
 
+    /// The work the last call charged, from the count of units the kernel has left.
+    pub fn work_charged(&mut self) -> u32 {
+        let left = self.kram_label("KV_WORK", 3);
+        constant("WORK_LIMIT") - u32::from_le_bytes([left[0], left[1], left[2], 0])
+    }
+
     pub fn verify(&mut self, id: usize, limits: Limits) -> Outcome {
         self.params(limits);
         self.m

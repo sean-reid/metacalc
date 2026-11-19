@@ -22,9 +22,9 @@ fn describe(error: &KernelError) -> String {
                 l.stack_syms, l.stack_entries, l.saved_syms, l.saved_entries
             )
         }
-        KernelError::WorkLimit => format!(
-            "WorkLimit: the disjoint-variable checks need more than {WORK_LIMIT} units of work"
-        ),
+        KernelError::WorkLimit => {
+            format!("WorkLimit: the proof needs more than {WORK_LIMIT} units of work")
+        }
         other => format!("{other:?}"),
     }
 }
@@ -72,15 +72,33 @@ impl std::fmt::Display for CheckError {
 /// its labels, then checks its sections against its records, and returns how many assertions there
 /// are.
 pub fn check(bytes: &[u8]) -> Result<usize, CheckError> {
-    let mut kernel = Kernel::new(bytes, HOST_LIMITS).map_err(CheckError::Load)?;
+    let (count, rejected) = check_each(bytes, HOST_LIMITS, false)?;
+    debug_assert!(rejected.is_empty());
+    Ok(count)
+}
+
+/// The assertions the kernel rejects: position, label and reason, in library order.
+pub(super) type Rejected = Vec<(usize, String, KernelError)>;
+
+/// `check` within `limits`, except that with `tolerate` a theorem whose proof the kernel rejects
+/// does not fail the check: the labels and sections are checked all the same and the rejected
+/// theorems come back with the count. Any other refusal fails it, with every refusal listed.
+pub(super) fn check_each(
+    bytes: &[u8],
+    limits: Limits,
+    tolerate: bool,
+) -> Result<(usize, Rejected), CheckError> {
+    let mut kernel = Kernel::new(bytes, limits).map_err(CheckError::Load)?;
     let mut failed = Vec::new();
     for id in 0..kernel.assertions() {
         if let Err(e) = kernel.verify(id) {
             let label = String::from_utf8_lossy(kernel.label(id).unwrap_or_default());
-            failed.push((label.into_owned(), e));
+            failed.push((id, label.into_owned(), e));
         }
     }
-    if !failed.is_empty() {
+    let tolerable = tolerate && failed.iter().all(|(_, _, e)| e.is_proof_rejection());
+    if !failed.is_empty() && !tolerable {
+        let failed = failed.into_iter().map(|(_, label, e)| (label, e)).collect();
         return Err(CheckError::Assertions(failed));
     }
     if let Some(label) = labels::first_bad(&kernel) {
@@ -91,5 +109,5 @@ pub fn check(bytes: &[u8]) -> Result<usize, CheckError> {
     if sections.is_some() {
         verify_sections(&library).map_err(CheckError::Sections)?;
     }
-    Ok(kernel.assertions())
+    Ok((kernel.assertions(), failed))
 }

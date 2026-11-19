@@ -53,7 +53,6 @@ kv_saved_iff        .equ KERNEL_RAM_LOW+$13
 kv_saved_port5      .equ KERNEL_RAM_LOW+$14
 kv_ready            .equ KERNEL_RAM_LOW+$A0
 kv_work             .equ KERNEL_RAM_LOW+$B0
-kv_wold             .equ KERNEL_RAM_LOW+$B3
 kv_charge           .equ KERNEL_RAM_LOW+$B4
 kv_next             .equ KERNEL_RAM_LOW+$B6
 kv_saved_free       .equ KERNEL_RAM_LOW+$B8
@@ -164,7 +163,7 @@ ST_CRC_MORE         .equ $FF
 
 ; the differential tests build the default value only
 #ifndef WORK_LIMIT
-WORK_LIMIT          .equ 131072
+WORK_LIMIT          .equ 225000
 #endif
 #if WORK_LIMIT < 1
  .error "WORK_LIMIT must fit the 24-bit work counter"

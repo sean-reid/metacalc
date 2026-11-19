@@ -119,6 +119,13 @@ pub fn long_source(entries: usize) -> String {
     src + &format!("big $p wff T $= {proof} $.\n")
 }
 
+/// The units `long_source(entries)`'s theorem charges: its reference list, then the symbols its
+/// proof reads and writes, 4 for `n0` and 16 for each further `n` and `drop` pair (4 for the axiom,
+/// 12 for the two hypotheses and the conclusion of `drop`).
+pub fn long_work(entries: usize) -> usize {
+    entries * (entries + 1) / 2 + 16 * entries - 28
+}
+
 fn letters(mut number: usize) -> String {
     let mut out = vec![b'A' + (number % 20) as u8];
     number /= 20;
@@ -222,6 +229,9 @@ fn long(entries: usize, repeat: Option<(usize, usize)>) -> (Vec<u8>, usize) {
         }
     })
 }
+
+/// A list longer than any the work limit lets through the duplicate check.
+pub const LONGEST: usize = 671;
 
 /// The pair of entries of a list of `n` whose comparison is the last the work limit allows once
 /// the entries themselves have been charged.
@@ -444,26 +454,26 @@ pub fn cases() -> Vec<Case> {
     ];
     let limit = Err(KernelError::WorkLimit);
     let malformed = Err(KernelError::Malformed);
-    let (i, j) = last_allowed(513);
+    let (i, j) = last_allowed(LONGEST);
     for (name, entries, repeat, expected) in [
         ("511 entries are within the work limit", 511, None, ok),
-        ("512 entries pass the work limit", 512, None, limit),
-        ("513 entries pass the work limit", 513, None, limit),
+        ("513 entries are within the work limit", 513, None, ok),
+        ("a longer list passes the work limit", LONGEST, None, limit),
         (
             "a duplicate is found before the work limit",
-            513,
+            LONGEST,
             Some((0, 1)),
             bad,
         ),
         (
             "a duplicate at the last comparison the limit allows",
-            513,
+            LONGEST,
             Some((i, j)),
             bad,
         ),
         (
             "a duplicate one comparison past the limit",
-            513,
+            LONGEST,
             Some((i, j + 1)),
             limit,
         ),

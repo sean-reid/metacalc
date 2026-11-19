@@ -1,11 +1,20 @@
 //! What the calculator has: packed libraries, read back into the statements and proofs the
 //! screens show.
 
+mod goals;
+mod source;
+
+pub use goals::{By, GoalView, Goals};
+use goals::{measure, shape};
+use source::Source;
+
 use crate::expr::{Expr, Shape};
 use crate::status::{Ledger, Mark, Status};
 use mcedit::Catalog;
-use mcpack::library::{self, Assertion, Hypothesis, Kernel, Limits, Part, ReadError, Title, Trees};
-use mcpack::mm::{self, Database, Grammar, Kind, Node, StmtId, Sym, Tree};
+use mcpack::library::{
+    self, Assertion, HOST_LIMITS, Hypothesis, Kernel, Part, ReadError, Title, Trees,
+};
+use mcpack::mm::{self, Kind, Node, StmtId, Sym, Tree};
 use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
 use std::fmt;
@@ -67,17 +76,6 @@ impl Statement {
     }
 }
 
-/// The library as a Metamath database, which is where parse trees and goal trees come from, and
-/// the grammar built from it once.
-struct Source {
-    db: &'static Database,
-    ids: Vec<StmtId>,
-    index: HashMap<StmtId, usize>,
-    grammar: Option<&'static Grammar<'static>>,
-    /// The editor's parsed assertions, kept for as long as the library is.
-    catalog: Option<Rc<Catalog<'static>>>,
-}
-
 pub struct Lib {
     pub name: String,
     /// Leaked: the kernel and the editor's catalog borrow the library for as long as it lives.
@@ -120,11 +118,17 @@ impl Lib {
             )));
         }
         let bytes: &'static [u8] = Box::leak(installed.bytes.into_boxed_slice());
-        let kernel = Kernel::new(bytes, Limits::UNBOUNDED).ok();
-        let trusted = if kernel.is_some() {
-            status.clone()
-        } else {
-            vec![Status::Unchecked; status.len()]
+        let mut kernel = Kernel::new(bytes, HOST_LIMITS).ok();
+        let trusted = match kernel.as_mut() {
+            Some(kernel) => status
+                .iter()
+                .enumerate()
+                .map(|(i, &s)| match s {
+                    Status::Checked if kernel.verify(i).is_err() => Status::Failed,
+                    _ => s,
+                })
+                .collect(),
+            None => vec![Status::Unchecked; status.len()],
         };
         Ok(Lib {
             name: installed.name,
@@ -174,14 +178,21 @@ impl Lib {
         self.assertions[i].theorem
     }
 
-    /// The recorded status of assertion `i`; a damaged library gives back the table it was
-    /// installed with, though every mark and count reads unchecked.
+    /// The status of assertion `i` as the session sees it: an entry installed as checked that the
+    /// kernel refuses reads failed here. A damaged library gives back the table it was installed
+    /// with, though every mark and count reads unchecked. `installed_status` is the table as given.
     pub fn status(&self, i: usize) -> Status {
         if self.damaged() {
             self.installed[i]
         } else {
             self.ledger.status(i)
         }
+    }
+
+    /// The status of assertion `i` exactly as the caller installed it, whatever the session has
+    /// since found.
+    pub fn installed_status(&self, i: usize) -> Status {
+        self.installed[i]
     }
 
     pub fn mark(&self, i: usize) -> Mark {
@@ -201,6 +212,12 @@ impl Lib {
     /// The first assertion no check has settled.
     pub fn next_unchecked(&self) -> Option<usize> {
         self.ledger.next_unchecked()
+    }
+
+    /// Whether the database the screens read holds theorem `i` with an unknown proof, because the
+    /// kernel rejects its proof. Such a theorem is never marked checked.
+    pub fn unproved(&self, i: usize) -> bool {
+        self.source().is_some_and(|s| s.unproved[i])
     }
 
     /// Runs the kernel on assertion `i`, trusting nothing but the library's bytes.
@@ -241,31 +258,9 @@ impl Lib {
     }
 
     fn source(&self) -> Option<&Source> {
-        self.source.get_or_init(|| self.load()).as_ref()
-    }
-
-    fn load(&self) -> Option<Source> {
-        let text = library::export(self.bytes).ok()?;
-        let db = mm::parse(text.into_bytes()).ok()?;
-        let ids: Vec<StmtId> = (0..db.stmts.len() as StmtId)
-            .filter(|&id| db.stmt(id).kind.is_assertion())
-            .collect();
-        if ids.len() != self.assertions.len() {
-            return None;
-        }
-        let index = ids.iter().enumerate().map(|(i, &id)| (id, i)).collect();
-        let db: &'static Database = Box::leak(Box::new(db));
-        let grammar = Grammar::new(db, &[(PROVABLE, "wff")])
-            .ok()
-            .map(|g| &*Box::leak(Box::new(g)));
-        let catalog = grammar.map(|g| Catalog::new(db, g, self.crc()));
-        Some(Source {
-            db,
-            ids,
-            index,
-            grammar,
-            catalog,
-        })
+        self.source
+            .get_or_init(|| Source::load(self.bytes, &self.assertions, self.crc()))
+            .as_ref()
     }
 
     /// The parsed assertions a proof editor works over, when the library exports and parses.
@@ -379,6 +374,9 @@ impl Lib {
             return Err("an axiom has no proof");
         }
         let source = self.source().ok_or("the library does not export")?;
+        if source.unproved[i] {
+            return Err("its proof failed");
+        }
         let id = source.ids[i];
         let root = mm::outline(source.db, id, "|-").map_err(|e| match e {
             mm::OutlineError::NotProvable => "it proves a syntax statement",
@@ -451,118 +449,5 @@ impl Lib {
             by,
             subgoals: node.children.iter().map(|c| expr(&c.expr)).collect(),
         }
-    }
-}
-
-fn shape(db: &Database, tree: &Tree) -> Shape {
-    let stmt = db.stmt(tree.stmt);
-    let name = |s: Sym| db.syms[s as usize].name.as_str();
-    if stmt.kind == Kind::Float {
-        return Shape::leaf(name(stmt.expr[1]));
-    }
-    let parts = stmt.expr[1..]
-        .iter()
-        .map(|&sym| {
-            let slot = if db.syms[sym as usize].is_var {
-                stmt.frame.hyps.iter().position(|&h| {
-                    let h = db.stmt(h);
-                    h.kind == Kind::Float && h.expr[1] == sym
-                })
-            } else {
-                None
-            };
-            match slot {
-                Some(slot) => shape(db, &tree.children[slot]),
-                None => Shape::tok(name(sym)),
-            }
-        })
-        .collect();
-    Shape::node(parts)
-}
-
-fn measure(node: &Rc<Node>, sizes: &mut HashMap<*const Node, u64>) -> u64 {
-    if let Some(&size) = sizes.get(&Rc::as_ptr(node)) {
-        return size;
-    }
-    let size = node
-        .children
-        .iter()
-        .fold(1u64, |sum, c| sum.saturating_add(measure(c, sizes)));
-    sizes.insert(Rc::as_ptr(node), size);
-    size
-}
-
-/// How a goal was proved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum By {
-    /// The theorem's own hypothesis, numbered from one.
-    Hypothesis(usize),
-    /// An assertion of the library, by number.
-    Assertion(usize),
-}
-
-pub struct GoalView {
-    pub goal: Expr,
-    pub by: By,
-    pub subgoals: Vec<Expr>,
-}
-
-/// The goal tree of a theorem and what is needed to read its nodes.
-pub struct Goals {
-    pub theorem: usize,
-    pub root: Rc<Node>,
-    floats: Vec<(Sym, StmtId)>,
-    hyps: Vec<StmtId>,
-    sizes: HashMap<*const Node, u64>,
-}
-
-impl Goals {
-    /// Nodes in the tree, a node used twice counting twice.
-    pub fn total(&self) -> u64 {
-        self.sizes[&Rc::as_ptr(&self.root)]
-    }
-
-    /// The node reached by taking child `path[0]`, then child `path[1]`, and so on.
-    pub fn node(&self, path: &[usize]) -> Rc<Node> {
-        path.iter()
-            .fold(self.root.clone(), |node, &k| node.children[k].clone())
-    }
-
-    /// The place of the node at `path` in reading order, from one.
-    pub fn position(&self, path: &[usize]) -> u64 {
-        let mut node = self.root.clone();
-        let mut at: u64 = 1;
-        for &k in path {
-            at = node.children[..k]
-                .iter()
-                .fold(at.saturating_add(1), |sum, c| {
-                    sum.saturating_add(self.sizes[&Rc::as_ptr(c)])
-                });
-            node = node.children[k].clone();
-        }
-        at
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn counts_over_a_tree_that_shares_its_children_saturate() {
-        let mut node = Rc::new(Node {
-            label: 0,
-            expr: Vec::new(),
-            children: Vec::new(),
-        });
-        for _ in 0..80 {
-            node = Rc::new(Node {
-                label: 0,
-                expr: Vec::new(),
-                children: vec![node.clone(), node],
-            });
-        }
-        let mut sizes = HashMap::new();
-        assert_eq!(measure(&node, &mut sizes), u64::MAX);
     }
 }
