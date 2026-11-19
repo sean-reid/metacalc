@@ -1,0 +1,23 @@
+#include "equates.inc"
+#define APP_NAME "getklog1"
+#include "header.inc"
+
+; Logs what _GetKey returns: RESULT is the count, RESULT + 1 on is one byte per call.
+RESULT  = 0A800h
+
+start:
+	xor a
+	ld (RESULT), a
+	ei
+wait:
+	bcall(_GetKey)
+	ld c, a
+	ld a, (RESULT)
+	ld e, a
+	inc a
+	ld (RESULT), a
+	ld d, 0
+	ld hl, RESULT + 1
+	add hl, de
+	ld (hl), c
+	jr wait
