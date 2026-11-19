@@ -179,71 +179,67 @@ ut_loop:
 	inc hl
 	bit 7,c
 	jr nz,ut_tall
-	ld a,e
+	ex de,hl
+	ld a,l
 	add a,c
 	inc a
 	push af
-	ld a,e
-	and 7
-	ld d,a
-	add a,c
-	cp 9
-	jr nc,ut_two
-	ld a,d
-	add a,ui_vblk>>8
-	ld b,a
+	ld h,ui_tfit>>8
+	ld a,(hl)
+	cp c
+	jr c,ut_two
+	ld h,ui_tblk>>8
+	ld b,(hl)
 	ld c,$80
 ut_go:
 	push bc
-	ld a,e
-	rrca
-	rrca
-	rrca
-	and $1F
-	ld c,a
+	ld h,ui_tcol>>8
+	ld c,(hl)
 	ld b,0
-	ex de,hl
 	ld hl,(ui_rowbase)
 	add hl,bc
 	ret
 ut_two:
 	ld a,c
 	cp 9
-	jr nc,ut_slow
-	ld a,e
+	jr nc,ut_back
+	ld a,l
 	cp 88
-	jr nc,ut_slow
-	ld a,d
-	add a,8+(ui_vblk>>8)
+	jr nc,ut_back
+	ld h,ui_tblk>>8
+	ld a,(hl)
+	add a,8
 	ld b,a
 	ld c,$80
 	jr ut_go
+ut_back:
+	ex de,hl
+	jr ut_slow
 ut_tall:
 	res 7,c
-	ld a,e
+	ex de,hl
+	ld a,l
 	add a,c
 	inc a
 	push af
-	ld a,e
-	and 7
-	ld d,a
-	add a,c
-	cp 9
-	jr nc,ut_two_tall
-	ld a,d
-	add a,ui_vblk>>8
-	ld b,a
+	ld h,ui_tfit>>8
+	ld a,(hl)
+	cp c
+	jr c,ut_two_tall
+	ld h,ui_tblk>>8
+	ld b,(hl)
 	ld c,0
 	jr ut_go
 ut_two_tall:
 	ld a,c
 	cp 9
-	jr nc,ut_slow
-	ld a,e
+	jr nc,ut_back
+	ld a,l
 	cp 88
-	jr nc,ut_slow
-	ld a,d
-	add a,8+(ui_vblk>>8)
+	jr nc,ut_back
+	ld h,ui_tblk>>8
+	ld a,(hl)
+	add a,8
 	ld b,a
 	ld c,0
 	jr ut_go
@@ -549,6 +545,52 @@ ui_v7:	TAIL(7)
  .error "a jump block's head must fit below its tail"
 #endif
 	.fill (256-($&255))&255,0
+#macro BYTES8(v)
+	.db v,v,v,v,v,v,v,v
+#endmacro
+#macro SHIFTS(v)
+	.db v,v+1,v+2,v+3,v+4,v+5,v+6,v+7
+#endmacro
+#macro FITS
+	.db 8,7,6,5,4,3,2,1
+#endmacro
+#macro PAGE(m)
+	m
+	m
+	m
+	m
+	m
+	m
+	m
+	m
+	m
+	m
+	m
+	m
+	.fill 160,0
+#endmacro
+	.fill (256-($&255))&255,0
+ui_tcol:
+#if (ui_tcol&255) != 0
+ .error "ui_tcol must be 256 byte aligned"
+#endif
+	BYTES8(0)
+	BYTES8(1)
+	BYTES8(2)
+	BYTES8(3)
+	BYTES8(4)
+	BYTES8(5)
+	BYTES8(6)
+	BYTES8(7)
+	BYTES8(8)
+	BYTES8(9)
+	BYTES8(10)
+	BYTES8(11)
+	.fill 160,0
+ui_tfit:
+	PAGE(FITS)
+ui_tblk:
+	PAGE(SHIFTS(ui_vblk>>8))
 	.fill (16-($&15))&15,0
 ut_rows:
 #if (ut_rows&15) != 0
