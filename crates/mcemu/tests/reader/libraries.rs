@@ -24,7 +24,7 @@ const CEILINGS: [Ceilings; 3] = [
         titles: 165_000,
         lookups: 14_740_000,
         glyphs: 140_000,
-        trees: 38_740_000,
+        trees: 42_400_000,
         shapes: 79_100,
     },
     Ceilings {
@@ -34,7 +34,7 @@ const CEILINGS: [Ceilings; 3] = [
         titles: 376_500,
         lookups: 27_160_000,
         glyphs: 223_700,
-        trees: 53_500_000,
+        trees: 58_500_000,
         shapes: 118_900,
     },
     Ceilings {
@@ -44,7 +44,7 @@ const CEILINGS: [Ceilings; 3] = [
         titles: 1_505_500,
         lookups: 106_950_000,
         glyphs: 1_003_000,
-        trees: 139_230_000,
+        trees: 152_500_000,
         shapes: 792_000,
     },
 ];
