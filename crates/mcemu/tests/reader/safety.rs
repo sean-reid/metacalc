@@ -21,6 +21,7 @@ fn workout(rig: &mut Rig, bytes: &[u8]) {
     }
     assert_eq!(rig.title_for(assertions).0, ST_INDEX);
     assert_eq!(rig.glyph_map().0, ST_OK);
+    assert_eq!(rig.glyphs().0, ST_OK);
     for id in [0, 1, symbols - 1] {
         assert_eq!(rig.glyph(id).0, ST_OK);
     }

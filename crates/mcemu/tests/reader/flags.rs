@@ -32,6 +32,7 @@ fn every(watch: &mut Watch, rig: &mut Rig, tag: &str, buf: u16, want: Option<u8>
         ("LIB_TITLE", at(index, 0)),
         ("LIB_TITLE_FOR", at(index, 0)),
         ("LIB_GLYPH_MAP", Regs::default()),
+        ("LIB_GLYPHS", Regs::default()),
         ("LIB_GLYPH", at(index, 0)),
         ("LIB_SYNTAX_COUNT", Regs::default()),
         ("LIB_SYNTAX", at(index, 0)),
@@ -132,6 +133,7 @@ fn every_status_of_every_section_routine_comes_with_matching_flags() {
     for target in [
         "LIB_TITLE_COUNT",
         "LIB_GLYPH_MAP",
+        "LIB_GLYPHS",
         "LIB_SYNTAX_COUNT",
         "LIB_SHAPES",
     ] {
@@ -157,6 +159,15 @@ fn every_status_of_every_section_routine_comes_with_matching_flags() {
             &mut foreign,
             "foreign map",
             "LIB_GLYPH_MAP",
+            Regs::default()
+        ),
+        ST_GLYPHS
+    );
+    assert_eq!(
+        watch.call(
+            &mut foreign,
+            "foreign glyphs",
+            "LIB_GLYPHS",
             Regs::default()
         ),
         ST_GLYPHS

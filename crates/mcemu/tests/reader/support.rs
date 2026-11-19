@@ -195,7 +195,7 @@ impl Rig {
         self.m.load_flash(0, 0x38, &[0xC3, at[0], at[1]]);
     }
 
-    fn prepare(&mut self, target: &str, regs: Regs) {
+    pub fn prepare(&mut self, target: &str, regs: Regs) {
         let word = |value: u16| value.to_le_bytes();
         let image = self.image;
         let at = |name: &str| label_in(image, name);

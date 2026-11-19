@@ -4,7 +4,7 @@ use crate::support::*;
 const OUT_5: [u8; 2] = [0xD3, 0x05];
 
 fn at(image: Image, name: &str) -> usize {
-    usize::from(label_in(image, name) - 0x4000)
+    usize::from(label_in(image, name) - image.org)
 }
 
 #[test]

@@ -370,7 +370,12 @@ fn a_library_packed_without_sections_opens_and_reads_as_before() {
         let mut rig = opened(&bytes);
         assert_eq!(rig.sections(), (ST_OK, 0), "{name}");
         assert_eq!(rig.section_state().have, 0, "{name}");
-        for call in ["LIB_TITLE_COUNT", "LIB_GLYPH_MAP", "LIB_SYNTAX_COUNT"] {
+        for call in [
+            "LIB_TITLE_COUNT",
+            "LIB_GLYPH_MAP",
+            "LIB_GLYPHS",
+            "LIB_SYNTAX_COUNT",
+        ] {
             assert_eq!(rig.call(call, Regs::default()).status(), ST_NONE, "{name}");
         }
         let library = decode(&bytes).unwrap();
@@ -421,7 +426,7 @@ fn crc16(bytes: &[u8]) -> u16 {
 fn a_library_packed_against_the_font_table_the_image_carries_is_usable_with_it() {
     let image = DEFAULT;
     let slots = constant_of(image.labels, "UI_FONT_GLYPHS") as usize;
-    let at = usize::from(label_in(image, "UI_FONT")) - 0x4000;
+    let at = usize::from(label_in(image, "UI_FONT") - image.org);
     let table = &image.code[at..at + 8 * slots];
     let carried = constant_of(image.labels, "UI_FONT_FINGERPRINT") as u16;
     assert_eq!(
