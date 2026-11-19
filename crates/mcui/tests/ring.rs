@@ -140,3 +140,54 @@ fn every_shipped_library_folds_from_its_stored_trees_as_it_does_from_the_export(
         }
     }
 }
+
+#[test]
+#[ignore = "needs SET_MM pointing at set.mm"]
+fn every_title_of_the_ring_library_can_be_jumped_to() {
+    let bytes = ring();
+    let labels: Vec<String> = library::read(&bytes)
+        .unwrap()
+        .into_iter()
+        .map(|a| a.label)
+        .collect();
+    let titles = library::decode(&bytes)
+        .unwrap()
+        .sections
+        .and_then(|s| s.titles)
+        .expect("the ring library carries titles");
+    assert!(titles.len() > 10, "{} titles", titles.len());
+    let mut ui = Ui::new(
+        vec![Installed {
+            name: "ring".into(),
+            bytes,
+        }],
+        Statuses {
+            libraries: vec![vec![Status::Checked; labels.len()]],
+            my_proofs: 0,
+        },
+    )
+    .unwrap();
+    ui.press(Key::Enter);
+    for (k, title) in titles.iter().enumerate() {
+        ui.press(Key::F5);
+        loop {
+            let State::Sections { cursor, .. } = ui.state() else {
+                panic!("sections did not open for title {k}");
+            };
+            if cursor == k {
+                break;
+            }
+            ui.press(if cursor < k { Key::Down } else { Key::Up });
+        }
+        ui.press(Key::Enter);
+        let State::List { label, .. } = ui.state() else {
+            panic!("title {k} did not return to the list");
+        };
+        assert_eq!(
+            label.as_deref(),
+            Some(labels[title.assertion].as_str()),
+            "{}",
+            title.text
+        );
+    }
+}

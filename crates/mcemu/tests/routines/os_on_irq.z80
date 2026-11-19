@@ -1,0 +1,34 @@
+#include "equates.inc"
+
+; Waits for an interrupt with ON as the caller left it and IY = IYVAL, and records the registers,
+; port 4, the flag byte at 89F9h and the one at BEF8h.
+.org ENTRY
+	xor a
+	ld (89F9h), a
+	ld (0BEF8h), a
+	ld bc, 1234h
+	ld de, 5678h
+	ld ix, 0DEF0h
+	ld iy, IYVAL
+	ld hl, 0C6A9h
+	push hl
+	pop af
+	ld hl, 9ABCh
+	ei
+	halt
+	di
+	ld (RESULT + 6), hl
+	push af
+	pop hl
+	ld (RESULT), hl
+	ld (RESULT + 2), bc
+	ld (RESULT + 4), de
+	ld (RESULT + 8), ix
+	ld (RESULT + 10), iy
+	in a, (4)
+	ld (RESULT + 12), a
+	ld a, (89F9h)
+	ld (RESULT + 13), a
+	ld a, (0BEF8h)
+	ld (RESULT + 14), a
+	halt

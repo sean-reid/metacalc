@@ -357,3 +357,10 @@ fn a_statement_whose_tree_needs_escaped_bytes_folds_as_the_export_parse_does() {
     assert_eq!(a.conclusion.tokens(), ["|-", "(", "v128", "v129", ")"]);
     assert_eq!(a.conclusion.len(), 3, "the wi node and its two variables");
 }
+
+#[test]
+fn a_library_without_titles_puts_every_assertion_in_section_zero() {
+    let lib = lib_from(support::logic_bytes());
+    assert!(lib.titles().is_empty());
+    assert_eq!((lib.section_of(0), lib.section_of(5)), (0, 0));
+}

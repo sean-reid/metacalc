@@ -1,0 +1,10 @@
+#include "equates.inc"
+#define APP_NAME "faultapp"
+#include "header.inc"
+
+; Maps a protected flash page over itself, so the next fetch is refused.
+start:
+	ld a, 20h
+	out (6), a
+	nop
+	jp start

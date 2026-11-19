@@ -36,7 +36,7 @@ done
 
 # Libraries whose apps hash to each trailer form (01 01 to 01 03, then 00) and to a signature of 63
 # bytes, the signer's output being a function of the app's bytes alone.
-for entry in 37:63 111:64 185:64 333:64; do
+for entry in 103:63 111:64 185:64 333:64; do
 	len=${entry%:*}
 	want=${entry#*:}
 	make_library "$len"

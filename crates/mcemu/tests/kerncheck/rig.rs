@@ -13,7 +13,27 @@ pub const OUT_SPEED: u16 = 0xA002;
 pub const OUT_AFTER: u16 = 0xA003;
 pub const OUT_BUF: u16 = 0xA010;
 pub const ENTRY: u16 = 0x4000;
-pub const LIMIT: u32 = 2_000_000_000;
+/// The stub leaves port 4 at 0, which sets the timer interrupt period to 1953 us (tmrvalues in the
+/// core's x4_io.c).
+const TIMER_PERIOD_US: u32 = 1953;
+/// T-states in two timer periods at 15 MHz, five at 6 MHz: every slice spans an interrupt, so the
+/// halt in the wait wakes at least once in it. A wait is a slice that ended in the loop, not a poll.
+pub const SLICE: u32 = 2 * TIMER_PERIOD_US * 15;
+/// A slice that ends below the app's page, where the stub OS and its handler are, is carried on in
+/// steps of `OS_NUDGE` T-states, so that it is judged where the code has come back to; slices are a whole number of
+/// timer periods, and would otherwise end at the same place in the handler every time.
+const OS_NUDGE: u32 = 37;
+const OS_NUDGES: usize = 200;
+/// The most slices any rig loop runs before it gives up: about 20 times the longest legitimate run.
+pub const MAX_SLICES: usize = 40_000;
+
+#[derive(Debug, PartialEq)]
+pub enum Step {
+    Done,
+    /// Ended inside the wait; the pc to start the wait again from.
+    Waiting(u16),
+    Running,
+}
 
 pub fn label(name: &str) -> u16 {
     LABELS
@@ -87,12 +107,17 @@ pub struct Rig {
 
 impl Rig {
     pub fn new(library: &[u8], speed: Speed) -> Rig {
+        Rig::with_code(library, speed, CODE)
+    }
+
+    /// A rig that runs `code` in place of the test image as built.
+    pub fn with_code(library: &[u8], speed: Speed, code: &[u8]) -> Rig {
         let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
         m.out_port(0x29, 0x17);
         m.out_port(0x2A, 0x27);
         m.out_port(0x2E, 0x45);
         m.set_speed(speed);
-        m.load_flash(FLASH_TEST_PAGE, 0, CODE);
+        m.load_flash(FLASH_TEST_PAGE, 0, code);
         for (i, chunk) in library.chunks(CHUNK).enumerate() {
             m.load_flash(LIB_BASE - i as u8, 0, chunk);
         }
@@ -129,26 +154,79 @@ impl Rig {
         self.finish(ENTRY, 0)
     }
 
-    /// Runs from `pc` to the end of the test routine. Each time the driver halts in its wait for
-    /// ON to come up it counts one wait, and after `holds` of them the key is released. Returns
-    /// the waits.
-    pub fn finish(&mut self, mut pc: u16, holds: usize) -> usize {
-        let halted_in_wait = label("ON_WAIT_HALTED");
-        let mut waits = 0;
-        loop {
-            let run = self.m.run(pc, LIMIT);
-            assert_ne!(run.stop, Stop::Fault);
-            pc = self.m.pc();
-            if pc != halted_in_wait && pc + 1 != halted_in_wait {
-                assert_eq!(run.stop, Stop::Halted, "the routine did not reach its end");
-                return waits;
+    /// True while the code is in the loop of `on_release_and_clear`, which ends where it clears the
+    /// flag.
+    pub fn in_wait(&self) -> bool {
+        (label("ON_RELEASE_AND_CLEAR")..label("ON_WAIT_END")).contains(&self.m.pc())
+    }
+
+    /// Runs one slice from `pc` with interrupts off, or on from where the last slice stopped with
+    /// registers, interrupts and halt as it left them. A slice that ends inside the wait for ON
+    /// comes back as `Waiting(restart)`: the wait is a loop that starts with `ei`, so starting it
+    /// again is the same as going on, and the halt in it wakes on the timer interrupt.
+    pub fn step(&mut self, from: Option<u16>) -> Step {
+        let mut run = match from {
+            Some(pc) => self.m.run(pc, SLICE),
+            None => self.m.resume(SLICE),
+        };
+        for _ in 0..OS_NUDGES {
+            if run.stop != Stop::Limit || self.m.pc() >= ENTRY {
+                break;
             }
-            pc = halted_in_wait;
-            waits += 1;
-            if waits == holds {
-                self.m.release_key(Machine::KEY_ON);
+            run = self.m.resume(OS_NUDGE);
+        }
+        match run.stop {
+            Stop::Halted => Step::Done,
+            Stop::Limit if self.in_wait() => Step::Waiting(label("ON_RELEASE_AND_CLEAR")),
+            Stop::Limit => Step::Running,
+            other => panic!("the run stopped with {other:?}"),
+        }
+    }
+
+    fn gave_up(&self, what: &str, slices: usize) -> ! {
+        panic!(
+            "{what}: no end after {slices} slices, at pc {:04x}",
+            self.m.pc()
+        );
+    }
+
+    /// Runs slices from `pc` until one ends inside the wait; returns where to go on from.
+    pub fn until_waiting(&mut self, pc: u16) -> u16 {
+        let mut from = Some(pc);
+        for _ in 0..MAX_SLICES {
+            match self.step(from.take()) {
+                Step::Waiting(restart) => return restart,
+                Step::Running => {}
+                Step::Done => panic!("the routine ended without waiting for ON"),
             }
         }
+        self.gave_up("until_waiting", MAX_SLICES)
+    }
+
+    /// Runs from `pc` to the end of the test routine. Each slice that ends inside the wait for ON
+    /// to come up counts one wait, and after `holds` of them the key is released. Returns the
+    /// waits.
+    pub fn finish(&mut self, pc: u16, holds: usize) -> usize {
+        self.finish_from(Some(pc), holds)
+    }
+
+    /// `finish` from where the last run stopped, interrupts as it left them, when `from` is `None`.
+    pub fn finish_from(&mut self, mut from: Option<u16>, holds: usize) -> usize {
+        let mut waits = 0;
+        for _ in 0..MAX_SLICES {
+            match self.step(from.take()) {
+                Step::Done => return waits,
+                Step::Running => {}
+                Step::Waiting(restart) => {
+                    waits += 1;
+                    if waits == holds {
+                        self.m.release_key(Machine::KEY_ON);
+                    }
+                    from = Some(restart);
+                }
+            }
+        }
+        self.gave_up(&format!("finish, {waits} waits"), MAX_SLICES)
     }
 
     /// Runs in steps of `step` T-states, from the start, until the trace holds `marker`.

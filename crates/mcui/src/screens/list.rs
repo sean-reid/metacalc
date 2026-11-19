@@ -1,11 +1,13 @@
-use super::{Ctx, Nav, Screen, State, proving::Proving, reveal, step, theorem::Theorem};
+use super::{
+    Ctx, Nav, Screen, State, proving::Proving, reveal, sections::Sections, step, theorem::Theorem,
+};
 use crate::canvas::{Canvas, PREFIX_WIDTH, TEXT_WIDTH, tail};
 use crate::fold::{Layout, fitted};
 use crate::key::Key;
 use crate::status::Mark;
 
 /// The labels of the five keys.
-pub(crate) const KEYS: [&str; 5] = ["Open", "Find", "Kind", "Try", ""];
+pub(crate) const KEYS: [&str; 5] = ["Open", "Find", "Kind", "Try", "Sect"];
 
 /// Rows of labels the list shows.
 const LIST_ROWS: usize = 5;
@@ -110,6 +112,19 @@ impl List {
         }
     }
 
+    /// Moves to the first visible assertion at or after `assertion`, or the last visible one when
+    /// none follows.
+    pub(crate) fn land(&mut self, ctx: &Ctx, assertion: usize) {
+        self.find.clear();
+        self.missed = false;
+        if !self.items.is_empty() {
+            let at = self.items.partition_point(|&i| i < assertion);
+            self.cursor = at.min(self.items.len() - 1);
+            self.top = reveal(self.top, self.cursor, LIST_ROWS);
+        }
+        self.refresh(ctx);
+    }
+
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
         match key {
             Key::Up | Key::Down | Key::Left | Key::Right => {
@@ -145,6 +160,12 @@ impl List {
             Key::F4 => {
                 if let Some(i) = self.current() {
                     return Nav::push(Proving::open(ctx, self.library, i));
+                }
+            }
+            Key::F5 => {
+                if !ctx.libs[self.library].titles().is_empty() {
+                    let sections = Sections::open(ctx, self.library, self.current());
+                    return Nav::push(Screen::Sections(sections));
                 }
             }
             Key::Letter(c) if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') => {
@@ -204,7 +225,11 @@ impl List {
                 PREVIEW_ROW as isize..PREVIEW_ROW as isize + 1,
             );
         }
-        canvas.soft_keys(KEYS);
+        let mut keys = KEYS;
+        if lib.titles().is_empty() {
+            keys[4] = "";
+        }
+        canvas.soft_keys(keys);
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {

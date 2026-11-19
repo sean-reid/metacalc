@@ -1,7 +1,8 @@
 ; Bars: the title, the soft keys and the list row.
 
 ; ui_title   in:  HL = left text, DE = right text
-;            left at column 1, right ending at column 94, the whole row inverted; neither is cut
+;            left at column 1, right ending at column 94, all eight scanlines of the row inverted;
+;            neither is cut
 ;            destroys AF BC DE HL
 ui_title:
 	push de
@@ -12,10 +13,20 @@ ui_title:
 	ld b,0
 	call ui_text_right
 	xor a
-	jp ui_invert_row
+	call ui_invert_row
+	ld hl,UI_FRAME
+	ld b,UI_STRIDE
+ut_top:
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	djnz ut_top
+	ret
 
 ; ui_list_row   in:  HL = left text, DE = right text, B = row 0 to 7, C = 0 unselected
-;               left at column 1, right ending at column 94, the row inverted when C is not 0
+;               left at column 1, right ending at column 94, the row inverted below its top
+;               scanline when C is not 0
 ;               destroys AF BC DE HL
 ui_list_row:
 	push bc

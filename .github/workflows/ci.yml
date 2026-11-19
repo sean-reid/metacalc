@@ -23,6 +23,7 @@ jobs:
       app: ${{ steps.jobs.outputs.app }}
       libraries: ${{ steps.jobs.outputs.libraries }}
       site: ${{ steps.jobs.outputs.site }}
+      installer: ${{ steps.jobs.outputs.installer }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -200,6 +201,7 @@ jobs:
       - run: sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test exe_agreement -- --ignored --exact the_table_is_what_metamath_exe_reads
       - run: sh scripts/verify-exports.sh "$RUNNER_TEMP/libraries" "${{ steps.setmm.outputs.path }}"
       - run: sh scripts/test-verify-exports.sh
+      - run: sh scripts/test-replay-libraries.sh
       - run: sh scripts/replay-libraries.sh "$RUNNER_TEMP/libraries"
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --release --locked -p mcpack --test export -- --ignored --exact the_shipped_libraries_repack_from_their_export_to_the_same_records
       - run: MCEDIT_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --release --locked -p mcedit --test replay -- --ignored --exact theorems_with_a_late_float_are_rebuilt_as_new_proofs
@@ -228,7 +230,7 @@ jobs:
       - run: SETMM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test unicode_pin -- --ignored --exact the_spellings_match_the_althtmldef_entries_of_the_pinned_set_mm
       - run: SETMM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test notation_meanings -- --ignored --exact every_symbol_in_a_shipped_notation_table_has_a_meaning
       - run: MCUI_LIBS="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --release --locked -p mcui --test checking -- --ignored --exact stepping_through_a_real_library_is_quick --nocapture
-      - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 3 cargo test --release --locked -p mcui --test ring -- --ignored --nocapture
+      - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 4 cargo test --release --locked -p mcui --test ring -- --ignored --nocapture
       - run: SET_MM="${{ steps.setmm.outputs.path }}" sh scripts/require-tests.sh 1 cargo test --locked -p mcpack --test font_symbols -- --ignored --exact font_fixture_matches_the_ring_closure_of_set_mm
 
   site:
@@ -253,8 +255,24 @@ jobs:
       - run: sh scripts/test-script-paths.sh
       - run: sh scripts/build-site.sh "$RUNNER_TEMP/pages" "$RUNNER_TEMP/docs"
 
+  installer:
+    needs: changes
+    if: needs.changes.outputs.installer == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - if: runner.os == 'Linux'
+        run: shellcheck scripts/install.sh scripts/package-mcsend.sh scripts/check-mcsend-links.sh scripts/test-install.sh
+      - run: sh scripts/test-install.sh
+
   ci-ok:
-    needs: [changes, rust, emu, audit, docs, app, libraries, library-apps, library-exports, library-screens, site]
+    needs: [changes, rust, emu, audit, docs, app, libraries, library-apps, library-exports, library-screens, site, installer]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -266,7 +284,7 @@ jobs:
           echo "changes: $CHANGES, all: $RESULTS"
           echo "$FLAGS"
           [ "$CHANGES" = success ] || exit 1
-          [ "$(echo "$FLAGS" | grep -cE '"(true|false)"')" -eq 7 ] || exit 1
+          [ "$(echo "$FLAGS" | grep -cE '"(true|false)"')" -eq 8 ] || exit 1
           for result in $RESULTS; do
             case $result in success | skipped) ;; *) exit 1 ;; esac
           done

@@ -3,15 +3,113 @@ name: release-please
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and attach the assets to
+        required: true
+        type: string
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+
+  mcsend:
+    needs: release-please
+    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, os: macos, arch: arm64 }
+          - { runner: macos-15-intel, os: macos, arch: x86_64 }
+          - { runner: ubuntu-22.04, os: linux, arch: x86_64 }
+    runs-on: ${{ matrix.runner }}
+    env:
+      TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - run: cargo build --release --locked -p mcsend
+      - run: target/release/mcsend --version
+      - env:
+          MATRIX_OS: ${{ matrix.os }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+        run: sh scripts/package-mcsend.sh "$TAG" "$MATRIX_OS" "$MATRIX_ARCH" "$RUNNER_TEMP/dist"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mcsend-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/dist
+          retention-days: 1
+
+  app:
+    needs: release-please
+    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: ./.github/actions/spasm
+      - id: setmm
+        run: |
+          path=$(sh scripts/fetch-setmm.sh)
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+      - env:
+          SETMM: ${{ steps.setmm.outputs.path }}
+        run: sh scripts/build-libraries.sh "$SETMM" "$RUNNER_TEMP/libraries" "$RUNNER_TEMP/pages"
+      - run: |
+          make -s -C app BUILD="$RUNNER_TEMP/app" LIBRARY="$RUNNER_TEMP/libraries/ring.mclib"
+          sh app/scripts/check-8xk.sh -l "$RUNNER_TEMP/libraries/ring.mclib" "$RUNNER_TEMP/app/metacalc.8xk"
+          mkdir "$RUNNER_TEMP/dist"
+          cp "$RUNNER_TEMP/app/metacalc.8xk" "$RUNNER_TEMP/dist/"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: metacalc-app
+          path: ${{ runner.temp }}/dist
+          retention-days: 1
+
+  publish:
+    needs: [release-please, mcsend, app]
+    if: ${{ !cancelled() && needs.mcsend.result == 'success' && needs.app.result == 'success' && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/dist
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd "$RUNNER_TEMP/dist"
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "$TAG" --clobber -- *

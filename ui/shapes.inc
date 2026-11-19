@@ -74,15 +74,13 @@ mk_loop:
 	ret
 
 ; ui_invert_row   in:  A = text row 0 to 7, nothing drawn for a larger one
-;                 flips the eight scanlines of the row
+;                 flips the seven scanlines of the row below its top one
 ;                 destroys AF BC DE HL
 ui_invert_row:
 	cp UI_TEXT_ROWS
 	ret nc
 	call ui_row_addr
-	ld de,-UI_STRIDE
-	add hl,de
-	ld b,UI_ROW*UI_STRIDE/16
+	ld b,5
 ir_loop:
 #macro CPL4
 	ld a,(hl)
@@ -107,6 +105,7 @@ ir_loop:
 	CPL4
 	CPL4
 	djnz ir_loop
+	CPL4
 	ret
 
 ; ui_invert   in:  B = x, C = y, D = width, E = height, in pixels

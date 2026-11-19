@@ -97,6 +97,11 @@ pub enum Op {
     Command(u8),
     /// The LCD status byte, read from port 10h.
     Status,
+    /// `ei` or `di`. The timer interrupt source is on only in a run made with `run_code_on` and
+    /// its `timer` set.
+    Interrupts(bool),
+    /// The interrupt flip-flop as `ld a,i` reports it, in bit 2 of the result.
+    Iff,
     SetFont(Vec<u8>),
     BuiltinFont,
     /// Pixels only the host draws, ORed into the frame between two Z80 calls.
@@ -275,6 +280,13 @@ impl Script {
                     self.keep_a();
                 }
             }
+            Op::Interrupts(on) if call => self.code.push(if *on { 0xFB } else { 0xF3 }),
+            Op::Interrupts(_) => {}
+            Op::Iff if call => {
+                self.code.extend_from_slice(&[0xED, 0x57, 0xF5, 0xE1]);
+                self.keep(&[0x22]);
+            }
+            Op::Iff => {}
             Op::Ink(layer) => {
                 self.code.push(0x76);
                 self.inks
@@ -330,6 +342,20 @@ pub fn os_ports(m: &mut Machine) {
 pub fn run_code(
     image: Image,
     code: &[u8],
+    settings: (Speed, bool),
+    ops: &[Op],
+    call: bool,
+) -> Outcome {
+    run_code_on(STUB_ROM, false, image, code, settings, ops, call)
+}
+
+/// `run_code` on another OS image than the stub as it is built, and with the timer interrupt
+/// source on when `timer` is set.
+pub fn run_code_on(
+    rom: &[u8],
+    timer: bool,
+    image: Image,
+    code: &[u8],
     (speed, ports): (Speed, bool),
     ops: &[Op],
     call: bool,
@@ -353,9 +379,13 @@ pub fn run_code(
         script.code.len() < 0x1700,
         "the script reaches the end of bank B"
     );
-    let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
+    let mut m = Machine::new(rom).expect("the ROM boots");
     if ports {
         os_ports(&mut m);
+    }
+    if timer {
+        let mask = m.in_port(0x03);
+        m.out_port(0x03, mask | 0x02);
     }
     m.out_port(0x10, 0x03);
     m.load_flash(FLASH_TEST_PAGE, 0, code);

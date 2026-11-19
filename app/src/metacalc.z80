@@ -27,12 +27,15 @@ draw:
 	pop bc
 	djnz draw
 	bcall(_GrBufCpy)
-	ei
 wait_for_clear:
+	ei
 	halt
 	bcall(_GetCSC)
 	cp skClear
 	jr nz, wait_for_clear
+	di
+	res onInterrupt, (iy + onFlags)
+	set graphDraw, (iy + graphFlags)
 	bjump(_JForceCmdNoChar)
 
 TITLE_ROW = 28
