@@ -442,6 +442,8 @@ fn main() {
     assemble_ui(&out);
     assemble_reader(&out);
     assemble_layout_probes(&out);
+    assemble_page_ports(&out);
+    assemble_far_call(&out);
     assemble_probe_ram_probes(&out);
     spasm(
         &Path::new("tests/routines").join("launch_state.z80"),
@@ -730,7 +732,8 @@ fn assemble_ui(out: &Path) {
         (&["UI_FRAME=$9572"][..], None),
         (&["UI_FRAME=$9B71"][..], None),
         (&["KD_SCRATCH=$9640"][..], None),
-        (&["LIB_STATE=$9896"][..], None),
+        (&["LIB_STATE=$9896", "FAR_VARS=$9C00"][..], None),
+        (&["LIB_STATE=$989A"][..], None),
         (&["KERNEL_RAM_HIGH=$D700"][..], None),
         (&["UI_VARS=$9340"][..], Some("UI_FRAME and UI_VARS overlap")),
         (
@@ -1068,6 +1071,9 @@ fn expect(source: &Path, out: &Path, defines: &[&str], args: &[&str], want: Opti
     }
 }
 
+/// The far call's scratch, moved clear of the bytes after KD_SCRATCH that the layouts below grow into.
+const FAR_ASIDE: &str = "FAR_VARS=$9C00";
+
 /// Each probe refuses RAM of its own that leaves bank B, overlaps another of its regions or overlaps
 /// a map region its image links, and accepts the default addresses and a move clear of them. Each
 /// size is pinned by the highest base that assembles and the next one up that does not. The checks
@@ -1349,7 +1355,7 @@ fn assemble_layout_probes(out: &Path) {
         for (lines, defines, want) in [
             (
                 format!("{prefix}_VAR(probe_next, ${end:X}, 1)"),
-                vec![size],
+                vec![size, FAR_ASIDE],
                 None,
             ),
             (
@@ -1358,44 +1364,246 @@ fn assemble_layout_probes(out: &Path) {
                     end + 2,
                     end + 2
                 ),
-                vec![size],
+                vec![size, FAR_ASIDE],
                 None,
             ),
             (
                 format!("{prefix}_VAR(probe_same, ${:X}, 1)", end - 1),
-                vec![size],
+                vec![size, FAR_ASIDE],
                 Some(message),
             ),
             (
                 format!("{prefix}_VAR(probe_inside, $1, 1)"),
-                vec![size],
+                vec![size, FAR_ASIDE],
                 Some(message),
             ),
             (
                 format!("{prefix}_VAR(probe_gap, ${:X}, 1)", end + 2),
-                vec![size],
+                vec![size, FAR_ASIDE],
                 Some(message),
             ),
             (
                 format!("{prefix}_VAR(probe_past, ${end:X}, 1)"),
-                vec![],
+                vec![FAR_ASIDE],
                 Some(message),
             ),
             (
                 format!("{prefix}_AT($0)"),
-                vec![size],
+                vec![size, FAR_ASIDE],
                 Some(go_back.as_str()),
             ),
             (
                 format!("{prefix}_AT(${:X})", end + 1),
-                vec![],
+                vec![FAR_ASIDE],
                 Some(go_past.as_str()),
             ),
-            (format!("{prefix}_AT(${end:X})"), vec![], None),
+            (format!("{prefix}_AT(${end:X})"), vec![FAR_ASIDE], None),
         ] {
             fs::write(&source, format!("{base}\n{lines}\n")).unwrap();
             expect(&source, &out.join("layout_probe.bin"), &defines, args, want);
         }
+    }
+}
+
+/// The cross-page call's image and the pages tests, and the checks its include and its RAM carry.
+fn assemble_far_call(out: &Path) {
+    for f in [
+        "../../probe/pagecheck.z80",
+        "../../probe/ramcheck.inc",
+        "../../app/src/farcall.inc",
+        "../../app/src/ram_map.inc",
+    ] {
+        println!("cargo:rerun-if-changed={f}");
+    }
+    let args = ["-I", "../../app/src", "-I", "../../probe", "-L"];
+    let pagecheck = Path::new("../../probe/pagecheck.z80");
+    spasm(pagecheck, &out.join("pagecheck.8xk"), &[], &args);
+
+    let probe = out.join("far_probe.z80");
+    let probe_out = out.join("far_probe.bin");
+    let at = |fill: &str, lines: &str| {
+        format!(".org 4000h\n.fill {fill} - $, 0\n#include \"farcall.inc\"\n{lines}\n")
+    };
+    let misplaced = "farcall.inc must be included at FAR_CALL";
+    for (source, defines, want) in [
+        (at("4083h", ""), &[][..], None),
+        (at("4082h", ""), &[][..], Some(misplaced)),
+        (at("4084h", ""), &[][..], Some(misplaced)),
+        (at("4000h", ""), &[][..], Some(misplaced)),
+        (
+            format!("#define FAR_PAD\n{}", at("4010h", "")),
+            &[][..],
+            None,
+        ),
+        (
+            format!("#define FAR_PAD\n{}", at("4090h", "")),
+            &[][..],
+            Some(misplaced),
+        ),
+    ] {
+        fs::write(&probe, source).unwrap();
+        expect(&probe, &probe_out, defines, &args[..4], want);
+    }
+
+    let map = out.join("far_map_probe.z80");
+    fs::write(&map, "#include \"ram_map.inc\"\n").unwrap();
+    for (defines, want) in [
+        (&[][..], None),
+        (&["FAR_VARS=$9898"][..], None),
+        (&["FAR_VARS_SIZE=6"][..], None),
+        (&["KD_SCRATCH_SIZE=36"][..], None),
+        (
+            &["KD_SCRATCH_SIZE=37"][..],
+            Some("FAR_VARS and KD_SCRATCH overlap"),
+        ),
+        (
+            &["FAR_VARS=$9895"][..],
+            Some("FAR_VARS and KD_SCRATCH overlap"),
+        ),
+        (
+            &["FAR_VARS=$9899"][..],
+            Some("FAR_VARS and LIB_STATE overlap"),
+        ),
+        (
+            &["FAR_VARS=$86F0"][..],
+            Some("FAR_VARS and UI_VARS overlap"),
+        ),
+        (
+            &["FAR_VARS=$8800"][..],
+            Some("FM_SCRATCH and FAR_VARS overlap"),
+        ),
+        (
+            &["FAR_VARS=$9340"][..],
+            Some("FAR_VARS and UI_FRAME overlap"),
+        ),
+        (
+            &["FAR_VARS=$9880"][..],
+            Some("FAR_VARS and KD_SCRATCH overlap"),
+        ),
+        (
+            &["FAR_VARS=$989A"][..],
+            Some("FAR_VARS and LIB_STATE overlap"),
+        ),
+        (
+            &["FAR_VARS_SIZE=7"][..],
+            Some("FAR_VARS and LIB_STATE overlap"),
+        ),
+        (&["FAR_VARS=$BFFE"][..], Some("FAR_VARS runs past bank B")),
+    ] {
+        expect(&map, &probe_out, defines, &["-I", "../../app/src"], want);
+    }
+
+    let layout =
+        "the far call variables overlap, leave a gap, or run past FAR_VARS_SIZE in ram_map.inc";
+    let go_back = "FAR_AT must not go back or past FAR_VARS_SIZE in ram_map.inc";
+    for (lines, defines, want) in [
+        ("FAR_VAR(probe_next, $4, 1)", &["FAR_VARS_SIZE=5"][..], None),
+        (
+            "FAR_AT($6)\nFAR_VAR(probe_next, $6, 1)",
+            &["FAR_VARS_SIZE=7", "LIB_STATE=$98A0"][..],
+            None,
+        ),
+        ("FAR_VAR(probe_same, $3, 1)", &[][..], Some(layout)),
+        ("FAR_VAR(probe_inside, $1, 1)", &[][..], Some(layout)),
+        (
+            "FAR_VAR(probe_gap, $5, 1)",
+            &["FAR_VARS_SIZE=6"][..],
+            Some(layout),
+        ),
+        ("FAR_VAR(probe_past, $4, 1)", &[][..], Some(layout)),
+        ("FAR_AT($0)", &[][..], Some(go_back)),
+        ("FAR_AT($5)", &[][..], Some(go_back)),
+        ("FAR_AT($4)", &[][..], None),
+    ] {
+        fs::write(&probe, at("4083h", lines)).unwrap();
+        expect(&probe, &probe_out, defines, &args[..4], want);
+    }
+
+    let app = out.join("pagecheck_ram_probe.z80");
+    let layout = "the pagecheck variables overlap, leave a gap, or run past the stack";
+    let go_back = "PC_AT must not go back or past the stack";
+    for (lines, defines, want) in [
+        ("", &[][..], None),
+        ("PC_VAR(probe_next, $148, 1)", &[][..], Some(layout)),
+        ("PC_VAR(probe_same, $147, 1)", &[][..], Some(layout)),
+        ("PC_VAR(probe_overlap, $146, 1)", &[][..], Some(layout)),
+        ("PC_AT($0)", &[][..], Some(go_back)),
+        ("PC_AT($149)", &[][..], Some(go_back)),
+        ("PC_AT($148)", &[][..], None),
+    ] {
+        fs::write(&app, format!("#include \"pagecheck.z80\"\n{lines}\n")).unwrap();
+        expect(&app, &probe_out, defines, &args[..4], want);
+    }
+
+    let probe_args = [
+        "-I",
+        "../../app/src",
+        "-I",
+        "../../probe",
+        "-I",
+        "../../kernel",
+        "-I",
+        "../../ui",
+        "-I",
+        "../..",
+    ];
+    let bank = "pagecheck's RAM runs past bank B";
+    let ok = |d: &[&str]| expect(pagecheck, &probe_out, d, &probe_args, None);
+    let fails = |d: &[&str], want: &str| expect(pagecheck, &probe_out, d, &probe_args, Some(want));
+    ok(&[]);
+    ok(&["PC_RAM=$8000"]);
+    ok(&["PC_RAM=$BE38"]);
+    fails(&["PC_RAM=$BE39"], bank);
+    fails(&["PC_RAM=$7FFF"], bank);
+    let far = "the probe's RAM overlaps FAR_VARS";
+    ok(&["PC_RAM=$96CE"]);
+    fails(&["PC_RAM=$96CF"], far);
+    fails(&["PC_RAM=$9896"], far);
+    fails(&["PC_RAM=$9899"], far);
+    ok(&["PC_RAM=$989A"]);
+    let wrapper = out.join("pagecheck_parts_probe.z80");
+    for (part, want, define) in [
+        ("ui/ram.inc", "RAM overlaps UI_VARS", "PC_RAM=$86F0"),
+        ("ui/ram.inc", "RAM overlaps UI_FRAME", "PC_RAM=$9340"),
+        ("fm/ram.inc", "RAM overlaps FM_SCRATCH", "PC_RAM=$8710"),
+        ("lib/ram.inc", "RAM overlaps LIB_STATE", "PC_RAM=$98A0"),
+    ] {
+        fs::write(
+            &wrapper,
+            format!("#include \"{part}\"\n#include \"pagecheck.z80\"\n"),
+        )
+        .unwrap();
+        expect(&wrapper, &probe_out, &[], &probe_args, None);
+        let want = format!("the probe's {want}");
+        expect(&wrapper, &probe_out, &[define], &probe_args, Some(&want));
+    }
+    fs::write(&wrapper, "#include \"pagecheck.z80\"\n").unwrap();
+    let kd = "the probe's RAM overlaps KD_SCRATCH";
+    expect(
+        &wrapper,
+        &probe_out,
+        &["KD_NEXT", "PC_RAM=$9880"],
+        &probe_args,
+        Some(kd),
+    );
+    expect(
+        &wrapper,
+        &probe_out,
+        &["KD_NEXT", "PC_RAM=$9B80"],
+        &probe_args,
+        None,
+    );
+}
+
+/// An app of one, two and three pages that records the ports it is entered with.
+fn assemble_page_ports(out: &Path) {
+    for pages in 1..=3 {
+        spasm(
+            &Path::new("tests/routines").join("page_ports.z80"),
+            &out.join(format!("page_ports{pages}.8xk")),
+            &[&format!("PAGES={pages}")],
+            &["-I", "../../app/src"],
+        );
     }
 }
 

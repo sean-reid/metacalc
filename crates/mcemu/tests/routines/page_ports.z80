@@ -1,0 +1,31 @@
+#include "equates.inc"
+#define APP_NAME "pageport"
+#include "header.inc"
+
+; Records the page the app was entered on and ports 22h and 23h, then waits. PAGES is the
+; number of 16 KB pages the app is built from.
+R = appBackUpScreen
+
+start:
+	in a, (6)
+	ld (R), a
+	in a, (22h)
+	ld (R + 1), a
+	in a, (23h)
+	ld (R + 2), a
+	ld a, 0A5h
+	ld (R + 3), a
+	ei
+wait:
+	halt
+	jr wait
+#if PAGES > 1
+.fill 8000h - $, 0
+.org 4000h
+	.fill 1000, 0
+#endif
+#if PAGES > 2
+.fill 8000h - $, 0
+.org 4000h
+	.fill 1000, 0
+#endif

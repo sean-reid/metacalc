@@ -24,7 +24,8 @@ impl Machine {
         Ok(())
     }
 
-    /// Writes page k of the app file to flash page `base - k`.
+    /// Writes page k of the app file to flash page `base - k`, and remembers how many pages that
+    /// is for `launch`, per base page.
     pub fn install_app(&mut self, file: &[u8], base: u8) -> Result<(), AppError> {
         self.check_base(base)?;
         let pages = decode_app(file)?;
@@ -34,13 +35,17 @@ impl Machine {
         for (k, page) in pages.iter().enumerate() {
             self.load_flash(base - k as u8, 0, page);
         }
+        self.apps.insert(base, pages.len());
         Ok(())
     }
 
     /// Leaves the machine as TI-OS does at the first instruction of an app installed with `base`,
-    /// ready for `run_app`.
+    /// ready for `run_app`. Port 23h ends the protected range at the page below the app's last
+    /// one, so the pages of an app of any length can run; an app that was not installed is one
+    /// page.
     pub fn launch(&mut self, base: u8) -> Result<(), AppError> {
         self.check_base(base)?;
+        let pages = self.apps.get(&base).copied().unwrap_or(1);
         let init = self.run(stub::OS_INIT, INIT_LIMIT);
         assert_eq!(init.stop, Stop::Halted, "the stub's launch setup finishes");
         self.set_speed(Speed::Mhz6);
@@ -52,7 +57,7 @@ impl Machine {
             (0x07, RAM_PAGE_BANK_B),
             (0x21, 0x01),
             (0x22, FIRST_PROTECTED),
-            (0x23, base - 1),
+            (0x23, base - pages as u8),
             (0x25, 0x10),
             (0x26, 0x20),
             (0x27, 0x00),

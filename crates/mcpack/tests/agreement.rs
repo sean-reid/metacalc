@@ -1,4 +1,4 @@
-use mcpack::library::{ExportError, check, crc32, export, pack};
+use mcpack::library::{check, crc32, export, pack};
 use mcpack::mm::{self, StmtId};
 use std::path::Path;
 
@@ -59,8 +59,7 @@ impl Rng {
     }
 }
 
-/// Every mutant the check accepts must also export, except where the float orders of several
-/// records conflict, which no single record shows. `MC_FUZZ` sets the mutants per library.
+/// Every mutant the check accepts must also export. `MC_FUZZ` sets the mutants per library.
 #[test]
 fn a_mutated_library_the_kernel_accepts_is_one_the_exporter_writes() {
     let count: usize = std::env::var("MC_FUZZ")
@@ -71,7 +70,7 @@ fn a_mutated_library_the_kernel_accepts_is_one_the_exporter_writes() {
     let bases = [small, corpus("demo0.mm"), corpus("miu.mm")];
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
     for (index, base) in bases.iter().enumerate() {
-        let (mut accepted, mut refused, mut float_order) = (0, 0, 0);
+        let (mut accepted, mut refused) = (0, 0);
         for _ in 0..count {
             let mut bytes = base.clone();
             let edits = 1 + rng.below(3);
@@ -102,16 +101,13 @@ fn a_mutated_library_the_kernel_accepts_is_one_the_exporter_writes() {
                 refused += 1;
             } else if bytes != *base {
                 accepted += 1;
-                match export(&bytes) {
-                    Ok(_) => {}
-                    Err(ExportError::FloatOrder(_)) => float_order += 1,
-                    Err(e) => panic!("accepted but not exported: {e}\nedits: {changes:?}"),
+                if let Err(e) = export(&bytes) {
+                    panic!("accepted but not exported: {e}\nedits: {changes:?}");
                 }
             }
         }
         println!(
-            "library {index}: {accepted} changed mutants accepted ({float_order} with conflicting \
-             float orders), {refused} refused of {count}"
+            "library {index}: {accepted} changed mutants accepted, {refused} refused of {count}"
         );
         assert!(
             accepted * 100 > count,
