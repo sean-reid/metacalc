@@ -2,7 +2,7 @@
 
 mod notation;
 mod sections;
-mod unicode;
+pub mod unicode;
 
 use crate::library::{self, Assertion, Hypothesis, Library, ReadError};
 use crate::manifest::{Manifest, Pin};
@@ -12,7 +12,7 @@ use std::fmt::Write;
 const LABEL_PAGES: &str = "https://us.metamath.org/mpeuni";
 
 /// Escapes text for an HTML element or attribute value.
-fn escape(text: &str) -> String {
+pub fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
         match c {

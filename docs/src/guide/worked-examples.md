@@ -4,27 +4,40 @@ Eight proofs of the kind an intro-to-proofs course sets, taken from the set.mm l
 
 ## Reading a statement
 
-A Metamath statement is a line of tokens separated by spaces. The first token, `|-`, is the turnstile and means "is provable". Everything after it is the claim, written in ASCII:
+A Metamath statement is a line of symbols separated by spaces. The first symbol, ⊢, is the turnstile and means "is provable". Everything after it is the claim. The last column shows the ASCII token that a Metamath source file uses for each symbol.
 
-- `->` is "implies", `<->` is "if and only if", `-.` is "not", `/\` is "and", `\/` is "or".
-- `A C_ B` is "A is a subset of B", `x e. A` is "x is an element of A", and `=` is equality.
-- `ph`, `ps` and `ch` stand for any statements. `A`, `B` and `C` stand for any classes, which you can read as sets.
+<!-- symbols -->
+
+| Symbol | Read as | In a source file |
+| --- | --- | --- |
+| ⊢ | is provable | `\|-` |
+| ( ) | grouping | `(` `)` |
+| → | implies | `->` |
+| ↔ | if and only if | `<->` |
+| ¬ | not | `-.` |
+| ∧ | and | `/\` |
+| ∨ | or | `\/` |
+| = | equals | `=` |
+| ∈ | is an element of | `e.` |
+| ⊆ | is a subset of | `C_` |
+| ‘ | applied to, as in ( 𝐹 ‘ 𝐴 ) | `` ` `` |
+| 𝜑 𝜓 𝜒 | any statement | `ph` `ps` `ch` |
+| 𝐴 𝐵 𝐶 𝐺 𝑅 𝑋 | any class, which you can read as a set | `A` `B` `C` `G` `R` `X` |
+| Grp Mnd Ring Rng | is a group, a monoid, a ring, a non-unital ring | `Grp` `Mnd` `Ring` `Rng` |
+| Base +g 0g .r | the set, the operation, the identity and the multiplication of a structure | `Base` `+g` `0g` `.r` |
+| + 0 · | an operation or element that the hypotheses name, underlined with dots | `.+` `.0.` `.x.` |
+
+<!-- /symbols -->
 
 A theorem can have hypotheses, written "given" on the library pages. To use such a theorem you first need a proof of each hypothesis. Where an example has hypotheses, they are listed before its tree.
 
 ## Reading a goal tree
 
-A proof is written backward, from what you want to show. The root is the goal. Each line is a statement followed by a label in brackets:
+A proof is written backward, from what you want to show. The root is the goal. Each line is a statement followed by a label, the theorem applied to it. A label that is a link opens that theorem on its library page.
 
-```text
-|- ( ph -> ph )  [mpd]
-  |- ( ph -> ( ph -> ph ) )  [ax-1]
-  |- ( ph -> ( ( ph -> ph ) -> ph ) )  [ax-1]
-```
+Applying a theorem to a goal means choosing a theorem whose conclusion matches the goal once its variables are replaced by statements. The theorem's hypotheses, with the same replacements made, become new goals, and they are the lines indented under the goal. In the tree of example 1, `mpd` is applied to the first goal, and `ax-1` closes both goals under it.
 
-Applying a theorem to a goal means choosing a theorem whose conclusion matches the goal once its variables are replaced by statements. The theorem's hypotheses, with the same replacements made, become new goals, and they are the lines indented under the goal. In this tree the bracketed `mpd` is applied to the first goal, and `ax-1` closes both goals under it.
-
-A goal closes when the theorem applied to it has no hypotheses, as `ax-1` does. A label such as `syl.1` is a hypothesis of the theorem being proved, so that goal is already given. Each theorem applied has its own proof, which the tree does not expand.
+A goal closes when the theorem applied to it has no hypotheses, as `ax-1` does. A label such as `syl.1` is a hypothesis of the theorem being proved, so that goal is already given and its label is not a link. Each theorem applied has its own proof, which the tree does not expand.
 
 The root statement of each example is also drawn in the calculator's font. These images are renderings of the statement on a 96 by 64 pixel screen, enlarged four times.
 
@@ -32,172 +45,224 @@ The root statement of each example is also drawn in the calculator's font. These
 
 [`id`](../libraries/prop.md#id), propositional calculus library
 
-![id](examples/id.png)
+![id: the statement drawn in the calculator font](examples/id.png)
+
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: id -->
-```text
-|- ( ph -> ph )  [mpd]
-  |- ( ph -> ( ph -> ph ) )  [ax-1]
-  |- ( ph -> ( ( ph -> ph ) -> ph ) )  [ax-1]
-```
+<ul class="tree" role="list" data-statement="|- ( ph -&gt; ph )">
+  <li><span class="st">⊢ ( 𝜑 → 𝜑 )</span> <a class="lb" href="../libraries/prop.md#mpd">mpd</a>
+    <ul role="list">
+      <li><span class="st">⊢ ( 𝜑 → ( 𝜑 → 𝜑 ) )</span> <a class="lb" href="../libraries/prop.md#ax-1">ax-1</a></li>
+      <li><span class="st">⊢ ( 𝜑 → ( ( 𝜑 → 𝜑 ) → 𝜑 ) )</span> <a class="lb" href="../libraries/prop.md#ax-1">ax-1</a></li>
+    </ul>
+  </li>
+</ul>
 
-`mpd` combines `( ph -> ps )` and `( ph -> ( ps -> ch ) )` into `( ph -> ch )`. The statement `ps` does not appear in the goal, so you choose it. With `ps` as `( ph -> ph )`, both subgoals are instances of the axiom `ax-1`, `( ph -> ( ps -> ph ) )`.
+`mpd` combines `( 𝜑 → 𝜓 )` and `( 𝜑 → ( 𝜓 → 𝜒 ) )` into `( 𝜑 → 𝜒 )`. The statement `𝜓` does not appear in the goal, so you choose it. With `𝜓` as `( 𝜑 → 𝜑 )`, both subgoals are instances of the axiom `ax-1`, `( 𝜑 → ( 𝜓 → 𝜑 ) )`.
 
 ## 2. Chaining implications
 
-If `ph` implies `ps` and `ps` implies `ch`, then `ph` implies `ch`.
+If `𝜑` implies `𝜓` and `𝜓` implies `𝜒`, then `𝜑` implies `𝜒`.
 
 Hypotheses:
 
-- `|- ( ph -> ps )`
-- `|- ( ps -> ch )`
+- `⊢ ( 𝜑 → 𝜓 )`
+- `⊢ ( 𝜓 → 𝜒 )`
 
 [`syl`](../libraries/prop.md#syl), propositional calculus library
 
-![syl](examples/syl.png)
+![syl: the statement drawn in the calculator font](examples/syl.png)
+
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: syl -->
-```text
-|- ( ph -> ch )  [mpd]
-  |- ( ph -> ps )  [syl.1]
-  |- ( ph -> ( ps -> ch ) )  [a1i]
-    |- ( ps -> ch )  [syl.2]
-```
+<ul class="tree" role="list" data-statement="|- ( ph -&gt; ch )">
+  <li><span class="st">⊢ ( 𝜑 → 𝜒 )</span> <a class="lb" href="../libraries/prop.md#mpd">mpd</a>
+    <ul role="list">
+      <li><span class="st">⊢ ( 𝜑 → 𝜓 )</span> <span class="lb">syl.1</span></li>
+      <li><span class="st">⊢ ( 𝜑 → ( 𝜓 → 𝜒 ) )</span> <a class="lb" href="../libraries/prop.md#a1i">a1i</a>
+        <ul role="list">
+          <li><span class="st">⊢ ( 𝜓 → 𝜒 )</span> <span class="lb">syl.2</span></li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
 
-This is the hypothetical syllogism. The proof applies `mpd` to the goal. The first subgoal is the first hypothesis. For the second, `a1i` turns the second hypothesis `( ps -> ch )` into `( ph -> ( ps -> ch ) )`, which says that a proven statement still holds when `ph` is assumed.
+This is the hypothetical syllogism. The proof applies `mpd` to the goal. The first subgoal is the first hypothesis. For the second, `a1i` turns the second hypothesis `( 𝜓 → 𝜒 )` into `( 𝜑 → ( 𝜓 → 𝜒 ) )`, which says that a proven statement still holds when `𝜑` is assumed.
 
 ## 3. The contrapositive
 
-If `ph` implies `ps`, then not `ps` implies not `ph`.
+If `𝜑` implies `𝜓`, then not `𝜓` implies not `𝜑`.
 
 Hypotheses:
 
-- `|- ( ph -> ps )`
+- `⊢ ( 𝜑 → 𝜓 )`
 
 [`con3i`](../libraries/prop.md#con3i), propositional calculus library
 
-![con3i](examples/con3i.png)
+![con3i: the statement drawn in the calculator font](examples/con3i.png)
+
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: con3i -->
-```text
-|- ( -. ps -> -. ph )  [nsyl]
-  |- ( -. ps -> -. ps )  [id]
-  |- ( ph -> ps )  [con3i.a]
-```
+<ul class="tree" role="list" data-statement="|- ( -. ps -&gt; -. ph )">
+  <li><span class="st">⊢ ( ¬ 𝜓 → ¬ 𝜑 )</span> <a class="lb" href="../libraries/prop.md#nsyl">nsyl</a>
+    <ul role="list">
+      <li><span class="st">⊢ ( ¬ 𝜓 → ¬ 𝜓 )</span> <a class="lb" href="../libraries/prop.md#id">id</a></li>
+      <li><span class="st">⊢ ( 𝜑 → 𝜓 )</span> <span class="lb">con3i.a</span></li>
+    </ul>
+  </li>
+</ul>
 
-The proof applies `nsyl`, which chains an implication whose conclusion is a negation, `( ph -> -. ps )`, with an implication `( ch -> ps )`. Here the first one is `( -. ps -> -. ps )`, which `id` from the first example proves, and the second one is your hypothesis.
+The proof applies `nsyl`, which chains an implication whose conclusion is a negation, `( 𝜑 → ¬ 𝜓 )`, with an implication `( 𝜒 → 𝜓 )`. Here the first one is `( ¬ 𝜓 → ¬ 𝜓 )`, which `id` from the first example proves, and the second one is your hypothesis.
 
 ## 4. Proof by cases
 
-If `ps` follows from `ph` and also follows from not `ph`, then `ps` holds.
+If `𝜓` follows from `𝜑` and also follows from not `𝜑`, then `𝜓` holds.
 
 Hypotheses:
 
-- `|- ( ph -> ps )`
-- `|- ( -. ph -> ps )`
+- `⊢ ( 𝜑 → 𝜓 )`
+- `⊢ ( ¬ 𝜑 → 𝜓 )`
 
 [`pm2.61i`](../libraries/prop.md#pm2.61i), propositional calculus library
 
-![pm2.61i](examples/pm2.61i.png)
+![pm2.61i: the statement drawn in the calculator font](examples/pm2.61i.png)
+
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: pm2.61i -->
-```text
-|- ps  [pm2.18i]
-  |- ( -. ps -> ps )  [nsyl4]
-    |- ( ph -> ps )  [pm2.61i.1]
-    |- ( -. ph -> ps )  [pm2.61i.2]
-```
+<ul class="tree" role="list" data-statement="|- ps">
+  <li><span class="st">⊢ 𝜓</span> <a class="lb" href="../libraries/prop.md#pm2.18i">pm2.18i</a>
+    <ul role="list">
+      <li><span class="st">⊢ ( ¬ 𝜓 → 𝜓 )</span> <a class="lb" href="../libraries/prop.md#nsyl4">nsyl4</a>
+        <ul role="list">
+          <li><span class="st">⊢ ( 𝜑 → 𝜓 )</span> <span class="lb">pm2.61i.1</span></li>
+          <li><span class="st">⊢ ( ¬ 𝜑 → 𝜓 )</span> <span class="lb">pm2.61i.2</span></li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
 
-`nsyl4` combines the two hypotheses into `( -. ps -> ps )`, and `pm2.18i` turns that into `ps`. The cases are `ph` and `-. ph`, and the library assumes classical logic, so one of them always holds.
+`nsyl4` combines the two hypotheses into `( ¬ 𝜓 → 𝜓 )`, and `pm2.18i` turns that into `𝜓`. The cases are `𝜑` and `¬ 𝜑`, and the library assumes classical logic, so one of them always holds.
 
 ## 5. De Morgan's law
 
-Not both `ph` and `ps` holds exactly when `ph` fails or `ps` fails.
+Not both `𝜑` and `𝜓` holds exactly when `𝜑` fails or `𝜓` fails.
 
 [`ianor`](../libraries/prop.md#ianor), propositional calculus library
 
-![ianor](examples/ianor.png)
+![ianor: the statement drawn in the calculator font](examples/ianor.png)
+
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: ianor -->
-```text
-|- ( -. ( ph /\ ps ) <-> ( -. ph \/ -. ps ) )  [bitr3i]
-  |- ( ( ph -> -. ps ) <-> -. ( ph /\ ps ) )  [imnan]
-  |- ( ( ph -> -. ps ) <-> ( -. ph \/ -. ps ) )  [pm4.62]
-```
+<ul class="tree" role="list" data-statement="|- ( -. ( ph /\ ps ) &lt;-&gt; ( -. ph \/ -. ps ) )">
+  <li><span class="st">⊢ ( ¬ ( 𝜑 ∧ 𝜓 ) ↔ ( ¬ 𝜑 ∨ ¬ 𝜓 ) )</span> <a class="lb" href="../libraries/prop.md#bitr3i">bitr3i</a>
+    <ul role="list">
+      <li><span class="st">⊢ ( ( 𝜑 → ¬ 𝜓 ) ↔ ¬ ( 𝜑 ∧ 𝜓 ) )</span> <a class="lb" href="../libraries/prop.md#imnan">imnan</a></li>
+      <li><span class="st">⊢ ( ( 𝜑 → ¬ 𝜓 ) ↔ ( ¬ 𝜑 ∨ ¬ 𝜓 ) )</span> <a class="lb" href="../libraries/prop.md#pm4.62">pm4.62</a></li>
+    </ul>
+  </li>
+</ul>
 
-The proof chains two equivalences. `imnan` says `( ph -> -. ps )` is equivalent to `-. ( ph /\ ps )`, and `pm4.62` says it is equivalent to `( -. ph \/ -. ps )`. `bitr3i` joins them through the shared middle statement.
+The proof chains two equivalences. `imnan` says `( 𝜑 → ¬ 𝜓 )` is equivalent to `¬ ( 𝜑 ∧ 𝜓 )`, and `pm4.62` says it is equivalent to `( ¬ 𝜑 ∨ ¬ 𝜓 )`. `bitr3i` joins them through the shared middle statement.
 
 ## 6. Subset is transitive
 
-If `A` is a subset of `B` and `B` is a subset of `C`, then `A` is a subset of `C`.
+If `𝐴` is a subset of `𝐵` and `𝐵` is a subset of `𝐶`, then `𝐴` is a subset of `𝐶`.
 
 Hypotheses:
 
-- `|- A C_ B`
-- `|- B C_ C`
+- `⊢ 𝐴 ⊆ 𝐵`
+- `⊢ 𝐵 ⊆ 𝐶`
 
 [`sstri`](../libraries/ring.md#sstri), ring theory library
 
-![sstri](examples/sstri.png)
+![sstri: the statement drawn in the calculator font](examples/sstri.png)
+
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: sstri -->
-```text
-|- A C_ C  [mp2]
-  |- A C_ B  [sstri.1]
-  |- B C_ C  [sstri.2]
-  |- ( A C_ B -> ( B C_ C -> A C_ C ) )  [sstr2]
-```
+<ul class="tree" role="list" data-statement="|- A C_ C">
+  <li><span class="st">⊢ 𝐴 ⊆ 𝐶</span> <a class="lb" href="../libraries/prop.md#mp2">mp2</a>
+    <ul role="list">
+      <li><span class="st">⊢ 𝐴 ⊆ 𝐵</span> <span class="lb">sstri.1</span></li>
+      <li><span class="st">⊢ 𝐵 ⊆ 𝐶</span> <span class="lb">sstri.2</span></li>
+      <li><span class="st">⊢ ( 𝐴 ⊆ 𝐵 → ( 𝐵 ⊆ 𝐶 → 𝐴 ⊆ 𝐶 ) )</span> <a class="lb" href="../libraries/ring.md#sstr2">sstr2</a></li>
+    </ul>
+  </li>
+</ul>
 
-The proof applies `mp2`, which takes two proven statements `ph` and `ps` and a proof of `( ph -> ( ps -> ch ) )` and concludes `ch`. The implication is `sstr2`, the same fact stated as one implication, so the proof only has to feed the two hypotheses into it.
+The proof applies `mp2`, which takes two proven statements `𝜑` and `𝜓` and a proof of `( 𝜑 → ( 𝜓 → 𝜒 ) )` and concludes `𝜒`. The implication is `sstr2`, the same fact stated as one implication, so the proof only has to feed the two hypotheses into it.
 
 ## 7. A group's identity works on the left
 
-In a group `G` with underlying set `B`, operation `+` and identity element `0`, adding `0` on the left of any element `X` of `B` gives `X`.
+In a group `𝐺` with underlying set `𝐵`, operation `+` and identity element `0`, adding `0` on the left of any element `𝑋` of `𝐵` gives `𝑋`.
 
 Hypotheses:
 
-- ``|- B = ( Base ` G )``
-- ``|- .+ = ( +g ` G )``
-- ``|- .0. = ( 0g ` G )``
+- ``⊢ 𝐵 = ( Base ‘ 𝐺 )``
+- ``⊢ + = ( +g ‘ 𝐺 )``
+- ``⊢ 0 = ( 0g ‘ 𝐺 )``
 
 [`grplid`](../libraries/ring.md#grplid), ring theory library
 
-![grplid](examples/grplid.png)
+![grplid: the statement drawn in the calculator font](examples/grplid.png)
+
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: grplid -->
-```text
-|- ( ( G e. Grp /\ X e. B ) -> ( .0. .+ X ) = X )  [sylan]
-  |- ( G e. Grp -> G e. Mnd )  [grpmnd]
-  |- ( ( G e. Mnd /\ X e. B ) -> ( .0. .+ X ) = X )  [mndlid]
-    |- B = ( Base ` G )  [grpbn0.b]
-    |- .+ = ( +g ` G )  [grplid.p]
-    |- .0. = ( 0g ` G )  [grplid.o]
-```
+<ul class="tree" role="list" data-statement="|- ( ( G e. Grp /\ X e. B ) -&gt; ( .0. .+ X ) = X )">
+  <li><span class="st">⊢ ( ( 𝐺 ∈ Grp ∧ 𝑋 ∈ 𝐵 ) → ( <span class="s">0</span> <span class="s">+</span> 𝑋 ) = 𝑋 )</span> <a class="lb" href="../libraries/prop.md#sylan">sylan</a>
+    <ul role="list">
+      <li><span class="st">⊢ ( 𝐺 ∈ Grp → 𝐺 ∈ Mnd )</span> <a class="lb" href="../libraries/ring.md#grpmnd">grpmnd</a></li>
+      <li><span class="st">⊢ ( ( 𝐺 ∈ Mnd ∧ 𝑋 ∈ 𝐵 ) → ( <span class="s">0</span> <span class="s">+</span> 𝑋 ) = 𝑋 )</span> <a class="lb" href="../libraries/ring.md#mndlid">mndlid</a>
+        <ul role="list">
+          <li><span class="st">⊢ 𝐵 = ( Base ‘ 𝐺 )</span> <span class="lb">grpbn0.b</span></li>
+          <li><span class="st">⊢ <span class="s">+</span> = ( +g ‘ 𝐺 )</span> <span class="lb">grplid.p</span></li>
+          <li><span class="st">⊢ <span class="s">0</span> = ( 0g ‘ 𝐺 )</span> <span class="lb">grplid.o</span></li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
 
-In the statement, `G e. Grp` says `G` is a group and `( .0. .+ X )` is `0 + X`. The proof applies `sylan` to reduce the goal to the same fact for monoids. `grpmnd` shows that every group is a monoid, and `mndlid` is the monoid theorem.
+In the statement, `𝐺 ∈ Grp` says `𝐺` is a group, and `( 0 + 𝑋 )` adds the identity to `𝑋`, where `+` and `0` are the operation and identity the hypotheses name. The proof applies `sylan` to reduce the goal to the same fact for monoids. `grpmnd` shows that every group is a monoid, and `mndlid` is the monoid theorem.
 
 ## 8. Zero times anything is zero in a ring
 
-In a ring `R` with underlying set `B`, multiplication `*` and zero `0`, `0 * X = 0` for every element `X` of `B`.
+In a ring `𝑅` with underlying set `𝐵`, multiplication `·` and zero `0`, `0 · 𝑋 = 0` for every element `𝑋` of `𝐵`.
 
 Hypotheses:
 
-- ``|- B = ( Base ` R )``
-- ``|- .x. = ( .r ` R )``
-- ``|- .0. = ( 0g ` R )``
+- ``⊢ 𝐵 = ( Base ‘ 𝑅 )``
+- ``⊢ · = ( .r ‘ 𝑅 )``
+- ``⊢ 0 = ( 0g ‘ 𝑅 )``
 
 [`ringlz`](../libraries/ring.md#ringlz), ring theory library
 
-![ringlz](examples/ringlz.png)
+![ringlz: the statement drawn in the calculator font](examples/ringlz.png)
+
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: ringlz -->
-```text
-|- ( ( R e. Ring /\ X e. B ) -> ( .0. .x. X ) = .0. )  [sylan]
-  |- ( R e. Ring -> R e. Rng )  [ringrng]
-  |- ( ( R e. Rng /\ X e. B ) -> ( .0. .x. X ) = .0. )  [rnglz]
-    |- B = ( Base ` R )  [ringz.b]
-    |- .x. = ( .r ` R )  [ringz.t]
-    |- .0. = ( 0g ` R )  [ringz.z]
-```
+<ul class="tree" role="list" data-statement="|- ( ( R e. Ring /\ X e. B ) -&gt; ( .0. .x. X ) = .0. )">
+  <li><span class="st">⊢ ( ( 𝑅 ∈ Ring ∧ 𝑋 ∈ 𝐵 ) → ( <span class="s">0</span> <span class="s">·</span> 𝑋 ) = <span class="s">0</span> )</span> <a class="lb" href="../libraries/prop.md#sylan">sylan</a>
+    <ul role="list">
+      <li><span class="st">⊢ ( 𝑅 ∈ Ring → 𝑅 ∈ Rng )</span> <a class="lb" href="../libraries/ring.md#ringrng">ringrng</a></li>
+      <li><span class="st">⊢ ( ( 𝑅 ∈ Rng ∧ 𝑋 ∈ 𝐵 ) → ( <span class="s">0</span> <span class="s">·</span> 𝑋 ) = <span class="s">0</span> )</span> <a class="lb" href="../libraries/ring.md#rnglz">rnglz</a>
+        <ul role="list">
+          <li><span class="st">⊢ 𝐵 = ( Base ‘ 𝑅 )</span> <span class="lb">ringz.b</span></li>
+          <li><span class="st">⊢ <span class="s">·</span> = ( .r ‘ 𝑅 )</span> <span class="lb">ringz.t</span></li>
+          <li><span class="st">⊢ <span class="s">0</span> = ( 0g ‘ 𝑅 )</span> <span class="lb">ringz.z</span></li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
 
-In the statement, `R e. Ring` says `R` is a ring and `( .0. .x. X )` is `0 * X`. The proof has the same shape as example 7, with `ringrng` and `rnglz` in place of `grpmnd` and `mndlid`. `ringrng` shows that a ring is a non-unital ring, which is a ring without the requirement of a multiplicative identity, and `rnglz` proves the fact there.
+In the statement, `𝑅 ∈ Ring` says `𝑅` is a ring, and `( 0 · 𝑋 )` multiplies `𝑋` by zero, where `·` and `0` are the multiplication and zero the hypotheses name. The proof has the same shape as example 7, with `ringrng` and `rnglz` in place of `grpmnd` and `mndlid`. `ringrng` shows that a ring is a non-unital ring, which is a ring without the requirement of a multiplicative identity, and `rnglz` proves the fact there.

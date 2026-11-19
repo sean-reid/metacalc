@@ -95,11 +95,19 @@ pub fn verify(db: &Database) -> ExitCode {
     }
 }
 
-pub fn outline(db: &Database, label: &str) -> Result<ExitCode, ExitCode> {
+pub fn outline(
+    db: &Database,
+    label: &str,
+    form: super::Form,
+    links: Option<&std::path::Path>,
+) -> Result<ExitCode, ExitCode> {
     let id = db
         .find(label)
         .ok_or_else(|| super::unusable(format_args!("no statement is labelled {label}")))?;
     let tree = mm::outline(db, id, "|-").map_err(|e| fail(format_args!("{label}: {e}")))?;
-    print!("{}", tree.render(db));
+    let links = links.map(super::tree::read_links).transpose()?;
+    let text = super::tree::render(db, &tree, form, links.as_ref())
+        .map_err(|e| fail(format_args!("{label}: {e}")))?;
+    print!("{text}");
     Ok(ExitCode::SUCCESS)
 }
