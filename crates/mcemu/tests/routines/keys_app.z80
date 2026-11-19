@@ -1,0 +1,35 @@
+#include "equates.inc"
+#define APP_NAME "keysapp1"
+#include "header.inc"
+
+; Calls app_key in a loop. After each return it records the count of returns, A and B, clears the
+; frame, draws the string at MSG on text row 3 and blits.
+COUNT   = 0A800h
+KEY_A   = 0A801h
+KEY_B   = 0A802h
+MSG     = 0A900h
+
+start:
+	ld hl, ui_font
+	call ui_set_font
+	call ui_clear
+	ld hl, COUNT
+	ld (hl), 0
+loop:
+	call app_key
+	ld (KEY_A), a
+	ld a, b
+	ld (KEY_B), a
+	call ui_clear
+	ld hl, MSG
+	ld de, 0
+	ld b, 3
+	call ui_text
+	call ui_blit
+	ld hl, COUNT
+	inc (hl)
+	jr loop
+
+#define UI_EMBEDDED
+#include "keys.inc"
+#include "ui.z80"

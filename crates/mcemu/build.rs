@@ -539,6 +539,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../app/src/libpage.inc");
     println!("cargo:rerun-if-changed=../../app/src/equates.inc");
     println!("cargo:rerun-if-changed=../../app/src/header.inc");
+    assemble_key_apps(&out);
 }
 
 /// The stub addresses the library needs, as constants named after their labels.
@@ -1549,6 +1550,32 @@ fn assemble_page_ports(out: &Path) {
             &out.join(format!("page_ports{pages}.8xk")),
             &[&format!("PAGES={pages}")],
             &["-I", "../../app/src"],
+        );
+    }
+}
+
+/// The apps that wait for keys: one logging what the OS's `_GetKey` returns, one running
+/// `app_key` over the canvas.
+fn assemble_key_apps(out: &Path) {
+    println!("cargo:rerun-if-changed=../../app/src/keys.inc");
+    let font_dir = out.join("ui_font");
+    let include = [
+        "-I",
+        "../../app/src",
+        "-I",
+        "../../ui",
+        "-I",
+        "../..",
+        "-I",
+        font_dir.to_str().unwrap(),
+        "-L",
+    ];
+    for (src, name) in [("get_key_log", "get_key_log"), ("keys_app", "keys_app")] {
+        spasm(
+            &Path::new("tests/routines").join(format!("{src}.z80")),
+            &out.join(format!("{name}.8xk")),
+            &[],
+            &include,
         );
     }
 }
