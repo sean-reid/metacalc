@@ -91,6 +91,11 @@ pub enum Op {
         selected: bool,
     },
     Marker(u8),
+    Bar {
+        row: u8,
+        done: u16,
+        total: u16,
+    },
     Blit,
     Clear,
     /// An LCD command, after a delay that lets the controller take it.
@@ -268,6 +273,12 @@ impl Script {
                 self.word(&[0x11], r);
                 self.word(&[0x01], u16::from_be_bytes([*row, u8::from(*selected)]));
                 self.run("ui_list_row", &[], call);
+            }
+            Op::Bar { row, done, total } => {
+                self.code.extend_from_slice(&[0x3E, *row]);
+                self.word(&[0x21], *done);
+                self.word(&[0x11], *total);
+                self.run("ui_bar", &[], call);
             }
             Op::Blit => self.run("ui_blit", &[], call),
             Op::Clear => self.run("ui_clear", &[], call),
