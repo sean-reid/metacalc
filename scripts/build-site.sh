@@ -51,9 +51,9 @@ if [ ! -f "$guide" ]; then
 	echo "build-site: $guide was not built" >&2
 	status=1
 else
-	grep -q '<a class="lb" href="\.\./libraries/[a-z]*\.html#' "$guide" ||
+	grep -q '<a class="lb" href="\.\./libraries/[a-z0-9_-]*\.html#' "$guide" ||
 		{ echo "build-site: $guide has no tree link to a library page as .html" >&2; status=1; }
-	if grep -q 'href="[^"]*libraries/[a-z]*\.md#' "$guide"; then
+	if grep -q 'href="[^"]*libraries/[a-z0-9_-]*\.md#' "$guide"; then
 		echo "build-site: $guide links to a library .md file, which mdBook did not rewrite" >&2
 		status=1
 	fi

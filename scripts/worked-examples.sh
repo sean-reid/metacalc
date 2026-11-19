@@ -184,10 +184,11 @@ links() {
 outlines() {
 	mkdir -p "$1" || return 1
 	links "$1" "$1/links" || return 1
-	for label in $(labels); do
+	labels >"$1/labels" || return 1
+	while read -r label; do
 		mcpack outline "$target" "$label" --html --links "$1/links" >"$1/$label" || return 1
 		mcpack outline "$target" "$label" >"$1/$label.ascii" || return 1
-	done
+	done <"$1/labels"
 }
 
 # Prints the ASCII tokens of the statements on the lines of the files, one per line, sorted.
