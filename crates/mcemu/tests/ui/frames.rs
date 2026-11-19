@@ -195,10 +195,19 @@ fn the_tree_outline_and_its_cursor() {
 fn the_checking_screen_at_the_start_midway_and_finished() {
     let mut ui = unchecked_ui(logic_bytes());
     press(&mut ui, &[F2]);
+    let no_ink = |ui: &Ui| {
+        let calls = ui.frame_calls().1;
+        assert!(
+            !calls.iter().any(|c| matches!(c, Call::Ink(_))),
+            "the checking screen records host ink, which the replay would OR over a broken bar"
+        );
+    };
+    no_ink(&ui);
     replay("checking-start", &ui);
     for _ in 0..5 {
         ui.step_check();
     }
+    no_ink(&ui);
     assert!(replay("checking-midway", &ui) >= 5);
     let bar = |ui: &Ui| {
         ui.frame_calls().1.into_iter().find_map(|c| match c {
@@ -212,6 +221,7 @@ fn the_checking_screen_at_the_start_midway_and_finished() {
         "a half drawn bar: {done} of {total}"
     );
     while ui.step_check() != mcui::CheckStep::Finished {}
+    no_ink(&ui);
     replay("checking-finished", &ui);
 }
 

@@ -154,6 +154,7 @@ pub enum Call {
         selected: bool,
     },
     Marker(usize),
+    /// A progress bar of `done` of `total` on `row`.
     Bar {
         row: usize,
         done: usize,
@@ -481,6 +482,24 @@ mod tests {
         assert_eq!(key_cut("\u{dc}n\u{ef}", 16), "");
         assert_eq!(key_cut("Go\u{2026}", 16), "Go");
         assert_eq!(key_cut("a b", 16), "a b");
+    }
+
+    #[test]
+    fn a_bar_records_one_call_and_draws_what_an_unrecorded_one_does() {
+        let mut recording = Canvas::recording();
+        recording.bar(2, 3, 7);
+        let (bitmap, calls) = recording.into_parts();
+        assert_eq!(
+            calls,
+            [Call::Bar {
+                row: 2,
+                done: 3,
+                total: 7
+            }]
+        );
+        let mut plain = Canvas::default();
+        plain.bar(2, 3, 7);
+        assert!(bitmap == plain.into_bitmap());
     }
 
     #[test]

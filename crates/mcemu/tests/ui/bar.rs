@@ -1,5 +1,5 @@
 use crate::support::*;
-use mcui::canvas::{Canvas, TEXT_WIDTH};
+use mcui::canvas::{Call, Canvas, TEXT_WIDTH};
 
 const FILL: &str = "The quick brown fox jumps over the lazy dog 0123456789 MWmw";
 
@@ -76,8 +76,6 @@ fn edges() -> Vec<(usize, usize)> {
         (3325, 3326),
         (3326, 3326),
         (3327, 3326),
-        (1663, 3326),
-        (1664, 3326),
     ];
     for total in [inner - 1, inner, inner + 1, TEXT_WIDTH, TEXT_WIDTH + 1] {
         pairs.extend([(0, total), (1, total), (total - 1, total), (total, total)]);
@@ -147,9 +145,40 @@ fn done_sampled_across_3326_and_the_largest_totals() {
     sweep(40000, 997);
 }
 
+/// The smallest done whose bar has `k` fill columns, and the done before it, for each k.
+fn boundaries(total: usize) -> Vec<usize> {
+    (1..=TEXT_WIDTH - 4)
+        .flat_map(|k| {
+            let at = (k * total).div_ceil(TEXT_WIDTH - 4);
+            [at, at - 1]
+        })
+        .collect()
+}
+
+#[test]
+fn done_on_each_side_of_every_rounding_boundary_of_the_large_totals() {
+    for total in [3326, 40000, 65520, 65534, 65535] {
+        for chunk in boundaries(total).chunks(8) {
+            let bars: Vec<_> = chunk
+                .iter()
+                .enumerate()
+                .map(|(row, &done)| (row, done, total))
+                .collect();
+            same(&format!("{chunk:?} of {total}"), &bars, false);
+        }
+    }
+}
+
+/// Where `ui_row_addr` puts the first byte of row `row`, which for a row past 85 wraps in its 8
+/// bit arithmetic, and the 96 bytes a bar there would reach.
+fn stray(row: u8) -> (u16, u16) {
+    (REAL.frame + 12 + (u16::from(row) * 3 % 256) * 32, 96)
+}
+
 #[test]
 fn a_row_of_8_or_more_draws_nothing() {
-    let rows = [8usize, 9, 100, 255];
+    let rows = [8usize, 9, 10, 11, 12, 13, 14, 15, 100, 128, 129, 255];
+    let watch: Vec<_> = rows.iter().map(|&row| stray(byte(row))).collect();
     for under in [false, true] {
         let bars: Vec<_> = rows.iter().map(|&row| (row, 50, 100)).collect();
         let want = model(&bars, under);
@@ -158,9 +187,35 @@ fn a_row_of_8_or_more_draws_nothing() {
             model(&[], under),
             "the model draws a bar on row 8 or more"
         );
-        let got = run(REAL, &script(&bars, under));
+        let got = run_watched(REAL, &script(&bars, under), &watch);
         same_frame("rows past 7", &got.frame, &want);
     }
+}
+
+#[test]
+#[should_panic(expected = "65536 does not fit 16 bits")]
+fn a_done_past_16_bits_fails_the_replay_instead_of_truncating() {
+    ops(&[Call::Bar {
+        row: 2,
+        done: 65536,
+        total: 70000,
+    }]);
+}
+
+#[test]
+#[should_panic(expected = "65536 does not fit 16 bits")]
+fn a_total_past_16_bits_fails_the_replay_instead_of_truncating() {
+    ops(&[Call::Bar {
+        row: 2,
+        done: 3,
+        total: 65536,
+    }]);
+}
+
+#[test]
+#[should_panic(expected = "65536 does not fit 16 bits")]
+fn a_count_of_65536_does_not_wrap_to_zero() {
+    count(65536);
 }
 
 #[test]

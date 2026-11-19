@@ -1,6 +1,12 @@
 ; Progress bar.
 
-UB_INNER                .equ UI_WIDTH-6
+; The outline masks $7F and $FE and the side bits are the model's columns 1 and 94, which holds
+; for a margin of 1 only; the fill starts two columns inside the outline.
+#if (UI_MARGIN < 1) || (UI_MARGIN > 1)
+ .error "ui_bar draws the outline masks of a one column margin"
+#endif
+UB_FILL0                .equ UI_MARGIN+2
+UB_INNER                .equ UI_WIDTH-2*UI_MARGIN-4
 UB_SIDES                .equ 5
 
 ; ui_bar   in:  A = text row 0 to 7, nothing drawn for a larger one; HL = done, DE = total,
@@ -44,12 +50,16 @@ ub_n:
 	UB_DBL
 	UB_DBLADD
 	UB_DBL
+; one more shift leaves 180 * done in A, H, L; the division runs on its half, 90 * done
 	add hl,hl
 	rla
 	ld e,l
 	ld l,h
 	ld h,a
 	ld d,2
+; done is below total here, so the remainder starts below total, the quotient stays below 90 and 7
+; steps give it; D collects the quotient bits inverted behind a sentinel that the 7th shift
+; carries out.
 ub_div:
 	sla e
 	adc hl,hl
@@ -67,7 +77,7 @@ ub_fill:
 	pop af
 	call ui_row_addr
 	ld a,b
-	add a,3
+	add a,UB_FILL0
 	ld b,a
 	push hl
 	and 7
@@ -100,7 +110,7 @@ ub_edges:
 ; them; HL = the next scanline's first byte out. Destroys AF BC.
 ub_fillrow:
 	ld b,d
-	ld c,$1F
+	ld c,$FF>>UB_FILL0
 	ld a,b
 	or a
 	jr z,ub_last
