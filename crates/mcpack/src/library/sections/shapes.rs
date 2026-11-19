@@ -5,7 +5,8 @@ use crate::library::PackError;
 pub const SHAPE_CAPACITY: usize = 255;
 
 /// The syntax axioms' parts in reading order, one byte each: 0 for a constant, k + 1 for the
-/// child k of a tree node, in the table order of the trees section.
+/// child k of a tree node, in the table order of the trees section. Decoding checks the bytes
+/// against the trees' arities; only the library check compares them with the axioms' records.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shapes {
     pub axioms: Vec<Vec<u8>>,

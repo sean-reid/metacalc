@@ -63,8 +63,11 @@
 //!            table's order, its parts after the typecode in reading order, one byte each: 00h
 //!            a constant, k + 1 the child k (0-based, in the order the tree lists children); an
 //!            axiom has 1 to 255 parts, every child 0 to arity - 1 appears exactly once, and
-//!            the count of non-zero bytes is the arity; a library has a shapes section exactly
-//!            when it has a trees section; the packer keeps the whole section inside one chunk
+//!            the count of non-zero bytes is the arity; the first offset is 2 * (count + 2),
+//!            the offsets strictly rise, and the last is the section's length; a library has a
+//!            shapes section exactly when it has a trees section; the decoder checks that each
+//!            item lies inside one chunk, and the packer keeps the whole section inside one
+//!            chunk, so no item is padded
 //! ```
 //!
 //! A record is only usable if its float hypotheses come before its essential ones and name

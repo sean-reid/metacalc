@@ -24,7 +24,8 @@ fn damaged(bytes: &[u8], change: impl FnOnce(&mut [u8])) -> Vec<u8> {
     out
 }
 
-/// Only the shapes section differs from a library that decodes, so its refusal is the shapes'.
+/// Checks that the decoder refuses; the callers damage only the shapes section of a library
+/// that decodes undamaged, and the decoder reports no kind of error.
 fn refused(bytes: &[u8]) {
     assert!(decode(bytes).is_err(), "the damaged library decodes");
 }
@@ -115,18 +116,16 @@ fn table_row(bytes: &[u8], id: u8) -> usize {
         .unwrap()
 }
 
+/// An item of no parts is two equal offsets, which the strictly rising rule refuses too; the
+/// two rules cannot be tried apart.
 #[test]
-fn an_axiom_with_no_parts_does_not_decode() {
+fn an_axiom_with_no_parts_is_also_a_non_rising_offset_and_does_not_decode() {
     let bytes = packed();
     refused(&damaged(&bytes, |s| {
-        let at = u16::from_le_bytes([s[4], s[5]]);
-        s[4..6].copy_from_slice(&(at - 5).to_le_bytes());
-        s[6..8].copy_from_slice(&(at - 5).to_le_bytes());
+        s[4..6].copy_from_slice(&10u16.to_le_bytes())
     }));
     refused(&damaged(&bytes, |s| {
-        let end = u16::from_le_bytes([s[6], s[7]]);
-        s[6..8].copy_from_slice(&end.to_le_bytes());
-        s[4..6].copy_from_slice(&end.to_le_bytes());
+        s[6..8].copy_from_slice(&12u16.to_le_bytes())
     }));
 }
 
@@ -203,21 +202,25 @@ fn an_item_that_crosses_a_16_kb_boundary_does_not_decode() {
 
 #[test]
 fn a_whole_section_that_would_cross_a_boundary_is_packed_at_the_next_one() {
-    let mut src = String::from(
-        "$c ( ) |- wff $.\n$v ph ps $.\nwph $f wff ph $.\nwps $f wff ps $.\nwi $a wff ( ph ps ) $.\n",
-    );
-    for i in 0..1400 {
-        src += &format!("ax-{i:04} $a |- ( ph ps ) $.\n");
+    let chunk = library::CHUNK;
+    let mut padded = 0;
+    for n in 150..=383 {
+        let db = super::trees::axioms(n);
+        let bytes = pack(&db, &(0..db.stmts.len() as StmtId).collect::<Vec<_>>()).unwrap();
+        let (shapes, trees) = (section(&bytes, SHAPES), section(&bytes, TREES));
+        let natural = (trees.offset + trees.length).next_multiple_of(4);
+        let crosses = natural / chunk != (natural + shapes.length - 1) / chunk;
+        if crosses {
+            assert_eq!(shapes.offset % chunk, 0, "{n} axioms");
+            assert!(trees.offset + trees.length <= shapes.offset, "{n} axioms");
+            assert!(shapes.offset > natural, "{n} axioms");
+            library::check(&bytes).unwrap();
+            padded += 1;
+        } else {
+            assert_eq!(shapes.offset, natural, "{n} axioms");
+        }
     }
-    let db = parse(&src);
-    let bytes = pack(&db, &closure(&db)).unwrap();
-    let entry = section(&bytes, SHAPES);
-    assert!(entry.offset > HEADER_LEN);
-    assert_eq!(
-        entry.offset / library::CHUNK,
-        (entry.offset + entry.length - 1) / library::CHUNK
-    );
-    library::check(&bytes).unwrap();
+    assert!(padded > 0, "no fixture needed the padding");
 }
 
 #[test]
@@ -232,10 +235,7 @@ fn a_stored_shape_that_is_not_the_axioms_statement_fails_the_check() {
     let wal = damaged(&bytes, |s| s.swap(8 + 5 + 1, 8 + 5 + 2));
     assert!(matches!(library::check(&wal), Err(CheckError::Sections(_))));
     let token = damaged(&bytes, |s| s[8 + 5] = 1);
-    assert!(
-        decode(&token).is_err() || library::check(&token).is_err(),
-        "a constant turned into a child is refused"
-    );
+    assert!(decode(&token).is_err(), "[1,2,1] repeats a child");
 }
 
 #[test]

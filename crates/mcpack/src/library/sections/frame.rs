@@ -169,3 +169,28 @@ impl Writer {
         Ok(self.out)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn opened_at(before: usize, len: usize) -> Result<usize, TooLarge> {
+        let mut w = Writer::new(vec![1; before]);
+        w.open_whole(9, len)?;
+        Ok(w.len())
+    }
+
+    #[test]
+    fn a_whole_section_starts_where_it_stays_inside_one_chunk() {
+        assert_eq!(opened_at(0, CHUNK), Ok(0));
+        assert_eq!(opened_at(4, CHUNK), Ok(CHUNK));
+        assert_eq!(opened_at(0, CHUNK - 2), Ok(0));
+        assert_eq!(opened_at(4, CHUNK - 2), Ok(CHUNK));
+        assert_eq!(opened_at(4, CHUNK - 4), Ok(4));
+        assert_eq!(opened_at(8, CHUNK - 4), Ok(CHUNK));
+        assert_eq!(opened_at(CHUNK + 2, 100), Ok(CHUNK + 4));
+        assert_eq!(opened_at(2 * CHUNK - 100, 100), Ok(2 * CHUNK - 100));
+        assert_eq!(opened_at(2 * CHUNK - 100, 101), Ok(2 * CHUNK));
+        assert_eq!(opened_at(10, CHUNK + 1), Err(TooLarge));
+    }
+}

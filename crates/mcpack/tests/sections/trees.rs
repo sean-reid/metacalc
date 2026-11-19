@@ -234,7 +234,7 @@ fn strings(n: usize) -> Vec<String> {
     out
 }
 
-fn axioms(n: usize) -> Database {
+pub(super) fn axioms(n: usize) -> Database {
     let mut src = String::from("$c |- wff a b $.\n");
     for (i, body) in strings(n).iter().enumerate() {
         src += &format!("w{i} $a wff {body} $.\nax-{i} $a |- {body} $.\n");
