@@ -12,7 +12,7 @@ expect() {
 	want=$2
 	shift 2
 	out=$(printf '%s\n' "$@" | sh "$root/scripts/ci-changes.sh") || { echo "FAIL $name: the script failed"; status=1; return; }
-	[ "$(echo "$out" | grep -cE '^[a-z]+=(true|false)$')" = 7 ] || { echo "FAIL $name: printed '$out'"; status=1; return; }
+	[ "$(echo "$out" | grep -cE '^[a-z]+=(true|false)$')" = 8 ] || { echo "FAIL $name: printed '$out'"; status=1; return; }
 	got=$(echo "$out" | sed -n 's/=true$//p' | tr '\n' ' ' | sed 's/ $//')
 	if [ "$got" = "$want" ]; then
 		echo "ok $name"
@@ -22,13 +22,14 @@ expect() {
 	fi
 }
 
-every="rust emu audit docs app libraries site"
+every="rust emu audit docs app libraries site installer"
 crate="rust emu libraries site"
 z80="emu app libraries site"
 
 expect nothing "" ""
 expect readme "" README.md
 expect gitignore "" .gitignore
+expect licence "installer" LICENSE
 expect favicon "docs site" docs/theme/favicon.svg
 expect book-config "docs site" docs/book.toml
 expect library-page "docs site" docs/src/libraries/prop.md
@@ -39,7 +40,14 @@ expect packer "$crate" crates/mcpack/src/library/pack.rs
 expect font "$crate" crates/mcglyph/src/z80.rs
 expect harness "$crate" crates/mcemu/src/lib.rs
 expect crate-manifest "rust emu audit libraries site" crates/mcui/Cargo.toml
-expect sender "rust audit app" crates/mcsend/src/tifile.rs
+expect sender-manifest "rust emu audit libraries site installer" crates/mcsend/Cargo.toml
+expect sender "rust audit app installer" crates/mcsend/src/tifile.rs
+expect sender-test "rust audit app installer" crates/mcsend/tests/transfer.rs
+expect install-script "site installer" scripts/install.sh
+expect package-script "site installer" scripts/package-mcsend.sh
+expect links-script "site installer" scripts/check-mcsend-links.sh
+expect install-test "installer" scripts/test-install.sh
+expect release-workflow "site installer" .github/workflows/release-please.yml
 expect new-crate "rust audit" crates/mcnew/src/main.rs
 expect kernel "$z80" kernel/init.inc
 expect reader "$z80" lib/lib.z80
