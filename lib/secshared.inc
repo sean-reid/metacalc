@@ -4,6 +4,8 @@
 ; section may not start before it. The records are walked only as far as the last one, whose
 ; place the directory gives; a library whose directory lists the records out of order can end
 ; later than this finds.
+; Every position here is below 2^22, since lib_open bounds the length by the flash pages and every
+; count read adds at most 2 * 65535, so no sum carries out of 24 bits.
 ; out: Z and lr_hdr = the end, or NZ and A = status. Destroys all but IX, IY.
 lsx_records_end:
 	ld hl,(lr_count)
