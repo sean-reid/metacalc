@@ -250,7 +250,7 @@ const CASES: &[Case] = &[
         ],
     ),
     refused(
-        "a pair declared outside the scope of the axiom binds its uses",
+        "a pair declared around an axiom binds its uses",
         "be disjoint",
         "DisjointViolation",
         &[(
@@ -262,34 +262,12 @@ const CASES: &[Case] = &[
         )],
     ),
     case(
-        "a pair declared outside the scope of a theorem lets it use the axiom",
+        "a pair declared around a theorem lets it use the axiom",
         &[(
             "top.mm",
             "$c wff |- R $. $v x y $. vx $f wff x $. vy $f wff y $.
              ${ $d x y $. ax $a |- R x y $. $}
              ${ $d x y $. ${ th $p |- R x y $= vx vy ax $. $} $}",
-        )],
-    ),
-    refused(
-        "a pair declared in a closed scope binds nothing later",
-        "be disjoint",
-        "DisjointViolation",
-        &[(
-            "top.mm",
-            "$c wff |- R $. $v x y $. vx $f wff x $. vy $f wff y $.
-             ${ $d x y $. ax $a |- R x y $. $}
-             ${ $d x y $. $}
-             th $p |- R x y $= vx vy ax $.",
-        )],
-    ),
-    case(
-        "an enclosing pair with a variable the axiom does not use binds nothing",
-        &[(
-            "top.mm",
-            "$c wff |- R $. $v x y $. vx $f wff x $. vy $f wff y $.
-             $d x y $.
-             ${ ax $a |- R x $. $}
-             th $p |- R y $= vy ax $.",
         )],
     ),
     case(

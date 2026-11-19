@@ -241,6 +241,9 @@ fn an_axiom_inherits_the_pairs_of_the_scopes_around_it() {
         ${ $d p q $. in $p |- ( p -> q ) $= wp wq ax-in $. $}
     ";
     let src = format!("{DISJOINT}{tail}");
+    let db = mm::parse(format!("{LOGIC}{src}").into_bytes()).expect("database parses");
+    let pair = |label: &str| db.stmt(db.find(label).unwrap()).frame.dv.len();
+    assert_eq!(pair("ax-in"), 1);
     assert_eq!(check(&src, "same"), Err(ProofError::DisjointViolation));
     assert_eq!(check(&src, "apart"), Err(ProofError::DisjointViolation));
     assert_eq!(check(&src, "in"), Ok(()));
@@ -254,8 +257,12 @@ fn a_theorem_inherits_the_pairs_of_the_scopes_around_it() {
 
 #[test]
 fn an_enclosing_pair_binds_an_axiom_only_if_it_uses_both_variables() {
-    let tail = "${ $d p q $. ${ ax-p $a |- p $. $} th $p |- q $= wq ax-p $. $}";
-    assert_eq!(check(&format!("{DISJOINT}{tail}"), "th"), Ok(()));
+    let src = format!(
+        "{LOGIC}{DISJOINT}${{ $d p q $. ${{ ax-p $a |- p $. $}} th $p |- q $= wq ax-p $. $}}"
+    );
+    let db = mm::parse(src.into_bytes()).expect("database parses");
+    assert!(db.stmt(db.find("ax-p").unwrap()).frame.dv.is_empty());
+    assert_eq!(Verifier::new(&db).verify(db.find("th").unwrap()), Ok(()));
 }
 
 #[test]
