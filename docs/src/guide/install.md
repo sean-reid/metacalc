@@ -6,7 +6,7 @@ Plug the calculator into your computer, then run this in a terminal:
 curl -fsSL https://raw.githubusercontent.com/sean-reid/metacalc/main/scripts/install.sh | sh
 ```
 
-The script finds the latest release and downloads the app (`metacalc.8xk`), a small sender for your computer called `mcsend`, and a `SHA256SUMS` file. It checks both downloads against the sums, then runs `mcsend`, which sends the app over USB and prints its progress. It writes only to a temporary directory and removes it when it finishes. It never uses `sudo`. It runs on macOS (Apple silicon and Intel) and on Linux (x86_64). `mcsend` needs nothing installed beyond the system itself: it carries its own USB library, and on Linux it may also use libudev, which every systemd distribution has.
+The script finds the latest release and downloads the app (`metacalc.8xk`), a small sender for your computer called `mcsend`, and a `SHA256SUMS` file. It checks both downloads against the sums, then runs `mcsend`, which sends the app over USB and prints its progress. It writes only to a temporary directory and removes it when it finishes. It never uses `sudo`. It runs on macOS (Apple silicon and Intel) and on Linux (x86_64). `mcsend` needs nothing installed beyond the system itself: it carries its own USB library.
 
 ## What you need
 
