@@ -3,7 +3,6 @@
 #[path = "common/realos.rs"]
 mod realos;
 
-use mcemu::Machine;
 use realos::*;
 
 const RAM_BASE: usize = 0x8000;
