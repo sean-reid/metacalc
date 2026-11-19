@@ -43,27 +43,6 @@ fn model(bytes: &[u8]) -> Vec<u8> {
         .collect()
 }
 
-fn kernel_init(rig: &mut Rig) -> u8 {
-    let mut block = vec![rig.lib_page];
-    for value in [0xFFFFu16; 4] {
-        block.extend(value.to_le_bytes());
-    }
-    rig.poke(KERNEL_PARAMS, &block);
-    let regs = Regs {
-        hl: KERNEL_PARAMS,
-        ..Regs::default()
-    };
-    rig.call("KERNEL_INIT", regs).status()
-}
-
-fn verify(rig: &mut Rig, id: usize) -> u8 {
-    let regs = Regs {
-        hl: id as u16,
-        ..Regs::default()
-    };
-    rig.call("KERNEL_VERIFY", regs).status()
-}
-
 fn spare(rig: &mut Rig) -> Vec<u8> {
     rig.m.ram_page(SPARE_PAGE).to_vec()
 }
@@ -84,8 +63,8 @@ fn a_read_between_two_verifies_changes_no_verdict_and_no_kernel_state() {
         refused += want.iter().filter(|&&s| s != 0).count();
         let mut rig = Rig::with_image(WITH_KERNEL);
         rig.load(&bytes);
-        assert_eq!(kernel_init(&mut rig), 0, "{name}");
-        let first: Vec<u8> = (0..want.len()).map(|id| verify(&mut rig, id)).collect();
+        assert_eq!(rig.kernel_init(), 0, "{name}");
+        let first: Vec<u8> = (0..want.len()).map(|id| rig.kernel_verify(id)).collect();
         assert_eq!(first, want, "{name}: before any read");
         let before = spare(&mut rig);
         rig.open_ok();
@@ -121,11 +100,11 @@ fn a_read_between_two_verifies_changes_no_verdict_and_no_kernel_state() {
         );
         let mut mixed = Vec::new();
         for id in 0..want.len() {
-            let one = verify(&mut rig, id);
+            let one = rig.kernel_verify(id);
             let (status, _) = rig.label_of(id as u16);
             assert_eq!(status, ST_OK);
             assert_eq!(rig.read(id as u32, 1).0, ST_OK);
-            mixed.push((one, verify(&mut rig, id)));
+            mixed.push((one, rig.kernel_verify(id)));
         }
         let want_pairs: Vec<(u8, u8)> = want.iter().map(|&s| (s, s)).collect();
         assert_eq!(mixed, want_pairs, "{name}: verdicts around a read");
@@ -140,10 +119,10 @@ fn a_kernel_init_after_a_read_works_and_a_read_after_a_kernel_init_works() {
     rig.load(&bytes);
     rig.open_ok();
     assert_eq!(rig.read(0, 20).0, ST_OK);
-    assert_eq!(kernel_init(&mut rig), 0);
+    assert_eq!(rig.kernel_init(), 0);
     let want = model(&bytes);
     for (id, &expected) in want.iter().enumerate() {
-        assert_eq!(verify(&mut rig, id), expected);
+        assert_eq!(rig.kernel_verify(id), expected);
         assert_eq!(rig.read(id as u32, 1).0, ST_OK);
     }
 }
@@ -166,7 +145,7 @@ fn a_read_between_the_calls_of_a_checksum_run_leaves_its_result_alone() {
     for with_reads in [false, true] {
         let mut rig = Rig::with_image(WITH_KERNEL);
         rig.load(&bytes);
-        assert_eq!(kernel_init(&mut rig), 0);
+        assert_eq!(rig.kernel_init(), 0);
         rig.open_ok();
         assert_eq!(rig.call("KERNEL_CRC_BEGIN", Regs::default()).status(), 0);
         let mut statuses = Vec::new();

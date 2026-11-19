@@ -254,6 +254,28 @@ impl Rig {
         assert_eq!(self.open(), ST_OK);
     }
 
+    /// `kernel_init` on the loaded library with every limit at its largest.
+    pub fn kernel_init(&mut self) -> u8 {
+        let mut block = vec![self.lib_page];
+        for value in [0xFFFFu16; 4] {
+            block.extend(value.to_le_bytes());
+        }
+        self.poke(KERNEL_PARAMS, &block);
+        let regs = Regs {
+            hl: KERNEL_PARAMS,
+            ..Regs::default()
+        };
+        self.call("KERNEL_INIT", regs).status()
+    }
+
+    pub fn kernel_verify(&mut self, id: usize) -> u8 {
+        let regs = Regs {
+            hl: id as u16,
+            ..Regs::default()
+        };
+        self.call("KERNEL_VERIFY", regs).status()
+    }
+
     pub fn read_call(&mut self, offset: u32, len: u16, dest: u16) -> Out {
         let regs = Regs {
             a: (offset >> 16) as u8,
