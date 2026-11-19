@@ -8,7 +8,7 @@ pub const MAX_STATEMENTS: usize = 32;
 pub const MAX_TOKENS: usize = 768;
 /// Subexpressions of all an assertion's statements together.
 pub const MAX_NODES: usize = 384;
-/// Tokens of one statement, with its typecode.
+/// Tokens of one statement, with its typecode; a library stores a statement's length in one byte.
 pub const MAX_STATEMENT_TOKENS: usize = 255;
 /// Subexpressions of one statement.
 pub const MAX_STATEMENT_NODES: usize = 255;

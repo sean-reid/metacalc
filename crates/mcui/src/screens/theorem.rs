@@ -15,6 +15,9 @@ use std::rc::Rc;
 /// The labels of the five keys.
 pub(crate) const KEYS: [&str; 5] = ["Fold", "Dist", "Why", "Try", ""];
 
+/// The keys that work on a theorem past a cap.
+const REFUSED_KEYS: [&str; 5] = ["", "Dist", "", "Try", ""];
+
 /// The sentence that stands in for the statements of an assertion past a cap.
 const TOO_LARGE: &str = "This theorem is too large to show on the calculator";
 
@@ -144,7 +147,6 @@ impl Theorem {
         if self.too_large {
             return match key {
                 Key::F2 => Nav::push(Dist::open(self.library, self.index)),
-                Key::F3 => self.proof(ctx),
                 Key::F4 => Nav::push(Proving::open(ctx, self.library, self.index)),
                 Key::Clear => Nav::Pop,
                 _ => Nav::Stay,
@@ -219,7 +221,7 @@ impl Theorem {
         canvas.title(lib.label(self.index), &status);
         if self.too_large {
             notice::body(canvas, &[TOO_LARGE]);
-            canvas.soft_keys(KEYS);
+            canvas.soft_keys(REFUSED_KEYS);
             return;
         }
         let window = 1..1 + CONTENT_ROWS as isize;

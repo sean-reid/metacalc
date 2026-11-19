@@ -6,12 +6,23 @@ mod support;
 use mcglyph::Bitmap;
 use mcpack::library;
 use mcui::Key::*;
-use mcui::canvas::{CONTENT_ROWS, TEXT_WIDTH, text_width, wrap};
+use mcui::canvas::text_width;
 use mcui::data::{Installed, Lib};
 use mcui::{State, Ui};
-use support::{check_frame, db, open, pack_all, press, statuses, text_at, ui_over};
+use support::{
+    check_frame, db, index_of, key_label_is, open, pack_all, press, statuses, text_at, typed,
+    ui_over,
+};
 
-const SENTENCE: &str = "This theorem is too large to show on the calculator";
+/// The refused theorem's sentence as the notice wraps it, with the text row of each line.
+const THEOREM_NOTICE: [(usize, &str); 3] = [
+    (2, "This theorem is too"),
+    (3, "large to show on the"),
+    (4, "calculator"),
+];
+
+/// The Prove notice for a statement the editor refuses.
+const PROVE_NOTICE: [(usize, &str); 2] = [(3, "its statement is too"), (4, "large")];
 
 /// A statement of `tokens` tokens counting its typecode and `nodes` subexpressions: a closed run
 /// of constants under `nodes / 2` pairing nodes (two subexpressions, one token) and, for an even
@@ -121,22 +132,14 @@ fn spread(count: usize, tokens: usize, nodes: usize) -> Vec<Shape> {
         .collect()
 }
 
-fn notice_is_drawn(frame: &Bitmap) -> bool {
-    sentence_is_drawn(frame, SENTENCE)
+fn lines_are_drawn(frame: &Bitmap, lines: &[(usize, &str)]) -> bool {
+    lines
+        .iter()
+        .all(|&(row, line)| text_at(frame, (96 - text_width(line)) / 2, row, line, false))
 }
 
-fn sentence_is_drawn(frame: &Bitmap, sentence: &str) -> bool {
-    let lines = wrap(sentence, TEXT_WIDTH);
-    let first = 1 + (CONTENT_ROWS - lines.len()) / 2;
-    lines.iter().enumerate().all(|(i, line)| {
-        text_at(
-            frame,
-            96usize.saturating_sub(text_width(line)) / 2,
-            first + i,
-            line,
-            false,
-        )
-    })
+fn notice_is_drawn(frame: &Bitmap) -> bool {
+    lines_are_drawn(frame, &THEOREM_NOTICE)
 }
 
 fn title_label_is_big(ui: &Ui) -> bool {
@@ -191,19 +194,95 @@ fn statement_nodes_are_capped_at_255() {
 }
 
 #[test]
-fn a_refused_theorem_ignores_the_keys_that_act_on_statements_and_clear_goes_back() {
-    let mut ui = opened(&spread(33, 66, 33));
+fn a_refused_theorem_offers_dist_and_try_only_and_clear_goes_back() {
+    let shapes = spread(33, 66, 33);
+    let mut ui = opened_in(proved_library(&shapes), &shapes);
     let frame = ui.frame();
     let state = ui.state();
-    for key in [Up, Down, Left, Right, Enter, F1, F5, On, Letter('x')] {
+    for (key, label) in [(0, ""), (1, "Dist"), (2, ""), (3, "Try")] {
+        if !label.is_empty() {
+            assert!(key_label_is(&frame, key, label), "key {key}");
+        }
+    }
+    for key in [Up, Down, Left, Right, Enter, F1, F3, F5, On, Letter('x')] {
         ui.press(key);
         assert!(ui.frame() == frame, "{key:?} changed the frame");
         assert_eq!(ui.state(), state, "{key:?}");
         assert_eq!(ui.depth(), 3, "{key:?}");
     }
+    ui.press(F2);
+    assert!(matches!(ui.state(), State::Dist { ref label, .. } if label == "big"));
+    ui.press(Clear);
+    ui.press(F4);
+    assert!(matches!(ui.state(), State::Notice { ref title } if title == "Prove"));
+    assert!(lines_are_drawn(&ui.frame(), &PROVE_NOTICE));
+    ui.press(Clear);
     ui.press(Clear);
     assert_eq!(ui.depth(), 2);
     assert!(matches!(ui.state(), State::List { label: Some(ref l), .. } if l == "big"));
+}
+
+#[test]
+fn a_normal_theorem_opened_after_a_refused_one_starts_fresh() {
+    let shapes = spread(33, 66, 33);
+    let bytes = library(&shapes);
+    let mut after = ui_over(bytes.clone(), &[], &[]);
+    open(&mut after, "big");
+    press(&mut after, &[Clear, F2]);
+    typed(&mut after, "wu");
+    after.press(Enter);
+    let mut direct = ui_over(bytes, &[], &[]);
+    open(&mut direct, "wu");
+    assert!(matches!(after.state(), State::Theorem { ref label, .. } if label == "wu"));
+    assert_eq!(after.state(), direct.state());
+    assert!(after.frame() == direct.frame());
+    press(&mut after, &[Down, Right]);
+    press(&mut direct, &[Down, Right]);
+    assert_eq!(after.state(), direct.state());
+    assert!(after.frame() == direct.frame());
+}
+
+#[test]
+fn try_from_the_list_on_a_refused_theorem_gives_the_prove_notice() {
+    let shapes = spread(33, 66, 33);
+    let mut ui = ui_over(proved_library(&shapes), &[], &[]);
+    press(&mut ui, &[Enter, F2]);
+    typed(&mut ui, "big");
+    ui.press(F4);
+    assert!(matches!(ui.state(), State::Notice { ref title } if title == "Prove"));
+    assert_eq!(ui.depth(), 3);
+    assert!(lines_are_drawn(&ui.frame(), &PROVE_NOTICE));
+    check_frame(&ui.frame(), "proving-too-large");
+}
+
+#[test]
+fn a_saved_proof_of_a_theorem_now_past_a_cap_is_not_restored() {
+    let inside = spread(32, 64, 32);
+    let mut saved_in = opened_in(proved_library(&inside), &inside);
+    press(&mut saved_in, &[F4, F1]);
+    let saved = saved_in
+        .saved_proofs()
+        .next()
+        .expect("the proof is saved")
+        .clone();
+    assert!(saved.steps > 0);
+
+    let past = spread(33, 66, 33);
+    let bytes = proved_library(&past);
+    let mut ui = ui_over(bytes.clone(), &[], &[]);
+    let proof = mcui::SavedProof {
+        theorem: index_of(&bytes, "big"),
+        ..saved
+    };
+    assert_eq!(
+        ui.restore_proof(proof),
+        Err(mcui::RestoreError::Unreadable("its statement is too large"))
+    );
+    assert_eq!(ui.saved_proofs().count(), 0);
+    open(&mut ui, "big");
+    ui.press(F4);
+    assert!(matches!(ui.state(), State::Notice { ref title } if title == "Prove"));
+    assert_eq!(ui.saved_proofs().count(), 0);
 }
 
 #[test]
@@ -263,14 +342,12 @@ fn tried(shapes: &[Shape]) -> Ui {
     ui
 }
 
-const TRY_NOTICE: &str = "its statement is too large";
-
 fn try_is_refused(shapes: &[Shape]) {
     let ui = tried(shapes);
     assert!(matches!(ui.state(), State::Notice { ref title } if title == "Prove"));
     assert_eq!(ui.depth(), 4);
     let frame = ui.frame();
-    assert!(sentence_is_drawn(&frame, TRY_NOTICE));
+    assert!(lines_are_drawn(&frame, &PROVE_NOTICE));
     check_frame(&frame, "proving-too-large");
 }
 
