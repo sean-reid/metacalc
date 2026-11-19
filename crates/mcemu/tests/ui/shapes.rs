@@ -247,3 +247,22 @@ fn a_descender_does_not_touch_the_highlight_below_it() {
     assert!(scanline(&frame, 16).iter().all(|&b| b == 0));
     assert!(scanline(&frame, 17).iter().all(|&b| b == 0xFF));
 }
+
+#[test]
+fn a_highlighted_sixth_row_leaves_the_scanline_above_the_key_boxes_clear() {
+    let frame = z80_frame(|c| {
+        c.list_row(6, "", "", true);
+        c.soft_keys(["ace", "oxen", "sum", "zeus", "van"]);
+    });
+    assert!(scanline(&frame, 55).iter().all(|&b| b == 0xFF));
+    assert!(scanline(&frame, 56).iter().all(|&b| b == 0));
+    let top = scanline(&frame, 57);
+    for x in 0..96usize {
+        let in_box = (0..5).any(|i| {
+            let (from, to) = ((96 * i + 2) / 5, (96 * (i + 1) + 2) / 5 - 1);
+            (from..to).contains(&x)
+        });
+        let ink = top[x / 8] & (0x80 >> (x % 8)) != 0;
+        assert_eq!(ink, in_box, "column {x}");
+    }
+}

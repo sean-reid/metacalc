@@ -46,6 +46,26 @@ pub fn record_with_pairs(
     out
 }
 
+/// A theorem record with no references whose proof is `proof`, these mandatory disjoint pairs
+/// and these pairs of variables it has no hypothesis for.
+pub fn theorem_with_pairs(
+    label: &[u8],
+    hyps: &[Hyp],
+    pairs: &[(u8, u8)],
+    extra: &[(u8, u8)],
+    conclusion: &[u8],
+    proof: &[u8],
+) -> Vec<u8> {
+    let mut out = record_with_pairs(label, hyps, pairs, conclusion);
+    out[0] = 1;
+    out.extend(u16::try_from(extra.len()).unwrap().to_le_bytes());
+    out.extend(extra.iter().flat_map(|&(a, b)| [a, b]));
+    out.extend(0u16.to_le_bytes());
+    out.extend(u16::try_from(proof.len()).unwrap().to_le_bytes());
+    out.extend_from_slice(proof);
+    out
+}
+
 /// A library of these records, in order.
 pub fn assemble(constants: &[&[u8]], variables: &[&[u8]], records: &[Vec<u8>]) -> Vec<u8> {
     let mut out = vec![0u8; HEADER_LEN];
@@ -102,6 +122,22 @@ pub fn record_cases() -> Vec<RecordCase> {
             &[b"T"],
             &[b"x", b"y", b"z"],
             &[record_with_pairs(b"ax-1", hyps, &[pair], conclusion)],
+        ),
+        expected,
+    };
+    let theorem = |name, extra: &[(u8, u8)], expected| RecordCase {
+        name,
+        bytes: assemble(
+            &[b"T"],
+            &[b"x", b"y", b"z"],
+            &[theorem_with_pairs(
+                b"ax-1",
+                &[E(&[t])],
+                &[],
+                extra,
+                &[t],
+                &[0],
+            )],
         ),
         expected,
     };
@@ -202,6 +238,62 @@ pub fn record_cases() -> Vec<RecordCase> {
             bad,
         ),
         case("a float twice", &[F(x), F(x)], &[t, x], bad),
+        case("a conclusion that is a variable", &[F(x)], &[x], bad),
+        case(
+            "a conclusion that starts with a variable",
+            &[F(x)],
+            &[x, t],
+            bad,
+        ),
+        case("an empty conclusion", &[], &[], bad),
+        case(
+            "an essential that starts with a variable",
+            &[F(x), E(&[x, t])],
+            &[t],
+            bad,
+        ),
+        case("an empty essential", &[E(&[])], &[t], bad),
+        case("a float for a constant", &[F(t)], &[t], bad),
+        case(
+            "a conclusion with a variable that has no float",
+            &[F(x)],
+            &[t, x, y],
+            bad,
+        ),
+        case(
+            "an essential with a variable that has no float",
+            &[F(x), E(&[t, x, y])],
+            &[t, x],
+            bad,
+        ),
+        paired(
+            "a pair of a variable with itself",
+            &[F(x)],
+            (x, x),
+            &[t, x],
+            bad,
+        ),
+        theorem(
+            "a theorem with a pair between two variables it has no hypothesis for",
+            &[(y, z)],
+            Ok(()),
+        ),
+        theorem(
+            "a theorem with a pair of an unfloated variable with itself",
+            &[(y, y)],
+            bad,
+        ),
+        theorem(
+            "a theorem with a pair of a constant and a variable",
+            &[(t, y)],
+            bad,
+        ),
+        theorem(
+            "a theorem with a pair of a variable and a constant",
+            &[(y, t)],
+            bad,
+        ),
+        theorem("a theorem with a pair of two constants", &[(t, t)], bad),
     ]
 }
 
@@ -425,6 +517,85 @@ pub fn name_cases() -> Vec<Case> {
         init: Err(KernelError::Malformed),
     });
     cases
+}
+
+/// Libraries that differ only in the typecode byte of one symbol.
+pub fn typecode_cases() -> Vec<Case> {
+    let bad = Err(KernelError::Malformed);
+    let case = |name, constants: &[&[u8]], variables: &[&[u8]], id: usize, typecode, init| {
+        let mut bytes = library(constants, variables, &[b"ax-1"]);
+        let mut at = HEADER_LEN;
+        for _ in 0..id {
+            at += 2 + bytes[at + 1] as usize;
+        }
+        bytes[at] = typecode;
+        reseal(&mut bytes);
+        Case { name, bytes, init }
+    };
+    let (two, three) = (&[b"a" as &[u8], b"b"], &[b"a" as &[u8], b"b", b"c"]);
+    vec![
+        case(
+            "a constant marked as a constant",
+            two,
+            &[b"x"],
+            1,
+            0xFF,
+            Ok(()),
+        ),
+        case("a constant with typecode 0", two, &[b"x"], 1, 0, bad),
+        case("a constant with typecode 1", two, &[b"x"], 0, 1, bad),
+        case("a constant with typecode FEh", two, &[b"x"], 1, 0xFE, bad),
+        case(
+            "a variable typed by the last constant",
+            two,
+            &[b"x"],
+            2,
+            1,
+            Ok(()),
+        ),
+        case(
+            "a variable typed by the first constant",
+            two,
+            &[b"x"],
+            2,
+            0,
+            Ok(()),
+        ),
+        case(
+            "a variable typed by the first variable",
+            two,
+            &[b"x", b"y"],
+            3,
+            2,
+            bad,
+        ),
+        case("a variable typed by itself", two, &[b"x"], 2, 2, bad),
+        case(
+            "a variable typed by a later variable",
+            two,
+            &[b"x", b"y"],
+            2,
+            3,
+            bad,
+        ),
+        case("a variable with typecode FFh", two, &[b"x"], 2, 0xFF, bad),
+        case(
+            "a variable typed by the last of three constants",
+            three,
+            &[b"x"],
+            3,
+            2,
+            Ok(()),
+        ),
+        case(
+            "a variable typed by the first variable of three",
+            three,
+            &[b"x"],
+            3,
+            3,
+            bad,
+        ),
+    ]
 }
 
 /// The printable bytes a name may use.

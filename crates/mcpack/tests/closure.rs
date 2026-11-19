@@ -1,5 +1,6 @@
+use mcpack::library;
 use mcpack::measure::measure;
-use mcpack::mm::{self, Database, Grammar, ProofError, StmtId, SyntaxError, Usage, Verifier};
+use mcpack::mm::{self, Database, Grammar, Kind, ProofError, StmtId, SyntaxError, Usage, Verifier};
 use std::path::Path;
 use std::process::Command;
 
@@ -89,6 +90,42 @@ fn closure_stops_at_a_statement_the_grammar_cannot_read() {
     let grammar = Grammar::new(&db, &[("|-", "wff")]).expect("grammar builds");
     let got = mm::closure(&db, &grammar, &ids(&db, &["fal2"]));
     assert_eq!(got, Err((db.find("fal").unwrap(), SyntaxError::NoParse)));
+}
+
+#[test]
+fn closure_keeps_syntax_axioms_only_an_essential_hypothesis_needs() {
+    let src = "
+        $c wff |- T ~ $.
+        $v p $.
+        wp $f wff p $.
+        wtru $a wff T $.
+        wnot $a wff ~ p $.
+        ax $a |- T $.
+        ${
+          th.1 $e |- ~ T $.
+          th $p |- T $= ax $.
+        $}
+    ";
+    let db = mm::parse(src.as_bytes().to_vec()).expect("database parses");
+    let got = closure(&db, &["th"]);
+    assert_eq!(
+        labels(&db, &got),
+        ["wp", "wtru", "wnot", "ax", "th.1", "th"]
+    );
+    let bytes = library::pack(&db, &got).expect("the closure packs");
+    let text = library::export(&bytes).expect("the library exports");
+    let exported = mm::parse(text.into_bytes()).expect("the export parses");
+    let th = exported.find("th").expect("th is exported");
+    assert_eq!(Verifier::new(&exported).verify(th), Ok(()));
+    let grammar = Grammar::new(&exported, &[("|-", "wff")]).expect("the export has a grammar");
+    for id in 0..exported.stmts.len() as StmtId {
+        if matches!(exported.stmt(id).kind, Kind::Axiom | Kind::Theorem) {
+            let label = &exported.stmt(id).label;
+            grammar
+                .parse(id)
+                .unwrap_or_else(|e| panic!("{label}: {e:?}"));
+        }
+    }
 }
 
 #[test]

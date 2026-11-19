@@ -772,6 +772,22 @@ fn a_compressed_proof_the_reference_calls_malformed_does_not_pack() {
 }
 
 #[test]
+fn a_variable_with_two_typecodes_does_not_pack_and_the_refusal_names_it() {
+    let src = "$c wff class |- $. $v x y $.
+        ${ wy $f wff y $. ay $a |- y $. $}
+        ${ cy $f wff y $. by $a |- y $. $}
+        ${ wx $f wff x $. ax $a |- x $. $}
+        ${ cx $f class x $. bx $a |- x $. $}";
+    let db = db(src);
+    assert_eq!(
+        pack(&db, &everything(&db)),
+        Err(PackError::VariableTypecodes("x".into()))
+    );
+    let before_clash: Vec<StmtId> = (0..db.find("wx").unwrap()).collect();
+    assert!(pack(&db, &before_clash).is_ok());
+}
+
+#[test]
 fn no_single_byte_change_makes_the_kernel_panic() {
     let db = db(DB);
     let original = pack(&db, &everything(&db)).unwrap();
