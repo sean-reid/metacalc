@@ -37,8 +37,8 @@
 ; the old port 5 and SP in it, switches to FM_STACK and works there, and on every exit restores SP,
 ; port 5 and the interrupt state. Interrupts stay off for the whole session; the longest one
 ; measured is fm_open on the ring library, 548,618 T-states (91 ms at 6 MHz), then fm_nodes of its
-; largest statement, 362,318, and fm_draw of a full window, at most 216,215. The
-; reader and the canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
+; largest statement, 362,318, and fm_draw of a full window, at most 216,215. The reader and the
+; canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
 ; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
 ; Port 7 changes only inside lib_read, which puts it back.
@@ -48,12 +48,14 @@
 ; FM_OWNED, some kernel entry (kernel_init, good or refused, or kernel_reset) has run since the last
 ; fm session and may have written the high region, so fm is closed: every routine but fm_open then
 ; returns FM_ERR_NOT_OPEN and draws nothing. Then the session always writes FM_OWNED to the mark,
-; so kernel_verify, kernel_crc_begin and kernel_crc_chunk refuse until kernel_init runs again. An fm call between
-; kernel_crc_begin and the last kernel_crc_chunk therefore ends the CRC run: the next chunk is
-; refused. A caller opens fm again with fm_open, which copies the glyph section afresh; fm_open
-; also keeps where the section was and the flash page of the library, and fm_statement returns
-; FM_ERR_NOT_OPEN unless the reader's glyph section lies at the same offset, has the same length and
-; is in the same flash page. A kernel_reset at the start of an app closes fm.
+; so kernel_verify, kernel_crc_begin and kernel_crc_chunk refuse until kernel_init runs again. An
+; fm call between kernel_crc_begin and the last kernel_crc_chunk therefore ends the CRC run: the
+; next chunk is refused. A caller opens fm again with fm_open, which copies the glyph and shapes
+; sections afresh; fm_open also keeps where the glyph section was, the flash page of the library,
+; the syntax axiom count and where the shapes section was, and fm_statement and fm_nodes return
+; FM_ERR_NOT_OPEN unless the reader's glyph section lies at the same offset, has the same length
+; and is in the same flash page, and its syntax axiom count and its shapes section's offset and
+; length are the same, or it has no shapes now and had none. A kernel_reset at the start of an app closes fm.
 ;
 ; The test image (crates/mcemu/tests/routines/reader_test.z80) starts at $3000, in page 0, because
 ; the kernel, the reader, the canvas and fm together are longer than one 16 KB page. That is the
@@ -67,12 +69,18 @@
 ; push 16 bytes below its return address.
 ;
 ;   fm_open       in:  the reader open with lib_open
-;                 out: A = status. Copies the whole glyph section into FM_GLYPHS, checks that
-;                      every entry lies inside it, and marks fm open. Closed until it returns 0.
+;                 out: A = status. Copies the whole glyph section into FM_GLYPHS and checks that
+;                      every entry lies inside it, then copies the whole shapes section into
+;                      FM_SECOND and checks it: the count is the reader's syntax count, the offset
+;                      table fits, every item lies after the table and inside the copy and has 1
+;                      to 255 parts, and each child of its axiom's arity appears once and no
+;                      other does. A library with neither trees nor shapes opens, and every
+;                      statement of it is one node. Marks fm open; closed until it returns 0.
 ;                      FM_ERR_CLOSED: the reader is not open. FM_ERR_NO_MAP: the library has no
 ;                      glyph map. FM_ERR_FONT: its map is for another font. FM_ERR_TOO_BIG: the
-;                      section is longer than 2,048 bytes. FM_ERR_BAD: an entry the section
-;                      cannot hold. FM_ERR_READ: the reader refused a read.
+;                      glyph section or the shapes section is longer than 2,048 bytes.
+;                      FM_ERR_BAD: an entry or an item they cannot hold, or only one of trees and
+;                      shapes. FM_ERR_READ: the reader refused a read.
 ;   fm_statement  in:  HL = assertion number, E = statement, numbered as lib_tree numbers them:
 ;                      the essential hypotheses in record order from 0, FFh the conclusion
 ;                 out: A = status, B = the number of tokens. The tokens are the statement's
@@ -93,26 +101,22 @@
 ;                      statement, which is the model's Expr for it: the nodes in preorder, node 0
 ;                      the whole statement, the typecode token 0 of node 0 and of no other. Node
 ;                      n spans tokens FM_FIRST[n] to FM_LAST[n], at depth FM_DEPTH[n]; the parent
-;                      is the nearest earlier node one level up and is not stored. A tree node whose
-;                      only part is a child has no node of its own: the child takes its place at
-;                      its depth. A statement the library has no tree for is one node over every
-;                      token, depth 0, as is every statement of a library with no trees; the host model, unlike fm,
-;                      parses the grammar itself for a library that exports its database and stores
-;                      no trees. The
-;                      table is built once for a loaded statement and a second call returns at
-;                      once; fm_statement marks it not built, and a refused call leaves it not
-;                      built, the statement loaded. FM_ERR_NOT_OPEN: fm closed or another library
-;                      open. FM_ERR_INDEX: no statement loaded. FM_ERR_READ: the reader refused a
-;                      read. FM_ERR_TREE: the tree ends early or holds bytes after its root, a
-;                      variable that is not the token at its place, or tokens that do not add up
-;                      to the statement's. FM_ERR_LIMIT: more than 255 tree nodes, which also
-;                      bounds the table nodes, the depth and the stack at 255.
+;                      is the nearest earlier node one level up and is not stored. A tree node
+;                      whose only part is a child has no node of its own: the child takes its
+;                      place at its depth. A statement the library has no tree for is one node
+;                      over every token, depth 0, as is every statement of a library with no
+;                      trees; the host model, unlike fm, parses the grammar itself for a library
+;                      that exports its database and stores no trees. A variable's symbol id in
+;                      a tree is one byte, because lib_node refuses a larger one. The table is
+;                      built once for a loaded statement and a second call returns at once;
+;                      fm_statement marks it not built, and a refused call leaves it not built,
+;                      the statement loaded. FM_ERR_NOT_OPEN: fm closed or another library open.
+;                      FM_ERR_INDEX: no statement loaded. FM_ERR_READ: the reader refused a read.
+;                      FM_ERR_TREE: the tree ends early or holds bytes after its root, a variable
+;                      that is not the token at its place, or tokens that do not add up to the
+;                      statement's. FM_ERR_LIMIT: more than 255 tree nodes, which also bounds the
+;                      table nodes, the depth and the stack at 255.
 ; Other statuses: FM_ERR_NOT_OPEN, from fm_statement, fm_rows and fm_draw.
-; fm_open also copies the shapes section into FM_SECOND and checks it, the count against the
-; reader's syntax count, the offset table, every item's place and length and each child of its
-; axiom's arity once; FM_ERR_TOO_BIG for a section over 2,048 bytes and FM_ERR_BAD for what fails
-; the checks, with the glyph map's. A library with neither trees nor shapes opens. A library with
-; a glyph map and damaged shapes does not.
 
 #ifndef FM_EMBEDDED
 .org $4000

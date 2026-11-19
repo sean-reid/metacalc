@@ -69,6 +69,17 @@ fn structure() -> String {
     }
     src += "wun $a wff ~ ph $.\n";
     src += "nest-root $a |- x $.\nnest-below $a |- ( ph -> x ) $.\n";
+    src += "onec $a |- ( F3 -> ph ) $.\n";
+    src += "wrapc $a |- ( ( ch -> { x | ps } ) -> th ) $.\n";
+    let fillers = names("F", FILLERS);
+    let wide: Vec<&str> = (0..250).map(|i| fillers[i % FILLERS].as_str()).collect();
+    src += "wbig $a wff ";
+    src += &wide.join(" ");
+    src += " $.\n";
+    src += &format!("big $a |- {} $.\n", wide.join(" "));
+    for (label, lead) in [("t255", ""), ("t256", "-. "), ("t257", "-. -. ")] {
+        src += &format!("{label} $a |- {lead}{}ph $.\n", "~ ".repeat(127));
+    }
     for (n, chunk) in names("F", FILLERS).chunks(13).enumerate() {
         let nested = chunk
             .iter()

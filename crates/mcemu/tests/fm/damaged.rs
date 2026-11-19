@@ -1,7 +1,7 @@
 use crate::errors::Refusal;
 use crate::fixture;
 use crate::rig::*;
-use crate::session::allowed;
+use crate::session::allowed_for;
 use crate::support::*;
 use mcpack::library::SHAPES;
 
@@ -124,6 +124,43 @@ fn nodes_case(
     }
 }
 
+/// Turns the first `pairs` escaped operators of a tree into two one-byte ones each, which adds a
+/// node a pair.
+fn split(b: &mut [u8], at: usize, pairs: usize) {
+    for i in (at..at + 2 * pairs).step_by(2) {
+        assert_eq!(b[i], 0x7F);
+        b[i] = 0;
+        b[i + 1] = 0;
+    }
+}
+
+/// Clears `bit` of the reader's flags for the sections it found, as a reader that had opened a
+/// library without that section would hold them. The reader refuses such a library at open, so fm
+/// meets it only through the state.
+fn clear_have(fm: &mut Fm, bit: u8) {
+    let at = fm.rig.label("LS_HAVE");
+    let have = fm.rig.peek(at, 1)[0];
+    fm.rig.poke(at, &[have & !bit]);
+}
+
+/// The deep statement with the library one byte short of its tree's end: lib_tree's own read is
+/// whole and the refill of the last 252 bytes is not.
+fn nodes_read_fault(nodes: &[u8]) -> Damaged {
+    let mut case = nodes_case(
+        "a refill the reader cannot read",
+        "FM_ERR_READ",
+        nodes,
+        ("deep", 0xFF),
+        |_, _| {},
+        false,
+    );
+    let n = assertion(nodes, "deep");
+    let end = case.refusal.fm.rig.tree(n, 0xFF).offset + 2 * fixture::CHAIN as u32 + 1;
+    let at = case.refusal.fm.rig.label("LR_LENGTH");
+    case.refusal.fm.rig.poke(at, &(end - 1).to_le_bytes()[..3]);
+    case
+}
+
 pub fn cases() -> Vec<Damaged> {
     let nodes = fixture::nodes_library();
     let small = fixture::library();
@@ -190,12 +227,12 @@ pub fn cases() -> Vec<Damaged> {
             |_| {},
         ),
         open_case(
-            "an item of 256 parts",
+            "an item of 257 parts",
             "FM_ERR_BAD",
             |b| {
                 let (start, _) = shapes(b);
                 let first = get(b, start + 2);
-                word(b, start + 4, first as u16 + 256);
+                word(b, start + 4, first as u16 + 257);
             },
             |_| {},
         ),
@@ -289,19 +326,42 @@ pub fn cases() -> Vec<Damaged> {
             "FM_ERR_LIMIT",
             &nodes,
             ("deep", 0xFF),
-            |b, at| {
-                let end = at + 2 * fixture::CHAIN;
-                let mut i = at;
-                while i < end {
-                    assert_eq!(b[i], 0x7F);
-                    b[i] = 0;
-                    b[i + 1] = 0;
-                    i += 2;
-                }
-            },
+            |b, at| split(b, at, 2),
+            false,
+        ),
+        nodes_case(
+            "a tree of 255 nodes, which the limit lets through and the token total refuses",
+            "FM_ERR_TREE",
+            &nodes,
+            ("deep", 0xFF),
+            |b, at| split(b, at, 1),
             false,
         ),
     ]);
+    out.push(nodes_read_fault(&nodes));
+    out.push(open_case(
+        "a shapes section the reader cannot read to its end",
+        "FM_ERR_READ",
+        |_| {},
+        |fm| {
+            let (_, offset, length) = fm.rig.shapes();
+            let end = offset + u32::from(length) - 1;
+            fm.rig
+                .poke(fm.rig.label("LR_LENGTH"), &end.to_le_bytes()[..3]);
+        },
+    ));
+    out.push(open_case(
+        "trees without shapes",
+        "FM_ERR_BAD",
+        |_| {},
+        |fm| clear_have(fm, 16),
+    ));
+    out.push(open_case(
+        "shapes without trees",
+        "FM_ERR_BAD",
+        |_| {},
+        |fm| clear_have(fm, 4),
+    ));
     out
 }
 
@@ -310,6 +370,7 @@ fn every_damaged_library_is_refused_with_its_status_and_leaves_what_the_header_s
     let (mut opened, mut nodes) = (0, 0);
     for mut case in cases() {
         let what = case.refusal.what;
+        let shapes = case.refusal.fm.memory("FM_SECOND", 0x800);
         let out = case
             .refusal
             .fm
@@ -345,8 +406,16 @@ fn every_damaged_library_is_refused_with_its_status_and_leaves_what_the_header_s
                 assert_eq!(usize::from(fm.memory("FV_COUNT", 1)[0]), tokens, "{what}");
             }
         }
-        let found = crate::guard::stray(&mut fm.rig, &allowed());
+        let nodes = matches!(case.kind, Kind::Nodes(_));
+        if nodes {
+            assert_eq!(
+                fm.memory("FM_SECOND", 0x800),
+                shapes,
+                "{what}: the shapes copy is read only"
+            );
+        }
+        let found = crate::guard::stray(&mut fm.rig, &allowed_for(nodes, true));
         assert!(found.is_empty(), "{what}: stray writes at {found:x?}");
     }
-    assert_eq!((opened, nodes), (10, 7));
+    assert_eq!((opened, nodes), (13, 9));
 }

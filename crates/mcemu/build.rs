@@ -881,11 +881,7 @@ fn assemble_reader(out: &Path) {
         ),
         (
             "reader_straddle",
-            &[
-                "LIB_BOUNCE=$FE80",
-                "LIB_BOUNCE_ANYWHERE",
-                "FM_RAM_SIZE=$1000",
-            ][..],
+            &["LIB_BOUNCE=$FE80", "LIB_BOUNCE_ANYWHERE"][..],
         ),
     ] {
         spasm(src, &out.join(format!("{name}.bin")), defines, &args);
@@ -951,14 +947,7 @@ fn assemble_reader(out: &Path) {
             &["LIB_STATE_SIZE=$2D4"][..],
             Some("the reader's state overlaps, leaves a gap, or runs past LIB_STATE_SIZE"),
         ),
-        (
-            &[
-                "LIB_BOUNCE=$FE80",
-                "LIB_BOUNCE_ANYWHERE",
-                "FM_RAM_SIZE=$1400",
-            ][..],
-            None,
-        ),
+        (&["LIB_BOUNCE=$FE80", "LIB_BOUNCE_ANYWHERE"][..], None),
         (
             &["LIB_BOUNCE=$BF00"][..],
             Some("LIB_BOUNCE must be in bank C"),
@@ -1084,8 +1073,8 @@ fn assemble_layout_probes(out: &Path) {
             "FM",
             "#include \"fm/ram.inc\"\n".to_string(),
             &ui_args[..],
-            "FM_VARS_SIZE=$50",
-            0x4D,
+            "FM_VARS_SIZE=$56",
+            0x53,
             "the fm variables overlap, leave a gap, or run past FM_VARS_SIZE",
         ),
         (

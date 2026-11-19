@@ -144,7 +144,7 @@ fn the_fixture_holds_every_structure_the_table_has_to_get_right() {
         mixed >= 1,
         "a statement with a tree in an assertion with a statement that has none"
     );
-    assert_eq!(long, 1, "a tree over 255 bytes");
+    assert_eq!(long, 3, "trees over 255 bytes: 256, 257 and 507");
     assert!(tall >= 2, "{tall} statements deeper than 13");
     let deepest = all
         .iter()
@@ -251,4 +251,120 @@ fn the_deepest_tree_leaves_six_bytes_of_the_explicit_stack_and_writes_only_fms_m
     assert_eq!(used.map(|at| at + 1), Some(2 * fixture::CHAIN));
     let found = crate::guard::stray(&mut fm.rig, &crate::session::allowed());
     assert!(found.is_empty(), "stray writes at {found:x?}");
+}
+
+fn named(fm: &mut Fm, bytes: &[u8], label: &str) -> Table {
+    let n = decoded(bytes)
+        .assertions
+        .iter()
+        .position(|a| a.label == label)
+        .unwrap() as u16;
+    fm.built(n, 0xFF)
+}
+
+/// The nodes of a statement that is `operators` prefix operators in front of a variable.
+fn chain(operators: usize) -> Table {
+    let last = operators + 1;
+    let mut rows = vec![(0, last, 0)];
+    rows.extend((1..=operators).map(|j| (j + 1, last, j)));
+    rows
+}
+
+#[test]
+fn a_wrapper_has_no_node_and_a_one_constant_axiom_has_one() {
+    let bytes = fixture::nodes_library();
+    let mut fm = Fm::new(&bytes);
+    assert_eq!(named(&mut fm, &bytes, "nest-root"), [(0, 1, 0)]);
+    assert_eq!(
+        named(&mut fm, &bytes, "nest-below"),
+        [(0, 5, 0), (2, 2, 1), (4, 4, 1)]
+    );
+    assert_eq!(
+        named(&mut fm, &bytes, "onec"),
+        [(0, 5, 0), (2, 2, 1), (4, 4, 1)],
+        "F3 is an axiom of one constant and no slot, so a node"
+    );
+    assert_eq!(
+        named(&mut fm, &bytes, "wrapc"),
+        [
+            (0, 13, 0),
+            (2, 10, 1),
+            (3, 3, 2),
+            (5, 9, 2),
+            (6, 6, 3),
+            (8, 8, 3),
+            (12, 12, 1)
+        ],
+        "a class abstraction under an implication, its wrapper collapsed, then its sibling"
+    );
+}
+
+#[test]
+fn trees_of_255_256_and_257_bytes_split_across_the_buffer_where_the_chain_says() {
+    let bytes = fixture::nodes_library();
+    let mut fm = Fm::new(&bytes);
+    for (label, bytes_long, operators) in
+        [("t255", 255, 127), ("t256", 256, 128), ("t257", 257, 129)]
+    {
+        let n = decoded(&bytes)
+            .assertions
+            .iter()
+            .position(|a| a.label == label)
+            .unwrap() as u16;
+        assert_eq!(fm.rig.tree(n, 0xFF).len, bytes_long, "{label}");
+        assert_eq!(fm.built(n, 0xFF), chain(operators), "{label}");
+    }
+}
+
+#[test]
+fn the_symbol_id_of_a_variable_in_a_tree_is_always_one_byte() {
+    let bytes = fixture::nodes_library();
+    let mut fm = Fm::new(&bytes);
+    let symbols = u16::from(fm.rig.counts().0) + u16::from(fm.rig.counts().1);
+    let mut seen = 0;
+    for first in 0x80..=0xFFu8 {
+        for second in 0..=255u8 {
+            let (status, kind, value, ..) = fm.rig.node(&[first, second], 0xA100);
+            if status == 0 && kind == 1 {
+                assert!(
+                    value < symbols && value < 256,
+                    "{first:x} {second:x}: {value}"
+                );
+                seen += 1;
+            }
+        }
+    }
+    assert!(seen > 100, "{seen} variable nodes read");
+}
+
+#[test]
+fn a_refill_that_ends_where_the_library_does_is_read_and_one_byte_short_is_not() {
+    let bytes = fixture::nodes_library();
+    let n = decoded(&bytes)
+        .assertions
+        .iter()
+        .position(|a| a.label == "deep")
+        .unwrap() as u16;
+    for (cut, status) in [(0, 0), (1, code("FM_ERR_READ"))] {
+        let mut fm = Fm::new(&bytes);
+        assert_eq!(fm.statement(n, 0xFF).status(), 0);
+        let end = fm.rig.tree(n, 0xFF).offset + 2 * fixture::CHAIN as u32 + 1 - cut;
+        let at = fm.rig.label("LR_LENGTH");
+        fm.rig.poke(at, &end.to_le_bytes()[..3]);
+        assert_eq!(fm.nodes().status(), status, "{cut} bytes short");
+    }
+}
+
+#[test]
+fn a_shapes_section_of_2048_bytes_is_not_too_big_and_one_of_2049_is() {
+    let bytes = fixture::library();
+    let state = |length: u16| {
+        let mut fm = Fm::bare(&bytes);
+        let row = fm.rig.label("LS_SH") + 3;
+        fm.rig.poke(row, &length.to_le_bytes());
+        fm.open().status()
+    };
+    assert_eq!(state(2049), code("FM_ERR_TOO_BIG"));
+    assert_eq!(state(0xFFFF), code("FM_ERR_TOO_BIG"));
+    assert_ne!(state(2048), code("FM_ERR_TOO_BIG"));
 }

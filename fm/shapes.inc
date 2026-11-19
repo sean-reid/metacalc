@@ -22,6 +22,12 @@ os_trees:
 	call fm_reader_status
 	jp fm_fail
 os_got:
+	ld (fv_sk),hl
+	ld a,e
+	ld (fv_sk+2),a
+	ld (fv_sk+3),bc
+	ld a,1
+	ld (fv_sk+5),a
 	ld (fv_src),hl
 	ld a,e
 	ld (fv_src+2),a
