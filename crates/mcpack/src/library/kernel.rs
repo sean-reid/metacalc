@@ -363,10 +363,10 @@ impl<'a> Kernel<'a> {
         for hyp in &record.hyps {
             match *hyp {
                 Hyp::Float(var) => {
-                    let repeated = std::mem::replace(&mut floats[var as usize], true);
-                    if essential_seen || !self.is_var(var) || repeated || var <= last_float {
+                    if essential_seen || !self.is_var(var) || var <= last_float {
                         return Err(KernelError::BadRecord);
                     }
+                    floats[var as usize] = true;
                     last_float = var;
                 }
                 Hyp::Essential(expr) => {

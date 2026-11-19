@@ -301,9 +301,6 @@ cr_float:
 	inc c
 	jp z,fail_bad_record
 	ld h,FLOATS>>8
-	ld a,(hl)
-	or a
-	jp nz,fail_bad_record
 	ld (hl),1
 	pop hl
 cr_hyp_next:

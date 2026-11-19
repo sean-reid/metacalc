@@ -181,6 +181,12 @@ pub fn record_cases() -> Vec<RecordCase> {
             &[t, x, z],
             Ok(()),
         ),
+        case(
+            "a float for id 0 before a rising pair",
+            &[F(t), F(x), F(y)],
+            &[t, x, y],
+            bad,
+        ),
         case("two floats in falling ids", &[F(y), F(x)], &[t, x, y], bad),
         case(
             "falling ids after a rising pair",
@@ -262,7 +268,12 @@ pub fn record_cases() -> Vec<RecordCase> {
             &[t],
             bad,
         ),
-        case("a float twice", &[F(x), F(x)], &[t, x], bad),
+        case(
+            "a float twice, refused because ids must rise",
+            &[F(x), F(x)],
+            &[t, x],
+            bad,
+        ),
         case("a conclusion that is a variable", &[F(x)], &[x], bad),
         case(
             "a conclusion that starts with a variable",

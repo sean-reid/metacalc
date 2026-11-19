@@ -12,19 +12,18 @@ fn the_kernel_accepts_and_refuses_the_same_records_as_the_model() {
     }
 }
 
-const CYCLE: &str = "
+const ORDERED_BY_TWO_RECORDS: &str = "
 $c |- T $.
-$v y x $.
+$v p q r $.
 ${
-  ax-a.x $f T x $.
-  ax-a.y $f T y $.
-  ax-a $a |- x y $.
-  ax-c $a |- y x $.
+  a.q $f T q $.
+  a.r $f T r $.
+  ax-1 $a |- q r $.
 $}
 ${
-  ax-b.y $f T y $.
-  ax-b.x $f T x $.
-  ax-b $a |- x y $.
+  b.p $f T p $.
+  b.q $f T q $.
+  ax-2 $a |- p q $.
 $}
 ";
 
@@ -53,14 +52,10 @@ fn expect(src: &str, cases: &[(&str, Result<(), KernelError>)]) {
 }
 
 #[test]
-fn a_cycle_of_float_orders_across_two_records_is_refused_by_the_second_on_both_sides() {
+fn records_whose_floats_only_one_numbering_orders_are_accepted_on_both_sides() {
     expect(
-        CYCLE,
-        &[
-            ("ax-a", Ok(())),
-            ("ax-c", Ok(())),
-            ("ax-b", Err(KernelError::BadRecord)),
-        ],
+        ORDERED_BY_TWO_RECORDS,
+        &[("ax-1", Ok(())), ("ax-2", Ok(()))],
     );
 }
 
@@ -76,20 +71,19 @@ fn an_essential_hypothesis_before_a_float_is_refused_on_both_sides() {
 }
 
 #[test]
-fn variables_are_numbered_by_their_first_float_and_not_by_their_declaration() {
-    let bytes = pack_all(&parse(CYCLE));
+fn variables_are_numbered_to_put_every_records_floats_in_rising_order() {
+    let bytes = pack_all(&parse(ORDERED_BY_TWO_RECORDS));
     let names: Vec<String> = decode(&bytes)
         .unwrap()
         .variables
         .into_iter()
         .map(|v| v.name)
         .collect();
-    assert_eq!(names, ["x", "y"]);
+    assert_eq!(names, ["p", "q", "r"]);
 }
 
 #[test]
-fn the_declaration_numbering_gives_a_record_the_kernel_refuses_and_the_float_numbering_one_it_accepts()
- {
+fn a_record_with_falling_ids_is_refused_and_the_same_record_with_rising_ids_is_accepted() {
     use raw::Hyp::Float as F;
     let t = 0;
     let record = |floats: &[raw::Hyp]| raw::record(b"ax", floats, &[t, 1, 2]);
@@ -108,23 +102,21 @@ fn the_declaration_numbering_gives_a_record_the_kernel_refuses_and_the_float_num
 fn a_float_outside_any_block_numbers_a_variable_before_an_earlier_float_inside_one() {
     let src = "
 $c |- T $.
-$v x y $.
+$v y x $.
 ${
   l.y $f T y $.
-  l.x $f T x $.
-  ax-local $a |- y x $.
+  ax-y $a |- y $.
 $}
 g.x $f T x $.
 g.y $f T y $.
-ax-global $a |- x y $.
+ax-x $a |- x $.
 ";
-    let db = parse(src);
-    let bytes = pack_all(&db);
-    agree(&bytes, number(&db, "ax-global"), Ok(()), "ax-global");
-    agree(
-        &bytes,
-        number(&db, "ax-local"),
-        Err(KernelError::BadRecord),
-        "ax-local",
-    );
+    let bytes = pack_all(&parse(src));
+    let names: Vec<String> = decode(&bytes)
+        .unwrap()
+        .variables
+        .into_iter()
+        .map(|v| v.name)
+        .collect();
+    assert_eq!(names, ["x", "y"]);
 }

@@ -189,21 +189,26 @@ const THREE_WAYS: &str = "$c |- wff R $. $v x y z $.
     ${ wy $f wff y $. wz $f wff z $. ax-b $a |- R y z $. $}
     ${ xz $f wff z $. xx $f wff x $. ax-c $a |- R z x $. $}";
 
-fn refused_at(src: &str, label: &str) {
-    let bytes = packed(src);
-    let failed = CheckError::Assertions(vec![(label.into(), KernelError::BadRecord)]);
+const ORDERED_BY_TWO_RECORDS: &str = "$c |- wff R $. $v p q r $.
+    ${ aq $f wff q $. ar $f wff r $. ax-1 $a |- R q r $. $}
+    ${ bp $f wff p $. bq $f wff q $. ax-2 $a |- R p q $. $}";
+
+#[test]
+fn records_whose_floats_only_one_numbering_orders_pack_check_and_export() {
+    let bytes = packed(ORDERED_BY_TWO_RECORDS);
+    check(&bytes).expect("the kernel accepts the library");
+    assert_eq!(exports_and_verifies(&bytes), Ok(()));
+}
+
+#[test]
+fn a_record_whose_floats_fall_is_refused_by_the_check_and_the_export() {
+    let original =
+        packed("$c |- wff R $. $v x y $. vx $f wff x $. vy $f wff y $. ax-a $a |- R x y $.");
+    let hyps = record(&original, 0).hyps;
+    let bytes = patched(original, |b| b.swap(hyps + 1, hyps + 3));
+    let failed = CheckError::Assertions(vec![("ax-a".into(), KernelError::BadRecord)]);
     assert_eq!(check(&bytes), Err(failed));
-    assert_eq!(unchecked(&bytes), bad_record(label));
-}
-
-#[test]
-fn records_whose_float_orders_conflict_are_refused_by_the_check() {
-    refused_at(TWO_WAYS, "ax-b");
-}
-
-#[test]
-fn a_cycle_through_three_records_is_refused_at_the_record_that_closes_it() {
-    refused_at(THREE_WAYS, "ax-c");
+    assert_eq!(unchecked(&bytes), bad_record("ax-a"));
 }
 
 #[test]
