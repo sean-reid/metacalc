@@ -185,33 +185,25 @@ ut_loop:
 	push af
 	ld a,e
 	and 7
-	ld b,a
+	ld d,a
 	add a,c
 	cp 9
 	jr nc,ut_two
-	ld a,b
-	add a,a
-	add a,16
+	ld a,d
+	add a,ui_vblk>>8
+	ld b,a
+	ld c,$80
 ut_go:
-	ex de,hl
-	or ui_vtab&$FF ; ui_vtab is 64 byte aligned, so the offset only sets low bits
-	ld c,a
-	ld a,l
+	push bc
+	ld a,e
 	rrca
 	rrca
 	rrca
 	and $1F
-	ld b,a
-	ld h,ui_vtab>>8
-	ld l,c
-	ld a,(hl)
-	inc hl
-	ld h,(hl)
-	ld l,a
-	push hl
-	ld hl,(ui_rowbase)
-	ld c,b
+	ld c,a
 	ld b,0
+	ex de,hl
+	ld hl,(ui_rowbase)
 	add hl,bc
 	ret
 ut_two:
@@ -221,8 +213,10 @@ ut_two:
 	ld a,e
 	cp 88
 	jr nc,ut_slow
-	ld a,b
-	add a,a
+	ld a,d
+	add a,8+(ui_vblk>>8)
+	ld b,a
+	ld c,$80
 	jr ut_go
 ut_tall:
 	res 7,c
@@ -232,13 +226,14 @@ ut_tall:
 	push af
 	ld a,e
 	and 7
-	ld b,a
+	ld d,a
 	add a,c
 	cp 9
 	jr nc,ut_two_tall
-	ld a,b
-	add a,a
-	add a,48
+	ld a,d
+	add a,ui_vblk>>8
+	ld b,a
+	ld c,0
 	jr ut_go
 ut_two_tall:
 	ld a,c
@@ -247,9 +242,10 @@ ut_two_tall:
 	ld a,e
 	cp 88
 	jr nc,ut_slow
-	ld a,b
-	add a,a
-	add a,32
+	ld a,d
+	add a,8+(ui_vblk>>8)
+	ld b,a
+	ld c,0
 	jr ut_go
 
 ; A row below the frame draws nothing and still returns the x after the string.
@@ -365,7 +361,11 @@ us_next:
 #macro ROW1(s)
 	ld a,(de)
 	inc de
+#if s < 5
 	.fill s,$0F
+#else
+	.fill 8-s,$07
+#endif
 	or (hl)
 	ld (hl),a
 	add hl,bc
@@ -423,45 +423,132 @@ us_next:
 	ROW1(s)
 	TALL_OUT
 #endmacro
-ui_tv0:	HEAD(0)
-ui_v0:	TAIL(0)
-ui_tv1:	HEAD(1)
-ui_v1:	TAIL(1)
-ui_tv2:	HEAD(2)
-ui_v2:	TAIL(2)
-ui_tv3:	HEAD(3)
-ui_v3:	TAIL(3)
-ui_tv4:	HEAD(4)
-ui_v4:	TAIL(4)
-ui_tv5:	HEAD(5)
-ui_v5:	TAIL(5)
-ui_tv6:	HEAD(6)
-ui_v6:	TAIL(6)
-ui_tv7:	HEAD(7)
-ui_v7:	TAIL(7)
-ui_tw1:	HEAD1(1)
-ui_w1:	TAIL1(1)
-ui_tw2:	HEAD1(2)
-ui_w2:	TAIL1(2)
-ui_tw3:	HEAD1(3)
-ui_w3:	TAIL1(3)
-ui_tw4:	HEAD1(4)
-ui_w4:	TAIL1(4)
-ui_tw5:	HEAD1(5)
-ui_w5:	TAIL1(5)
-ui_tw6:	HEAD1(6)
-ui_w6:	TAIL1(6)
-ui_tw7:	HEAD1(7)
-ui_w7:	TAIL1(7)
-	.fill (64-($&63))&63,0
-ui_vtab:
-#if (ui_vtab&63) != 0
- .error "ui_vtab must be 64 byte aligned"
+	.fill (256-($&255))&255,0
+ui_vblk:
+#if (ui_vblk&255) != 0
+ .error "ui_vblk must be 256 byte aligned"
 #endif
-	.dw ui_v0,ui_v1,ui_v2,ui_v3,ui_v4,ui_v5,ui_v6,ui_v7
-	.dw ui_v0,ui_w1,ui_w2,ui_w3,ui_w4,ui_w5,ui_w6,ui_w7
-	.dw ui_tv0,ui_tv1,ui_tv2,ui_tv3,ui_tv4,ui_tv5,ui_tv6,ui_tv7
-	.dw ui_tv0,ui_tw1,ui_tw2,ui_tw3,ui_tw4,ui_tw5,ui_tw6,ui_tw7
+ui_tv0:	HEAD(0)
+	jr ui_v0
+	.fill (128-($&127))&127,0
+ui_v0:	TAIL(0)
+#if (ui_v0&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tw1:	HEAD1(1)
+	jr ui_w1
+	.fill (128-($&127))&127,0
+ui_w1:	TAIL1(1)
+#if (ui_w1&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tw2:	HEAD1(2)
+	jr ui_w2
+	.fill (128-($&127))&127,0
+ui_w2:	TAIL1(2)
+#if (ui_w2&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tw3:	HEAD1(3)
+	jr ui_w3
+	.fill (128-($&127))&127,0
+ui_w3:	TAIL1(3)
+#if (ui_w3&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tw4:	HEAD1(4)
+	jr ui_w4
+	.fill (128-($&127))&127,0
+ui_w4:	TAIL1(4)
+#if (ui_w4&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tw5:	HEAD1(5)
+	jr ui_w5
+	.fill (128-($&127))&127,0
+ui_w5:	TAIL1(5)
+#if (ui_w5&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tw6:	HEAD1(6)
+	jr ui_w6
+	.fill (128-($&127))&127,0
+ui_w6:	TAIL1(6)
+#if (ui_w6&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tw7:	HEAD1(7)
+	jr ui_w7
+	.fill (128-($&127))&127,0
+ui_w7:	TAIL1(7)
+#if (ui_w7&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+	.fill 256,0
+ui_tv1:	HEAD(1)
+	jr ui_v1
+	.fill (128-($&127))&127,0
+ui_v1:	TAIL(1)
+#if (ui_v1&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tv2:	HEAD(2)
+	jr ui_v2
+	.fill (128-($&127))&127,0
+ui_v2:	TAIL(2)
+#if (ui_v2&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tv3:	HEAD(3)
+	jr ui_v3
+	.fill (128-($&127))&127,0
+ui_v3:	TAIL(3)
+#if (ui_v3&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tv4:	HEAD(4)
+	jr ui_v4
+	.fill (128-($&127))&127,0
+ui_v4:	TAIL(4)
+#if (ui_v4&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tv5:	HEAD(5)
+	jr ui_v5
+	.fill (128-($&127))&127,0
+ui_v5:	TAIL(5)
+#if (ui_v5&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tv6:	HEAD(6)
+	jr ui_v6
+	.fill (128-($&127))&127,0
+ui_v6:	TAIL(6)
+#if (ui_v6&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
+ui_tv7:	HEAD(7)
+	jr ui_v7
+	.fill (128-($&127))&127,0
+ui_v7:	TAIL(7)
+#if (ui_v7&255) != $80
+ .error "a jump block's head must fit below its tail"
+#endif
+	.fill (256-($&255))&255,0
 	.fill (16-($&15))&15,0
 ut_rows:
 #if (ut_rows&15) != 0

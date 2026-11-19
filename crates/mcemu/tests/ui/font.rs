@@ -194,9 +194,9 @@ fn the_descender_entries_run_for_the_glyphs_and_shifts_that_reach_them() {
 }
 
 #[test]
-fn the_jump_tables_sit_on_the_boundaries_the_or_trick_needs() {
+fn the_jump_blocks_and_row_table_sit_on_the_boundaries_the_or_trick_needs() {
     for image in [REAL, MOVED] {
-        assert_eq!(label(image, "ui_vtab") % 64, 0);
+        assert_eq!(label(image, "ui_vblk") % 256, 0);
         assert_eq!(label(image, "ut_rows") % 16, 0);
     }
 }
