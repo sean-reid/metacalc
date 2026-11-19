@@ -241,3 +241,22 @@ fn a_verify_run_over_the_whole_library_closes_fm_and_a_new_open_repairs_it() {
         );
     }
 }
+
+#[test]
+fn only_the_whole_word_fm_owned_keeps_fm_open() {
+    let bytes = fixture::library();
+    let (n, k) = pick(&bytes);
+    let word = owned();
+    for (what, mark) in [
+        ("the high byte alone", (word & 0xFF00) | 0x11),
+        ("the low byte alone", 0x1100 | (word & 0x00FF)),
+        ("the kernel's magic", 0x5AA5),
+    ] {
+        let mut fm = Fm::new(&bytes);
+        assert_eq!(fm.statement(n, k).status(), 0);
+        let at = usize::from(fm.rig.label("KV_READY") - 0xC000);
+        fm.rig.m.ram_page(SPARE_PAGE)[at..at + 2].copy_from_slice(&mark.to_le_bytes());
+        assert_eq!(fm.rows(94).status(), code("FM_ERR_NOT_OPEN"), "{what}");
+        assert_eq!(ready(&mut fm), word, "{what}: the session takes the mark");
+    }
+}

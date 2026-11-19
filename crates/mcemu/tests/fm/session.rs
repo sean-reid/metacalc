@@ -209,20 +209,22 @@ fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_
         let at = fixture::section(b);
         b[at] ^= 1;
     });
-    for (what, other) in [
-        ("no map", fixture::plain()),
-        ("another font", font),
-        ("a bad entry", broken),
-        ("another library", fixture::other()),
+    for (what, other, status) in [
+        ("no map", fixture::plain(), "FM_ERR_NOT_OPEN"),
+        ("another font", font, "FM_ERR_NOT_OPEN"),
+        ("another library", fixture::other(), "FM_ERR_NOT_OPEN"),
+        ("a bad entry at the same place", broken, ""),
     ] {
+        fm.rig.load(&bytes);
+        fm.rig.open_ok();
+        assert_eq!(fm.open().status(), 0, "{what}: fm open on the good library");
         fm.rig.load(&other);
         fm.rig.open_ok();
-        let status = fm.statement(n, k).status();
-        assert_eq!(status, code("FM_ERR_NOT_OPEN"), "{what}: statement");
-        if what != "another library" {
-            assert_ne!(fm.open().status(), 0, "{what}: open");
-        }
+        let want = if status.is_empty() { 0 } else { code(status) };
+        assert_eq!(fm.statement(n, k).status(), want, "{what}: statement");
     }
+    fm.rig.load(&bytes);
+    fm.rig.open_ok();
     let row = fm.rig.label("LS_GL") + 3;
     fm.rig.poke(row, &[0x01, 0x08, 0]);
     assert_eq!(fm.open().status(), code("FM_ERR_TOO_BIG"));
@@ -237,12 +239,18 @@ fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_
             at("FM_RAM"),
             constant_of(WITH_FM.labels, "FM_VARS_SIZE") as usize,
         ),
-        (at("FM_STACK"), 0x100),
+        (
+            at("FM_STACK"),
+            usize::from(at("FM_STACK_TOP") - at("FM_STACK")),
+        ),
         (
             at("FM_GLYPHS"),
             constant_of(WITH_FM.labels, "FM_GLYPHS_SIZE") as usize,
         ),
-        (at("FM_IDS"), 0x400),
+        (
+            at("FM_IDS"),
+            usize::from(at("FM_FLAGS") + (at("FM_WIDTHS") - at("FM_IDS")) - at("FM_IDS")),
+        ),
     ] {
         allowed.extra.push((SPARE_PAGE, base, size));
     }

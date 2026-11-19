@@ -49,8 +49,8 @@
 ;                          low 16; with Malformed, DE:HL = 0; otherwise DE and HL are destroyed.
 ;
 ; kernel_verify returns Malformed unless the ready mark, which kernel_init sets when it succeeds
-; and clears when it fails, is in place. The mark shows that kernel_init completed since the last
-; kernel_reset. An app calls kernel_reset first at start, so a session never verifies on state an
+; and clears when it fails, is in place. The mark holds the magic from a completed kernel_init until
+; kernel_reset, a refused kernel_init, or code that writes the kernel's regions replaces it. An app calls kernel_reset first at start, so a session never verifies on state an
 ; earlier session left, then calls kernel_init before kernel_verify; once init has succeeded,
 ; kernel_verify may be called any number of times. The mark does not show that the kernel's RAM
 ; regions are intact: they belong to the kernel between calls, and a caller that writes them gets

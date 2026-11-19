@@ -37,3 +37,25 @@ fn the_same_library_in_another_flash_page_is_another_library_to_fm() {
     assert_eq!(fm.open().status(), 0);
     assert_eq!(fm.statement(0, 0xFF).status(), 0);
 }
+
+#[test]
+fn each_part_of_the_key_alone_is_enough_to_refuse() {
+    let a = fixture::library();
+    let state = |fm: &Fm, name: &str| fm.rig.label(name);
+    for (what, field, at, change) in [
+        ("offset low byte", "LS_GL", 0, 1u8),
+        ("offset high byte", "LS_GL", 1, 1),
+        ("length low byte", "LS_GL", 3, 1),
+        ("length high byte", "LS_GL", 4, 1),
+        ("flash page", "LR_PAGE", 0, 1),
+    ] {
+        let mut fm = Fm::new(&a);
+        assert_eq!(fm.statement(0, 0xFF).status(), 0);
+        let place = state(&fm, field) + at;
+        let old = fm.rig.peek(place, 1)[0];
+        fm.rig.poke(place, &[old ^ change]);
+        assert_eq!(fm.statement(0, 0xFF).status(), code(NOT_OPEN), "{what}");
+        fm.rig.poke(place, &[old]);
+        assert_eq!(fm.statement(0, 0xFF).status(), 0, "{what} put back");
+    }
+}
