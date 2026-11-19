@@ -875,6 +875,38 @@ fn assemble_reader(out: &Path) {
     ] {
         spasm(src, &out.join(format!("{name}.bin")), defines, &args);
     }
+    let mut fm_args = args.to_vec();
+    fm_args.extend(["-I", "../../ui"]);
+    for entry in fs::read_dir("../../fm").unwrap().flatten() {
+        println!("cargo:rerun-if-changed={}", entry.path().display());
+    }
+    spasm(
+        src,
+        &out.join("fm_test.bin"),
+        &["WITH_FM", "IMAGE_ORG=$3000"],
+        &fm_args,
+    );
+    for (defines, refusal) in [
+        (&["FM_RAM_SIZE=$1600"][..], None),
+        (&["FM_RAM_SIZE=$1F00"][..], None),
+        (&["FM_RAM=$E000"][..], None),
+        (
+            &["FM_RAM_SIZE=$15FF"][..],
+            Some("FM_RAM_SIZE in ram_map.inc is smaller than what fm lays out"),
+        ),
+        (
+            &["FM_RAM=$DF80"][..],
+            Some("FM_RAM must be a multiple of $100"),
+        ),
+        (
+            &["FM_VARS_SIZE=$101"][..],
+            Some("FM_VARS_SIZE must leave the stack at FM_RAM + $100 alone"),
+        ),
+    ] {
+        let mut defines = defines.to_vec();
+        defines.extend(["WITH_FM", "IMAGE_ORG=$3000"]);
+        expect(src, &out.join("fm_probe.bin"), &defines, &fm_args, refusal);
+    }
     spasm(
         Path::new("tests/routines/ramplan.z80"),
         &out.join("ramplan.bin"),
@@ -1024,6 +1056,14 @@ fn assemble_layout_probes(out: &Path) {
             "UI_VARS_SIZE=$30",
             0x1A,
             "the UI variables overlap, leave a gap, or run past UI_VARS_SIZE",
+        ),
+        (
+            "FM",
+            "#include \"fm/ram.inc\"\n".to_string(),
+            &ui_args[..],
+            "FM_VARS_SIZE=$30",
+            0x26,
+            "the fm variables overlap, leave a gap, or run past FM_VARS_SIZE",
         ),
         (
             "KD",

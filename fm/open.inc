@@ -1,0 +1,152 @@
+; fm_open: copies the library's glyph section into FM_GLYPHS and checks every entry of it.
+
+open_body:
+	xor a
+	ld (fv_open),a
+	ld (fv_open+1),a
+	ld (fv_count),a
+	call lib_glyphs
+	jr z,op_got
+	call fm_reader_status
+	jp fm_fail
+op_got:
+	ld (fv_src),hl
+	ld a,e
+	ld (fv_src+2),a
+	ld (fv_glen),bc
+	ld hl,FM_GLYPHS_SIZE
+	or a
+	sbc hl,bc
+	ld a,FM_ERR_TOO_BIG
+	jp c,fm_fail
+	ld a,b
+	or c
+	ld a,FM_ERR_BAD
+	jp z,fm_fail
+	ld (fv_left),bc
+	ld hl,FM_GLYPHS
+	ld (fv_dst),hl
+op_chunk:
+	ld bc,(fv_left)
+	ld a,b
+	or c
+	jr z,op_check
+	ld a,b
+	or a
+	jr z,op_read
+	ld bc,256
+op_read:
+	push bc
+	ld de,FM_SCRATCH
+	ld hl,(fv_src)
+	ld a,(fv_src+2)
+	call lib_read
+	pop bc
+	jr z,op_copy
+	call fm_reader_status
+	jp fm_fail
+op_copy:
+	ld hl,FM_SCRATCH
+	ld de,(fv_dst)
+	push bc
+	ldir
+	ld (fv_dst),de
+	pop bc
+	ld hl,(fv_src)
+	ld a,(fv_src+2)
+	add hl,bc
+	adc a,0
+	ld (fv_src),hl
+	ld (fv_src+2),a
+	ld hl,(fv_left)
+	or a
+	sbc hl,bc
+	ld (fv_left),hl
+	jr op_chunk
+
+; Every symbol's offset is inside the copy and its entry, flags, count and codes, ends inside it,
+; with no flag above bit 3.
+op_check:
+	ld a,(FM_GLYPHS+2)
+	ld (fv_nsyms),a
+	ld l,a
+	ld h,0
+	add hl,hl
+	inc hl
+	inc hl
+	inc hl
+	ld de,(fv_glen)
+	or a
+	sbc hl,de
+	jr z,op_table
+	jr nc,op_bad
+op_table:
+	ld a,(fv_nsyms)
+	or a
+	jr z,op_done
+	ld b,a
+	ld hl,FM_GLYPHS+3
+op_entry:
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	push hl
+	push bc
+	call op_entry_ok
+	pop bc
+	pop hl
+	jr nz,op_bad
+	djnz op_entry
+op_done:
+	ld hl,FM_OPEN_MAGIC
+	ld (fv_open),hl
+	xor a
+	jp fm_fail
+op_bad:
+	ld a,FM_ERR_BAD
+	jp fm_fail
+
+; in: DE = an entry's offset in the section. out: Z when the whole entry lies inside the copy and
+; its flags are below 16. Destroys AF BC DE HL.
+op_entry_ok:
+	ld hl,FM_GLYPHS
+	add hl,de
+	jr c,oe_bad
+	push hl
+	ld hl,(fv_glen)
+	ld de,FM_GLYPHS
+	add hl,de
+	ex de,hl
+	pop hl
+	ld bc,2
+	add hl,bc
+	jr c,oe_bad
+	push hl
+	or a
+	sbc hl,de
+	pop hl
+	jr c,oe_head
+	jr nz,oe_bad
+oe_head:
+	dec hl
+	ld c,(hl)
+	dec hl
+	ld a,(hl)
+	and $F0
+	jr nz,oe_bad
+	inc hl
+	inc hl
+	ld b,0
+	add hl,bc
+	or a
+	sbc hl,de
+	jr c,oe_ok
+	jr nz,oe_bad
+oe_ok:
+	xor a
+	ret
+oe_bad:
+	ld a,1
+	or a
+	ret
