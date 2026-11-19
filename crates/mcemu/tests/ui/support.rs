@@ -322,6 +322,8 @@ pub struct Outcome {
     pub lcd: Vec<bool>,
     /// Where the last run stopped.
     pub pc: u16,
+    /// Bytes of stack the run reached below its starting point, calls from the script included.
+    pub stack: usize,
 }
 
 pub const MARK: u8 = 0xA5;
@@ -329,6 +331,8 @@ const FRAME_LEN: u16 = 768;
 const VARS_LEN: u16 = 0x1A;
 /// RAM guarded on each side of the two blocks.
 const GUARD: u16 = 0x200;
+/// Marked bytes below the stack, to measure how deep it goes.
+const STACK_WINDOW: u16 = 0x80;
 
 /// Flash fetch and RAM write wait states and LCD delays as TI-OS programs them.
 pub fn os_ports(m: &mut Machine) {
@@ -394,6 +398,7 @@ pub fn run_code_on(
         (image.frame + FRAME_LEN).max(image.vars + VARS_LEN) + GUARD,
     );
     m.load_ram(lo, &vec![MARK; usize::from(hi - lo)]);
+    m.load_ram(STACK - STACK_WINDOW, &vec![MARK; usize::from(STACK_WINDOW)]);
     m.load_ram(SCRIPT, &script.code);
     m.load_ram(DATA, &script.data);
     m.set_speed(speed);
@@ -427,6 +432,11 @@ pub fn run_code_on(
             "RAM outside the two blocks changed at {at:04X}"
         );
     }
+    let window = m.read_ram(STACK - STACK_WINDOW, usize::from(STACK_WINDOW));
+    let stack = window
+        .iter()
+        .position(|&b| b != MARK)
+        .map_or(0, |at| window.len() - at);
     let pc = m.regs().pc;
     let lcd = m.lcd();
     let lcd = (0..LCD_HEIGHT)
@@ -439,6 +449,7 @@ pub fn run_code_on(
         tstates: run.tstates,
         lcd,
         pc,
+        stack,
     }
 }
 

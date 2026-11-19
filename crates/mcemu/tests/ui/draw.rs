@@ -222,3 +222,94 @@ fn drawing_text_does_not_touch_other_rows_or_the_ram_around_the_frame() {
     canvas.text(90, 0, "MMMM");
     same_frame("edges", &got.frame, &pack(&canvas.into_bitmap()));
 }
+
+/// Runs of one glyph, the last of which ends exactly at column 95, one short of it and one past
+/// it, in both fonts on the first and last text row.
+#[test]
+fn runs_of_every_glyph_ending_at_the_right_edge() {
+    for (font, table, keys) in [
+        (Font::builtin(), table(), false),
+        (Font::keys(), key_table(), true),
+    ] {
+        let flat: Vec<u8> = table.slots().iter().flatten().copied().collect();
+        for (name, code) in table.glyphs() {
+            let glyph = font.glyph(name).unwrap();
+            let w = glyph.width();
+            for row in [0usize, 7] {
+                for n in 1..=3usize {
+                    let run = n * w + (n - 1);
+                    for start in [95 - run, 96 - run, 97 - run] {
+                        let mut canvas = Canvas::default();
+                        for k in 0..n {
+                            canvas.blit(glyph, start + k * (w + 1), row);
+                        }
+                        let mut script = Vec::new();
+                        if keys {
+                            script.push(Op::SetFont(flat.clone()));
+                        }
+                        script.push(Op::Text {
+                            x: start,
+                            row,
+                            codes: [vec![code; n], vec![0]].concat(),
+                        });
+                        let got = run_ops(&script);
+                        same_frame(
+                            &format!("{name} x{n} from {start} on row {row}"),
+                            &got.frame,
+                            &pack(&canvas.into_bitmap()),
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn run_ops(script: &[Op]) -> Outcome {
+    run(REAL, script)
+}
+
+/// Rows of the narrowest glyphs, long enough to run off the edge, from every bit alignment on
+/// every row.
+#[test]
+fn rows_of_narrow_glyphs_from_every_alignment() {
+    for unit in ["i", "l", ".", "il", ".il", "i.", "|i"] {
+        let text = unit.repeat(60);
+        for row in 0..8usize {
+            for x in 0..=9usize {
+                agree(&format!("{unit:?} x60 at {x} on row {row}"), |c| {
+                    c.text(x, row, &text);
+                });
+            }
+        }
+    }
+}
+
+#[test]
+fn text_reaches_at_most_eight_bytes_of_stack() {
+    let t = table();
+    let narrow = "i".repeat(60);
+    let texts = [
+        "",
+        "a",
+        narrow.as_str(),
+        "Wgj, (pqy) MW 0123 [i|l] {a~b} \u{2713}\u{2717}\u{2026} Quick brown fox; jumps!",
+    ];
+    for text in texts {
+        for (x, row) in [(0, 0), (1, 3), (7, 7), (88, 7), (95, 7), (200, 2), (1, 9)] {
+            let got = run(
+                REAL,
+                &[Op::Text {
+                    x,
+                    row,
+                    codes: t.encode(text),
+                }],
+            );
+            assert!(
+                got.stack <= 8,
+                "{text:?} at {x} on row {row} reached {} bytes of stack",
+                got.stack
+            );
+        }
+    }
+}
