@@ -277,7 +277,7 @@ fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_
 
 #[test]
 fn a_session_reaches_a_stack_depth_the_header_states() {
-    let bytes = fixture::library();
+    let bytes = fixture::nodes_library();
     let all = statements(&decoded(&bytes));
     let depth = [0xA5u8, 0x5A]
         .into_iter()

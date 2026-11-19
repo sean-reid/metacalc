@@ -25,12 +25,12 @@ fn assertion(label: &str) -> u16 {
 
 /// One refused call: fm in the state that makes it refuse, the routine, its registers and the
 /// status it must return.
-struct Refusal {
-    what: &'static str,
-    fm: Fm,
-    target: &'static str,
-    regs: Regs,
-    status: u8,
+pub struct Refusal {
+    pub what: &'static str,
+    pub fm: Fm,
+    pub target: &'static str,
+    pub regs: Regs,
+    pub status: u8,
 }
 
 fn open_with(what: &'static str, bytes: &[u8], status: &str) -> Refusal {
@@ -181,6 +181,7 @@ fn refusals() -> Vec<Refusal> {
         page[at..at + 2].copy_from_slice(&(spare - copy).to_le_bytes());
     }
     out.push(wide);
+    out.extend(crate::damaged::cases().into_iter().map(|d| d.refusal));
     out
 }
 

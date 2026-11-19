@@ -83,3 +83,149 @@ fn the_node_table_is_the_models_for_every_statement_of_the_fixture() {
     }
     assert!(all.len() > 90, "{} statements", all.len());
 }
+
+#[test]
+fn the_fixture_holds_every_structure_the_table_has_to_get_right() {
+    let bytes = fixture::nodes_library();
+    let library = decoded(&bytes);
+    let shapes = library.sections.as_ref().unwrap().shapes.as_ref().unwrap();
+    let children = |shape: &Vec<u8>| {
+        shape
+            .iter()
+            .copied()
+            .filter(|&p| p != 0)
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        shapes.axioms.iter().any(|s| {
+            let order = children(s);
+            order.windows(2).any(|w| w[0] > w[1])
+        }),
+        "an axiom whose slots are out of child order"
+    );
+    let wrappers = shapes
+        .axioms
+        .iter()
+        .filter(|s| s.len() == 1 && s[0] != 0)
+        .count();
+    assert!(
+        wrappers >= 2,
+        "{wrappers} wrapper axioms of one slot and no constant"
+    );
+    let one_constant = shapes.axioms.iter().filter(|s| **s == [0]).count();
+    assert!(
+        one_constant > 100,
+        "{one_constant} axioms of one constant and no slot"
+    );
+
+    let model = Model::new(&bytes);
+    let mut fm = Fm::new(&bytes);
+    let all = statements(&library);
+    let at = |label: &str| {
+        library
+            .assertions
+            .iter()
+            .position(|a| a.label == label)
+            .unwrap() as u16
+    };
+    let trees = library.sections.as_ref().unwrap().trees.as_ref().unwrap();
+    let (mut tall, mut long, mut without, mut mixed) = (0, 0, 0, 0);
+    for (n, k, _) in &all {
+        let tree = fm.rig.tree(*n, *k);
+        without += usize::from(tree.status == 9);
+        long += usize::from(tree.len > 255);
+        tall += usize::from(model.table(*n, *k).iter().any(|row| row.2 > 13));
+        let items = &trees.items[usize::from(*n)];
+        let missing = items.iter().any(|t| t.is_none());
+        mixed += usize::from(missing && tree.status == 0);
+    }
+    assert!(without >= 1, "a statement with no tree");
+    assert!(
+        mixed >= 1,
+        "a statement with a tree in an assertion with a statement that has none"
+    );
+    assert_eq!(long, 1, "a tree over 255 bytes");
+    assert!(tall >= 2, "{tall} statements deeper than 13");
+    let deepest = all
+        .iter()
+        .flat_map(|(n, k, _)| model.table(*n, *k))
+        .map(|row| row.2);
+    assert_eq!(deepest.max(), Some(fixture::CHAIN), "the deepest node");
+    let root = at("nest-root");
+    assert_eq!(
+        fm.rig.tree(root, 0xFF).len,
+        3,
+        "a wrapper of a wrapper over a variable"
+    );
+    assert_eq!(model.table(root, 0xFF), [(0, 1, 0)]);
+    let below = at("nest-below");
+    assert_eq!(
+        model.table(below, 0xFF),
+        [(0, 5, 0), (2, 2, 1), (4, 4, 1)],
+        "a wrapper chain below a root"
+    );
+}
+
+#[test]
+fn a_library_without_trees_and_shapes_opens_and_every_statement_is_one_node() {
+    let bytes = fixture::unstructured();
+    let mut fm = Fm::new(&bytes);
+    assert_eq!((fm.rig.shapes().0, fm.rig.syntax_count().0), (9, 9));
+    assert_eq!(fm.rig.sections().1 & 2, 2, "it has a glyph map");
+    for (n, k, tokens) in statements(&decoded(&bytes)) {
+        let want = vec![(0, tokens.len() - 1, 0)];
+        assert_eq!(fm.built(n, k), want, "statement {k} of assertion {n}");
+    }
+}
+
+#[test]
+fn a_statement_the_library_has_no_tree_for_is_one_node_over_every_token() {
+    let bytes = fixture::library();
+    let library = decoded(&bytes);
+    let mut fm = Fm::new(&bytes);
+    let wide = library
+        .assertions
+        .iter()
+        .position(|a| a.label == "wide")
+        .unwrap() as u16;
+    assert_eq!(fm.rig.tree(wide, 0xFF).status, 9);
+    let tokens = library.assertions[usize::from(wide)].conclusion.len();
+    assert_eq!(fm.built(wide, 0xFF), [(0, tokens - 1, 0)]);
+}
+
+#[test]
+fn the_table_is_built_once_for_a_loaded_statement_and_a_new_statement_unbuilds_it() {
+    let bytes = fixture::library();
+    let library = decoded(&bytes);
+    let mut fm = Fm::new(&bytes);
+    let built = |fm: &mut Fm| fm.memory("FV_NODES", 1)[0];
+    let (n, k, _) = statements(&library)
+        .into_iter()
+        .find(|s| s.2.len() > 9)
+        .unwrap();
+    assert_eq!(fm.nodes().status(), code("FM_ERR_INDEX"));
+    assert_eq!(fm.statement(n, k).status(), 0);
+    assert_eq!(built(&mut fm), 0);
+    let first = fm.nodes();
+    assert_eq!((first.status(), built(&mut fm)), (0, count(first) as u8));
+    fm.rows(94);
+    fm.draw(1, 0, 94, (0, 8));
+    let table = fm.table(count(first));
+    let second = fm.nodes();
+    assert!(
+        second.tstates < first.tstates / 4,
+        "the second call reads nothing"
+    );
+    assert_eq!(
+        (count(second), fm.table(count(second))),
+        (count(first), table)
+    );
+    assert_eq!(fm.statement(n, k).status(), 0);
+    assert_eq!(built(&mut fm), 0);
+    assert_eq!(fm.open().status(), 0);
+    assert_eq!(
+        fm.nodes().status(),
+        code("FM_ERR_INDEX"),
+        "open leaves no statement"
+    );
+}

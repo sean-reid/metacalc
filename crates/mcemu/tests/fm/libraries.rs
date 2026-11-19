@@ -1,3 +1,4 @@
+use crate::nodes::Model;
 use crate::rig::*;
 use crate::support::*;
 use crate::ui_support::same_frame;
@@ -17,7 +18,7 @@ struct Ceilings {
 const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "prop",
-        open: 25476,
+        open: 69262,
         median: 28818,
         statement: 73548,
         rows: 11351,
@@ -25,7 +26,7 @@ const CEILINGS: [Ceilings; 3] = [
     },
     Ceilings {
         name: "pred",
-        open: 38306,
+        open: 102757,
         median: 29054,
         statement: 77498,
         rows: 11351,
@@ -33,7 +34,7 @@ const CEILINGS: [Ceilings; 3] = [
     },
     Ceilings {
         name: "ring",
-        open: 167683,
+        open: 576049,
         median: 29419,
         statement: 142403,
         rows: 22595,
@@ -113,6 +114,83 @@ fn the_shipped_libraries_lay_out_and_draw_as_the_model_does() {
             ("fm_statement largest", largest, ceiling.statement),
             ("fm_rows largest", rows, ceiling.rows),
             ("fm_draw largest", draw, ceiling.draw),
+        ] {
+            assert!(
+                got <= ceiling,
+                "{name}: {what} took {got}, ceiling {ceiling}"
+            );
+        }
+    }
+}
+
+/// T-state ceilings per library, 5 percent above what fm_nodes took: the median and the largest.
+struct NodeCeilings {
+    name: &'static str,
+    median: u32,
+    largest: u32,
+}
+
+const NODE_CEILINGS: [NodeCeilings; 3] = [
+    NodeCeilings {
+        name: "prop",
+        median: 49200,
+        largest: 302505,
+    },
+    NodeCeilings {
+        name: "pred",
+        median: 55133,
+        largest: 343464,
+    },
+    NodeCeilings {
+        name: "ring",
+        median: 64216,
+        largest: 850431,
+    },
+];
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn the_shipped_libraries_build_the_node_tables_the_model_has() {
+    let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    for ceiling in NODE_CEILINGS {
+        let name = ceiling.name;
+        let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
+        let model = Model::new(&bytes);
+        let all = statements(&decoded(&bytes));
+        let mut fm = Fm::bare(&bytes);
+        let base = fm.rig.call("CALL_NOP", Regs::default()).tstates;
+        assert_eq!(fm.open().status(), 0, "{name}: fm_open");
+        let pile = usize::from(fm.rig.label("FM_PILE") - SPARE_BASE);
+        let size = constant_of(WITH_FM.labels, "FM_PILE_SIZE") as usize;
+        let (mut spent, mut deepest, mut most) = (Vec::new(), 0, 0);
+        for (n, k, _) in &all {
+            assert_eq!(
+                fm.statement(*n, *k).status(),
+                0,
+                "{name}: statement {k} of {n}"
+            );
+            fm.rig.m.ram_page(SPARE_PAGE)[pile..pile + size].fill(0xA5);
+            let out = fm.nodes();
+            assert_eq!(out.status(), 0, "{name}: fm_nodes of {k} of {n}");
+            let want = model.table(*n, *k);
+            assert_eq!(fm.table(count(out)), want, "{name}: nodes of {k} of {n}");
+            let page = fm.rig.m.ram_page(SPARE_PAGE);
+            let used = page[pile..pile + size].iter().rposition(|&b| b != 0xA5);
+            deepest = deepest.max(used.map_or(0, |at| at + 1));
+            most = most.max(want.iter().map(|row| row.2).max().unwrap());
+            spent.push(out.tstates - base);
+        }
+        spent.sort_unstable();
+        let (median, largest) = (spent[spent.len() / 2], *spent.last().unwrap());
+        println!(
+            "{name}: {} statements, deepest node {most}\n\
+             {name}: fm_nodes median {median}, largest {largest}\n\
+             {name}: explicit stack deepest use {deepest} of {size} bytes",
+            all.len()
+        );
+        for (what, got, ceiling) in [
+            ("fm_nodes median", median, ceiling.median),
+            ("fm_nodes largest", largest, ceiling.largest),
         ] {
             assert!(
                 got <= ceiling,

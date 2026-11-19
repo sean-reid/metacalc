@@ -55,7 +55,17 @@ impl Fm {
     /// `bare` with the caller's bank B on RAM page `port7` and 80h to 87h, so that a restore of
     /// port 7 shows apart from a write of 81h.
     pub fn bare_in(library: &[u8], port7: u8) -> Fm {
+        Fm::on(Rig::with_image(WITH_FM), library, port7)
+    }
+
+    /// `bare` on a machine whose RAM holds a pattern, so that a write nobody may make shows.
+    pub fn primed(library: &[u8]) -> Fm {
         let mut rig = Rig::with_image(WITH_FM);
+        crate::guard::prime(&mut rig);
+        Fm::on(rig, library, 0x81)
+    }
+
+    fn on(mut rig: Rig, library: &[u8], port7: u8) -> Fm {
         rig.m.out_port(7, port7);
         rig.load(library);
         rig.open_ok();
@@ -74,6 +84,13 @@ impl Fm {
 
     pub fn new(library: &[u8]) -> Fm {
         let mut fm = Fm::bare(library);
+        assert_eq!(fm.open().status(), 0, "fm_open");
+        fm
+    }
+
+    /// `new` on a primed machine.
+    pub fn opened_primed(library: &[u8]) -> Fm {
+        let mut fm = Fm::primed(library);
         assert_eq!(fm.open().status(), 0, "fm_open");
         fm
     }

@@ -1,6 +1,7 @@
 use crate::support::*;
-use mcpack::library::{GLYPHS, pack_kernel};
+use mcpack::library::{ENTRY_LEN, GLYPHS, SHAPES, TRAILER_LEN, TREES, crc32, pack_kernel};
 use mcpack::mm::StmtId;
+use std::sync::OnceLock;
 
 const HEAD: &str = "$c ( ) -> -. <-> /\\ \\/ A. E. = e. { } | , wff |- setvar class $.\n\
     $v ph ps ch th ta x y z A B $.\n\
@@ -87,7 +88,10 @@ fn names(prefix: &str, count: usize) -> Vec<String> {
 
 /// The base fixture and `structure`.
 pub fn nodes_library() -> Vec<u8> {
-    pack_all(&parse(&format!("{}{}", source(), structure())))
+    static PACKED: OnceLock<Vec<u8>> = OnceLock::new();
+    PACKED
+        .get_or_init(|| pack_all(&parse(&format!("{}{}", source(), structure()))))
+        .clone()
 }
 
 pub fn library() -> Vec<u8> {
@@ -97,6 +101,38 @@ pub fn library() -> Vec<u8> {
 /// A second library over the same symbols, so with a glyph section somewhere else.
 pub fn other() -> Vec<u8> {
     pack_all(&parse(&format!("{HEAD}ax-a $a |- ( ph -> ph ) $.\n")))
+}
+
+/// The file offset of the section table's row for `id`.
+pub fn row_of(bytes: &[u8], id: u8) -> usize {
+    let count = usize::from(bytes[bytes.len() - TRAILER_LEN]);
+    let first = bytes.len() - TRAILER_LEN - count * ENTRY_LEN;
+    (0..count)
+        .map(|i| first + i * ENTRY_LEN)
+        .find(|&at| bytes[at] == id)
+        .expect("the library has the row")
+}
+
+/// `bytes` with `change` applied and the length and checksum of the header made right again.
+pub fn with(bytes: &[u8], change: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
+    let mut out = bytes.to_vec();
+    change(&mut out);
+    let len = out.len() as u32;
+    out[8..12].copy_from_slice(&len.to_le_bytes());
+    let crc = crc32(&out[8..]);
+    out[4..8].copy_from_slice(&crc.to_le_bytes());
+    out
+}
+
+/// The fixture with its trees and shapes sections renamed to ids nobody reads: a glyph map and
+/// neither of the two.
+pub fn unstructured() -> Vec<u8> {
+    let good = library();
+    let (trees, shapes) = (row_of(&good, TREES), row_of(&good, SHAPES));
+    with(&good, |b| {
+        b[trees] = 40;
+        b[shapes] = 41;
+    })
 }
 
 /// The fixture packed without sections.

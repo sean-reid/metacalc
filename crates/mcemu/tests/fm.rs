@@ -1,3 +1,5 @@
+#[path = "fm/damaged.rs"]
+mod damaged;
 #[path = "fm/errors.rs"]
 mod errors;
 #[path = "fm/fixture.rs"]
