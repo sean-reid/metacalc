@@ -91,7 +91,7 @@ fn no_honest_proof_in_a_shipped_library_charges_over_an_eighth_of_the_work_limit
 
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn no_shipped_assertion_reaches_an_id_whose_record_check_is_charged() {
+fn no_shipped_library_reaches_the_uncached_path() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
     let mut largest = 0;
     for name in ["prop", "pred", "ring"] {
