@@ -9,6 +9,8 @@ struct Raw {
 
 unsafe extern "C" {
     fn mcemu_new(rom: *const u8, len: usize) -> *mut Raw;
+    fn mcemu_new_os(rom: *const u8, len: usize) -> *mut Raw;
+    fn mcemu_run_time(calc: *mut Raw, microseconds: i32) -> u32;
     fn mcemu_free(calc: *mut Raw);
     fn mcemu_mem(calc: *mut Raw) -> *mut u8;
     fn mcemu_rom_size(calc: *const Raw) -> usize;
@@ -58,6 +60,17 @@ impl Calc {
     pub fn new(rom: &[u8]) -> Option<Calc> {
         // SAFETY: the pointer and length describe `rom`, which the C side copies and does not keep.
         NonNull::new(unsafe { mcemu_new(rom.as_ptr(), rom.len()) }).map(Calc)
+    }
+
+    /// Resets a real OS image without running it.
+    pub fn new_os(rom: &[u8]) -> Option<Calc> {
+        // SAFETY: the pointer and length describe `rom`, which the C side copies and does not keep.
+        NonNull::new(unsafe { mcemu_new_os(rom.as_ptr(), rom.len()) }).map(Calc)
+    }
+
+    pub fn run_time(&mut self, microseconds: i32) -> u32 {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_run_time(self.0.as_ptr(), microseconds) }
     }
 
     /// Flash followed by RAM, as the core lays them out.

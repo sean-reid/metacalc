@@ -1,3 +1,7 @@
+#[path = "kerncheck/os.rs"]
+mod os;
+#[path = "common/realos.rs"]
+mod realos;
 #[path = "kerncheck/rig.rs"]
 mod rig;
 
@@ -130,21 +134,17 @@ fn the_cpu_runs_at_15_mhz_and_returns_to_the_speed_it_had() {
 }
 
 #[test]
-fn on_held_before_the_run_stops_it_in_the_checksum() {
+fn on_held_before_the_run_stops_it_before_the_checksum_starts() {
     let bytes = single_symbol_axioms(300);
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     rig.m.press_key(Machine::KEY_ON);
     assert_eq!(rig.finish(ENTRY, 3), 3);
     let (_, result) = screens(&rig.trace());
+    assert_eq!(result, INIT_STOPPED);
     assert_eq!(
-        result,
-        [
-            "kernchk v1",
-            "crc stopped",
-            "checked 00000",
-            "accepted 00000",
-            "stopped 00000"
-        ]
+        rig.byte(OUT_FLAGGED),
+        0,
+        "a text call ran with the flag set"
     );
 }
 
@@ -197,7 +197,7 @@ fn on_pressed_during_verification_stops_there_and_reports_where() {
 /// says whether the driver saw the key before the kernel did.
 fn press_in_proof(bytes: &[u8], nth: usize) -> (bool, Rig) {
     let proofs = label("VERIFY_BODY")..label("KERNEL_CRC_BEGIN");
-    let on_down = label("KD_ON_DOWN");
+    let on_down = label("KD_ON_SEEN");
     let mut rig = Rig::new(bytes, Speed::Mhz15);
     rig.run_until_trace_has("\rchk 00000/", 5_000);
     let mut seen = 0;
@@ -208,17 +208,29 @@ fn press_in_proof(bytes: &[u8], nth: usize) -> (bool, Rig) {
     }
     rig.m.press_key(Machine::KEY_ON);
     let mut driver_looked = false;
-    let waiting = label("ON_WAIT_HALTED");
-    loop {
+    for n in 0..MAX_STEPS {
         let run = rig.m.resume(40);
         let pc = rig.m.pc();
         driver_looked |= pc == on_down;
-        if run.stop == Stop::Halted || pc == waiting || pc + 1 == waiting {
-            assert!(rig.finish(pc, 1) >= 1);
+        if rig.in_wait() {
+            assert!(rig.finish(label("ON_RELEASE_AND_CLEAR"), 1) >= 1);
             return (driver_looked, rig);
         }
+        assert_ne!(
+            run.stop,
+            Stop::Halted,
+            "the routine ended without entering the wait, at pc {pc:04x} after {n} steps"
+        );
     }
+    panic!(
+        "no wait after {MAX_STEPS} steps of 40 T-states, at pc {:04x}",
+        rig.m.pc()
+    );
 }
+
+/// The most 40 T-state steps `press_in_proof` takes after the press: one call of the kernel is at
+/// most 0.83 million T-states, so this is about 100 times that.
+const MAX_STEPS: usize = 2_000_000;
 
 #[test]
 fn on_pressed_inside_a_proof_makes_the_kernel_return_14_and_the_driver_stop() {
@@ -291,59 +303,42 @@ fn the_app_builds_from_a_library_and_passes_the_checker() {
     );
 }
 
-const FLAGS: usize = 0x3800 + 9;
+const FLAGS: usize = 0x09F0 + 9;
 
 #[test]
 fn after_an_on_stop_the_report_waits_for_the_key_to_come_up() {
     let bytes = single_symbol_axioms(300);
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     rig.m.press_key(Machine::KEY_ON);
-    let halted_in_wait = label("ON_WAIT_HALTED");
     let mut pc = ENTRY;
-    for held in 1..=6 {
-        let run = rig.m.run(pc, LIMIT);
-        assert_ne!(run.stop, Stop::Fault);
-        pc = rig.m.pc();
-        assert!(
-            pc == halted_in_wait || pc + 1 == halted_in_wait,
-            "poll {held}"
-        );
+    for _ in 1..=6 {
+        pc = rig.until_waiting(pc);
         let trace = rig.trace();
         assert_eq!(
             count_of(&trace, "\u{c}"),
             1,
             "nothing is printed while ON is down"
         );
-        pc = halted_in_wait;
     }
     rig.m.release_key(Machine::KEY_ON);
     assert_eq!(rig.finish(pc, 0), 0);
     let (_, result) = screens(&rig.trace());
-    assert_eq!(
-        result,
-        [
-            "kernchk v1",
-            "crc stopped",
-            "checked 00000",
-            "accepted 00000",
-            "stopped 00000"
-        ]
-    );
+    assert_eq!(result, INIT_STOPPED);
 }
 
 #[test]
 fn the_pending_os_break_is_cleared_after_an_on_stop_and_nothing_else_is_touched() {
     let bytes = single_symbol_axioms(300);
-    for (press, want) in [(true, 0xEFu8), (false, 0xFF)] {
+    for press in [true, false] {
         let mut rig = Rig::new(&bytes, Speed::Mhz15);
-        rig.m.ram_page(1)[FLAGS] = 0xFF;
+        rig.m.ram_page(1)[FLAGS] = if press { 0xFF } else { 0xEF };
         if press {
             rig.m.press_key(Machine::KEY_ON);
             assert_eq!(rig.finish(ENTRY, 2), 2);
         } else {
             rig.run_to_end();
         }
-        assert_eq!(rig.m.ram_page(1)[FLAGS], want, "ON pressed: {press}");
+        assert_eq!(rig.m.ram_page(1)[FLAGS], 0xEF, "ON pressed: {press}");
         assert_eq!(rig.m.ram_page(1)[FLAGS - 1], 0, "the flags next to it");
         let (_, result) = screens(&rig.trace());
         assert_eq!(result.len(), if press { 5 } else { 4 });
@@ -361,23 +356,33 @@ fn the_wait_returns_with_interrupts_on_whether_or_not_on_was_down() {
         if holds > 0 {
             rig.m.press_key(Machine::KEY_ON);
         }
-        let halted_in_wait = label("ON_WAIT_HALTED");
         let mut waits = 0;
-        loop {
-            let run = rig.m.run(pc, LIMIT);
-            assert_ne!(run.stop, Stop::Fault);
-            let at = rig.m.pc();
-            if at != halted_in_wait && at + 1 != halted_in_wait {
-                assert_eq!(run.stop, Stop::Halted, "the routine did not reach its end");
-                break;
-            }
-            pc = halted_in_wait;
-            waits += 1;
-            if waits == holds {
-                rig.m.release_key(Machine::KEY_ON);
+        let mut tstates = 0u64;
+        // the quiet case is one halt and the end; a held key is one slice per wait
+        let most = if holds == 0 { 100 } else { holds + 1000 };
+        for slice in 0.. {
+            assert!(
+                slice < most,
+                "no end after {slice} slices, {waits} waits, at pc {:04x}",
+                rig.m.pc()
+            );
+            let run = rig.m.run(pc, SLICE);
+            tstates += u64::from(run.tstates);
+            match run.stop {
+                Stop::Halted => break,
+                Stop::Limit => {
+                    waits += 1;
+                    if waits == holds {
+                        rig.m.release_key(Machine::KEY_ON);
+                    }
+                    pc = entry;
+                }
+                other => panic!("{other:?}"),
             }
         }
-        assert_eq!(waits, holds);
+        assert_eq!(waits, holds, "slices that ended in the wait");
+        // the routine without its halt takes about 60 T-states; the halt waits for the timer
+        assert!(tstates > 1000, "the halt did not wait: {tstates} T-states");
         assert_eq!(
             rig.byte(0xA004),
             1,
@@ -385,4 +390,253 @@ fn the_wait_returns_with_interrupts_on_whether_or_not_on_was_down() {
         );
         assert_eq!(rig.m.ram_page(1)[FLAGS], 0xEF, "the break flag is cleared");
     }
+}
+
+const OUT_FLAGGED: u16 = 0xA006;
+
+fn assert_stopped_at_done(rig: &mut Rig) {
+    let done = rig.word("K_DONE");
+    let (_, result) = screens(&rig.trace());
+    assert_eq!(result.last().unwrap(), &format!("stopped {done:05}"));
+    assert_eq!(rig.word("K_STOP_AT"), done);
+}
+
+#[test]
+fn an_on_tap_over_before_the_next_poll_still_stops_the_run() {
+    let bytes = axioms(2000);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    let pc = rig.run_until_trace_has("\rcrc 00002/", 100_000);
+    rig.m.press_key(Machine::KEY_ON);
+    rig.m.release_key(Machine::KEY_ON);
+    rig.finish(pc, 0);
+    assert_eq!(rig.byte(label("K_STOPPED")), 1, "stopped in the checksum");
+
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    let pc = rig.run_until_trace_has("\rchk 00064/", 5_000);
+    rig.m.press_key(Machine::KEY_ON);
+    rig.m.release_key(Machine::KEY_ON);
+    rig.finish(pc, 0);
+    assert_eq!(rig.byte(label("K_STOPPED")), 2, "stopped in verification");
+    assert_stopped_at_done(&mut rig);
+    assert!(rig.word("K_DONE") < 2000);
+}
+
+#[test]
+fn a_break_flag_the_os_set_stops_the_run_with_no_key_down() {
+    let bytes = axioms(2000);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    let pc = rig.run_until_trace_has("\rchk 00064/", 5_000);
+    rig.m.ram_page(1)[FLAGS] = 0xFF;
+    rig.finish(pc, 0);
+    assert_eq!(rig.byte(label("K_STOPPED")), 2);
+    assert_stopped_at_done(&mut rig);
+    assert_eq!(rig.m.ram_page(1)[FLAGS], 0xEF, "cleared, and only that bit");
+}
+
+#[test]
+fn nothing_is_printed_after_an_on_stop_until_the_flag_is_clear() {
+    let bytes = axioms(2000);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    let mut pc = rig.run_until_trace_has("\rchk 00064/", 5_000);
+    while pc != label("KD_ON_SEEN") {
+        assert_eq!(rig.m.run(pc, 1).stop, Stop::Limit);
+        pc = rig.m.pc();
+    }
+    rig.m.press_key(Machine::KEY_ON);
+    rig.m.ram_page(1)[FLAGS] |= 0x10;
+    let mut printed = None;
+    for _ in 1..=5 {
+        pc = rig.until_waiting(pc);
+        let len = rig.trace().len();
+        assert_eq!(*printed.get_or_insert(len), len, "output while ON is down");
+    }
+    rig.m.release_key(Machine::KEY_ON);
+    assert_eq!(rig.finish(pc, 0), 0);
+    assert!(rig.trace().len() > printed.unwrap(), "the report follows");
+    assert_eq!(
+        rig.byte(OUT_FLAGGED),
+        0,
+        "a text call ran with the flag set"
+    );
+    assert_eq!(rig.m.ram_page(1)[FLAGS] & 0x10, 0);
+    assert_stopped_at_done(&mut rig);
+}
+
+const INIT_STOPPED: [&str; 5] = [
+    "kernchk v1",
+    "init stopped",
+    "checked 00000",
+    "accepted 00000",
+    "stopped 00000",
+];
+
+/// Runs until the driver waits for ON, checks nothing but the first clear has been printed over
+/// several waits, and returns where to go on from.
+fn wait_quietly(rig: &mut Rig) -> u16 {
+    let mut pc = ENTRY;
+    for _ in 0..4 {
+        pc = rig.until_waiting(pc);
+        assert_eq!(rig.trace(), [0x0C], "nothing is printed while ON is down");
+    }
+    pc
+}
+
+/// The test image's kernel_init is replaced by `ld a,14; ret`, which is what the kernel returns
+/// when ON is down in its symbol comparison, so the driver's handling is tested on its own,
+/// whether or not ON is down.
+#[test]
+fn an_init_reported_interrupted_is_a_stop_and_not_a_failure() {
+    let bytes = axioms(300);
+    let mut code = CODE.to_vec();
+    let at = usize::from(label("KERNEL_INIT") - ENTRY);
+    code[at..at + 3].copy_from_slice(&[0x3E, 14, 0xC9]);
+    for held in [true, false] {
+        let mut rig = Rig::with_code(&bytes, Speed::Mhz15, &code);
+        rig.m.ram_page(1)[FLAGS] = 0xFF;
+        if held {
+            rig.m.press_key(Machine::KEY_ON);
+            let pc = wait_quietly(&mut rig);
+            rig.m.release_key(Machine::KEY_ON);
+            rig.finish(pc, 0);
+        } else {
+            rig.finish(ENTRY, 0);
+        }
+        let (_, result) = screens(&rig.trace());
+        assert_eq!(result, INIT_STOPPED, "ON held: {held}");
+        assert_eq!(rig.byte(label("K_INIT")), 0, "ON held: {held}");
+        assert_eq!(rig.byte(label("K_STOPPED")), 3, "ON held: {held}");
+        assert_eq!(rig.m.ram_page(1)[FLAGS], 0xEF, "ON held: {held}");
+    }
+}
+
+/// The unpatched kernel returns 14 from kernel_init when ON is down while it compares symbol names,
+/// in a library with more than one symbol.
+#[test]
+fn on_down_before_the_run_stops_the_real_init_and_the_next_run_checks_the_library() {
+    let bytes = axioms(300);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    rig.m.ram_page(1)[FLAGS] = 0xFF;
+    rig.m.press_key(Machine::KEY_ON);
+    let pc = wait_quietly(&mut rig);
+    rig.m.release_key(Machine::KEY_ON);
+    rig.finish(pc, 0);
+    let (_, result) = screens(&rig.trace());
+    assert_eq!(result, INIT_STOPPED);
+    assert_eq!(rig.byte(label("K_INIT")), 0);
+    assert_eq!(rig.byte(label("K_STOPPED")), 3);
+    assert_eq!(rig.m.ram_page(1)[FLAGS], 0xEF, "the break flag is cleared");
+
+    rig.finish(ENTRY, 0);
+    let (_, result) = screens(&rig.trace());
+    assert_eq!(result, report(&bytes));
+    assert_eq!(rig.word("K_DONE"), model(&bytes).count as u16);
+    assert_eq!(rig.byte(label("K_STOPPED")), 0);
+}
+
+/// ON goes down after the leading clear and is held through kernel_init, which reads the key only
+/// in the comparison of symbol names. The OS handler runs where the driver turns interrupts on after
+/// init and sets the break flag, so the driver has to poll before it prints.
+#[test]
+fn an_on_hold_the_init_missed_stops_the_run_before_any_text_is_printed() {
+    let bytes = single_symbol_axioms(300);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    let mut pc = ENTRY;
+    while pc != label("KERNEL_INIT") {
+        assert_eq!(rig.m.run(pc, 1).stop, Stop::Limit);
+        pc = rig.m.pc();
+    }
+    rig.m.press_key(Machine::KEY_ON);
+    rig.finish(pc, 3);
+    let (_, result) = screens(&rig.trace());
+    assert_eq!(result, INIT_STOPPED);
+    assert_eq!(rig.byte(label("K_INIT")), 0);
+    assert_eq!(rig.byte(label("K_STOPPED")), 3);
+    assert_eq!(
+        rig.byte(OUT_FLAGGED),
+        0,
+        "a text call ran with the flag set"
+    );
+    assert_eq!(
+        rig.m.ram_page(1)[FLAGS] & 0x10,
+        0,
+        "the break flag is clear"
+    );
+}
+
+/// The driver prints after a kernel call and before its next poll, which is safe only while
+/// interrupts stay off from the call to the print. ON goes down at offsets through both phases and
+/// stays down, so an interrupt taken at any print would set the flag there.
+#[test]
+fn a_hold_through_the_checksum_and_verification_never_reaches_a_text_call() {
+    let bytes = axioms(2000);
+    for (marker, step, stopped) in [("\rcrc 00002/", 100_000, 1), ("\rchk 00064/", 5_000, 2)] {
+        for offset in (0..40_000).step_by(331) {
+            let mut rig = Rig::new(&bytes, Speed::Mhz15);
+            let mut pc = rig.run_until_trace_has(marker, step);
+            if offset > 0 {
+                assert_eq!(rig.m.run(pc, offset).stop, Stop::Limit);
+                pc = rig.m.pc();
+            }
+            rig.m.press_key(Machine::KEY_ON);
+            let msg = format!("{marker:?} +{offset}");
+            rig.finish(pc, 2);
+            assert_eq!(rig.byte(label("K_STOPPED")), stopped, "{msg}");
+            assert_eq!(rig.byte(OUT_FLAGGED), 0, "{msg}: flagged text call");
+        }
+    }
+}
+
+/// The progress line is rewritten after every 16th assertion, straight after the kernel call that
+/// finished it. ON goes down during that call.
+#[test]
+fn a_hold_during_the_call_before_a_progress_print_never_reaches_a_text_call() {
+    let bytes = axioms(2000);
+    for last in [79u16, 95, 143] {
+        let mut rig = Rig::new(&bytes, Speed::Mhz15);
+        let mut pc = rig.run_until_trace_has("\rchk 00064/", 5_000);
+        while rig.word("K_DONE") != last {
+            assert_eq!(rig.m.run(pc, 40).stop, Stop::Limit);
+            pc = rig.m.pc();
+        }
+        assert_eq!(rig.m.run(pc, 600).stop, Stop::Limit);
+        pc = rig.m.pc();
+        let proofs = label("VERIFY_BODY")..label("KERNEL_CRC_BEGIN");
+        assert!(
+            proofs.contains(&pc),
+            "assertion {last}: pc {pc:04x} is outside the verify body"
+        );
+        assert_eq!(rig.word("K_DONE"), last, "the call has not returned");
+        rig.m.press_key(Machine::KEY_ON);
+        rig.finish(pc, 2);
+        assert_eq!(rig.byte(label("K_STOPPED")), 2, "assertion {last}");
+        assert_eq!(rig.byte(OUT_FLAGGED), 0, "assertion {last}: flagged text");
+    }
+}
+
+/// ON goes down after the driver's poll after init has read the key and before the first print of
+/// the checksum, which is where interrupts would otherwise still be on.
+#[test]
+fn an_on_hold_between_the_poll_after_init_and_the_first_print_stops_the_checksum() {
+    let bytes = single_symbol_axioms(300);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    assert_eq!(rig.m.run(ENTRY, 1).stop, Stop::Limit);
+    let mut pc = rig.m.pc();
+    while pc != label("KD_ON_SEEN") {
+        assert_eq!(rig.m.resume(1).stop, Stop::Limit);
+        pc = rig.m.pc();
+    }
+    let window = label("KD_INITED")..label("KD_HEADER");
+    while !window.contains(&pc) {
+        assert_eq!(rig.m.resume(1).stop, Stop::Limit);
+        pc = rig.m.pc();
+    }
+    assert!(!String::from_utf8_lossy(&rig.trace()).contains("crc"));
+    rig.m.press_key(Machine::KEY_ON);
+    rig.finish_from(None, 3);
+    assert_eq!(
+        rig.byte(OUT_FLAGGED),
+        0,
+        "a text call ran with the flag set"
+    );
+    assert_eq!(rig.byte(label("K_STOPPED")), 1, "stopped in the checksum");
 }

@@ -27,3 +27,5 @@ libPage          = appBackUpScreen
 skClear          = 0Fh
 onFlags          = 9
 onInterrupt      = 4
+graphFlags       = 3
+graphDraw        = 0

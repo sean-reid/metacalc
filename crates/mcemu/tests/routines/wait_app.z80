@@ -1,0 +1,13 @@
+#include "equates.inc"
+#define APP_NAME "waitonly"
+#include "header.inc"
+
+; The shell's wait for CLEAR and exit with none of its drawing.
+start:
+wait_for_clear:
+	ei
+	halt
+	bcall(_GetCSC)
+	cp skClear
+	jr nz, wait_for_clear
+	bjump(_JForceCmdNoChar)

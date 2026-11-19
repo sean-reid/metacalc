@@ -28,8 +28,9 @@
 ;
 ; Routines (details at each): ui_set_font, ui_clear, ui_text, ui_text_width, ui_text_right,
 ; ui_text_centered, ui_invert, ui_invert_row, ui_marker, ui_title, ui_list_row, ui_soft_keys,
-; ui_blit. ui_blit waits on the busy flag, bit 7 of port 10h, before every LCD write
-; and leaves the controller in 8 bit mode with increment mode 5, as TI-OS expects it.
+; ui_blit. ui_blit waits on the busy flag, bit 7 of port 10h, before every LCD write, runs with
+; interrupts off and restores the caller's state, and leaves the controller in 8 bit mode with
+; increment mode 5, as TI-OS expects it.
 
 #ifndef UI_EMBEDDED
 .org $4000

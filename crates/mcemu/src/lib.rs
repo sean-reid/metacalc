@@ -141,6 +141,38 @@ impl Machine {
             .ok_or(BootError)
     }
 
+    /// Resets a real OS image and returns before it runs, so an app can be written into its flash
+    /// first. Everything else works as for the stub, except that nothing stops at a HALT and
+    /// `run_time` is the way to let the OS run.
+    pub fn new_os(rom: &[u8]) -> Result<Machine, BootError> {
+        ffi::Calc::new_os(rom)
+            .map(|calc| Machine { calc })
+            .ok_or(BootError)
+    }
+
+    /// Runs on from the current state for `microseconds` of emulated time, interrupts as the code
+    /// left them.
+    pub fn run_time(&mut self, microseconds: u32) -> Run {
+        if microseconds == 0 {
+            return Run::NO_TIME;
+        }
+        let microseconds = i32::try_from(microseconds).expect("time fits in i32");
+        let reason = self.calc.run_time(microseconds);
+        Run {
+            stop: if reason == 0 {
+                Stop::Limit
+            } else {
+                Stop::Fault
+            },
+            tstates: 0,
+        }
+    }
+
+    /// What a read of `port` returns.
+    pub fn in_port(&mut self, port: u8) -> u8 {
+        self.calc.in_port(port)
+    }
+
     pub fn load_flash(&mut self, page: u8, offset: usize, bytes: &[u8]) {
         let start = usize::from(page) * FLASH_PAGE_SIZE + offset;
         assert!(
