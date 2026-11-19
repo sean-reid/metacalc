@@ -560,6 +560,64 @@ fn the_list_title_and_marks_do_not_depend_on_the_rejection() {
     assert!(support::title_is(&ui.frame(), "logic", "12/13"));
 }
 
+fn lib_with(bytes: Vec<u8>, table: Vec<mcui::Status>) -> mcui::data::Lib {
+    let installed = mcui::data::Installed {
+        name: "logic".into(),
+        bytes,
+    };
+    mcui::data::Lib::new(installed, table).unwrap()
+}
+
+fn index_in(lib: &mcui::data::Lib, label: &str) -> usize {
+    (0..lib.len()).find(|&i| lib.label(i) == label).unwrap()
+}
+
+#[test]
+fn a_table_that_calls_a_rejected_theorem_checked_does_not_get_a_check_mark() {
+    let (bytes, _) = support::rejected_a1i();
+    let table = support::statuses(&bytes, &[], &[]);
+    let lib = lib_with(bytes.clone(), table.clone());
+    let a1i = index_in(&lib, "a1i");
+    assert!(lib.unproved(a1i));
+    assert_eq!(lib.mark(a1i), mcui::Mark::Failed);
+    assert_eq!(lib.mark(index_in(&lib, "syl")), mcui::Mark::Resting);
+    assert_eq!(lib.mark(index_in(&lib, "a2i")), mcui::Mark::Checked);
+    let mut ui = support::ui_over(bytes, &[], &[]);
+    open(&mut ui, "a1i");
+    ui.press(F3);
+    assert_eq!(notice_title(&ui), "Proof");
+}
+
+#[test]
+fn a_table_that_calls_a_sound_theorem_failed_still_lets_why_read_its_proof() {
+    let (bytes, _) = support::rejected_a1i();
+    let table = support::statuses(&bytes, &[], &["a2i"]);
+    let lib = lib_with(bytes.clone(), table);
+    let a2i = index_in(&lib, "a2i");
+    assert!(!lib.unproved(a2i));
+    assert_eq!(lib.mark(a2i), mcui::Mark::Failed);
+    let mut ui = support::ui_over(bytes, &[], &["a2i"]);
+    open(&mut ui, "a2i");
+    ui.press(F3);
+    assert!(matches!(ui.state(), State::Proof { .. }));
+}
+
+#[test]
+fn the_rejected_list_and_the_screens_name_the_same_theorems() {
+    let (bytes, _) = support::rejected_a1i();
+    let export = mcpack::library::export_accepted(&bytes).unwrap();
+    let lib = lib_with(bytes.clone(), support::statuses(&bytes, &[], &[]));
+    let unproved: Vec<&str> = (0..lib.len())
+        .filter(|&i| lib.unproved(i))
+        .map(|i| lib.label(i))
+        .collect();
+    let rejected: Vec<&str> = export.rejected.iter().map(|(l, _)| l.as_str()).collect();
+    assert_eq!(unproved, rejected);
+    for i in 0..lib.len() {
+        assert_eq!(lib.verify(i), !rejected.contains(&lib.label(i)));
+    }
+}
+
 #[test]
 fn every_key_a_notice_offers_closes_it() {
     for key in [F1, Clear, Enter] {

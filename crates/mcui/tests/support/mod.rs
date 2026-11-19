@@ -272,6 +272,15 @@ pub fn rejected_ui() -> Ui {
     .expect("the library loads")
 }
 
+/// The proving library with the proof of `a1i` damaged so the kernel rejects it.
+pub fn rejected_proving_bytes() -> Vec<u8> {
+    let sound = proving_bytes();
+    let alid = index_of(&sound, "alid") as u16;
+    let bytes = refreshed(patch_reference(&sound, "a1i", 0, alid));
+    assert!(library::check(&bytes).is_err());
+    bytes
+}
+
 pub fn ui_with(unchecked: &[&str], failed: &[&str]) -> Ui {
     let bytes = logic_bytes();
     let table = statuses(&bytes, unchecked, failed);

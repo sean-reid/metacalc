@@ -68,6 +68,8 @@ pub struct Editor {
     groups: Vec<usize>,
     /// Operations replayed to rebuild the session when it was opened.
     replayed: usize,
+    /// The theorems the kernel rejects, which no step may rest on.
+    barred: Vec<StmtId>,
 }
 
 fn refusal(error: &Error) -> &'static str {
@@ -127,11 +129,16 @@ impl Editor {
         }
         let lead = lib.statement(theorem).conclusion.lead.clone();
         let replayed = session.ops().len();
+        let barred = (0..lib.len())
+            .filter(|&i| lib.unproved(i))
+            .filter_map(|i| lib.stmt_of(i))
+            .collect();
         Ok(Editor {
             session,
             lead,
             groups,
             replayed,
+            barred,
         })
     }
 
@@ -312,6 +319,9 @@ impl Editor {
     }
 
     pub fn apply(&mut self, goal: GoalId, assertion: StmtId) -> Result<(), &'static str> {
+        if self.barred.contains(&assertion) {
+            return Err("Refused");
+        }
         self.grouped(|me| {
             let outcome = me.session.apply(goal, assertion).map_err(|e| refusal(&e))?;
             me.reject_violations(outcome.violations.is_empty())
@@ -343,6 +353,10 @@ impl Editor {
                 .session
                 .auto(goal, AUTO_DEPTH, AUTO_BUDGET)
                 .ok_or("Auto found nothing")?;
+            let rests = |op: &Op| matches!(op, Op::Apply { assertion, .. } if me.barred.contains(assertion));
+            if ops.iter().any(rests) {
+                return Err("Auto found nothing");
+            }
             me.session.play(&ops).map_err(|_| "Auto found nothing")
         })
     }
@@ -377,10 +391,12 @@ impl Editor {
             .filter(|&g| self.is_open(g))
             .or_else(|| self.following(&order, after));
         let picks = match goal {
-            Some(g) => match self.session.candidates(g, CANDIDATES) {
+            Some(g) => match self.session.candidates(g, CANDIDATES + self.barred.len()) {
                 Ok(Candidates::List(found)) => Picks::List(
                     found
                         .iter()
+                        .filter(|c| !self.barred.contains(&c.assertion))
+                        .take(CANDIDATES)
                         .map(|c| Pick {
                             assertion: c.assertion,
                             label: self.session.db().stmt(c.assertion).label.clone(),
@@ -466,6 +482,7 @@ $}
             lead: vec![PROVABLE.to_string()],
             groups: Vec::new(),
             replayed: 0,
+            barred: Vec::new(),
         }
     }
 

@@ -904,3 +904,59 @@ fn no_key_press_replays_the_operations_before_it() {
         times.len()
     );
 }
+
+/// The labels of the candidates the screen lists for its open goal, top to bottom.
+fn offered(ui: &mut Ui) -> Vec<String> {
+    let mut seen: Vec<String> = Vec::new();
+    for _ in 0..400 {
+        match at(ui).candidate {
+            Some(label) if !seen.contains(&label) => seen.push(label),
+            _ => break,
+        }
+        ui.press(Down);
+    }
+    seen
+}
+
+#[test]
+fn a_rejected_theorem_is_not_offered_for_a_goal_it_matches() {
+    for (bytes, expected) in [
+        (proving_bytes(), true),
+        (support::rejected_proving_bytes(), false),
+    ] {
+        let mut ui = prove(&bytes, "syl");
+        select(&mut ui, "mpd");
+        press(&mut ui, &[F1]);
+        press(&mut ui, &[F5, Down, Down, Enter]);
+        let listed = offered(&mut ui);
+        assert_eq!(listed.iter().any(|l| l == "a1i"), expected, "{listed:?}");
+        assert!(listed.iter().any(|l| l == "ax-mp"), "{listed:?}");
+    }
+}
+
+#[test]
+fn auto_does_not_use_a_rejected_theorem() {
+    let mut sound = prove(&proving_bytes(), "ta1");
+    press(&mut sound, &[F3]);
+    assert!(at(&sound).finished);
+    let mut ui = prove(&support::rejected_proving_bytes(), "ta1");
+    press(&mut ui, &[F3]);
+    assert!(matches!(ui.state(), State::Notice { .. }));
+    press(&mut ui, &[Clear]);
+    assert_eq!(
+        (at(&ui).finished, at(&ui).steps, at(&ui).open),
+        (false, 0, 1)
+    );
+}
+
+#[test]
+fn a_theorem_the_library_proves_through_a_rejected_one_still_opens_in_try() {
+    let bytes = support::rejected_proving_bytes();
+    for label in ["syl", "ta1", "a1i"] {
+        let ui = prove(&bytes, label);
+        assert!(
+            matches!(ui.state(), State::Proving { label: ref l, .. } if l == label),
+            "{label}"
+        );
+    }
+}
