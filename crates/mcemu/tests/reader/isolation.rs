@@ -3,7 +3,7 @@ use std::ops::Range;
 
 const STACK_BYTES: usize = 64;
 
-fn pattern(page: u8, at: usize) -> u8 {
+pub fn pattern(page: u8, at: usize) -> u8 {
     let page = page.min(2);
     ((at.wrapping_mul(31) ^ (at >> 8).wrapping_mul(7)) as u8) ^ page.wrapping_mul(0x55) ^ 0xA7
 }
@@ -26,7 +26,7 @@ impl Allowed {
     }
 }
 
-fn prime(rig: &mut Rig) {
+pub fn prime(rig: &mut Rig) {
     for page in 0..8u8 {
         for (at, byte) in rig.m.ram_page(page).iter_mut().enumerate() {
             *byte = pattern(page, at);

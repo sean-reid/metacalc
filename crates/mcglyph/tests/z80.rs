@@ -298,3 +298,21 @@ fn an_unmapped_token_with_a_braced_character_uses_that_characters_glyph() {
         );
     }
 }
+
+#[test]
+fn the_include_carries_the_fingerprint_of_the_bytes_it_emits() {
+    for (name, table) in [
+        ("ui_font", Table::builtin()),
+        ("ui_key_font", Table::keys()),
+    ] {
+        let include = table.include(name);
+        let key = format!("{}_FINGERPRINT\t.equ $", name.to_uppercase());
+        let hex = include
+            .lines()
+            .find_map(|l| l.strip_prefix(key.as_str()))
+            .expect("the include has a fingerprint equate");
+        let stated = u16::from_str_radix(hex, 16).unwrap();
+        assert_eq!(stated, crc16(decode(&include).into_iter()), "{name}");
+        assert_eq!(stated, table.fingerprint(), "{name}");
+    }
+}

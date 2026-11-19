@@ -102,7 +102,7 @@ fn measure() -> Times {
 /// Ceilings in T-states, about 10 percent above what each takes. The count does not depend on the
 /// clock, since the wait-state ports are the same at both speeds.
 const CEILINGS: Times = Times {
-    open: 14_650,
+    open: 51_600,
     label: 7_300,
     five: 23_950,
     record: 16_000,
@@ -161,4 +161,78 @@ fn the_reader_calls_the_theorem_list_makes_stay_inside_their_ceilings() {
         assert!(got <= ceiling, "{name}: {got} T-states, ceiling {ceiling}");
     }
     assert!(list < LIST_BUDGET, "{list} T-states");
+}
+
+/// How far the parts of an open may stray from the whole call, in T-states: the two ways of
+/// reaching a stage differ only by the driver and a few state stores.
+const SPLIT_MARGIN: u32 = 50;
+
+/// Puts the reader's directory cache, window and descriptor back to what lib_open leaves them as
+/// before it reads the sections.
+fn go_cold(rig: &mut Rig) {
+    let none: &[u8] = &[0xFF, 0xFF];
+    for (name, bytes) in [
+        ("LR_DCBASE", none),
+        ("LR_DN", none),
+        ("LR_WLEN", &[0]),
+        ("LR_WP", &[0]),
+    ] {
+        let at = rig.label(name);
+        rig.poke(at, bytes);
+    }
+}
+
+fn cold_cost(rig: &mut Rig, target: &str) -> u32 {
+    go_cold(rig);
+    rig.cost(target, Regs::default())
+}
+
+/// Where lib_open's T-states go. The sections stage, the last-record walk inside it and the three
+/// section headers are each run cold. Header and symbols is the open of the same library without
+/// its trailer, less the one trailer read that open still makes. The two together must come to
+/// the whole call.
+fn open_split(bytes: &[u8], name: &str) {
+    let regs = Regs {
+        a: LIB_PAGE,
+        de: SCRATCH,
+        ..Regs::default()
+    };
+    let mut rig = Rig::with_library(bytes);
+    let whole = rig.cost("LIB_OPEN", regs);
+    rig.open_ok();
+    let stage = cold_cost(&mut rig, "LSX_OPEN");
+    let walk = cold_cost(&mut rig, "LSX_RECORDS_END");
+    let headers = cold_cost(&mut rig, "LSX_HEADERS");
+    let mut bare_bytes = bytes.to_vec();
+    *bare_bytes.last_mut().unwrap() ^= 1;
+    let mut bare = Rig::with_library(&bare_bytes);
+    let bare_whole = bare.cost("LIB_OPEN", regs);
+    bare.open_ok();
+    let bare_stage = cold_cost(&mut bare, "LSX_OPEN");
+    let head = bare_whole - bare_stage;
+    let library = mcpack::library::decode(bytes).expect("it decodes");
+    report(format!(
+        "{name}: lib_open {whole}: header and symbols {head}, sections {stage} of which \
+         last-record walk {walk}, section headers {headers}, trailer, table and rows {} ({} \
+         assertions)",
+        stage - walk - headers,
+        library.assertions.len()
+    ));
+    assert!(walk + headers <= stage && stage < whole, "{name}");
+    assert!(
+        (head + stage).abs_diff(whole) <= SPLIT_MARGIN,
+        "{name}: {head} + {stage} against {whole}, margin {SPLIT_MARGIN}"
+    );
+}
+
+#[test]
+fn the_cost_of_opening_a_library_splits_into_the_stages_of_the_call() {
+    let (bytes, ..) = list_library();
+    open_split(&bytes, "speed library");
+    if let Ok(dir) = std::env::var("MC_LIBRARIES") {
+        for name in ["prop", "pred", "ring"] {
+            let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
+            open_split(&bytes, name);
+        }
+    }
 }

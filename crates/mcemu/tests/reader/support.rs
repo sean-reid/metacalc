@@ -94,6 +94,8 @@ pub struct Rig {
     pub lib_page: u8,
     pub ei: bool,
     pub sp: u16,
+    /// T-states the last call took, the driver's own included.
+    pub spent: u32,
 }
 
 impl Rig {
@@ -114,6 +116,7 @@ impl Rig {
             lib_page: LIB_PAGE,
             ei: false,
             sp: 0,
+            spent: 0,
         }
     }
 
@@ -204,6 +207,7 @@ impl Rig {
     }
 
     fn outcome(&mut self, tstates: u32) -> Out {
+        self.spent = tstates;
         let at = |name: &str| label_in(self.image, name);
         let out = self.peek(at("OUT_AF"), 0x0F);
         let w = |i: usize| u16::from_le_bytes([out[i], out[i + 1]]);

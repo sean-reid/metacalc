@@ -2,12 +2,15 @@
 
 lr_bad_arg:
 	ld a,LIB_ERR_ARG
+	or a
 	ret
 lr_bad_range:
 	ld a,LIB_ERR_RANGE
+	or a
 	ret
 lr_not_open:
 	ld a,LIB_ERR_CLOSED
+	or a
 	ret
 
 ; The public entry: the reader is open and the destination stays clear of the state block.
@@ -155,16 +158,21 @@ lr_hop2:
 	ex af,af'
 	out (7),a
 	ld a,(lr_iff)
-	or a
+	ex af,af'
 	ld a,(lr_old5)
 	ld de,(lr_dest)
 	ld hl,LIB_BOUNCE
 	ldir
 lr_window_end:
 	out (5),a
-	ld a,LIB_OK
-	ret z
+	ex af,af'
+	or a
+	jr z,lr_done
+	xor a
 	ei
+	ret
+lr_done:
+	xor a
 	ret
 
 ; in: DE = start, BC = length. out: Z, or NZ and A = LIB_ERR_ARG when [DE, DE + BC) touches the

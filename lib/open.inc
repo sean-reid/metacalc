@@ -284,12 +284,15 @@ lo_done:
 	ld (lr_wp),a
 	ld hl,$FFFF
 	ld (lr_dcbase),hl
+	call lsx_open
+	ret nz
 	ld hl,OPEN_MAGIC
 	ld (lr_open),hl
 	xor a
 	ret
 lo_bad:
 	ld a,LIB_ERR_BAD
+	or a
 	ret
 
 ; in: A:HL = a, DE = address of a 24-bit value b. out: C if a < b. Destroys AF BC DE HL.
