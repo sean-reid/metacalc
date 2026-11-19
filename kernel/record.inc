@@ -253,7 +253,8 @@ rs_masked:
 	ld (hl),a
 	ret
 
-; in: IX = descriptor, its page mapped. out: returns if the record keeps the rules.
+; in: IX = descriptor, its page mapped. out: returns if the record keeps the rules, its floats
+; first and in strictly rising variable order.
 check_record:
 	ld hl,FLOATS
 	ld bc,256
@@ -266,6 +267,7 @@ check_record:
 	ld l,(ix+D_HYPS)
 	ld h,(ix+D_HYPS+1)
 	ld e,0
+	ld d,e
 cr_hyp:
 	ld a,(hl)
 	inc hl
@@ -288,6 +290,10 @@ cr_float:
 	jp nz,fail_bad_record
 	ld a,(hl)
 	inc hl
+	cp d
+	jp z,fail_bad_record
+	jp c,fail_bad_record
+	ld d,a
 	push hl
 	ld h,TYPECODES>>8
 	ld l,a
@@ -295,9 +301,6 @@ cr_float:
 	inc c
 	jp z,fail_bad_record
 	ld h,FLOATS>>8
-	ld a,(hl)
-	or a
-	jp nz,fail_bad_record
 	ld (hl),1
 	pop hl
 cr_hyp_next:

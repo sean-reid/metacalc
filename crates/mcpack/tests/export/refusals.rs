@@ -98,11 +98,6 @@ pub(super) fn patched(mut bytes: Vec<u8>, edit: impl FnOnce(&mut Vec<u8>)) -> Ve
     bytes
 }
 
-fn refused(bytes: &[u8]) -> ExportError {
-    check(bytes).expect("the kernel accepts the library");
-    export(bytes).expect_err("the export refuses it")
-}
-
 fn unchecked(bytes: &[u8]) -> ExportError {
     export(bytes).expect_err("the check refuses it")
 }
@@ -185,50 +180,41 @@ fn swapped_essential(original: Vec<u8>) -> Vec<u8> {
     })
 }
 
-const TWO_WAYS: &str = "$c |- wff R $. $v x y $.
-    ${ vx $f wff x $. vy $f wff y $. ax-a $a |- R x y $. $}
-    ${ wy $f wff y $. wx $f wff x $. ax-b $a |- R x y $. $}";
+const ORDERED_BY_TWO_RECORDS: &str = "$c |- wff R $. $v r q p $.
+    ${ aq $f wff q $. ar $f wff r $. a.1 $e |- R q r $. ax-1 $a |- R r q $. $}
+    ${ bp $f wff p $. bq $f wff q $. b.1 $e |- R p q $. ax-2 $a |- R q p $. $}
+    ${ tp $f wff p $. tq $f wff q $. th.1 $e |- R p q $.
+       th $p |- R p q $= tq tp tp tq th.1 ax-2 ax-1 $. $}";
 
-const THREE_WAYS: &str = "$c |- wff R $. $v x y z $.
-    ${ vx $f wff x $. vy $f wff y $. ax-a $a |- R x y $. $}
-    ${ wy $f wff y $. wz $f wff z $. ax-b $a |- R y z $. $}
-    ${ xz $f wff z $. xx $f wff x $. ax-c $a |- R z x $. $}";
-
-fn cycle(bytes: &[u8]) -> Vec<String> {
-    let ExportError::FloatOrder(mut labels) = refused(bytes) else {
-        panic!("not a float order refusal");
-    };
-    labels.sort();
-    labels
+#[test]
+fn records_whose_floats_only_one_numbering_orders_pack_check_and_export() {
+    let db = parse(ORDERED_BY_TWO_RECORDS);
+    let out = round_trip("two records", &db);
+    check(&out.bytes).expect("the kernel accepts the library");
+    assert_eq!(exports_and_verifies(&out.bytes), Ok(()));
 }
 
 #[test]
-fn records_whose_float_orders_conflict_are_refused_naming_them() {
-    assert_eq!(cycle(&packed(TWO_WAYS)), ["ax-a", "ax-b"]);
-    let message = refused(&packed(TWO_WAYS)).to_string();
-    assert!(message.contains("ax-a, ax-b") || message.contains("ax-b, ax-a"));
+fn a_record_whose_floats_fall_is_refused_by_the_check_and_the_export() {
+    let original =
+        packed("$c |- wff R $. $v x y $. vx $f wff x $. vy $f wff y $. ax-a $a |- R x y $.");
+    let hyps = record(&original, 0).hyps;
+    let bytes = patched(original, |b| b.swap(hyps + 1, hyps + 3));
+    let failed = CheckError::Assertions(vec![("ax-a".into(), KernelError::BadRecord)]);
+    assert_eq!(check(&bytes), Err(failed));
+    assert_eq!(unchecked(&bytes), bad_record("ax-a"));
 }
 
 #[test]
-fn a_cycle_through_three_records_names_all_three() {
-    assert_eq!(cycle(&packed(THREE_WAYS)), ["ax-a", "ax-b", "ax-c"]);
-}
-
-#[test]
-fn a_record_off_the_cycle_is_not_named() {
-    let src = THREE_WAYS.replace("$v x y z $.", "$v x y z w $.");
-    let src = format!("{src} ${{ dz $f wff z $. dw $f wff w $. ax-d $a |- R z w $. $}}");
-    assert_eq!(cycle(&packed(&src)), ["ax-a", "ax-b", "ax-c"]);
-}
-
-#[test]
-fn the_variable_order_settles_what_the_records_leave_open() {
+fn records_that_disagree_with_the_declaration_order_export_in_table_order() {
     let src = "$c |- wff R $. $v x y z $.
         ${ vz $f wff z $. vx $f wff x $. ax-a $a |- R z x $. $}
         ${ wy $f wff y $. ax-b $a |- R y $. $}";
-    let text = export(&packed(src)).unwrap();
+    let bytes = packed(src);
+    check(&bytes).expect("the kernel accepts the library");
+    let text = export(&bytes).unwrap();
     assert!(
-        text.contains("$v x y z $.\nf.1 $f wff y $.\nf.2 $f wff z $.\nf.0 $f wff x $.\n"),
+        text.contains("$v z x y $.\nf.0 $f wff z $.\nf.1 $f wff x $.\nf.2 $f wff y $.\n"),
         "{text}"
     );
 }
