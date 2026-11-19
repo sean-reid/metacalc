@@ -305,7 +305,11 @@ fn an_axiom_of_arity_255_with_255_children_reads_though_no_record_has_that_arity
     let children: Vec<u8> = (1..=255).collect();
     let arity = offset_of(&good, TREES) as usize + 2 + 2;
     let bytes = with(
-        &with_section(&good, start(&good), &section_of(&[children.clone()], 0, 0)),
+        &with_section(
+            &good,
+            start(&good),
+            &section_of(std::slice::from_ref(&children), 0, 0),
+        ),
         |b| b[arity] = 255,
     );
     assert!(

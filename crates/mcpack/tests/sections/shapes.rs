@@ -1,5 +1,5 @@
 use super::*;
-use mcpack::library::{CheckError, Entry, HEADER_LEN, SHAPES, TREES};
+use mcpack::library::{CheckError, Entry, SHAPES, TREES};
 
 fn shapes_of(bytes: &[u8]) -> library::Shapes {
     decode(bytes)
