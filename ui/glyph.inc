@@ -320,6 +320,9 @@ us_next:
 ; the frame, B = 0. The ui_v entries draw rows 0 to 4 and end in a jump to ut_after; the ui_tv
 ; entries draw rows 5 and 6 first, for a glyph with a pixel there, then the same five rows. The
 ; ONE forms are for a glyph that ends inside the first byte, whose rotated-out bits are blank.
+; Each form of each shift sits in a 256 byte block of ui_vblk with its ui_tv entry at offset 0 and
+; its ui_v entry at offset 80h: blocks 0 to 7 are the ONE forms by shift, blocks 9 to 15 the two
+; byte forms of shifts 1 to 7.
 #macro ROW(s)
 #if s == 0
 	ld a,(de)
@@ -539,6 +542,9 @@ ui_v7:	TAIL(7)
  .error "a jump block's head must fit below its tail"
 #endif
 	.fill (256-($&255))&255,0
+; Pages indexed by x below 96, on consecutive pages: the room left in the byte, the high byte of
+; the ONE form block for the shift, and the byte column. ui_toff is indexed by a glyph code: the
+; low bytes of the offsets of the slots on its first page, the high bytes on the next.
 #macro BYTES8(v)
 	.db v,v,v,v,v,v,v,v
 #endmacro
