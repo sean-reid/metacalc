@@ -20,28 +20,36 @@ KD_MORE       = 0FFh
 KD_INTERRUPT  = 14
 
 K_PARAMS     = libPage
+#define KD_NEXT 0
 #macro KD_VAR(name, offset, size)
-RAM_VAR(name, K_PARAMS, offset, size, KD_SCRATCH_SIZE, "the driver's scratch runs past KD_SCRATCH_SIZE in ram_map.inc")
+RAM_VAR(name, K_PARAMS, offset, size, KD_SCRATCH_SIZE, KD_NEXT, "the driver's scratch overlaps, leaves a gap, or runs past KD_SCRATCH_SIZE in ram_map.inc")
+#define KD_NEXT eval(offset + size)
+#endmacro
+#macro KD_AT(offset)
+RAM_AT(offset, KD_SCRATCH_SIZE, KD_NEXT, "KD_AT must not go back or past KD_SCRATCH_SIZE in ram_map.inc")
+#define KD_NEXT eval(offset)
 #endmacro
 
-KD_VAR(K_LIMITS, 1, 8)
-KD_VAR(K_COUNT, 9, 2)
-KD_VAR(K_CHUNKS, 11, 1)
-KD_VAR(K_DONE, 12, 2)
-KD_VAR(K_ACCEPTED, 14, 2)
-KD_VAR(K_FIRST, 16, 2)
-KD_VAR(K_FIRST_ST, 18, 1)
-KD_VAR(K_HAVE_FIRST, 19, 1)
-KD_VAR(K_INIT, 20, 1)
-KD_VAR(K_CRC_STATE, 21, 1)
-KD_VAR(K_CRC, 22, 4)
-KD_VAR(K_CHUNK, 26, 1)
-KD_VAR(K_STOPPED, 27, 1)
-KD_VAR(K_STOP_AT, 28, 2)
-KD_VAR(K_SPEED, 30, 1)
-KD_VAR(P_TMP, 31, 2)
-KD_VAR(P_TMP2, 33, 1)
-KD_VAR(P_STR, 34, 2)
+KD_AT($01)
+KD_VAR(K_LIMITS, $01, 8)
+KD_VAR(K_COUNT, $09, 2)
+KD_VAR(K_CHUNKS, $0B, 1)
+KD_VAR(K_DONE, $0C, 2)
+KD_VAR(K_ACCEPTED, $0E, 2)
+KD_VAR(K_FIRST, $10, 2)
+KD_VAR(K_FIRST_ST, $12, 1)
+KD_VAR(K_HAVE_FIRST, $13, 1)
+KD_VAR(K_INIT, $14, 1)
+KD_VAR(K_CRC_STATE, $15, 1)
+KD_VAR(K_CRC, $16, 4)
+KD_VAR(K_CHUNK, $1A, 1)
+KD_VAR(K_STOPPED, $1B, 1)
+KD_VAR(K_STOP_AT, $1C, 2)
+KD_VAR(K_SPEED, $1E, 1)
+KD_VAR(P_TMP, $1F, 2)
+KD_VAR(P_TMP2, $21, 1)
+KD_VAR(P_STR, $22, 2)
+
 K_END        = K_PARAMS + KD_SCRATCH_SIZE
 
 CRC_NONE    = 0

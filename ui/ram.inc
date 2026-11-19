@@ -14,8 +14,14 @@ UI_BUSY_LIMIT           .equ 255
  .error "UI_FRAME_SIZE in ram_map.inc must be UI_STRIDE*UI_HEIGHT"
 #endif
 
+#define UI_NEXT 0
 #macro UI_VAR(name, offset, size)
-RAM_VAR(name, UI_VARS, offset, size, UI_VARS_SIZE, "the UI variables run past UI_VARS_SIZE in ram_map.inc")
+RAM_VAR(name, UI_VARS, offset, size, UI_VARS_SIZE, UI_NEXT, "the UI variables overlap, leave a gap, or run past UI_VARS_SIZE in ram_map.inc")
+#define UI_NEXT eval(offset + size)
+#endmacro
+#macro UI_AT(offset)
+RAM_AT(offset, UI_VARS_SIZE, UI_NEXT, "UI_AT must not go back or past UI_VARS_SIZE in ram_map.inc")
+#define UI_NEXT eval(offset)
 #endmacro
 
 UI_VAR(ui_rowbase, $00, 2)
@@ -31,7 +37,8 @@ UI_VAR(ui_mid, $0C, 1)
 UI_VAR(ui_rows, $0D, 1)
 UI_VAR(ui_kp, $0E, 2)
 UI_VAR(ui_kb, $10, 2)
-UI_VAR(ui_kn, $12, 2)
+UI_VAR(ui_kn, $12, 1)
+UI_AT($14)
 UI_VAR(ui_fontp, $14, 2)
 UI_VAR(ui_sp, $16, 2)
 UI_VAR(ui_iff, $18, 1)

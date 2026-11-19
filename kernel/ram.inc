@@ -1,3 +1,5 @@
+#ifndef KERNEL_RAM_INC
+#define KERNEL_RAM_INC
 #ifndef KERNEL_RAM_PAGE
 KERNEL_RAM_PAGE             .equ 3
 #endif
@@ -150,4 +152,5 @@ WORK_LIMIT          .equ 225000
 MAX_BULK_CHARGE     .equ 511*512/2
 #if WORK_LIMIT < MAX_BULK_CHARGE
  .error "WORK_LIMIT must be at least MAX_BULK_CHARGE, the reference list check subtracts it unchecked"
+#endif
 #endif

@@ -1,7 +1,8 @@
-; The RAM map: every region of RAM the app uses, in address order. Each region is NAME for its
-; base, NAME_SIZE for its size, and can be moved with -DNAME=$address. The file that owns a
-; region lays out the bytes inside it. Assembling any image that includes this file fails when
-; two regions overlap or a region leaves its bank.
+; The RAM map: the regions of RAM the kernel, the kernel driver, the UI and the reader use, in
+; address order. The probes that keep their own scratch (probe/storecheck.z80) are not in it.
+; Each region is NAME for its base, NAME_SIZE for its size, and can be moved with -DNAME=$address.
+; The file that owns a region lays out the bytes inside it. Assembling any image that includes
+; this file fails when two regions overlap or a region leaves its bank.
 ;
 ;   name              bank  where
 ;   UI_VARS           B     the UI's variables, in saveSScreen; the OS zeroes it when auto power
@@ -24,7 +25,9 @@ UI_VARS_SIZE        .equ $1A
 #ifndef UI_FRAME
 UI_FRAME            .equ $9340
 #endif
+#ifndef UI_FRAME_SIZE
 UI_FRAME_SIZE       .equ 768
+#endif
 #ifndef KD_SCRATCH
 KD_SCRATCH          .equ $9872
 #endif
@@ -56,9 +59,15 @@ LIB_BOUNCE          .equ KERNEL_RAM_HIGH + HIGH_SIZE - LIB_BOUNCE_SIZE
 #endif
 #endmacro
 
-#macro RAM_VAR(name, base, offset, size, limit, message)
+#macro RAM_VAR(name, base, offset, size, limit, next, message)
 name .equ base + offset
-#if (offset + size) > limit
+#if ((offset + size) > limit) || (offset < next) || (offset > next)
+ .error message
+#endif
+#endmacro
+
+#macro RAM_AT(offset, limit, next, message)
+#if (offset > limit) || (offset < next)
  .error message
 #endif
 #endmacro
@@ -79,17 +88,9 @@ RAM_WITHIN(KERNEL_RAM_HIGH, HIGH_SIZE, $C000, $10000, "KERNEL_RAM_HIGH runs past
 RAM_DISJOINT(UI_VARS, UI_VARS_SIZE, UI_FRAME, UI_FRAME_SIZE, "UI_FRAME and UI_VARS overlap")
 RAM_DISJOINT(UI_VARS, UI_VARS_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "UI_VARS and KD_SCRATCH overlap")
 RAM_DISJOINT(UI_VARS, UI_VARS_SIZE, LIB_STATE, LIB_STATE_SIZE, "UI_VARS and LIB_STATE overlap")
-RAM_DISJOINT(UI_VARS, UI_VARS_SIZE, KERNEL_RAM_LOW, LOW_SIZE, "UI_VARS and KERNEL_RAM_LOW overlap")
-RAM_DISJOINT(UI_VARS, UI_VARS_SIZE, KERNEL_RAM_HIGH, HIGH_SIZE, "UI_VARS and KERNEL_RAM_HIGH overlap")
 RAM_DISJOINT(UI_FRAME, UI_FRAME_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "UI_FRAME and KD_SCRATCH overlap")
 RAM_DISJOINT(UI_FRAME, UI_FRAME_SIZE, LIB_STATE, LIB_STATE_SIZE, "UI_FRAME and LIB_STATE overlap")
-RAM_DISJOINT(UI_FRAME, UI_FRAME_SIZE, KERNEL_RAM_LOW, LOW_SIZE, "UI_FRAME and KERNEL_RAM_LOW overlap")
-RAM_DISJOINT(UI_FRAME, UI_FRAME_SIZE, KERNEL_RAM_HIGH, HIGH_SIZE, "UI_FRAME and KERNEL_RAM_HIGH overlap")
 RAM_DISJOINT(KD_SCRATCH, KD_SCRATCH_SIZE, LIB_STATE, LIB_STATE_SIZE, "KD_SCRATCH and LIB_STATE overlap")
-RAM_DISJOINT(KD_SCRATCH, KD_SCRATCH_SIZE, KERNEL_RAM_LOW, LOW_SIZE, "KD_SCRATCH and KERNEL_RAM_LOW overlap")
-RAM_DISJOINT(KD_SCRATCH, KD_SCRATCH_SIZE, KERNEL_RAM_HIGH, HIGH_SIZE, "KD_SCRATCH and KERNEL_RAM_HIGH overlap")
-RAM_DISJOINT(LIB_STATE, LIB_STATE_SIZE, KERNEL_RAM_LOW, LOW_SIZE, "LIB_STATE and KERNEL_RAM_LOW overlap")
-RAM_DISJOINT(LIB_STATE, LIB_STATE_SIZE, KERNEL_RAM_HIGH, HIGH_SIZE, "LIB_STATE and KERNEL_RAM_HIGH overlap")
 RAM_DISJOINT(KERNEL_RAM_LOW, LOW_SIZE, KERNEL_RAM_HIGH, HIGH_SIZE, "KERNEL_RAM_LOW and KERNEL_RAM_HIGH overlap")
 
 #endif

@@ -1,4 +1,4 @@
-#include "ram_map.inc"
+#include "kernel/ram.inc"
 #ifndef LIB_SPARE_PAGE
 LIB_SPARE_PAGE      .equ 3
 #endif
@@ -12,10 +12,8 @@ LIB_SPARE_PAGE      .equ 3
  .error "LIB_BOUNCE must leave 256 bytes below $10000"
 #endif
 #ifndef LIB_BOUNCE_ANYWHERE
-LIB_BOUNCE_IN_LOW   .equ (LIB_BOUNCE >= KERNEL_RAM_LOW) && ((LIB_BOUNCE + LIB_BOUNCE_SIZE) <= (KERNEL_RAM_LOW + LOW_SIZE))
-LIB_BOUNCE_IN_HIGH  .equ (LIB_BOUNCE >= KERNEL_RAM_HIGH) && ((LIB_BOUNCE + LIB_BOUNCE_SIZE) <= (KERNEL_RAM_HIGH + HIGH_SIZE))
-#if (LIB_BOUNCE_IN_LOW + LIB_BOUNCE_IN_HIGH) == 0
- .error "LIB_BOUNCE must lie inside the kernel regions, KERNEL_RAM_LOW or KERNEL_RAM_HIGH"
+#if (LIB_BOUNCE < SAVED_BUF) || ((LIB_BOUNCE + LIB_BOUNCE_SIZE) > KERNEL_RAM_HIGH_END)
+ .error "LIB_BOUNCE must lie inside the kernel's saved symbols buffer"
 #endif
 #endif
 #if LIB_STATE < $8000
@@ -27,8 +25,14 @@ LIB_INDEX           .equ LIB_STATE+$A8
 #endif
 OPEN_MAGIC          .equ $4C42
 
+#define LR_NEXT 0
 #macro LR_VAR(name, offset, size)
-RAM_VAR(name, LIB_STATE, offset, size, LIB_STATE_SIZE, "the reader's state runs past LIB_STATE_SIZE in ram_map.inc")
+RAM_VAR(name, LIB_STATE, offset, size, LIB_STATE_SIZE, LR_NEXT, "the reader's state overlaps, leaves a gap, or runs past LIB_STATE_SIZE in ram_map.inc")
+#define LR_NEXT eval(offset + size)
+#endmacro
+#macro LR_AT(offset)
+RAM_AT(offset, LIB_STATE_SIZE, LR_NEXT, "LR_AT must not go back or past LIB_STATE_SIZE in ram_map.inc")
+#define LR_NEXT eval(offset)
 #endmacro
 
 LR_VAR(lr_dest, $00, 2)
@@ -38,16 +42,18 @@ LR_VAR(lr_iff, $06, 1)
 LR_VAR(lr_page1, $07, 1)
 LR_VAR(lr_n2, $08, 1)
 LR_VAR(lr_src, $09, 2)
-LR_VAR(lr_n1, $0B, 5)
+LR_VAR(lr_n1, $0B, 2)
 
+LR_AT($10)
 LR_VAR(lr_open, $10, 2)
 LR_VAR(lr_page, $12, 1)
 LR_VAR(lr_length, $13, 3)
 LR_VAR(lr_consts, $16, 1)
 LR_VAR(lr_nsyms, $17, 1)
 LR_VAR(lr_count, $18, 2)
-LR_VAR(lr_dir, $1A, 6)
+LR_VAR(lr_dir, $1A, 3)
 
+LR_AT($20)
 LR_VAR(lr_dn, $20, 2)
 LR_VAR(lr_drec, $22, 4)
 LR_VAR(lr_dkind, $26, 1)
@@ -59,12 +65,14 @@ LR_VAR(lr_dpairs, $2E, 3)
 LR_VAR(lr_dconc, $31, 3)
 LR_VAR(lr_dclen, $34, 1)
 LR_VAR(lr_hk, $35, 1)
-LR_VAR(lr_hoff, $36, 10)
+LR_VAR(lr_hoff, $36, 3)
 
+LR_AT($40)
 LR_VAR(lr_bufp, $40, 2)
 LR_VAR(lr_scratch, $42, 2)
 LR_VAR(lr_hdr, $44, 4)
-LR_VAR(lr_tr, $48, 4)
+LR_VAR(lr_tr, $48, 3)
+LR_AT($4C)
 LR_VAR(lr_sr, $4C, 2)
 LR_VAR(lr_sid, $4E, 1)
 LR_VAR(lr_sbase, $4F, 1)
@@ -84,8 +92,10 @@ LIB_WINDOW          .equ 32
 LR_VAR(lr_dcbase, $80, 2)
 LR_VAR(lr_q, $82, 2)
 LR_VAR(lr_dc, $84, 32)
-LR_VAR(lr_cn, $A4, 4)
+LR_VAR(lr_cn, $A4, 2)
 
+LR_AT($A8)
+LR_AT($2A8)
 LR_VAR(ls_have, $2A8, 1)
 LR_VAR(ls_ti, $2A9, 9)
 LR_VAR(ls_gl, $2B2, 9)

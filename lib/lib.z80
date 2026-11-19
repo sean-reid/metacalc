@@ -15,10 +15,12 @@
 ; bank C through port 5): flash to the bounce buffer with the library page in bank B, then the
 ; bounce buffer to the caller's buffer with the caller's bank B back.
 ;   LIB_BOUNCE, default $FE00 with the kernel's regions in place: the last 256 bytes of the
-;     kernel's saved-symbols buffer, which is the end of the kernel's high region. The kernel uses that buffer only
-;     during a kernel_verify call, so a reader call between two kernel calls leaves the kernel
-;     alone; no other byte of the spare page and no byte of page 80h is written.
-;   LIB_STATE, default $989C, 720 bytes, in bank B after the kernel driver's scratch in appBackUpScreen:
+;     kernel's saved-symbols buffer, which is the end of the kernel's high region, and it must
+;     lie inside that buffer. The kernel uses that buffer only during a kernel_verify call, so a
+;     reader call between two kernel calls leaves the kernel alone; no other byte of the spare
+;     page and no byte of page 80h is written.
+;   LIB_STATE, default $989C, 720 bytes, in bank B after the scratch of probe/kerndriver.inc in
+;     appBackUpScreen:
 ;     $00 scratch of lib_read, $10 facts from the header, $20 the record descriptor, $40
 ;     scratch, $60 a 32 byte window over the record being walked, $80 a cache of eight
 ;     directory entries, $A8 the symbol index: one 16-bit offset per symbol and one past the

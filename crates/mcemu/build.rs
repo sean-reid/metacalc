@@ -441,6 +441,7 @@ fn main() {
     assemble_kernel(&out);
     assemble_ui(&out);
     assemble_reader(&out);
+    assemble_layout_probes(&out);
     spasm(
         &Path::new("tests/routines").join("launch_state.z80"),
         &out.join("launch_state.8xk"),
@@ -476,7 +477,10 @@ fn main() {
             "../../kernel",
         ],
     ) {
-        Err(why) if why.contains("the driver's scratch runs past KD_SCRATCH_SIZE") => {}
+        Err(why)
+            if why.contains(
+                "the driver's scratch overlaps, leaves a gap, or runs past KD_SCRATCH_SIZE",
+            ) => {}
         other => fail(&format!(
             "a driver scratch too small for its variables gave {other:?}"
         )),
@@ -747,9 +751,26 @@ fn assemble_ui(out: &Path) {
             &["KERNEL_RAM_LOW=$F000"][..],
             Some("KERNEL_RAM_LOW runs past bank C"),
         ),
+        (&["UI_FRAME=$BF00"][..], Some("UI_FRAME runs past bank B")),
+        (&["UI_FRAME=$7F00"][..], Some("UI_FRAME runs past bank B")),
+        (
+            &["KD_SCRATCH=$BFF0"][..],
+            Some("KD_SCRATCH runs past bank B"),
+        ),
+        (
+            &["KD_SCRATCH=$7FF0"][..],
+            Some("KD_SCRATCH runs past bank B"),
+        ),
+        (&["LIB_STATE=$BF00"][..], Some("LIB_STATE runs past bank B")),
+        (&["LIB_STATE=$7F00"][..], Some("LIB_STATE runs past bank B")),
+        (
+            &["UI_FRAME_SIZE=$2FF"][..],
+            Some("UI_FRAME_SIZE in ram_map.inc must be UI_STRIDE*UI_HEIGHT"),
+        ),
+        (&["UI_VARS_SIZE=$30"][..], None),
         (
             &["UI_VARS_SIZE=$19"][..],
-            Some("the UI variables run past UI_VARS_SIZE"),
+            Some("the UI variables overlap, leave a gap, or run past UI_VARS_SIZE"),
         ),
     ] {
         match (assemble(defines, &out.join("ui_probe.bin")), want) {
@@ -804,7 +825,7 @@ fn assemble_reader(out: &Path) {
         ("reader_kernel_test", &["WITH_KERNEL"][..]),
         (
             "reader_moved",
-            &["LIB_STATE=$B000", "LIB_BOUNCE=$D100", "LIB_SPARE_PAGE=5"][..],
+            &["LIB_STATE=$B000", "LIB_BOUNCE=$F800", "LIB_SPARE_PAGE=5"][..],
         ),
         (
             "reader_straddle",
@@ -819,11 +840,15 @@ fn assemble_reader(out: &Path) {
         &[],
         &["-I", "../../app/src", "-I", "../..", "-L"],
     );
-    let regions = "LIB_BOUNCE must lie inside the kernel regions";
+    let regions = "LIB_BOUNCE must lie inside the kernel's saved symbols buffer";
     for (defines, refusal) in [
-        (&["LIB_BOUNCE=$C500"][..], None),
-        (&["LIB_BOUNCE=$D600"][..], None),
-        (&["LIB_BOUNCE=$DF00"][..], None),
+        (&[][..], None),
+        (&["LIB_BOUNCE=$F300"][..], None),
+        (&["LIB_BOUNCE=$F800"][..], None),
+        (&["LIB_BOUNCE=$C500"][..], Some(regions)),
+        (&["LIB_BOUNCE=$D600"][..], Some(regions)),
+        (&["LIB_BOUNCE=$DF00"][..], Some(regions)),
+        (&["LIB_BOUNCE=$F200"][..], Some(regions)),
         (&["KERNEL_RAM_LOW=$EE00", "KERNEL_RAM_HIGH=$C100"][..], None),
         (
             &[
@@ -835,7 +860,7 @@ fn assemble_reader(out: &Path) {
         ),
         (
             &["LIB_STATE_SIZE=$2CF"][..],
-            Some("the reader's state runs past LIB_STATE_SIZE"),
+            Some("the reader's state overlaps, leaves a gap, or runs past LIB_STATE_SIZE"),
         ),
         (&["LIB_BOUNCE=$FE80", "LIB_BOUNCE_ANYWHERE"][..], None),
         (
@@ -847,8 +872,6 @@ fn assemble_reader(out: &Path) {
             Some("LIB_BOUNCE must leave 256 bytes below $10000"),
         ),
         (&["LIB_BOUNCE=$C400"][..], Some(regions)),
-        (&["LIB_BOUNCE=$D601"][..], Some(regions)),
-        (&["LIB_BOUNCE=$D700"][..], Some(regions)),
         (&["LIB_BOUNCE=$DE80"][..], Some(regions)),
         (&["LIB_BOUNCE=$FE80"][..], Some(regions)),
         (
@@ -878,6 +901,151 @@ fn assemble_reader(out: &Path) {
                 "assembling the reader with {defines:?} gave {got:?}, wanted {}",
                 refusal.map_or("success", |want| want)
             )),
+        }
+    }
+}
+
+/// Assembles `source` with `defines` and requires success for `None`, or the message for `Some`.
+fn expect(source: &Path, out: &Path, defines: &[&str], args: &[&str], want: Option<&str>) {
+    match (spasm_try(source, out, defines, args), want) {
+        (Ok(()), None) => {}
+        (Err(why), Some(want)) if why.contains(want) => {}
+        (got, _) => fail(&format!(
+            "assembling {} with {defines:?} gave {got:?}, wanted {}",
+            source.display(),
+            want.unwrap_or("success")
+        )),
+    }
+}
+
+/// Each layout refuses a variable at an offset already taken, inside another, past the region and
+/// after an undeclared gap, and accepts one that follows the last or follows declared padding; an
+/// image that includes equates.inc refuses a map that disagrees with the OS names.
+fn assemble_layout_probes(out: &Path) {
+    println!("cargo:rerun-if-changed=../../app/src/equates.inc");
+    let probe_args = [
+        "-I",
+        "../../app/src",
+        "-I",
+        "../../probe",
+        "-I",
+        "../../kernel",
+    ];
+    let driver = Path::new("tests/routines/kerncheck_test.z80");
+    for (defines, want) in [
+        (
+            &["UI_FRAME=$9400"][..],
+            "UI_FRAME in ram_map.inc must be plotSScreen",
+        ),
+        (
+            &["KD_SCRATCH=$9880"][..],
+            "KD_SCRATCH in ram_map.inc must be appBackUpScreen",
+        ),
+    ] {
+        expect(
+            driver,
+            &out.join("equates_probe.bin"),
+            defines,
+            &probe_args,
+            Some(want),
+        );
+    }
+
+    let font_dir = out.join("ui_font");
+    let font = font_dir.to_str().unwrap();
+    let ui_args = [
+        "-I",
+        "../../ui",
+        "-I",
+        "../..",
+        "-I",
+        "../../app/src",
+        "-I",
+        font,
+    ];
+    let reader_args = [
+        "-I",
+        "../../kernel",
+        "-I",
+        "../../app/src",
+        "-I",
+        "../..",
+        "-I",
+        font,
+    ];
+    let reader = fs::read_to_string("tests/routines/reader_test.z80").unwrap();
+    let driver_source = fs::read_to_string(driver).unwrap();
+    for (prefix, base, args, size, end, message) in [
+        (
+            "UI",
+            "#include \"ui/ram.inc\"\n".to_string(),
+            &ui_args[..],
+            "UI_VARS_SIZE=$30",
+            0x1A,
+            "the UI variables overlap, leave a gap, or run past UI_VARS_SIZE",
+        ),
+        (
+            "KD",
+            driver_source,
+            &probe_args[..],
+            "KD_SCRATCH_SIZE=40",
+            36,
+            "the driver's scratch overlaps, leaves a gap, or runs past KD_SCRATCH_SIZE",
+        ),
+        (
+            "LR",
+            reader,
+            &reader_args[..],
+            "LIB_STATE_SIZE=$2E0",
+            0x2D0,
+            "the reader's state overlaps, leaves a gap, or runs past LIB_STATE_SIZE",
+        ),
+    ] {
+        let source = out.join(format!("{prefix}_layout_probe.z80"));
+        let go_back = format!("{prefix}_AT must not go back");
+        for (lines, defines, want) in [
+            (
+                format!("{prefix}_VAR(probe_next, ${end:X}, 1)"),
+                vec![size],
+                None,
+            ),
+            (
+                format!(
+                    "{prefix}_AT(${:X})\n{prefix}_VAR(probe_next, ${:X}, 1)",
+                    end + 2,
+                    end + 2
+                ),
+                vec![size],
+                None,
+            ),
+            (
+                format!("{prefix}_VAR(probe_same, ${:X}, 1)", end - 1),
+                vec![size],
+                Some(message),
+            ),
+            (
+                format!("{prefix}_VAR(probe_inside, $1, 1)"),
+                vec![size],
+                Some(message),
+            ),
+            (
+                format!("{prefix}_VAR(probe_gap, ${:X}, 1)", end + 2),
+                vec![size],
+                Some(message),
+            ),
+            (
+                format!("{prefix}_VAR(probe_past, ${end:X}, 1)"),
+                vec![],
+                Some(message),
+            ),
+            (
+                format!("{prefix}_AT($0)"),
+                vec![size],
+                Some(go_back.as_str()),
+            ),
+        ] {
+            fs::write(&source, format!("{base}\n{lines}\n")).unwrap();
+            expect(&source, &out.join("layout_probe.bin"), &defines, args, want);
         }
     }
 }
