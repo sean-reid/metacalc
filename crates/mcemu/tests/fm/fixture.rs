@@ -112,6 +112,12 @@ pub fn nodes_library() -> Vec<u8> {
         .clone()
 }
 
+/// A closed subset of the propositional and predicate libraries with its real proofs: theorems with
+/// hypotheses, disjoint variables and saved steps, and one theorem whose proof is wrong.
+pub fn proofs() -> Vec<u8> {
+    pack_all(&parse(include_str!("proofs.mm")))
+}
+
 pub fn library() -> Vec<u8> {
     pack_all(&parse(&source()))
 }

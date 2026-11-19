@@ -361,6 +361,22 @@ fn the_kernel_gives_the_same_verdicts_and_crc_after_fm_filled_its_regions_and_a_
 }
 
 #[test]
+fn the_kernel_gives_the_same_verdicts_and_crc_after_fm_on_a_library_with_proofs_to_check() {
+    let bytes = fixture::proofs();
+    let labels: Vec<String> = decoded(&bytes)
+        .assertions
+        .iter()
+        .map(|a| a.label.clone())
+        .collect();
+    let verdicts = clean_run(&bytes).verdicts;
+    for (label, verdict) in labels.iter().zip(&verdicts) {
+        assert_eq!(*verdict == 0, label != "bad", "{label}: {verdict}");
+    }
+    assert!(labels.len() > 50, "{} assertions", labels.len());
+    the_kernel_after_fm(&bytes);
+}
+
+#[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib>"]
 fn the_kernel_gives_the_same_verdicts_and_crc_on_prop_after_fm_and_a_write_over_its_regions() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");

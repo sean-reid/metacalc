@@ -9,7 +9,8 @@
 ; Code runs from flash in bank A and is position dependent. An including file defines FM_EMBEDDED
 ; first and places the code itself, after the reader (lib/) and the canvas (ui/) it calls, with -I
 ; at the repository root and at app/src. The canvas's ui_set_font must have been called before
-; fm_statement measures a token and before fm_draw draws one.
+; fm_open, and the font stays the one set until the next fm_open: fm measures each symbol's token
+; once per open and fm_draw draws with the font in use.
 ;
 ; Memory, placed by app/src/ram_map.inc. FM_RAM is in bank C of the kernel's spare page
 ; KERNEL_RAM_PAGE, from KERNEL_RAM_HIGH, $1E00 bytes, which the kernel uses only inside a kernel
@@ -167,3 +168,4 @@
 #include "fm/store.inc"
 #include "fm/layout.inc"
 #include "fm/nodes.inc"
+#include "fm/tree.inc"

@@ -434,3 +434,35 @@ fn a_session_reaches_a_stack_depth_the_header_states() {
 }
 
 pub const STACK_DEPTH: usize = 14;
+
+#[test]
+fn selecting_laying_out_and_drawing_leave_the_headers_and_the_token_store_as_they_were() {
+    let bytes = fixture::nodes_library();
+    let n = decoded(&bytes)
+        .assertions
+        .iter()
+        .position(|a| a.label == "many")
+        .unwrap() as u16;
+    let mut fm = Fm::new(&bytes);
+    let out = fm.assertion(n);
+    assert_eq!(out.status(), 0);
+    let all = count(out);
+    for k in (0..all as u8 - 1).chain([0xFF]) {
+        assert_eq!(fm.select(k).status(), 0);
+        assert_eq!(fm.nodes().status(), 0);
+    }
+    let size = |name: &str| constant_of(WITH_FM.labels, name) as usize;
+    let stored = |fm: &mut Fm| {
+        let mut all = fm.memory("FM_TOKENS", size("FM_TOKENS_SIZE"));
+        all.extend(fm.memory("FM_HDR", size("FM_HDR_SIZE")));
+        all
+    };
+    let before = stored(&mut fm);
+    for k in (0..all as u8 - 1).rev().chain([0xFF]) {
+        assert_eq!(fm.select(k).status(), 0);
+        assert_eq!(fm.rows(94).status(), 0);
+        assert_eq!(fm.draw(1, -1, 94, (0, 8)).status(), 0);
+        assert_eq!(fm.draw(3, 0, 20, (1, 4)).status(), 0);
+        assert!(stored(&mut fm) == before, "statement {k}");
+    }
+}

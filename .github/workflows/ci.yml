@@ -177,7 +177,7 @@ jobs:
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact libraries::the_shipped_libraries_build_the_node_tables_the_model_has --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact speed::the_heaviest_six_row_frame_in_ring_redraws_within_50_ms_at_6_mhz --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact store::every_statement_of_every_assertion_of_prop_selects_in_any_order_and_draws_as_the_model_does --nocapture
-      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact store::every_statement_of_every_assertion_of_pred_and_ring_selects_in_any_order --nocapture
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact store::every_statement_of_every_assertion_of_pred_and_ring_selects_in_any_order_and_the_tall_ones_draw --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact store::the_shipped_libraries_load_every_assertion_and_select_every_statement_within_the_ceilings --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact kernel::the_kernel_gives_the_same_verdicts_and_crc_on_prop_after_fm_and_a_write_over_its_regions --nocapture
 

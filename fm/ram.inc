@@ -19,6 +19,12 @@ FM_TOKENS           .equ FM_SECOND + FM_SECOND_SIZE
 FM_MAX_TOKENS       .equ 768
 FM_MAX_STMTS        .equ 32
 FM_MAX_NODES        .equ 384
+#ifndef FM_RUN_MAX
+FM_RUN_MAX          .equ 128
+#endif
+#if (FM_RUN_MAX < 1) || (FM_RUN_MAX > 128)
+ .error "FM_RUN_MAX must be 1 to 128: a run of tokens in FM_SCRATCH is cut at that many codes, a token has at most 128, and the terminator must fit"
+#endif
 FM_MAX_STMT_TOKENS  .equ 255
 FM_MAX_STMT_NODES   .equ 255
 FM_TOKENS_SIZE      .equ FM_MAX_TOKENS * 4
@@ -45,7 +51,9 @@ FM_FIRST            .equ FM_SYMF + $100
 FM_LAST             .equ FM_FIRST + FM_PLANE
 FM_DEPTH            .equ FM_LAST + FM_PLANE
 FM_LOW_USED         .equ FM_DEPTH + FM_PLANE - FM_LOW
+#ifndef FM_LOW_FREE
 FM_LOW_FREE         .equ $400
+#endif
 RAM_DISJOINT(FM_HDR, FM_HDR_SIZE, KSTACK, KSTACK_TOP - KSTACK, "the statement headers must stay off the kernel's stack page, which a refused kernel call writes")
 #if FM_LOW_USED > FM_LOW_SIZE
  .error "FM_LOW_SIZE in ram_map.inc is smaller than what fm lays out"

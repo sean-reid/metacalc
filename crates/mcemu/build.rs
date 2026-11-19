@@ -794,10 +794,6 @@ fn assemble_ui(out: &Path) {
             Some("FM_LOW runs outside the kernel's low region"),
         ),
         (
-            &["FM_LOW=$C400", "FM_LOW_SIZE=$1000"][..],
-            Some("FM_LOW runs outside the kernel's low region"),
-        ),
-        (
             &["FM_LOW_SIZE=$1101"][..],
             Some("FM_LOW runs outside the kernel's low region"),
         ),
@@ -927,7 +923,25 @@ fn assemble_reader(out: &Path) {
         &["WITH_FM", "IMAGE_ORG=$2000"],
         &fm_args,
     );
+    spasm(
+        src,
+        &out.join("fm_short.bin"),
+        &["WITH_FM", "IMAGE_ORG=$2000", "FM_RUN_MAX=8"],
+        &fm_args,
+    );
     for (defines, refusal) in [
+        (&["FM_RUN_MAX=1"][..], None),
+        (&["FM_RUN_MAX=127"][..], None),
+        (&["FM_RUN_MAX=0"][..], Some("FM_RUN_MAX must be 1 to 128")),
+        (&["FM_RUN_MAX=129"][..], Some("FM_RUN_MAX must be 1 to 128")),
+        (
+            &["FM_LOW=$C700", "FM_LOW_SIZE=$D00", "FM_LOW_FREE=0"][..],
+            None,
+        ),
+        (
+            &["FM_LOW=$C800", "FM_LOW_SIZE=$D00", "FM_LOW_FREE=0"][..],
+            Some("the statement headers must stay off the kernel's stack page"),
+        ),
         (&["FM_RAM_SIZE=$1E00"][..], None),
         (&["FM_VARS_SIZE=$100"][..], None),
         (&["FM_RAM_SIZE=$1F00"][..], None),

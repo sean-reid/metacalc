@@ -29,12 +29,13 @@ fn by_assertion(bytes: &[u8]) -> Vec<(u16, Statements)> {
     out
 }
 
-/// Three orders over `m` statements, none of which is the load order but the first when m is 1.
+/// Three orders over `m` statements: the first two differ from the load order from two statements
+/// on, the third from three.
 fn orders(m: usize) -> [Vec<usize>; 3] {
     [
         (0..m).rev().collect(),
+        (0..m).map(|i| (i + 1) % m).collect(),
         (0..m).step_by(2).chain((1..m).step_by(2)).collect(),
-        (0..m).map(|i| (i + m / 2) % m).collect(),
     ]
 }
 
@@ -72,7 +73,7 @@ fn check_assertion(fm: &mut Fm, model: &Model, n: u16, all: &Statements, frames:
             let (width, x) = screen(hyps, *k);
             let out = fm.rows(width);
             assert_eq!(count(out), model_rows(tokens, width), "{what}: rows");
-            if frames && pass == 0 {
+            if frames {
                 fm.clear();
                 assert_eq!(fm.draw(x, 0, width, (0, 8)).status(), 0, "{what}");
                 let want = model_frame(tokens, width, x, 0, 0..8);
@@ -87,21 +88,39 @@ fn check_assertion(fm: &mut Fm, model: &Model, n: u16, all: &Statements, frames:
     }
 }
 
-fn check_library(name: &str, bytes: &[u8], frames: bool) {
+/// Whether an assertion has several statements that take more than six rows together on the
+/// theorem screen: the ones whose frames scroll and hide a stale pointer.
+fn tall(all: &Statements) -> bool {
+    let hyps = all.len() - 1;
+    let rows: usize = all
+        .iter()
+        .map(|(k, t)| model_rows(t, screen(hyps, *k).0))
+        .sum();
+    all.len() > 1 && rows > 6
+}
+
+/// Checks every assertion, with pixels for those `frames` picks.
+fn check_library(name: &str, bytes: &[u8], frames: &dyn Fn(&Statements) -> bool) {
     let model = Model::new(bytes);
     let mut fm = Fm::new(bytes);
     let all = by_assertion(bytes);
+    let mut drawn = 0;
     for (n, stmts) in &all {
-        check_assertion(&mut fm, &model, *n, stmts, frames);
+        let with = frames(stmts);
+        drawn += usize::from(with);
+        check_assertion(&mut fm, &model, *n, stmts, with);
     }
-    println!("{name}: {} assertions loaded and selected", all.len());
+    println!(
+        "{name}: {} assertions loaded and selected, {drawn} with frames",
+        all.len()
+    );
 }
 
 #[test]
 fn every_statement_of_every_assertion_of_the_fixture_selects_in_any_order() {
     let bytes = fixture::nodes_library();
     assert!(by_assertion(&bytes).iter().any(|(_, s)| s.len() > 10));
-    check_library("fixture", &bytes, true);
+    check_library("fixture", &bytes, &|_| true);
 }
 
 fn shipped(name: &str) -> Vec<u8> {
@@ -112,14 +131,15 @@ fn shipped(name: &str) -> Vec<u8> {
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib>"]
 fn every_statement_of_every_assertion_of_prop_selects_in_any_order_and_draws_as_the_model_does() {
-    check_library("prop", &shipped("prop"), true);
+    check_library("prop", &shipped("prop"), &|_| true);
 }
 
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding pred.mclib and ring.mclib>"]
-fn every_statement_of_every_assertion_of_pred_and_ring_selects_in_any_order() {
+fn every_statement_of_every_assertion_of_pred_and_ring_selects_in_any_order_and_the_tall_ones_draw()
+{
     for name in ["pred", "ring"] {
-        check_library(name, &shipped(name), false);
+        check_library(name, &shipped(name), &tall);
     }
 }
 
@@ -144,21 +164,36 @@ fn wide(constants: usize) -> String {
     format!("|- {}", "F ".repeat(constants).trim_end())
 }
 
-/// Like `chains`, with statements of `constants` F's: many tokens and one node each.
-fn wides(hyps: &[usize], conclusion: usize) -> Vec<u8> {
-    let mut lengths: Vec<usize> = hyps.iter().copied().chain([conclusion]).collect();
-    lengths.sort_unstable();
-    lengths.dedup();
+/// The syntax axioms that make `wide(k)` one node for each k.
+fn wide_axioms(lengths: &[usize]) -> String {
     let mut src = String::from("$c F $.\n");
-    for k in &lengths {
+    for k in lengths {
         src += &format!("wf{k} $a wff {} $.\n", "F ".repeat(*k).trim_end());
     }
-    src += "${\n";
-    for (i, k) in hyps.iter().enumerate() {
-        src += &format!("h{i} $e {} $.\n", wide(*k));
+    src
+}
+
+/// A library of the fixture's header, `axioms`, and one assertion for each part: its label and
+/// its statements, the hypotheses and then the conclusion.
+fn library_of(axioms: &str, parts: &[(&str, Vec<String>)]) -> Vec<u8> {
+    let mut src = axioms.to_string();
+    for (label, statements) in parts {
+        src += "${\n";
+        let (conclusion, hyps) = statements.split_last().unwrap();
+        for (i, h) in hyps.iter().enumerate() {
+            src += &format!("{label}.{i} $e {h} $.\n");
+        }
+        src += &format!("{label} $a {conclusion} $.\n$}}\n");
     }
-    src += &format!("thm $a {} $.\n$}}\n", wide(conclusion));
     fixture::custom(&src)
+}
+
+fn named(bytes: &[u8], label: &str) -> u16 {
+    decoded(bytes)
+        .assertions
+        .iter()
+        .position(|a| a.label == label)
+        .unwrap() as u16
 }
 
 fn thm(bytes: &[u8]) -> u16 {
@@ -183,49 +218,59 @@ fn assert_nothing_loaded(fm: &mut Fm, what: &str) {
     assert_eq!(fm.frame(), vec![0; FRAME_LEN], "{what}: nothing drawn");
 }
 
+/// What fm_assertion does with a refused load after a good one in the same machine: the earlier
+/// store is gone, whatever was selected and built.
+fn refused_after_a_good_load(bytes: &[u8], good: &str, bad: &str, fits: usize, what: &str) {
+    let limit = code("FM_ERR_LIMIT");
+    let model = Model::new(bytes);
+    let (good, bad) = (named(bytes, good), named(bytes, bad));
+    assert!(model.within(good), "the model's caps hold the first");
+    assert!(!model.within(bad), "and not the second");
+    let mut fm = Fm::new(bytes);
+    let out = fm.assertion(good);
+    assert_eq!((out.status(), count(out)), (0, fits), "{what}");
+    assert_eq!(fm.select(0).status(), 0);
+    assert_eq!(fm.nodes().status(), 0);
+    fm.clear();
+    assert_eq!(fm.draw(1, 0, 94, (0, 8)).status(), 0);
+    assert_ne!(fm.frame(), vec![0; FRAME_LEN], "something is on screen");
+    let out = fm.assertion(bad);
+    assert_eq!((out.status(), count(out)), (limit, 0), "{what}");
+    assert_nothing_loaded(&mut fm, what);
+}
+
 #[test]
 fn an_assertion_of_768_tokens_loads_and_one_of_769_is_refused_with_nothing_left() {
-    let limit = code("FM_ERR_LIMIT");
-    let fits = wides(&[254, 254, 254], 2);
-    let mut fm = Fm::new(&fits);
-    let n = thm(&fits);
-    let tokens: usize = by_assertion(&fits)[usize::from(n)]
-        .1
-        .iter()
-        .map(|(_, t)| t.len())
-        .sum();
-    assert_eq!(tokens, 768);
-    assert!(Model::new(&fits).within(n), "the model's caps hold it");
-    let out = fm.assertion(n);
-    assert_eq!((out.status(), count(out)), (0, 4));
+    let hyps = |k: usize| vec![wide(254), wide(254), wide(254), wide(k)];
+    let bytes = library_of(
+        &wide_axioms(&[254, 2, 3]),
+        &[("fits", hyps(2)), ("over", hyps(3))],
+    );
+    let tokens = |label: &str| -> usize {
+        by_assertion(&bytes)[usize::from(named(&bytes, label))]
+            .1
+            .iter()
+            .map(|(_, t)| t.len())
+            .sum()
+    };
+    assert_eq!((tokens("fits"), tokens("over")), (768, 769));
+    refused_after_a_good_load(&bytes, "fits", "over", 4, "769 tokens");
+    let mut fm = Fm::new(&bytes);
+    assert_eq!(fm.assertion(named(&bytes, "fits")).status(), 0);
     assert_eq!(count(fm.select(0xFF)), 3);
-    let over = wides(&[254, 254, 254], 3);
-    assert!(!Model::new(&over).within(thm(&over)), "and not this one");
-    let mut fm = Fm::new(&over);
-    let out = fm.assertion(thm(&over));
-    assert_eq!((out.status(), count(out)), (limit, 0));
-    assert_nothing_loaded(&mut fm, "769 tokens");
 }
 
 #[test]
 fn an_assertion_of_32_statements_loads_and_one_of_33_is_refused_with_nothing_left() {
-    let limit = code("FM_ERR_LIMIT");
-    let hyps = |count: usize| chains(&vec![0; count], 0);
-    let fits = hyps(31);
-    assert!(Model::new(&fits).within(thm(&fits)));
-    let mut fm = Fm::new(&fits);
-    let out = fm.assertion(thm(&fits));
-    assert_eq!((out.status(), count(out)), (0, 32));
+    let hyps = |count: usize| vec!["|- ph".to_string(); count + 1];
+    let bytes = library_of("", &[("fits", hyps(31)), ("over", hyps(32))]);
+    refused_after_a_good_load(&bytes, "fits", "over", 32, "33 statements");
+    let mut fm = Fm::new(&bytes);
+    assert_eq!(fm.assertion(named(&bytes, "fits")).status(), 0);
     for k in (0..31).chain([0xFF]) {
         assert_eq!(fm.select(k).status(), 0, "statement {k}");
     }
     assert_eq!(fm.select(31).status(), code("FM_ERR_INDEX"));
-    let over = hyps(32);
-    assert!(!Model::new(&over).within(thm(&over)));
-    let mut fm = Fm::new(&over);
-    let out = fm.assertion(thm(&over));
-    assert_eq!((out.status(), count(out)), (limit, 0));
-    assert_nothing_loaded(&mut fm, "33 statements");
 }
 
 /// The node counts of each statement in a library built by `chains`, from the model.
@@ -281,7 +326,7 @@ fn tables_of_384_nodes_build_and_a_385th_node_refuses_that_table_and_keeps_the_r
 }
 
 #[test]
-fn a_statement_of_255_tokens_and_255_tree_nodes_still_loads_and_builds_in_a_store_of_one() {
+fn a_statement_of_255_tokens_and_254_nodes_still_loads_and_builds_in_a_store_of_one() {
     let bytes = fixture::nodes_library();
     let n = decoded(&bytes)
         .assertions
@@ -292,17 +337,20 @@ fn a_statement_of_255_tokens_and_255_tree_nodes_still_loads_and_builds_in_a_stor
     let mut fm = Fm::new(&bytes);
     let out = fm.assertion(n);
     assert_eq!((out.status(), count(out)), (0, 1));
+    assert_eq!(count(fm.select(0xFF)), 255);
     let out = fm.nodes();
-    assert_eq!(out.status(), 0);
+    assert_eq!((out.status(), count(out)), (0, 254));
     assert_eq!(fm.table(count(out)), model.table(n, 0xFF));
 }
 
-/// T-states from the first instruction at label `from` to the first at label `to` for a call, found
-/// by stepping it.
+/// T-states from the first instruction at label `from` to the first at label `to` for a call,
+/// found by stepping it; the call then runs to its end, so the session restores SP, the ports and
+/// the interrupt state before the next one.
 fn between(fm: &mut Fm, target: &str, regs: Regs, from: &str, to: &str) -> u32 {
     fm.rig.prepare(target, regs);
     let (from, to) = (fm.rig.label(from), fm.rig.label(to));
-    let (mut spent, mut start) = (0, None);
+    let done = fm.rig.label("CALL_DONE");
+    let (mut spent, mut start, mut found) = (0, None, None);
     let mut run = fm.rig.m.run(fm.rig.label("CALL_ENTRY"), 1);
     loop {
         spent += run.tstates;
@@ -310,8 +358,11 @@ fn between(fm: &mut Fm, target: &str, regs: Regs, from: &str, to: &str) -> u32 {
         if start.is_none() && pc == from {
             start = Some(spent);
         }
-        if pc == to {
-            return spent - start.expect("the body ran");
+        if found.is_none() && pc == to {
+            found = Some(spent - start.expect("the body ran"));
+        }
+        if pc == done {
+            return found.expect("the body ended");
         }
         run = fm.rig.m.resume(1);
     }
@@ -342,8 +393,10 @@ const CEILINGS: [Ceilings; 3] = [
     },
 ];
 
-/// What fm_select costs beyond a session's entry and exit.
-const SELECT_BODY: u32 = 400;
+/// What fm_select costs beyond a session's entry and exit, and in all, about 5 percent over the
+/// largest of the three libraries.
+const SELECT_BODY: u32 = 352;
+const SELECT_TOTAL: u32 = 849;
 
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
@@ -391,7 +444,8 @@ fn the_shipped_libraries_load_every_assertion_and_select_every_statement_within_
             "{name}: fm_assertion median {median}, largest {largest}\n\
              {name}: fm_select largest {selects} in all, {body} beyond the session"
         );
-        assert!(body < SELECT_BODY, "{name}: fm_select body took {body}");
+        assert!(body <= SELECT_BODY, "{name}: fm_select body took {body}");
+        assert!(selects <= SELECT_TOTAL, "{name}: fm_select took {selects}");
         assert!(
             median <= ceiling.median,
             "{name}: fm_assertion median {median}"

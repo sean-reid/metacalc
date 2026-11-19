@@ -142,6 +142,10 @@ dw_room:
 	dec b
 	exx
 dw_copy:
+	ld hl,-FM_SCRATCH-FM_RUN_MAX
+	add hl,de
+	jr c,dw_cut
+dw_go:
 	ld l,a
 	ld h,0
 	add hl,hl
@@ -197,6 +201,14 @@ dw_split:
 	ld de,FM_SCRATCH
 	pop af
 	jr dw_copy
+dw_cut:
+	push af
+	call dw_flush
+	inc de
+	ld (fv_x),de
+	ld de,FM_SCRATCH
+	pop af
+	jr dw_go
 dw_wrap:
 	dec hl
 	dec hl

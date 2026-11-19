@@ -97,3 +97,23 @@ fn fm_draw_leaves_the_frame_the_model_draws_for_the_same_statement() {
     }
     assert!(drawn > 1000, "{drawn} frames compared");
 }
+
+#[test]
+fn cutting_a_run_after_8_codes_changes_no_pixel_and_costs_one_more_ui_text_each_time() {
+    let bytes = fixture::nodes_library();
+    let all = statements(&decoded(&bytes));
+    let (mut whole, mut cut) = (Fm::new(&bytes), Fm::short_runs(&bytes));
+    let (mut plain, mut split) = (0, 0);
+    for (n, k, tokens) in all.iter().step_by(3) {
+        for fm in [&mut whole, &mut cut] {
+            assert_eq!(fm.statement(*n, *k).status(), 0);
+            fm.clear();
+        }
+        plain += whole.draw(1, 0, 94, (0, 8)).tstates;
+        split += cut.draw(1, 0, 94, (0, 8)).tstates;
+        let want = model_frame(tokens, 94, 1, 0, 0..8);
+        same_frame(&format!("{k} of {n}, whole runs"), &whole.frame(), &want);
+        same_frame(&format!("{k} of {n}, cut runs"), &cut.frame(), &want);
+    }
+    assert!(split > plain, "the cut ran: {split} against {plain}");
+}

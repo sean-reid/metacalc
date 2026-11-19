@@ -280,3 +280,50 @@ fn an_entry_of_one_code_opens_and_one_of_none_is_bad() {
         assert_eq!(Fm::bare(&short).open().status(), status, "{codes} codes");
     }
 }
+
+fn first_with(bytes: &[u8], codes: usize) -> usize {
+    let glyphs = decoded(bytes).sections.unwrap().glyphs.unwrap();
+    glyphs
+        .symbols
+        .iter()
+        .position(|g| g.codes.len() >= codes)
+        .unwrap()
+}
+
+#[test]
+fn a_zero_among_an_entrys_codes_is_refused_and_the_same_entry_without_it_opens() {
+    let bytes = fixture::library();
+    let symbol = first_with(&bytes, 3);
+    for (codes, status) in [([5, 0, 6], code("FM_ERR_BAD")), ([5, 7, 6], 0)] {
+        let patched = patched(|b| {
+            let at = entry(b, symbol);
+            b[at + 1] = 3;
+            b[at + 2..at + 5].copy_from_slice(&codes);
+        });
+        assert_eq!(Fm::bare(&patched).open().status(), status, "{codes:?}");
+    }
+}
+
+#[test]
+fn an_entry_of_128_codes_opens_and_one_of_129_is_bad() {
+    // Every 0 in the entries becomes 1 so that the bytes after the first entry are good codes.
+    let bytes = fixture::nodes_library();
+    let glyphs = decoded(&bytes)
+        .sections
+        .unwrap()
+        .table
+        .into_iter()
+        .find(|e| e.id == mcpack::library::GLYPHS)
+        .unwrap();
+    let end = glyphs.offset + glyphs.length;
+    for (count, status) in [(128, 0), (129, code("FM_ERR_BAD"))] {
+        let patched = fixture::with(&bytes, |b| {
+            let at = entry(b, 0);
+            for byte in &mut b[at..end] {
+                *byte = (*byte).max(1);
+            }
+            b[at + 1] = count;
+        });
+        assert_eq!(Fm::bare(&patched).open().status(), status, "{count} codes");
+    }
+}

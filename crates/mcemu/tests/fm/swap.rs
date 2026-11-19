@@ -120,3 +120,47 @@ fn a_reader_that_has_no_shapes_now_and_had_them_at_open_is_another_library_with_
     have(&mut fm, |h| h | HAS_SHAPES);
     assert_eq!(fm.statement(0, 0xFF).status(), 0, "put back");
 }
+
+fn set_font(fm: &mut Fm, table: &str) {
+    let hl = fm.rig.label(table);
+    fm.rig.call(
+        "UI_SET_FONT",
+        Regs {
+            hl,
+            ..Regs::default()
+        },
+    );
+}
+
+#[test]
+fn a_font_set_after_fm_open_is_measured_from_the_next_fm_open_on() {
+    let bytes = fixture::library();
+    let (n, k, tokens) = statements(&decoded(&bytes))
+        .into_iter()
+        .find(|(_, k, t)| *k == 0xFF && t.len() > 6 && t.len() < 12)
+        .unwrap();
+    let mut fm = Fm::new(&bytes);
+    let widths = |fm: &mut Fm| -> Vec<u8> {
+        assert_eq!(fm.statement(n, k).status(), 0);
+        let records = fm.memory("FM_TOKENS", 4 * tokens.len());
+        (0..tokens.len()).map(|i| records[4 * i + 1]).collect()
+    };
+    let main = widths(&mut fm);
+    set_font(&mut fm, "UI_KEY_FONT");
+    assert_eq!(widths(&mut fm), main, "measured once per open");
+    assert_eq!(fm.open().status(), 0);
+    let keys = widths(&mut fm);
+    assert_ne!(keys, main, "the new open measures with the font now set");
+    let mut fresh = Fm::bare(&bytes);
+    set_font(&mut fresh, "UI_KEY_FONT");
+    assert_eq!(fresh.open().status(), 0);
+    assert_eq!(
+        widths(&mut fresh),
+        keys,
+        "as an open that never saw the other font"
+    );
+    set_font(&mut fm, "UI_FONT");
+    assert_eq!(widths(&mut fm), keys);
+    assert_eq!(fm.open().status(), 0);
+    assert_eq!(widths(&mut fm), main);
+}

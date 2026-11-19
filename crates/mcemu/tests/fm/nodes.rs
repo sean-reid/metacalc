@@ -372,6 +372,7 @@ fn a_shapes_section_of_2048_bytes_passes_the_size_gate_and_one_of_2049_does_not(
     };
     assert_eq!(state(2049), code("FM_ERR_TOO_BIG"));
     assert_eq!(state(0xFFFF), code("FM_ERR_TOO_BIG"));
+    assert_ne!(state(2048), code("FM_ERR_TOO_BIG"));
     assert_eq!(
         state(2048),
         code("FM_ERR_READ"),

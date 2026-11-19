@@ -14,6 +14,14 @@ pub const WITH_FM: Image = Image {
     org: 0x2000,
 };
 
+/// The same image with a run of tokens cut after 8 codes, so that the cut that keeps a run inside
+/// FM_SCRATCH happens on every line of more than a few glyphs.
+pub const WITH_SHORT_RUNS: Image = Image {
+    code: include_bytes!(concat!(env!("OUT_DIR"), "/fm_short.bin")),
+    labels: include_str!(concat!(env!("OUT_DIR"), "/fm_short.lab")),
+    org: 0x2000,
+};
+
 pub const FRAME_LEN: usize = 768;
 
 /// What a statement's header in FM_LOW says of its node table.
@@ -87,6 +95,13 @@ impl Fm {
             },
         );
         fm.clear();
+        fm
+    }
+
+    /// `new` on the image whose runs are cut after 8 codes.
+    pub fn short_runs(library: &[u8]) -> Fm {
+        let mut fm = Fm::on(Rig::with_image(WITH_SHORT_RUNS), library, 0x81);
+        assert_eq!(fm.open().status(), 0, "fm_open");
         fm
     }
 
