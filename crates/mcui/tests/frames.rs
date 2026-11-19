@@ -149,6 +149,14 @@ fn a_notice_wraps_at_word_boundaries() {
 }
 
 #[test]
+fn a_rejected_theorem_has_no_proof_to_read() {
+    let mut ui = support::rejected_ui();
+    open(&mut ui, "a1i");
+    press(&mut ui, &[F3]);
+    check(&ui, "notice-rejected");
+}
+
+#[test]
 fn a_syntax_theorem_has_no_goal_tree() {
     let mut ui = extra_ui();
     open(&mut ui, "wtwice");

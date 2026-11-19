@@ -276,3 +276,22 @@ fn stepping_through_a_real_library_is_quick() {
         assert_eq!(failed, 0, "{name}");
     }
 }
+
+/// Loading the real libraries in `MCUI_LIBS` with every entry checked demotes none of them.
+#[test]
+#[ignore = "needs MCUI_LIBS, a directory of built libraries"]
+fn loading_a_shipped_library_demotes_no_checked_entry() {
+    let dir = std::env::var("MCUI_LIBS").expect("MCUI_LIBS names the libraries");
+    for name in ["prop", "pred", "ring"] {
+        let bytes = std::fs::read(format!("{dir}/{name}.mclib")).unwrap();
+        let total = mcpack::library::read(&bytes).unwrap().len();
+        let installed = mcui::data::Installed {
+            name: name.into(),
+            bytes,
+        };
+        let lib = mcui::data::Lib::new(installed, vec![mcui::Status::Checked; total]).unwrap();
+        let demoted = (0..total).filter(|&i| lib.status(i) != mcui::Status::Checked);
+        assert_eq!(demoted.count(), 0, "{name}");
+        assert_eq!(lib.checked(), total, "{name}");
+    }
+}
