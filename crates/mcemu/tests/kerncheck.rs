@@ -816,3 +816,265 @@ fn the_app_clears_the_ready_mark_before_it_reaches_kernel_init() {
     let at = usize::from(label("KV_READY") - 0xC000);
     assert_eq!(rig.m.ram_page(KERNEL_PAGE)[at..at + 2], [0, 0]);
 }
+
+fn kernel_range() -> std::ops::Range<u16> {
+    label("KERNEL_INIT")..label("KERNCHK_RUN")
+}
+
+fn polls() -> Vec<u16> {
+    let polls = poll_sites(CODE, ENTRY);
+    assert_eq!(polls.len(), 6, "the kernel reads the key at {polls:x?}");
+    polls
+}
+
+/// Bytes of the poll at the top of kernel_init's comparison of names: in, and, jp.
+const POLL_LEN: u16 = 7;
+
+/// Steps to the call of `entry` and turns interrupts on, as the OS leaves them after the driver's
+/// clear of the screen. The stub's text calls return with them off.
+fn calls_with_interrupts_on(rig: &mut Rig, entry: &str) {
+    step_to(&mut rig.m, label(entry), None);
+    let regs = mcemu::Regs {
+        iff1: 1,
+        iff2: 1,
+        ..rig.m.regs()
+    };
+    rig.m.set_regs(&regs);
+}
+
+/// ON goes down and up between two reads of the key in kernel_init and nothing in the kernel reads
+/// it before the call returns, so the OS handler runs with the key up and sets no flag.
+#[test]
+fn an_on_tap_between_two_polls_of_init_stops_the_run() {
+    let bytes = long_name_axioms(300, 60);
+    let (polls, outer) = (polls(), label("INIT_NAME_OUTER"));
+    for (wait, down) in [(0, 1), (0, 500), (20_000, 40), (40_000, 5000)] {
+        let mut rig = Rig::new(&bytes, Speed::Mhz15);
+        rig.start();
+        calls_with_interrupts_on(&mut rig, "KERNEL_INIT");
+        let call = Call::at_entry(&mut rig.m);
+        step_to(&mut rig.m, outer, None);
+        step_to(&mut rig.m, outer + POLL_LEN, None);
+        run_in_kernel(&mut rig.m, &kernel_range(), &polls, wait);
+        tap_in_kernel(&mut rig.m, &kernel_range(), &polls, down);
+        assert!(latched(&mut rig.m), "the tap latched");
+        let msg = format!("{wait} T-states after the poll, down for {down}");
+        assert_eq!(call.returns(&mut rig.m).af >> 8, 14, "{msg}: init's status");
+        rig.finish_from(None, 0);
+        let (_, result) = screens(&rig.trace());
+        assert_eq!(result, INIT_STOPPED, "{msg}");
+        assert_eq!(rig.byte(label("K_INIT")), 0, "{msg}");
+        assert_eq!(rig.byte(label("K_STOPPED")), 3, "{msg}");
+        assert_eq!(rig.byte(OUT_FLAGGED), 0, "{msg}: a text call saw the flag");
+        assert_eq!(
+            rig.m.ram_page(1)[FLAGS] & 0x10,
+            0,
+            "{msg}: the flag is clear"
+        );
+    }
+}
+
+/// An assertion with no hypotheses and a one-symbol conclusion reaches no poll, so a tap inside its
+/// call can only be seen by the call's exit.
+#[test]
+fn an_on_tap_inside_a_verify_call_that_reads_no_key_stops_the_run() {
+    let bytes = axioms(2000);
+    let polls = polls();
+    for (wait, down) in [(30, 1), (400, 40), (1500, 3000)] {
+        let mut rig = Rig::new(&bytes, Speed::Mhz15);
+        rig.run_until_trace_has("\rchk 00064/", 5_000);
+        step_to(&mut rig.m, label("KERNEL_VERIFY"), None);
+        let at = rig.word("K_DONE");
+        let call = Call::at_entry(&mut rig.m);
+        rig.m.resume(1);
+        run_in_kernel(&mut rig.m, &kernel_range(), &polls, wait);
+        tap_in_kernel(&mut rig.m, &kernel_range(), &polls, down);
+        let msg = format!("{wait} T-states into the call, down for {down}");
+        assert_eq!(
+            call.returns(&mut rig.m).af >> 8,
+            14,
+            "{msg}: verify's status"
+        );
+        rig.finish_from(None, 0);
+        assert_eq!(rig.byte(label("K_STOPPED")), 2, "{msg}");
+        assert_eq!(
+            rig.word("K_DONE"),
+            at,
+            "{msg}: the assertion has no verdict"
+        );
+        assert_eq!(rig.word("K_ACCEPTED"), at, "{msg}");
+        assert_stopped_at_done(&mut rig);
+        assert_eq!(rig.byte(OUT_FLAGGED), 0, "{msg}");
+    }
+}
+
+/// The checksum reads no key at all, so any tap in a chunk is the exit's to see, and the last chunk,
+/// whose result the stop replaces, is the same.
+#[test]
+fn an_on_tap_inside_a_checksum_chunk_stops_the_run() {
+    let bytes = axioms(2000);
+    let (polls, chunks) = (polls(), bytes.len().div_ceil(CHUNK));
+    assert!(chunks > 3);
+    for (reached, last) in [(2, false), (chunks - 1, true)] {
+        for (wait, down) in [(1000, 1), (30_000, 3000)] {
+            let mut rig = Rig::new(&bytes, Speed::Mhz15);
+            rig.start();
+            for _ in 0..reached {
+                step_to(&mut rig.m, label("KERNEL_CRC_CHUNK"), None);
+                rig.m.resume(1);
+            }
+            step_to(&mut rig.m, label("KERNEL_CRC_CHUNK"), None);
+            assert_eq!(rig.byte(label("K_CHUNK")), reached as u8);
+            let call = Call::at_entry(&mut rig.m);
+            rig.m.resume(1);
+            run_in_kernel(&mut rig.m, &kernel_range(), &polls, wait);
+            tap_in_kernel(&mut rig.m, &kernel_range(), &polls, down);
+            let msg = format!("chunk {reached}, {wait} T-states in, down for {down}");
+            assert_eq!(
+                call.returns(&mut rig.m).af >> 8,
+                14,
+                "{msg}: the chunk's status"
+            );
+            rig.finish_from(None, 0);
+            assert_eq!(
+                rig.ram(label("K_CRC"), 4),
+                [0; 4],
+                "{msg}: the driver kept no checksum"
+            );
+            assert_eq!(rig.byte(label("K_STOPPED")), 1, "{msg}");
+            assert_eq!(
+                rig.byte(label("K_CRC_STATE")),
+                3,
+                "{msg}: stopped, not done"
+            );
+            assert_eq!(rig.word("K_STOP_AT"), reached as u16, "{msg}");
+            let (_, result) = screens(&rig.trace());
+            assert_eq!(result[1], "crc stopped", "{msg}: last chunk {last}");
+            assert_eq!(rig.word("K_DONE"), 0, "{msg}: nothing was verified");
+        }
+    }
+}
+
+/// A tap that is over before the call starts, with interrupts on, is the OS's: its handler takes the
+/// latch, finds the key up and sets nothing, and the call is not blamed for it.
+#[test]
+fn an_on_tap_over_before_a_call_starts_with_interrupts_on_is_not_the_calls() {
+    let bytes = axioms(300);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    rig.start();
+    calls_with_interrupts_on(&mut rig, "KERNEL_INIT");
+    let call = Call::at_entry(&mut rig.m);
+    rig.m.press_key(Machine::KEY_ON);
+    rig.m.release_key(Machine::KEY_ON);
+    assert!(latched(&mut rig.m), "the tap latched");
+    step_to(&mut rig.m, label("KE_WINDOW"), None);
+    assert!(!latched(&mut rig.m), "the OS handler acknowledged it");
+    assert_eq!(call.returns(&mut rig.m).af >> 8, 0, "init's status");
+    rig.finish_from(None, 0);
+    let (_, result) = screens(&rig.trace());
+    assert_eq!(result, report(&bytes));
+    assert_eq!(rig.byte(label("K_STOPPED")), 0);
+}
+
+/// With interrupts off nothing acknowledges the latch, so a tap over before the call starts is still
+/// there at its exit and the call reports it.
+#[test]
+fn an_on_tap_over_before_a_call_starts_with_interrupts_off_is_reported_by_the_call() {
+    let bytes = axioms(2000);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    rig.run_until_trace_has("\rchk 00064/", 5_000);
+    step_to(&mut rig.m, label("KERNEL_VERIFY"), None);
+    assert_eq!(
+        rig.m.regs().iff1,
+        0,
+        "the driver calls kernel_verify with interrupts off"
+    );
+    let at = rig.word("K_DONE");
+    let call = Call::at_entry(&mut rig.m);
+    rig.m.press_key(Machine::KEY_ON);
+    rig.m.release_key(Machine::KEY_ON);
+    assert!(latched(&mut rig.m), "the tap latched");
+    step_to(&mut rig.m, label("KE_WINDOW"), None);
+    assert!(
+        latched(&mut rig.m),
+        "nothing acknowledged it by the call's start"
+    );
+    assert_eq!(call.returns(&mut rig.m).af >> 8, 14, "verify's status");
+    rig.finish_from(None, 0);
+    assert_eq!(rig.byte(label("K_STOPPED")), 2);
+    assert_eq!(
+        rig.word("K_DONE"),
+        at,
+        "the call returned a verdict the driver counted"
+    );
+    assert_stopped_at_done(&mut rig);
+}
+
+/// A tap over between two kernel calls, while the driver has interrupts off, is still latched at its
+/// next poll, which stops the run before the call is made and a whole call is spent on it.
+#[test]
+fn an_on_tap_over_between_two_calls_stops_the_driver_before_it_makes_the_next() {
+    let bytes = axioms(2000);
+    for (marker, step, head, call, stopped) in [
+        (
+            "\rcrc 00002/",
+            100_000,
+            "KD_CRC_NEXT",
+            "KERNEL_CRC_CHUNK",
+            "KD_CRC_STOPPED",
+        ),
+        (
+            "\rchk 00064/",
+            5_000,
+            "KD_VERIFY_NEXT",
+            "KERNEL_VERIFY",
+            "KD_VERIFY_STOPPED",
+        ),
+    ] {
+        let mut rig = Rig::new(&bytes, Speed::Mhz15);
+        rig.run_until_trace_has(marker, step);
+        step_to(&mut rig.m, label(head), None);
+        assert_eq!(rig.m.regs().iff1, 0, "{head}: interrupts are off");
+        rig.m.press_key(Machine::KEY_ON);
+        rig.m.release_key(Machine::KEY_ON);
+        let next = loop {
+            let pc = rig.m.pc();
+            if pc == label(call) || pc == label(stopped) {
+                break pc;
+            }
+            assert_eq!(rig.m.resume(1).stop, Stop::Limit);
+        };
+        assert_eq!(next, label(stopped), "{head}: the driver went on to {call}");
+        rig.finish_from(None, 0);
+    }
+}
+
+/// The table build in kernel_crc_begin reads no key. A stopped begin leaves the run unstarted, so
+/// the driver stops at chunk 0 and the checksum is never marked ok or bad.
+#[test]
+fn an_on_tap_inside_the_checksum_begin_stops_the_run_before_the_first_chunk() {
+    let bytes = axioms(2000);
+    let polls = polls();
+    for (wait, down) in [(1000, 1), (100_000, 3000)] {
+        let mut rig = Rig::new(&bytes, Speed::Mhz15);
+        rig.start();
+        step_to(&mut rig.m, label("KERNEL_CRC_BEGIN"), None);
+        let call = Call::at_entry(&mut rig.m);
+        rig.m.resume(1);
+        run_in_kernel(&mut rig.m, &kernel_range(), &polls, wait);
+        tap_in_kernel(&mut rig.m, &kernel_range(), &polls, down);
+        let msg = format!("{wait} T-states into begin, down for {down}");
+        assert_eq!(
+            call.returns(&mut rig.m).af >> 8,
+            14,
+            "{msg}: begin's status"
+        );
+        rig.finish_from(None, 0);
+        assert_eq!(rig.byte(label("K_STOPPED")), 1, "{msg}");
+        assert_eq!(rig.byte(label("K_CRC_STATE")), 3, "{msg}: stopped, not bad");
+        assert_eq!(rig.word("K_STOP_AT"), 0, "{msg}");
+        assert_eq!(rig.word("K_DONE"), 0, "{msg}");
+        let (_, result) = screens(&rig.trace());
+        assert_eq!(result[1], "crc stopped", "{msg}");
+    }
+}
