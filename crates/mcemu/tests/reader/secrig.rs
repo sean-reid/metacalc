@@ -102,7 +102,7 @@ impl Rig {
         let out = self.call("LIB_SHAPES", Regs::default());
         (
             out.status(),
-            (u32::from(out.de) << 16) | u32::from(out.hl),
+            (u32::from(out.de & 0xFF) << 16) | u32::from(out.hl),
             out.bc,
         )
     }

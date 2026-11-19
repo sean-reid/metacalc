@@ -147,6 +147,8 @@ fn an_interrupt_at_any_point_of_a_section_call_changes_nothing() {
         ("LIB_GLYPH", at(5, 0)),
         ("LIB_TREE", at(250, 0xFF00)),
         ("LIB_TREE", at(251, 0x0100)),
+        ("LIB_SHAPE", at(1, 0)),
+        ("LIB_SHAPE", at(2, 0)),
     ] {
         let fired = sweep(&mut rig, target, regs, 13, &|_| {});
         println!("{target}: {fired} interrupts landed inside the call");

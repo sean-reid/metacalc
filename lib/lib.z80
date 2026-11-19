@@ -83,10 +83,11 @@
 ;                          record cannot be walked or ends past the library, which is only looked
 ;                          at when there is a table.
 ;                          Status 8: a known section's index does not fit its row, or the trees
-;                          list more than 383 syntax axioms, or the shapes section's count is not the trees' or only one
-;                          of the two is there. Unknown ids are skipped. A glyph map
-;                          for another font, or for another number of symbols, does not fail the
-;                          open.
+;                          list more than 383 syntax axioms, or the shapes section's count is not
+;                          the trees', its offset table is longer than the section, its length
+;                          does not fit 16 bits, or only one of shapes and trees is there. Unknown
+;                          ids are skipped. A glyph map for another font, or for another number of
+;                          symbols, does not fail the open.
 ;   lib_assertion_count   out: HL = assertions
 ;   lib_symbol_counts     out: B = constants, C = variables
 ;   lib_symbol_name   in:  A = symbol id; DE = buffer of 255 bytes
@@ -154,9 +155,16 @@
 ;                          library, BC = its length, to copy with lib_read
 ;   lib_shape         in:  HL = syntax index; DE = buffer of 255 bytes
 ;                     out: B = part count, the part bytes in the buffer, 0 for a constant and k + 1
-;                          for the child k. Status 5 for an index past the table, 3 for bytes the
-;                          format forbids: no parts, a child past the arity the trees give or
-;                          repeated or missing, or an item across a 16 KB chunk.
+;                          for the child k. Status 9 without the section, 5 for an index past the
+;                          table, 3 for bytes the format forbids: no parts, more than 255 bytes, an
+;                          item outside the table's end or the section, an item across a 16 KB
+;                          chunk, a child past the arity the trees list or one repeated or missing.
+;                          The arity is read from the trees entry as stored, as lib_syntax returns
+;                          it, without checking its assertion number. The host decoder also refuses
+;                          a first offset off the table's end, a last offset off the section's end
+;                          and an arity that is not the assertion's hypothesis count, and this does
+;                          not check any of them: a gap after the table or bytes after the last
+;                          item are never read.
 ; Statuses (LIB_ERR_*): 1 offset or length past the library, 2 a count or destination that is
 ; not allowed, 3 bytes the format forbids, 4 lib_open has not succeeded, 5 an assertion,
 ; hypothesis, symbol, title or syntax number out of range, 6 and 7 and 8 a damaged trailer, table
