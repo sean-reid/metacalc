@@ -254,6 +254,18 @@ pub fn record_cases() -> Vec<RecordCase> {
         ),
         case("an empty essential", &[E(&[])], &[t], bad),
         case("a float for a constant", &[F(t)], &[t], bad),
+        case(
+            "a conclusion with a variable that has no float",
+            &[F(x)],
+            &[t, x, y],
+            bad,
+        ),
+        case(
+            "an essential with a variable that has no float",
+            &[F(x), E(&[t, x, y])],
+            &[t, x],
+            bad,
+        ),
         paired(
             "a pair of a variable with itself",
             &[F(x)],
