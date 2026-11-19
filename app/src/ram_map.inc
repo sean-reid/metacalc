@@ -18,6 +18,10 @@
 ;   FM_RAM            C     fm's working memory, an overlay on the kernel's high region from its
 ;                           start; the kernel uses that region only inside a kernel call, so fm
 ;                           and the kernel share it through the ready mark (fm/fm.z80)
+;   FM_LOW            C     fm's second working region, an overlay on the kernel's low region from
+;                           KERNEL_RAM_LOW + $100 to its end, shared with the kernel the same way;
+;                           the page below it holds the kernel's parameters and ready mark and fm
+;                           never writes it
 #ifndef RAM_MAP
 #define RAM_MAP
 
@@ -69,6 +73,13 @@ FM_RAM              .equ KERNEL_RAM_HIGH
 FM_RAM_SIZE         .equ $1E00
 #endif
 
+#ifndef FM_LOW
+FM_LOW              .equ KERNEL_RAM_LOW + $100
+#endif
+#ifndef FM_LOW_SIZE
+FM_LOW_SIZE         .equ LOW_SIZE - $100
+#endif
+
 #macro RAM_DISJOINT(a_base, a_size, b_base, b_size, message)
 #if (a_base < (b_base + b_size)) && (b_base < (a_base + a_size))
  .error message
@@ -111,6 +122,10 @@ RAM_DISJOINT(KERNEL_RAM_LOW, LOW_SIZE, KERNEL_RAM_HIGH, HIGH_SIZE, "KERNEL_RAM_L
 
 RAM_WITHIN(FM_SCRATCH, FM_SCRATCH_SIZE, $8000, $C000, "FM_SCRATCH runs past bank B")
 RAM_WITHIN(FM_RAM, FM_RAM_SIZE, KERNEL_RAM_HIGH, KERNEL_RAM_HIGH + HIGH_SIZE, "FM_RAM runs outside the kernel's high region")
+#if FM_LOW < (KERNEL_RAM_LOW + $100)
+ .error "FM_LOW must not start below KERNEL_RAM_LOW + $100, the page of the kernel's parameters"
+#endif
+RAM_WITHIN(FM_LOW, FM_LOW_SIZE, KERNEL_RAM_LOW, KERNEL_RAM_LOW + LOW_SIZE, "FM_LOW runs outside the kernel's low region")
 RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, UI_VARS, UI_VARS_SIZE, "FM_SCRATCH and UI_VARS overlap")
 RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, UI_FRAME, UI_FRAME_SIZE, "FM_SCRATCH and UI_FRAME overlap")
 RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "FM_SCRATCH and KD_SCRATCH overlap")

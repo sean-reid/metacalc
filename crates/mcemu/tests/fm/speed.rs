@@ -11,6 +11,21 @@ use mcui::fold::{Folds, layout};
 /// A cursor move must redraw within 50 ms: 300,000 T-states at 6 MHz.
 const BUDGET: u32 = 50 * 6000;
 const CONTENT_ROW: i16 = 1;
+
+/// T-state ceilings on the heaviest frame and on fm_draw within it, a little above what each took.
+struct Ceilings {
+    frame: u32,
+    draw: u32,
+}
+
+const FIXTURE: Ceilings = Ceilings {
+    frame: 270_000,
+    draw: 150_000,
+};
+const RING: Ceilings = Ceilings {
+    frame: 265_000,
+    draw: 145_000,
+};
 const STRINGS: u16 = 0xB000;
 
 /// What a frame of six full rows of the statement costs, call by call.
@@ -48,6 +63,25 @@ fn six_rows(tokens: &[String]) -> Option<(usize, usize)> {
         .map(|t| font.token_glyphs(t).unwrap().len())
         .sum();
     Some((drawn.len(), glyphs))
+}
+
+/// How many token joins inside the first six lines are one column apart and how many are three,
+/// from the gaps fm stored for the loaded statement.
+fn joins(fm: &mut Fm, tokens: &[String]) -> (usize, usize) {
+    let expr = Expr::flat(vec![tokens[0].clone()], &tokens[1..]);
+    let laid = layout(&expr, &Folds::none(&expr), STATEMENT_WIDTH);
+    let records = fm.memory("FM_TOKENS", 4 * tokens.len());
+    let (mut ones, mut threes) = (0, 0);
+    for line in &laid.lines[..6] {
+        for pair in line.tokens.windows(2) {
+            match records[4 * pair[1].index + 2] {
+                1 => ones += 1,
+                3 => threes += 1,
+                other => panic!("a gap of {other}"),
+            }
+        }
+    }
+    (ones, threes)
 }
 
 fn put(fm: &mut Fm, at: &mut u16, bytes: &[u8]) -> u16 {
@@ -158,6 +192,8 @@ fn heaviest_frame(name: &str, bytes: &[u8]) -> Frame {
         worst.0
     );
     let best = frame(&mut fm, (worst.1, worst.2, &all[worst.4].2), worst.3);
+    let (ones, threes) = joins(&mut fm, &all[worst.4].2);
+    println!("{name}: in its six lines {ones} joins one column apart and {threes} three apart");
     report(name, &best);
     best
 }
@@ -166,6 +202,8 @@ fn heaviest_frame(name: &str, bytes: &[u8]) -> Frame {
 fn a_frame_of_six_full_rows_redraws_within_50_ms_at_6_mhz() {
     let best = heaviest_frame("fixture", &fixture::library());
     assert!(best.total() < BUDGET, "{} T-states", best.total());
+    assert!(best.total() <= FIXTURE.frame, "{} T-states", best.total());
+    assert!(best.draw <= FIXTURE.draw, "fm_draw took {}", best.draw);
 }
 
 #[test]
@@ -175,4 +213,6 @@ fn the_heaviest_six_row_frame_in_ring_redraws_within_50_ms_at_6_mhz() {
     let bytes = std::fs::read(format!("{dir}/ring.mclib")).expect("library reads");
     let best = heaviest_frame("ring", &bytes);
     assert!(best.total() < BUDGET, "{} T-states", best.total());
+    assert!(best.total() <= RING.frame, "{} T-states", best.total());
+    assert!(best.draw <= RING.draw, "fm_draw took {}", best.draw);
 }

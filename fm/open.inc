@@ -5,8 +5,8 @@ open_body:
 	xor a
 	ld (fv_open),a
 	ld (fv_open+1),a
-	ld (fv_count),a
-	ld (fv_nodes),a
+	call fm_clear
+	xor a
 	ld (fv_sk+5),a
 	ld (fv_ns),a
 	ld (fv_ns+1),a
@@ -99,6 +99,16 @@ op_table:
 	ld a,(fv_nsyms)
 	or a
 	jp z,op_shapes
+	ld hl,FM_SYMF
+	ld de,FM_SYMF+1
+	ld (hl),0
+	ld b,0
+	ld c,a
+	dec c
+	jr z,op_one
+	ldir
+op_one:
+	ld a,(fv_nsyms)
 	ld b,a
 	ld hl,FM_GLYPHS+3
 op_entry:

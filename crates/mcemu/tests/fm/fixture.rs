@@ -45,6 +45,11 @@ fn longest() -> String {
     )
 }
 
+/// The fixture's header and syntax axioms followed by `extra`, packed with a glyph map and trees.
+pub fn custom(extra: &str) -> Vec<u8> {
+    pack_all(&parse(&format!("{HEAD}{extra}")))
+}
+
 /// Statements of set.mm's shapes: short and long, many hypotheses, a token wider than a narrow
 /// line, and one of 255 symbols.
 pub fn source() -> String {

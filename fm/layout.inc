@@ -36,10 +36,11 @@ draw_body:
 	ld b,a
 	jp fm_leave
 
-; Places every token, one line at a time, and draws the ones on a visible line when fv_draw is set.
-; A token goes on the current line when the line's width, its gap and its own width fit the
-; width, else it starts a line. L = the token's index, D = the width of the line so far, E = the
-; token count, B = the token's width, C = its column in the line.
+; Breaks the tokens into lines and draws the ones on a visible line when fv_draw is set. A token
+; goes on the current line when the line's width, its gap and its own width fit the width, else it
+; starts a line. The shadow registers hold the walk through the records: HL' the next token's
+; record, B' the tokens left, C' the columns left on the line. ui_text and the window code leave
+; them alone.
 fm_lay:
 	xor a
 	ld (fv_line),a
@@ -47,71 +48,174 @@ fm_lay:
 	ld a,(fv_count)
 	or a
 	ret z
-	ld e,a
-	ld l,0
-	ld h,FM_WIDTHS>>8
-	ld b,(hl)
-	jr fy_new
-fy_next:
-	ld a,e
-	cp l
-	ret z
-	ld h,FM_WIDTHS>>8
-	ld b,(hl)
-	inc h
-	ld c,(hl)
-	ld a,d
-	add a,c
-	jr c,fy_new
-	add a,b
-	jr c,fy_new
-	ld h,a
-	ld a,(fv_limit)
-	cp h
-	jr c,fy_new
-	ld d,h
-	ld a,h
-	sub b
-	ld c,a
-	jr fy_put
-fy_new:
-	ld d,b
-	ld c,0
-	ld a,(fv_line)
-	inc a
-	ld (fv_line),a
+	exx
+	ld b,a
+	ld hl,(fv_tok)
+	exx
+ly_line:
+	ld hl,fv_line
+	inc (hl)
 	ld a,(fv_draw)
 	or a
-	jr z,fy_put
+	jr z,ly_skip
 	call fy_window
 	ret c
-fy_put:
 	ld a,(fv_show)
 	or a
-	jr z,fy_step
-	push hl
-	push de
-	push bc
-	ld h,FM_IDS>>8
+	jr z,ly_skip
+	call ly_draw
+	jr ly_more
+ly_skip:
+	call ly_scan
+ly_more:
+	exx
+	ld a,b
+	exx
+	or a
+	jr nz,ly_line
+	ret
+
+; Moves HL' and B' past the next line's tokens. A first token wider than the width leaves no
+; column, and every later token needs at least its gap of 1.
+ly_scan:
+	exx
+	inc hl
+	ld a,(fv_limit)
+	sub (hl)
+	jr nc,sn_room
+	xor a
+sn_room:
+	ld c,a
+	inc hl
+	inc hl
+	inc hl
+	dec b
+sn_loop:
+	ld a,b
+	or a
+	jr z,sn_done
+	inc hl
 	ld a,(hl)
-	call fm_codes
-	pop bc
-	ld a,(fv_x0)
-	add a,c
+	inc hl
+	add a,(hl)
+	jr c,sn_break
 	ld e,a
-	ld d,0
-	jr nc,fy_text
-	inc d
-fy_text:
+	ld a,c
+	sub e
+	jr c,sn_break
+	ld c,a
+	inc hl
+	inc hl
+	dec b
+	jr sn_loop
+sn_break:
+	dec hl
+	dec hl
+sn_done:
+	exx
+	ret
+
+; ly_scan for a line inside the window, drawing it on text row fv_rowb. The glyph codes of tokens
+; one column apart are put together in FM_SCRATCH and drawn with one ui_text, which leaves one
+; blank column between glyphs; a token farther from the one before it starts a run at the x after
+; the last glyph plus its gap.
+ly_draw:
+	ld a,(fv_x0)
+	ld l,a
+	ld h,0
+	ld (fv_x),hl
+	ld de,FM_SCRATCH
+	exx
+	inc hl
+	ld a,(fv_limit)
+	sub (hl)
+	jr nc,dw_room
+	xor a
+dw_room:
+	ld c,a
+	dec hl
+	ld a,(hl)
+	inc hl
+	inc hl
+	inc hl
+	inc hl
+	dec b
+	exx
+dw_copy:
+	ld l,a
+	ld h,0
+	add hl,hl
+	ld bc,FM_GLYPHS+3
+	add hl,bc
+	ld c,(hl)
+	inc hl
+	ld b,(hl)
+	ld hl,FM_GLYPHS+1
+	add hl,bc
+	ld c,(hl)
+	inc hl
+	ld a,c
+	or a
+	jr z,dw_back
+	ld b,0
+	ldir
+dw_back:
+	exx
+dw_next:
+	ld a,b
+	or a
+	jr z,dw_last
+	ld a,(hl)
+	ex af,af'
+	inc hl
+	ld a,(hl)
+	inc hl
+	ld d,(hl)
+	add a,d
+	jr c,dw_wrap
+	ld e,a
+	ld a,c
+	sub e
+	jr c,dw_wrap
+	ld c,a
+	inc hl
+	inc hl
+	dec b
+	ld a,d
+	cp 1
+	jr nz,dw_split
+	ex af,af'
+	exx
+	jr dw_copy
+dw_split:
+	ld (fv_gap),a
+	ex af,af'
+	exx
+	push af
+	call dw_flush
+	ld a,(fv_gap)
+	ld l,a
+	ld h,0
+	add hl,de
+	ld (fv_x),hl
+	ld de,FM_SCRATCH
+	pop af
+	jr dw_copy
+dw_wrap:
+	dec hl
+	dec hl
+dw_last:
+	exx
+
+; Draws the run in FM_SCRATCH, ended at DE, at fv_x. out: DE = the x after it.
+dw_flush:
+	xor a
+	ld (de),a
 	ld a,(fv_rowb)
 	ld b,a
-	call ui_text
-	call fm_restore
-	pop de
-	pop hl
-fy_step:
-	inc l
-	jr fy_next
+	ld hl,FM_SCRATCH
+	ld de,(fv_x)
+	jp ui_text
 
 ; The line just started, number fv_line - 1: fv_show says whether it is inside the window and
 ; fv_rowb is its text row. out: carry when it and every later line is below the window. Keeps

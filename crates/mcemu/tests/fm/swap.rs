@@ -82,3 +82,41 @@ fn a_library_with_shapes_is_another_library_to_fm_than_one_with_the_same_glyph_s
         assert_eq!(fm.nodes().status(), 0);
     }
 }
+
+/// The reader's flag for a shapes section, which no library that has trees can lack at open: the
+/// state is set directly, as fm meets such a reader.
+const HAS_SHAPES: u8 = 16;
+
+fn have(fm: &mut Fm, with: impl FnOnce(u8) -> u8) {
+    let at = fm.rig.label("LS_HAVE");
+    let old = fm.rig.peek(at, 1)[0];
+    fm.rig.poke(at, &[with(old)]);
+}
+
+#[test]
+fn a_reader_that_has_shapes_now_and_had_none_at_open_is_another_library_with_nothing_else_changed()
+{
+    let mut fm = Fm::new(&fixture::unstructured());
+    assert_eq!(fm.statement(0, 0xFF).status(), 0);
+    let count = fm.rig.syntax_count();
+    have(&mut fm, |h| h | HAS_SHAPES);
+    assert_eq!(fm.rig.syntax_count(), count, "the syntax count agrees");
+    assert_eq!(fm.statement(0, 0xFF).status(), code(NOT_OPEN));
+    assert_eq!(fm.nodes().status(), code(NOT_OPEN));
+    have(&mut fm, |h| h & !HAS_SHAPES);
+    assert_eq!(fm.statement(0, 0xFF).status(), 0, "put back");
+}
+
+#[test]
+fn a_reader_that_has_no_shapes_now_and_had_them_at_open_is_another_library_with_nothing_else_changed()
+ {
+    let mut fm = Fm::new(&fixture::library());
+    assert_eq!(fm.statement(0, 0xFF).status(), 0);
+    let count = fm.rig.syntax_count();
+    have(&mut fm, |h| h & !HAS_SHAPES);
+    assert_eq!(fm.rig.syntax_count(), count, "the syntax count agrees");
+    assert_eq!(fm.statement(0, 0xFF).status(), code(NOT_OPEN));
+    assert_eq!(fm.nodes().status(), code(NOT_OPEN));
+    have(&mut fm, |h| h | HAS_SHAPES);
+    assert_eq!(fm.statement(0, 0xFF).status(), 0, "put back");
+}

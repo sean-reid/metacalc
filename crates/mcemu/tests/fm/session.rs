@@ -23,6 +23,11 @@ fn calls(n: u16, k: u8) -> Vec<(&'static str, Regs, u8)> {
     vec![
         ("FM_OPEN", regs(0, 0, 0), ok),
         ("FM_NODES", regs(0, 0, 0), code("FM_ERR_INDEX")),
+        ("FM_SELECT", regs(0, 0xFF, 0), code("FM_ERR_INDEX")),
+        ("FM_ASSERTION", regs(n, 0, 0), ok),
+        ("FM_SELECT", regs(0, 0xFF, 0), ok),
+        ("FM_SELECT", regs(0, 0xFE, 0), code("FM_ERR_INDEX")),
+        ("FM_ASSERTION", regs(0x7FFF, 0, 0), code("FM_ERR_INDEX")),
         ("FM_STATEMENT", regs(n, u16::from(k), 0), ok),
         ("FM_NODES", regs(0, 0, 0), ok),
         ("FM_NODES", regs(0, 0, 0), ok),
@@ -72,6 +77,8 @@ fn a_routine_on_a_closed_fm_returns_not_open_and_hands_the_state_back_too() {
         fm.rig.ei = ei;
         for (target, regs) in [
             ("FM_STATEMENT", Regs::default()),
+            ("FM_ASSERTION", Regs::default()),
+            ("FM_SELECT", Regs::default()),
             ("FM_NODES", Regs::default()),
             ("FM_ROWS", Regs::default()),
             ("FM_DRAW", Regs::default()),
@@ -117,6 +124,9 @@ fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8, cached: bool) -> usiz
         "FM_DRAW" => fm.clear(),
         "FM_NODES" if !cached => {
             assert_eq!(fm.statement(n, k).status(), 0);
+        }
+        "FM_SELECT" => {
+            assert_eq!(fm.assertion(n).status(), 0);
         }
         _ => {}
     };
@@ -171,6 +181,17 @@ fn an_interrupt_in_the_entry_or_the_exit_of_a_session_changes_nothing() {
         assert!(sweep(&mut fm, "FM_NODES", Regs::default(), port7, false) > 800);
         let early = sweep(&mut fm, "FM_NODES", Regs::default(), port7, true);
         assert!(early > 400, "the built table's early exit: {early} trials");
+        let assertion = Regs {
+            hl: n,
+            ..Regs::default()
+        };
+        assert!(sweep(&mut fm, "FM_ASSERTION", assertion, port7, false) > 800);
+        let select = Regs {
+            de: 0xFF,
+            ..Regs::default()
+        };
+        assert!(sweep(&mut fm, "FM_SELECT", select, port7, false) > 800);
+        assert_eq!(fm.statement(n, k).status(), 0);
         let rows = Regs {
             de: 94 << 8,
             ..Regs::default()
@@ -199,20 +220,20 @@ const BANK_B_EXTRA: [(&str, &str); 3] = [
 ];
 
 /// The node table and what fm_nodes builds it from: label and size.
-const NODE_MEMORY: [(&str, usize); 7] = [
-    ("FM_FIRST", 0x100),
-    ("FM_LAST", 0x100),
-    ("FM_DEPTH", 0x100),
-    ("FM_TLEN", 0x100),
-    ("FM_TCNT", 0x100),
-    ("FM_TSIZE", 0x100),
-    ("FM_PILE", 0x200),
+const NODE_MEMORY: [(&str, &str); 7] = [
+    ("FM_FIRST", "FM_PLANE"),
+    ("FM_LAST", "FM_PLANE"),
+    ("FM_DEPTH", "FM_PLANE"),
+    ("FM_TLEN", "FM_TREE_SIZE"),
+    ("FM_TCNT", "FM_TREE_SIZE"),
+    ("FM_TSIZE", "FM_TREE_SIZE"),
+    ("FM_PILE", "FM_PILE_SIZE"),
 ];
 
-/// Where a run of fm may write, listed by label: its variables, stack, glyph copy and per-token
-/// arrays, the kernel's mark, and bank B's scratch, frame and variables, besides the reader's;
-/// the node table, its scratch arrays and the stack only when `nodes`, and the shapes copy only
-/// when `shapes`.
+/// Where a run of fm may write, listed by label: its variables, stack, glyph copy, token store and
+/// statement headers, the kernel's mark, and bank B's scratch, frame and variables, besides the
+/// reader's; the node tables, their scratch arrays and the explicit stack only when `nodes`, and
+/// the shapes copy only when `shapes`.
 pub fn allowed_for(nodes: bool, shapes: bool) -> Allowed {
     let at = |name: &str| label_in(WITH_FM, name);
     let size = |name: &str| constant_of(WITH_FM.labels, name) as usize;
@@ -227,14 +248,16 @@ pub fn allowed_for(nodes: bool, shapes: bool) -> Allowed {
             usize::from(at("FM_STACK_TOP") - at("FM_STACK")),
         ),
         (at("FM_GLYPHS"), size("FM_GLYPHS_SIZE")),
-        (at("FM_IDS"), usize::from(at("FM_FIRST") - at("FM_IDS"))),
+        (at("FM_TOKENS"), size("FM_TOKENS_SIZE")),
+        (at("FM_HDR"), size("FM_HDR_SIZE")),
+        (at("FM_SYMW"), 2 * size("FM_TREE_SIZE")),
         (at("KV_READY"), 2),
     ];
     if shapes {
         spare.push((at("FM_SECOND"), size("FM_SECOND_SIZE")));
     }
     if nodes {
-        spare.extend(NODE_MEMORY.iter().map(|&(name, len)| (at(name), len)));
+        spare.extend(NODE_MEMORY.iter().map(|&(name, len)| (at(name), size(len))));
     }
     allowed
         .extra
@@ -279,6 +302,9 @@ fn each_routine_writes_the_node_arrays_and_the_shapes_copy_only_when_it_is_the_o
         ("fm_rows", fm.rows(94)),
         ("fm_draw", fm.draw(1, -3, 94, (0, 8))),
         ("fm_statement again", fm.statement(n, k)),
+        ("fm_assertion", fm.assertion(n)),
+        ("fm_select", fm.select(0xFF)),
+        ("fm_select again", fm.select(0xFF)),
     ] {
         assert_eq!(call.status(), 0, "{what}");
         check(&mut fm, false, false, what);
@@ -295,7 +321,7 @@ fn each_routine_writes_the_node_arrays_and_the_shapes_copy_only_when_it_is_the_o
     check(&mut fm, true, true, "fm_nodes");
     let first = usize::from(fm.rig.label("FM_FIRST") - SPARE_BASE);
     let page = fm.rig.m.ram_page(SPARE_PAGE);
-    assert!((0..0x400).any(|i| page[first + i] != pattern(SPARE_PAGE, first + i)));
+    assert!((0..0x100).any(|i| page[first + i] != pattern(SPARE_PAGE, first + i)));
 }
 
 /// Where a run of fm may write, whatever the routine.
@@ -329,6 +355,11 @@ fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_
         assert_eq!(fm.rows(94).status(), 0);
         assert_eq!(fm.draw(1, -3, 94, (0, 8)).status(), 0);
         assert_eq!(fm.statement(0x7FFF, 0).status(), code("FM_ERR_INDEX"));
+        assert_eq!(fm.assertion(n).status(), 0);
+        assert_eq!(fm.select(0xFF).status(), 0);
+        assert_eq!(fm.nodes().status(), 0);
+        assert_eq!(fm.select(0xFE).status(), code("FM_ERR_INDEX"));
+        assert_eq!(fm.assertion(0x7FFF).status(), code("FM_ERR_INDEX"));
     }
     let broken = fixture::patched(|b| {
         let at = fixture::section(b) + 3;

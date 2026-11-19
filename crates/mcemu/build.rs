@@ -771,6 +771,24 @@ fn assemble_ui(out: &Path) {
             &["UI_FRAME_SIZE=$2FF"][..],
             Some("UI_FRAME_SIZE in ram_map.inc must be UI_STRIDE*UI_HEIGHT"),
         ),
+        (&["FM_LOW=$C700", "FM_LOW_SIZE=$1000"][..], None),
+        (&["FM_LOW_SIZE=$1000"][..], None),
+        (
+            &["FM_LOW=$C500"][..],
+            Some("FM_LOW must not start below KERNEL_RAM_LOW + $100"),
+        ),
+        (
+            &["FM_LOW=$C700"][..],
+            Some("FM_LOW runs outside the kernel's low region"),
+        ),
+        (
+            &["FM_LOW=$C400", "FM_LOW_SIZE=$1000"][..],
+            Some("FM_LOW runs outside the kernel's low region"),
+        ),
+        (
+            &["FM_LOW_SIZE=$1101"][..],
+            Some("FM_LOW runs outside the kernel's low region"),
+        ),
         (&["FM_SCRATCH=$9100"][..], None),
         (&["FM_SCRATCH=$8000"][..], None),
         (&["FM_SCRATCH=$9240"][..], None),
@@ -894,7 +912,7 @@ fn assemble_reader(out: &Path) {
     spasm(
         src,
         &out.join("fm_test.bin"),
-        &["WITH_FM", "IMAGE_ORG=$3000"],
+        &["WITH_FM", "IMAGE_ORG=$2000"],
         &fm_args,
     );
     for (defines, refusal) in [
@@ -902,6 +920,27 @@ fn assemble_reader(out: &Path) {
         (&["FM_VARS_SIZE=$100"][..], None),
         (&["FM_RAM_SIZE=$1F00"][..], None),
         (&["FM_RAM=$E000"][..], None),
+        (&["FM_LOW_SIZE=$1080"][..], None),
+        (
+            &["FM_LOW_SIZE=$107F"][..],
+            Some("fm must leave $400 bytes of FM_LOW unused"),
+        ),
+        (
+            &["FM_LOW=$C800", "FM_LOW_SIZE=$F00"][..],
+            Some("the statement headers must stay off the kernel's stack page"),
+        ),
+        (
+            &["FM_LOW=$C7F0", "FM_LOW_SIZE=$F00"][..],
+            Some("FM_LOW must be a multiple of $100"),
+        ),
+        (
+            &["FM_LOW_SIZE=$C7F"][..],
+            Some("FM_LOW_SIZE in ram_map.inc is smaller than what fm lays out"),
+        ),
+        (
+            &["FM_LOW=$C680", "FM_LOW_SIZE=$1000"][..],
+            Some("FM_LOW must be a multiple of $100"),
+        ),
         (
             &["FM_RAM_SIZE=$1DFF"][..],
             Some("FM_RAM_SIZE in ram_map.inc is smaller than what fm lays out"),
@@ -916,7 +955,7 @@ fn assemble_reader(out: &Path) {
         ),
     ] {
         let mut defines = defines.to_vec();
-        defines.extend(["WITH_FM", "IMAGE_ORG=$3000"]);
+        defines.extend(["WITH_FM", "IMAGE_ORG=$2000"]);
         expect(src, &out.join("fm_probe.bin"), &defines, &fm_args, refusal);
     }
     spasm(
@@ -1073,8 +1112,8 @@ fn assemble_layout_probes(out: &Path) {
             "FM",
             "#include \"fm/ram.inc\"\n".to_string(),
             &ui_args[..],
-            "FM_VARS_SIZE=$56",
-            0x53,
+            "FM_VARS_SIZE=$6A",
+            0x67,
             "the fm variables overlap, leave a gap, or run past FM_VARS_SIZE",
         ),
         (

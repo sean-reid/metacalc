@@ -11,10 +11,18 @@ use std::ops::Range;
 pub const WITH_FM: Image = Image {
     code: include_bytes!(concat!(env!("OUT_DIR"), "/fm_test.bin")),
     labels: include_str!(concat!(env!("OUT_DIR"), "/fm_test.lab")),
-    org: 0x3000,
+    org: 0x2000,
 };
 
 pub const FRAME_LEN: usize = 768;
+
+/// What a statement's header in FM_LOW says of its node table.
+pub struct Header {
+    /// The node count, 0 until fm_nodes has built the table.
+    pub nodes: u8,
+    /// Where its rows start in each plane of FM_FIRST, FM_LAST and FM_DEPTH.
+    pub nodes_at: u16,
+}
 
 /// The caller of fm: the reader's rig on the image with the kernel, the reader, the canvas and
 /// fm, the library open and the canvas ready.
@@ -109,6 +117,24 @@ impl Fm {
         self.rig.call("FM_STATEMENT", regs)
     }
 
+    /// Loads every statement of assertion `n`; the statement count is in `bc >> 8`.
+    pub fn assertion(&mut self, n: u16) -> Out {
+        let regs = Regs {
+            hl: n,
+            ..Regs::default()
+        };
+        self.rig.call("FM_ASSERTION", regs)
+    }
+
+    /// Selects statement `k` of the loaded assertion; its token count is in `bc >> 8`.
+    pub fn select(&mut self, k: u8) -> Out {
+        let regs = Regs {
+            de: u16::from(k),
+            ..Regs::default()
+        };
+        self.rig.call("FM_SELECT", regs)
+    }
+
     pub fn rows(&mut self, width: usize) -> Out {
         let regs = Regs {
             de: (width as u16) << 8,
@@ -138,11 +164,24 @@ impl Fm {
         self.rig.m.ram_page(SPARE_PAGE)[at..at + len].to_vec()
     }
 
-    /// The node table as (first token, last token, depth) for `count` nodes.
+    /// The header of the selected statement, which fv_hdr points at.
+    pub fn header(&mut self) -> Header {
+        let at = u16::from_le_bytes(self.memory("FV_HDR", 2).try_into().unwrap());
+        let page = self.rig.m.ram_page(SPARE_PAGE);
+        let bytes = &page[usize::from(at - SPARE_BASE)..][..8];
+        Header {
+            nodes: bytes[3],
+            nodes_at: u16::from_le_bytes([bytes[4], bytes[5]]),
+        }
+    }
+
+    /// The selected statement's node table as (first token, last token, depth) for `count` nodes.
     pub fn table(&mut self, count: usize) -> Vec<(usize, usize, usize)> {
-        let first = self.memory("FM_FIRST", count);
-        let last = self.memory("FM_LAST", count);
-        let depth = self.memory("FM_DEPTH", count);
+        let base = usize::from(self.header().nodes_at);
+        let plane = |fm: &mut Fm, name: &str| fm.memory(name, base + count)[base..].to_vec();
+        let first = plane(self, "FM_FIRST");
+        let last = plane(self, "FM_LAST");
+        let depth = plane(self, "FM_DEPTH");
         (0..count)
             .map(|i| (first[i].into(), last[i].into(), depth[i].into()))
             .collect()
