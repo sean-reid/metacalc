@@ -228,6 +228,7 @@ static void out_clocked(TilemCalc *calc, dword port, byte value)
 	if ((port & 0xff) == 0x20)
 		bank_time(calc);
 	xz_z80_out(calc, port, value);
+	alias_spare_pages(calc);
 }
 
 typedef struct {
@@ -284,6 +285,7 @@ TilemCalc *mcemu_new_os(const uint8_t *rom, size_t len)
 	tilem_calc_reset(calc);
 	claim_state(calc);
 	calc->hw.z80_out = out_clocked;
+	alias_spare_pages(calc);
 	calc->z80.emuflags |= TILEM_Z80_BREAK_EXCEPTIONS;
 	return calc;
 }

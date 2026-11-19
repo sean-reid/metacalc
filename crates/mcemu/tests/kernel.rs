@@ -26,6 +26,8 @@ mod raw;
 mod records;
 #[path = "kernel/references.rs"]
 mod references;
+#[path = "kernel/reinit.rs"]
+mod reinit;
 #[path = "kernel/reset.rs"]
 mod reset;
 #[path = "kernel/sources.rs"]
@@ -34,6 +36,8 @@ mod sources;
 mod stackfree;
 #[path = "kernel/state.rs"]
 mod state;
+#[path = "common/stubos.rs"]
+mod stubos;
 #[path = "kernel/support.rs"]
 mod support;
 #[path = "kernel/sweep.rs"]

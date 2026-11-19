@@ -4,6 +4,8 @@ mod os;
 mod realos;
 #[path = "kerncheck/rig.rs"]
 mod rig;
+#[path = "common/stubos.rs"]
+mod stubos;
 
 use mcemu::{Machine, Speed, Stop};
 use mcpack::library::{CHUNK, crc32};
@@ -639,6 +641,94 @@ fn an_on_hold_between_the_poll_after_init_and_the_first_print_stops_the_checksum
         "a text call ran with the flag set"
     );
     assert_eq!(rig.byte(label("K_STOPPED")), 1, "stopped in the checksum");
+}
+
+#[test]
+fn a_library_wrong_only_in_its_fourth_magic_byte_is_refused_by_init() {
+    let mut bytes = axioms(100);
+    bytes[3] ^= 0x01;
+    reseal(&mut bytes);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    rig.run_to_end();
+    let (_, result) = screens(&rig.trace());
+    assert_eq!(result, ["kernchk v1", "init st 00001"]);
+}
+
+#[test]
+fn the_speed_comes_back_when_init_refuses_the_library() {
+    let mut bytes = axioms(100);
+    bytes[0] = b'X';
+    reseal(&mut bytes);
+    for (start, was) in [(Speed::Mhz6, 0u8), (Speed::Mhz15, 1)] {
+        let mut rig = Rig::new(&bytes, start);
+        rig.run_to_end();
+        assert_eq!(rig.byte(label("K_INIT")), 1, "init refused, from {start:?}");
+        assert_eq!(rig.byte(OUT_AFTER), was, "after the run, from {start:?}");
+    }
+}
+
+/// A library of axioms whose length is in `lengths`.
+fn axioms_with_length(lengths: std::ops::Range<usize>) -> Vec<u8> {
+    let middle = (lengths.start + lengths.end) / 2;
+    let mut count = middle / (axioms(1000).len() / 1000);
+    for _ in 0..8 {
+        let bytes = axioms(count);
+        if lengths.contains(&bytes.len()) {
+            return bytes;
+        }
+        count = count * middle / bytes.len();
+    }
+    panic!("no library of {lengths:?} bytes");
+}
+
+/// The length plus 3FFFh carries out of 16 bits, so the chunk count needs the carry into the
+/// length's third byte.
+#[test]
+fn the_chunk_count_is_right_when_the_length_rounds_up_across_a_byte() {
+    for lengths in [0xC001..0x1_0000, 0x1_C001..0x2_0000] {
+        let bytes = axioms_with_length(lengths);
+        let chunks = bytes.len().div_ceil(CHUNK);
+        let mut rig = Rig::new(&bytes, Speed::Mhz15);
+        rig.run_to_end();
+        assert_eq!(usize::from(rig.byte(label("K_CHUNKS"))), chunks);
+        let (progress_screen, result) = screens(&rig.trace());
+        let count = model(&bytes).count;
+        assert_eq!(progress_screen, progress(&bytes, count, count));
+        assert_eq!(result, report(&bytes));
+    }
+}
+
+/// With ON down the wait never ends and the OS break flag stays as the OS left it; after the
+/// release the flag is clear and the routine returns.
+#[test]
+fn the_break_flag_is_cleared_only_once_on_is_up() {
+    let bytes = axioms(10);
+    let mut rig = Rig::new(&bytes, Speed::Mhz15);
+    rig.m.ram_page(1)[FLAGS] = 0xFF;
+    rig.m.press_key(Machine::KEY_ON);
+    let entry = label("ONBREAK_ENTRY");
+    for wait in 1..=4 {
+        let run = rig.m.run(entry, SLICE);
+        assert_eq!(run.stop, Stop::Limit, "wait {wait} ended with ON down");
+        assert_ne!(
+            rig.m.ram_page(1)[FLAGS] & 0x10,
+            0,
+            "the flag was cleared in wait {wait}, with ON still down"
+        );
+    }
+    rig.m.release_key(Machine::KEY_ON);
+    let mut pc = entry;
+    for _ in 0..100 {
+        let run = rig.m.run(pc, SLICE);
+        if run.stop == Stop::Halted {
+            assert_eq!(rig.m.ram_page(1)[FLAGS], 0xEF, "the flag after the release");
+            assert_eq!(rig.byte(0xA004), 1, "interrupts on at return");
+            return;
+        }
+        assert_eq!(run.stop, Stop::Limit);
+        pc = entry;
+    }
+    panic!("the wait did not end within 100 slices of the release");
 }
 
 const KERNEL_PAGE: u8 = 3;
