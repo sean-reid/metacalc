@@ -970,3 +970,85 @@ fn structured_edits_of_reference_lists_are_judged_by_the_rule() {
     }
     assert!(changed_and_accepted > 0);
 }
+
+#[test]
+fn disjoint_pairs_are_written_by_variable_id_whatever_the_declaration_order() {
+    let src = "
+$c R wff |- $.
+$v z y x $.
+vx $f wff x $.
+vy $f wff y $.
+vz $f wff z $.
+${
+  $d x y z $.
+  ax-d $a |- R x y z $.
+$}
+";
+    let db = db(src);
+    let bytes = pack(&db, &everything(&db)).unwrap();
+    let names: Vec<String> = library::decode(&bytes)
+        .unwrap()
+        .variables
+        .into_iter()
+        .map(|v| v.name)
+        .collect();
+    assert_eq!(names, ["x", "y", "z"]);
+    let read = library::read(&bytes).unwrap();
+    let pairs: Vec<(&str, &str)> = read[0]
+        .disjoint
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    assert_eq!(pairs, [("x", "y"), ("x", "z"), ("y", "z")]);
+}
+
+const TWO_WAYS: &str = "$c |- wff R $. $v x y $.
+    ${ vx $f wff x $. vy $f wff y $. ax-a $a |- R x y $. $}
+    ${ wy $f wff y $. wx $f wff x $. ax-b $a |- R x y $. $}";
+
+const THREE_WAYS: &str = "$c |- wff R $. $v x y z $.
+    ${ vx $f wff x $. vy $f wff y $. ax-a $a |- R x y $. $}
+    ${ wy $f wff y $. wz $f wff z $. ax-b $a |- R y z $. $}
+    ${ xz $f wff z $. xx $f wff x $. ax-c $a |- R z x $. $}";
+
+fn cycle(src: &str) -> Vec<String> {
+    let db = db(src);
+    let Err(PackError::FloatOrder(mut labels)) = pack(&db, &everything(&db)) else {
+        panic!("the pack is not refused for a float order");
+    };
+    labels.sort();
+    labels
+}
+
+#[test]
+fn records_whose_float_orders_conflict_are_refused_when_packing_naming_them() {
+    assert_eq!(cycle(TWO_WAYS), ["ax-a", "ax-b"]);
+}
+
+#[test]
+fn a_cycle_through_three_records_names_all_three() {
+    assert_eq!(cycle(THREE_WAYS), ["ax-a", "ax-b", "ax-c"]);
+}
+
+#[test]
+fn a_record_off_the_cycle_is_not_named() {
+    let src = THREE_WAYS.replace("$v x y z $.", "$v x y z w $.");
+    let src = format!("{src} ${{ dz $f wff z $. dw $f wff w $. ax-d $a |- R z w $. $}}");
+    assert_eq!(cycle(&src), ["ax-a", "ax-b", "ax-c"]);
+}
+
+#[test]
+fn floats_that_only_one_numbering_orders_pack_in_that_numbering() {
+    let src = "$c |- wff R $. $v r q p $.
+        ${ aq $f wff q $. ar $f wff r $. ax-1 $a |- R q r $. $}
+        ${ bp $f wff p $. bq $f wff q $. ax-2 $a |- R p q $. $}";
+    let db = db(src);
+    let bytes = pack(&db, &everything(&db)).unwrap();
+    let names: Vec<String> = library::decode(&bytes)
+        .unwrap()
+        .variables
+        .into_iter()
+        .map(|v| v.name)
+        .collect();
+    assert_eq!(names, ["p", "q", "r"]);
+}

@@ -1,3 +1,4 @@
+use super::numbering;
 use super::sections::{self, GlyphMap};
 use super::{CHUNK, DUMMY, HEADER_LEN, MAGIC, SAVE, WIDE, crc32};
 use crate::mm::{Database, Kind, ProofBody, Stmt, StmtId, Sym};
@@ -5,6 +6,8 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackError {
+    /// The floating hypotheses of these assertions order the variables in a cycle: each puts a variable before one that the next puts before it, so no numbering gives them all strictly rising ids.
+    FloatOrder(Vec<String>),
     /// The closure uses more than 255 symbols.
     TooManySymbols,
     /// The variable has `$f` statements with different typecodes.
@@ -51,6 +54,17 @@ pub fn pack_kernel(db: &Database, closure: &[StmtId]) -> Result<Vec<u8>, PackErr
     build(db, closure, false)
 }
 
+/// Builds a library from `closure`. The kernel requires every record's floats to come first and
+/// name variables in strictly rising id, so variables are numbered by a topological sort: each
+/// assertion in the closure puts the variable of each of its floats before the variable of the
+/// next. Where those constraints leave a choice, the variable with the lowest position goes
+/// first. A variable's position is that of its first `$f` outside any block if it has one, else
+/// of its first `$f`; a variable with no `$f` comes last, and equal positions go by `$v` order.
+/// Blocks count for less because set.mm declares x, y and A in local blocks long before the
+/// global `$f` its later records use, so the first `$f` anywhere is a poor position. When those
+/// positions alone satisfy every record, the ids are exactly their order. Constraints that form
+/// a cycle have no numbering, and the pack is refused with `PackError::FloatOrder` naming the
+/// assertions on the cycle.
 fn build(db: &Database, closure: &[StmtId], sections: bool) -> Result<Vec<u8>, PackError> {
     let stmts = || closure.iter().map(|&id| (id, db.stmt(id)));
     let mut typecode_of: HashMap<Sym, Sym> = HashMap::new();
@@ -71,14 +85,15 @@ fn build(db: &Database, closure: &[StmtId], sections: bool) -> Result<Vec<u8>, P
         let syms = (0..db.syms.len() as Sym).filter(|&s| used[s as usize]);
         syms.filter(move |&s| db.syms[s as usize].is_var == want_var)
     };
-    let order: Vec<Sym> = used(false).chain(used(true)).collect();
     let constants = used(false).count();
-    if order.len() > 255 {
+    if constants + used(true).count() > 255 {
         return Err(PackError::TooManySymbols);
     }
     let assertions: Vec<(StmtId, &Stmt)> = stmts()
         .filter(|(_, s)| matches!(s.kind, Kind::Axiom | Kind::Theorem))
         .collect();
+    let variables = numbering::order(db, &assertions, &used(true).collect::<Vec<_>>())?;
+    let order: Vec<Sym> = used(false).chain(variables).collect();
     if assertions.len() >= DUMMY as usize {
         return Err(PackError::TooLarge(assertions[0].1.label.clone()));
     }
@@ -172,11 +187,16 @@ impl Packer<'_> {
             }
         }
         let pairs = |out: &mut Vec<u8>, dv: &[(Sym, Sym)]| {
-            out.extend(word(dv.len())?.to_le_bytes());
-            out.extend(
-                dv.iter()
-                    .flat_map(|(a, b)| [self.local_sym[a], self.local_sym[b]]),
-            );
+            let mut ids: Vec<(u8, u8)> = dv
+                .iter()
+                .map(|(a, b)| {
+                    let (a, b) = (self.local_sym[a], self.local_sym[b]);
+                    (a.min(b), a.max(b))
+                })
+                .collect();
+            ids.sort_unstable();
+            out.extend(word(ids.len())?.to_le_bytes());
+            out.extend(ids.iter().flat_map(|&(a, b)| [a, b]));
             Ok(())
         };
         pairs(&mut out, &stmt.frame.dv)?;
