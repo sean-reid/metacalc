@@ -25,10 +25,29 @@ enum Command {
     ///
     /// Each line is a statement and the label applied to it in brackets, indented under the
     /// statement that needed it. Steps that build syntax are left out. A step a compressed proof
-    /// saved appears at every place it is used. Exits 2 for an unknown label and 1 for an axiom
-    /// or a proof that does not verify. Files named by `$[ file $]` are read, and may lie outside
-    /// the database's directory.
-    Outline { database: PathBuf, label: String },
+    /// saved appears at every place it is used. With --unicode or --html a symbol with no Unicode
+    /// spelling fails, and with --links an assertion that no line names fails. Exits 0 on
+    /// success, 1 for an axiom, a proof that does not verify, a symbol without a spelling or an
+    /// assertion without a page, and 2 for an unknown label or a file that cannot be read. Files
+    /// named by `$[ file $]` are read, and may lie outside the database's directory.
+    Outline {
+        database: PathBuf,
+        label: String,
+        /// Print the statements in Unicode, failing when a symbol has no spelling
+        #[arg(long)]
+        unicode: bool,
+        /// Print the tree as an HTML list in Unicode, failing when a symbol has no spelling
+        #[arg(long, conflicts_with = "unicode")]
+        html: bool,
+        /// A file of `LABEL PAGE` lines; the HTML links each label to its entry on that page
+        #[arg(long, requires = "html", value_name = "FILE")]
+        links: Option<PathBuf>,
+    },
+    /// Print the Unicode spelling of the statements on standard input, one per line
+    ///
+    /// Exits 1, printing nothing, when a symbol has no spelling, and 2 when standard input cannot
+    /// be read.
+    Spell,
     /// Pack what the given theorems depend on into a library and check it
     ///
     /// A database that includes files is refused: a library comes from the one file named.
@@ -99,9 +118,21 @@ fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Verify { database } => cmd::load(&database).map(|db| cmd::verify(&db)),
         Command::Parse { database } => cmd::load(&database).and_then(|db| cmd::parse(&db)),
-        Command::Outline { database, label } => {
-            cmd::load(&database).and_then(|db| cmd::outline(&db, &label))
+        Command::Outline {
+            database,
+            label,
+            unicode,
+            html,
+            links,
+        } => {
+            let form = match (unicode, html) {
+                (_, true) => cmd::Form::Html,
+                (true, _) => cmd::Form::Unicode,
+                _ => cmd::Form::Ascii,
+            };
+            cmd::load(&database).and_then(|db| cmd::outline(&db, &label, form, links.as_deref()))
         }
+        Command::Spell => cmd::spell(),
         Command::Pack {
             database,
             roots,
