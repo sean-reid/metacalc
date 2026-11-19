@@ -351,7 +351,7 @@ impl Canvas {
     }
 
     /// One list row: `left` cut to fit beside `right`, which ends at the right margin. A selected
-    /// row is inverted across the whole width.
+    /// row is inverted across the whole width below its top pixel row.
     pub fn list_row(&mut self, row: usize, left: &str, right: &str, selected: bool) {
         let right_width = text_width(right);
         let room = Self::room(right_width, right);
