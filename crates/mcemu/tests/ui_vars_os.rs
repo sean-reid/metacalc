@@ -10,8 +10,14 @@ const VARS: usize = 0x86EC - RAM_BASE;
 const VARS_SIZE: usize = 0x1A;
 const SAVE_SCREEN_SIZE: usize = 768;
 const RESULT: usize = 0xA800 - RAM_BASE;
-/// Set in port 3 when the OS has powered the calculator down.
+/// Bit 4 of port 3, the link interrupt mask the OS writes; it reads set at the step where the OS
+/// has run its auto power down, and is clear before.
 const POWER_DOWN: u8 = 0x10;
+const STEP_MS: u32 = 30_000;
+/// The _GetKey test requires auto power down by `BEFORE_APD_MS + HUNT_MS`.
+const BEFORE_APD_MS: u32 = 240_000;
+const HUNT_MS: u32 = 150_000;
+const EXITED: u8 = 0xEE;
 const SEED: u8 = 0xA5;
 const STEP: u8 = 37;
 
@@ -61,8 +67,8 @@ fn auto_power_down_in_get_key_zeroes_save_screen() {
     let fill = pattern(SAVE_SCREEN_SIZE);
     os.m.ram_page(1)[VARS..VARS + SAVE_SCREEN_SIZE].copy_from_slice(&fill);
     let powered_down = |os: &mut RealOs| os.m.in_port(3) & POWER_DOWN != 0;
-    for _ in 0..8 {
-        os.run_ms(30_000);
+    for _ in 0..BEFORE_APD_MS / STEP_MS {
+        os.run_ms(STEP_MS);
         assert_eq!(
             os.ram(VARS, SAVE_SCREEN_SIZE),
             fill,
@@ -71,7 +77,7 @@ fn auto_power_down_in_get_key_zeroes_save_screen() {
         assert!(!powered_down(&mut os), "port 3 reports a power down early");
     }
     let mut zeroed = false;
-    for _ in 0..150 {
+    for _ in 0..HUNT_MS / 1_000 {
         os.run_ms(1_000);
         let gone = os.ram(VARS, SAVE_SCREEN_SIZE).iter().all(|&b| b == 0);
         let down = powered_down(&mut os);
@@ -93,8 +99,8 @@ fn a_wait_that_polls_get_csc_between_halts_keeps_the_ui_variables_past_the_apd_t
     os.launch();
     os.run_ms(500);
     assert_eq!(os.ram(VARS, VARS_SIZE), pattern(VARS_SIZE));
-    for _ in 0..14 {
-        os.run_ms(30_000);
+    for _ in 0..(BEFORE_APD_MS + HUNT_MS) / STEP_MS + 1 {
+        os.run_ms(STEP_MS);
         assert_eq!(os.ram(VARS, VARS_SIZE), pattern(VARS_SIZE), "after a wait");
         assert_eq!(
             os.m.in_port(3) & POWER_DOWN,
@@ -102,4 +108,7 @@ fn a_wait_that_polls_get_csc_between_halts_keeps_the_ui_variables_past_the_apd_t
             "port 3 reports a power down"
         );
     }
+    assert_eq!(os.ram(RESULT, 1), [0], "the app has not exited");
+    os.tap(KEY_CLEAR, 150, 1500);
+    assert_eq!(os.ram(RESULT, 1), [EXITED], "CLEAR reached the app's loop");
 }

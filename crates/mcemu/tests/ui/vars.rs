@@ -44,6 +44,11 @@ fn a_screen_drawn_with_the_variables_zeroed_and_the_font_set_before_every_call_i
 fn a_screen_drawn_with_the_variables_zeroed_and_no_font_set_is_not() {
     let (bitmap, calls) = screen();
     let got = twice(&calls, &[]);
+    assert!(
+        (0xA800..0xB000).contains(&got.pc),
+        "the run ended at {:04x}, not at the script's halt",
+        got.pc
+    );
     assert_ne!(
         got.frame,
         pack(&bitmap),

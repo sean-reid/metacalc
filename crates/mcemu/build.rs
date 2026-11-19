@@ -1003,6 +1003,7 @@ fn assemble_layout_probes(out: &Path) {
     ] {
         let source = out.join(format!("{prefix}_layout_probe.z80"));
         let go_back = format!("{prefix}_AT must not go back");
+        let go_past = format!("{prefix}_AT must not go back or past");
         for (lines, defines, want) in [
             (
                 format!("{prefix}_VAR(probe_next, ${end:X}, 1)"),
@@ -1043,6 +1044,12 @@ fn assemble_layout_probes(out: &Path) {
                 vec![size],
                 Some(go_back.as_str()),
             ),
+            (
+                format!("{prefix}_AT(${:X})", end + 1),
+                vec![],
+                Some(go_past.as_str()),
+            ),
+            (format!("{prefix}_AT(${end:X})"), vec![], None),
         ] {
             fs::write(&source, format!("{base}\n{lines}\n")).unwrap();
             expect(&source, &out.join("layout_probe.bin"), &defines, args, want);

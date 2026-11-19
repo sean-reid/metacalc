@@ -7,6 +7,8 @@ SEED    = 0A5h
 STEP    = 37
 
 start:
+	xor a
+	ld (0A800h), a
 	ld hl, UI_VARS
 	ld b, UI_VARS_SIZE
 	ld a, SEED
@@ -21,4 +23,6 @@ wait_for_clear:
 	bcall(_GetCSC)
 	cp skClear
 	jr nz, wait_for_clear
+	ld a, 0EEh
+	ld (0A800h), a
 	bjump(_JForceCmdNoChar)
