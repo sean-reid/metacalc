@@ -2,7 +2,6 @@ use crate::fixture::{self, entry, patched, plain, section};
 use crate::rig::*;
 use crate::support::*;
 
-const SPARE_BASE: u16 = 0xC000;
 const IY: u16 = 0x2468;
 
 fn symbols(bytes: &[u8]) -> usize {

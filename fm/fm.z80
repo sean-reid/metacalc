@@ -1,9 +1,10 @@
-; metacalc formula drawing for the TI-84 Plus SE, first slice. Lays out one statement of the
-; library, unfolded, and draws it on the canvas pixel for pixel as the host model does
-; (crates/mcui, crates/mcglyph): the tokens of the statement, each the glyph codes of its symbol
-; from the library's glyph map, placed in lines by mcglyph's place, drawn with ui_text at x plus
-; the token's column on the text row of its line, only on rows inside a window. Folding, the
-; ellipsis, the cursor and parse trees are not here.
+; metacalc formula drawing for the TI-84 Plus SE. Lays out one statement of the library,
+; unfolded, and draws it on the canvas pixel for pixel as the host model does (crates/mcui,
+; crates/mcglyph): the tokens of the statement, each the glyph codes of its symbol from the
+; library's glyph map, placed in lines by mcglyph's place, drawn with ui_text at x plus the
+; token's column on the text row of its line, only on rows inside a window. It also builds the
+; statement's subexpression table, the nodes of the model's Expr. Folding, the ellipsis and the
+; cursor are not here.
 ;
 ; Code runs from flash in bank A and is position dependent. An including file defines FM_EMBEDDED
 ; first and places the code itself, after the reader (lib/) and the canvas (ui/) it calls, with -I
@@ -11,16 +12,23 @@
 ; fm_statement measures a token and before fm_draw draws one.
 ;
 ; Memory, placed by app/src/ram_map.inc. FM_RAM is in bank C of the kernel's spare page
-; KERNEL_RAM_PAGE, from KERNEL_RAM_HIGH, $1600 bytes, which the kernel uses only inside a kernel
+; KERNEL_RAM_PAGE, from KERNEL_RAM_HIGH, $1E00 bytes, which the kernel uses only inside a kernel
 ; call; fm maps the page in every public routine and keeps everything there:
 ;   +$000 $100  variables (fm/ram.inc)
 ;   +$100 $100  fm's private stack, FM_STACK_TOP at +$200
 ;   +$200 $800  FM_GLYPHS, the library's glyph map section as lib_glyphs finds it
-;   +$A00 $800  FM_SECOND, room for a second section of at most 2,048 bytes, unused
+;   +$A00 $800  FM_SECOND, the library's shapes section as lib_shapes finds it
 ;   +$1200 $100 symbol ids of the loaded statement, at most 255
 ;   +$1300 $100 token widths in pixels
 ;   +$1400 $100 the columns between a token and the one before it, 1 or 3
 ;   +$1500 $100 token spacing flags
+;   +$1600 $100 FM_FIRST, the first token of each node of the node table, at most 255 nodes
+;   +$1700 $100 FM_LAST, the last token of each node
+;   +$1800 $100 FM_DEPTH, the depth of each node
+;   +$1900 $100 FM_TLEN, FM_TCNT and FM_TSIZE at +$1A00 and +$1B00: what fm_nodes keeps for each
+;               node of the stored tree, at most 255 (nodes.inc)
+;   +$1C00 $200 FM_PILE, fm_nodes' explicit stack: 255 pairs of two bytes, one for each tree
+;               node still open, so a tree of 255 nodes cannot overrun it
 ; FM_SCRATCH is 256 bytes in bank B, in saveSScreen after UI_VARS, for the buffers the reader's
 ; accessors write; it holds nothing between calls.
 ;
@@ -79,7 +87,29 @@
 ;                      text row of the window, C = one past its last
 ;                 out: A = status. Draws each line whose row is in the window, with ui_text,
 ;                      and nothing else.
+;   fm_nodes      in:  nothing; the statement loaded by fm_statement
+;                 out: A = status, B = the number of nodes. Builds the node table of the loaded
+;                      statement, which is the model's Expr for it: the nodes in preorder, node 0
+;                      the whole statement, the typecode token 0 of node 0 and of no other. Node
+;                      n spans tokens FM_FIRST[n] to FM_LAST[n], at depth FM_DEPTH[n]; the parent
+;                      is the nearest earlier node one level up and is not stored. A tree node whose
+;                      only part is a child has no node of its own: the child takes its place at
+;                      its depth. A statement the library has no tree for is one node over every
+;                      token, depth 0, as is every statement of a library with no trees. The
+;                      table is built once for a loaded statement and a second call returns at
+;                      once; fm_statement marks it not built, and a refused call leaves it not
+;                      built, the statement loaded. FM_ERR_NOT_OPEN: fm closed or another library
+;                      open. FM_ERR_INDEX: no statement loaded. FM_ERR_READ: the reader refused a
+;                      read. FM_ERR_TREE: the tree ends early or holds bytes after its root, a
+;                      variable that is not the token at its place, or tokens that do not add up
+;                      to the statement's. FM_ERR_LIMIT: more than 255 tree nodes, which also
+;                      bounds the table nodes, the depth and the stack at 255.
 ; Other statuses: FM_ERR_NOT_OPEN, from fm_statement, fm_rows and fm_draw.
+; fm_open also copies the shapes section into FM_SECOND and checks it, the count against the
+; reader's syntax count, the offset table, every item's place and length and each child of its
+; axiom's arity once; FM_ERR_TOO_BIG for a section over 2,048 bytes and FM_ERR_BAD for what fails
+; the checks, with the glyph map's. A library with neither trees nor shapes opens. A library with
+; a glyph map and damaged shapes does not.
 
 #ifndef FM_EMBEDDED
 .org $4000
@@ -88,5 +118,7 @@
 #include "fm/ram.inc"
 #include "fm/session.inc"
 #include "fm/open.inc"
+#include "fm/shapes.inc"
 #include "fm/statement.inc"
 #include "fm/layout.inc"
+#include "fm/nodes.inc"

@@ -85,6 +85,7 @@ statement_body:
 	ld (fv_cn),hl
 	xor a
 	ld (fv_count),a
+	ld (fv_nodes),a
 	call fm_same_library
 	jp nz,fm_fail
 	ld a,(fv_k)

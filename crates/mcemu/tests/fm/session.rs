@@ -4,7 +4,6 @@ use crate::rig::*;
 use crate::support::*;
 
 const IY: u16 = 0x2468;
-const SPARE_BASE: u16 = 0xC000;
 
 fn longest(bytes: &[u8]) -> (u16, u8, Vec<String>) {
     let all = statements(&decoded(bytes));
@@ -23,12 +22,16 @@ fn calls(n: u16, k: u8) -> Vec<(&'static str, Regs, u8)> {
     let ok = 0;
     vec![
         ("FM_OPEN", regs(0, 0, 0), ok),
+        ("FM_NODES", regs(0, 0, 0), code("FM_ERR_INDEX")),
         ("FM_STATEMENT", regs(n, u16::from(k), 0), ok),
+        ("FM_NODES", regs(0, 0, 0), ok),
+        ("FM_NODES", regs(0, 0, 0), ok),
         ("FM_ROWS", regs(0, 94 << 8, 0), ok),
         ("FM_DRAW", regs(0xFFFF, (94 << 8) | 1, 8), ok),
         ("FM_DRAW", regs(2, (20 << 8) | 3, (3 << 8) | 5), ok),
         ("FM_DRAW", regs(0, 94 << 8, (6 << 8) | 2), ok),
         ("FM_STATEMENT", regs(n, 0x77, 0), code("FM_ERR_INDEX")),
+        ("FM_NODES", regs(0, 0, 0), code("FM_ERR_INDEX")),
         ("FM_STATEMENT", regs(0x7FFF, 0xFF, 0), code("FM_ERR_INDEX")),
     ]
 }
@@ -69,6 +72,7 @@ fn a_routine_on_a_closed_fm_returns_not_open_and_hands_the_state_back_too() {
         fm.rig.ei = ei;
         for (target, regs) in [
             ("FM_STATEMENT", Regs::default()),
+            ("FM_NODES", Regs::default()),
             ("FM_ROWS", Regs::default()),
             ("FM_DRAW", Regs::default()),
         ] {
@@ -108,15 +112,25 @@ fn span(fm: &mut Fm, target: &str, regs: Regs) -> (u32, u32) {
 fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8) -> usize {
     fm.rig.install_handler();
     fm.rig.ei = true;
-    let clear = |fm: &mut Fm| {
-        if target == "FM_DRAW" {
-            fm.clear();
+    let (n, k, _) = longest(&fixture::library());
+    let clear = |fm: &mut Fm| match target {
+        "FM_DRAW" => fm.clear(),
+        "FM_NODES" => {
+            assert_eq!(fm.statement(n, k).status(), 0);
         }
+        _ => {}
     };
     clear(fm);
     let want = fm.rig.call(target, regs);
     let frame = fm.frame();
     let rows = fm.rows(94).bc;
+    let nodes = target == "FM_NODES";
+    let table = if nodes {
+        fm.table(count(want))
+    } else {
+        Vec::new()
+    };
+    clear(fm);
     let (start, end) = span(fm, target, regs);
     let mut trials = 0;
     for after in (start..=start + 450).chain(end.saturating_sub(450)..=end) {
@@ -129,6 +143,9 @@ fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8) -> usize {
         assert_eq!(fm.rig.m.regs().sp, fm.rig.sp, "{what}: SP");
         assert_eq!(fm.frame(), frame, "{what}: frame");
         assert_eq!(fm.rows(94).bc, rows, "{what}: rows");
+        if nodes {
+            assert_eq!(fm.table(count(want)), table, "{what}: node table");
+        }
         trials += 1;
     }
     trials
@@ -147,6 +164,7 @@ fn an_interrupt_in_the_entry_or_the_exit_of_a_session_changes_nothing() {
             ..Regs::default()
         };
         assert!(sweep(&mut fm, "FM_STATEMENT", statement, port7) > 800);
+        assert!(sweep(&mut fm, "FM_NODES", Regs::default(), port7) > 800);
         let rows = Regs {
             de: 94 << 8,
             ..Regs::default()
@@ -174,6 +192,21 @@ const BANK_B_EXTRA: [(&str, &str); 3] = [
     ("UI_VARS", "UI_VARS_SIZE"),
 ];
 
+/// Where a run of fm may write: its memory, the kernel's mark, and bank B's scratch, frame and
+/// variables, besides the reader's.
+pub fn allowed() -> Allowed {
+    let at = |name: &str| label_in(WITH_FM, name);
+    let mut allowed = Allowed::of(WITH_FM);
+    for (base, size) in BANK_B_EXTRA {
+        let size = constant_of(WITH_FM.labels, size) as usize;
+        allowed.extra.push((APP_PAGE, at(base), size));
+    }
+    let used = constant_of(WITH_FM.labels, "FM_RAM_USED") as usize;
+    allowed.extra.push((SPARE_PAGE, at("FM_RAM"), used));
+    allowed.extra.push((SPARE_PAGE, at("KV_READY"), 2));
+    allowed
+}
+
 #[test]
 fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_the_readers() {
     let bytes = fixture::library();
@@ -196,6 +229,7 @@ fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_
         fm.rig.ei = ei;
         assert_eq!(fm.open().status(), 0);
         assert_eq!(fm.statement(n, k).status(), 0);
+        assert_eq!(fm.nodes().status(), 0);
         assert_eq!(fm.rows(94).status(), 0);
         assert_eq!(fm.draw(1, -3, 94, (0, 8)).status(), 0);
         assert_eq!(fm.statement(0x7FFF, 0).status(), code("FM_ERR_INDEX"));
@@ -228,33 +262,8 @@ fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_
     let row = fm.rig.label("LS_GL") + 3;
     fm.rig.poke(row, &[0x01, 0x08, 0]);
     assert_eq!(fm.open().status(), code("FM_ERR_TOO_BIG"));
+    let allowed = allowed();
     let at = |name: &str| label_in(WITH_FM, name);
-    let mut allowed = Allowed::of(WITH_FM);
-    for (base, size) in BANK_B_EXTRA {
-        let size = constant_of(WITH_FM.labels, size) as usize;
-        allowed.extra.push((APP_PAGE, at(base), size));
-    }
-    for (base, size) in [
-        (
-            at("FM_RAM"),
-            constant_of(WITH_FM.labels, "FM_VARS_SIZE") as usize,
-        ),
-        (
-            at("FM_STACK"),
-            usize::from(at("FM_STACK_TOP") - at("FM_STACK")),
-        ),
-        (
-            at("FM_GLYPHS"),
-            constant_of(WITH_FM.labels, "FM_GLYPHS_SIZE") as usize,
-        ),
-        (
-            at("FM_IDS"),
-            usize::from(at("FM_FLAGS") + (at("FM_WIDTHS") - at("FM_IDS")) - at("FM_IDS")),
-        ),
-    ] {
-        allowed.extra.push((SPARE_PAGE, base, size));
-    }
-    allowed.extra.push((SPARE_PAGE, at("KV_READY"), 2));
     let found = stray(&mut fm.rig, &allowed);
     assert!(found.is_empty(), "stray writes at {found:x?}");
     let page = fm.rig.m.ram_page(SPARE_PAGE);
@@ -281,6 +290,7 @@ fn a_session_reaches_a_stack_depth_the_header_states() {
             assert_eq!(fm.open().status(), 0);
             for (n, k, _) in &all {
                 assert_eq!(fm.statement(*n, *k).status(), 0);
+                assert_eq!(fm.nodes().status(), 0);
                 assert_eq!(fm.rows(20).status(), 0);
                 assert_eq!(fm.draw(1, -2, 94, (0, 8)).status(), 0);
                 assert_eq!(fm.draw(1, 0, 20, (0, 8)).status(), 0);

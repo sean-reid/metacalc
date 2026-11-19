@@ -10,6 +10,8 @@ mod kernel;
 mod layout;
 #[path = "fm/libraries.rs"]
 mod libraries;
+#[path = "fm/nodes.rs"]
+mod nodes;
 #[path = "fm/rig.rs"]
 mod rig;
 #[allow(dead_code)]

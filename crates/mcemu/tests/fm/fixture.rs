@@ -50,6 +50,46 @@ pub fn source() -> String {
     format!("{HEAD}{AXIOMS}{}", longest())
 }
 
+/// Constants that are each a syntax axiom of their own, so that a later syntax axiom has an index
+/// of 127 or more and its nodes take two bytes in a tree.
+pub const FILLERS: usize = 130;
+
+/// The most operators a statement of 255 symbols can hold in front of a variable.
+pub const CHAIN: usize = 253;
+
+/// What the base fixture lacks: a wrapper over a wrapper, a statement that is only a wrapper
+/// chain, a wrapper below a root, a prefix operator whose index takes two bytes in a tree and a
+/// statement of it 253 deep with a tree of 507 bytes, which fm reads in three pieces.
+fn structure() -> String {
+    let mut src = format!("$c ~ {} $.\n", names("F", FILLERS).join(" "));
+    src += "wcl $a wff A $.\n";
+    for i in 0..FILLERS {
+        src += &format!("wf{i} $a wff F{i} $.\n");
+    }
+    src += "wun $a wff ~ ph $.\n";
+    src += "nest-root $a |- x $.\nnest-below $a |- ( ph -> x ) $.\n";
+    for (n, chunk) in names("F", FILLERS).chunks(13).enumerate() {
+        let nested = chunk
+            .iter()
+            .rev()
+            .skip(1)
+            .fold(chunk.last().unwrap().clone(), |inner, f| {
+                format!("( {f} /\\ {inner} )")
+            });
+        src += &format!("fill{n} $a |- {nested} $.\n");
+    }
+    src + &format!("deep $a |- {}ph $.\n", "~ ".repeat(CHAIN))
+}
+
+fn names(prefix: &str, count: usize) -> Vec<String> {
+    (0..count).map(|i| format!("{prefix}{i}")).collect()
+}
+
+/// The base fixture and `structure`.
+pub fn nodes_library() -> Vec<u8> {
+    pack_all(&parse(&format!("{}{}", source(), structure())))
+}
+
 pub fn library() -> Vec<u8> {
     pack_all(&parse(&source()))
 }

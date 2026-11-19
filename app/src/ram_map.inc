@@ -66,7 +66,7 @@ FM_SCRATCH_SIZE     .equ $100
 FM_RAM              .equ KERNEL_RAM_HIGH
 #endif
 #ifndef FM_RAM_SIZE
-FM_RAM_SIZE         .equ $1600
+FM_RAM_SIZE         .equ $1E00
 #endif
 
 #macro RAM_DISJOINT(a_base, a_size, b_base, b_size, message)

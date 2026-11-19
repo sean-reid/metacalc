@@ -23,7 +23,7 @@ pub struct Fm {
 }
 
 /// The FM_ERR_ numbers as the header lists them, written out here and not read from the image.
-pub const STATUSES: [(&str, u8); 8] = [
+pub const STATUSES: [(&str, u8); 10] = [
     ("FM_ERR_NOT_OPEN", 1),
     ("FM_ERR_CLOSED", 2),
     ("FM_ERR_NO_MAP", 3),
@@ -32,7 +32,11 @@ pub const STATUSES: [(&str, u8); 8] = [
     ("FM_ERR_BAD", 6),
     ("FM_ERR_INDEX", 7),
     ("FM_ERR_READ", 8),
+    ("FM_ERR_TREE", 9),
+    ("FM_ERR_LIMIT", 10),
 ];
+
+pub const SPARE_BASE: u16 = 0xC000;
 
 /// A status of fm by its name, or a constant of the image, such as the kernel's ST_MALFORMED.
 pub fn code(name: &str) -> u8 {
@@ -104,6 +108,27 @@ impl Fm {
             ..Regs::default()
         };
         self.rig.call("FM_DRAW", regs)
+    }
+
+    /// Builds the node table of the loaded statement; the node count is in `bc >> 8`.
+    pub fn nodes(&mut self) -> Out {
+        self.rig.call("FM_NODES", Regs::default())
+    }
+
+    /// `len` bytes of fm's memory from the label `name`, which is in the kernel's spare page.
+    pub fn memory(&mut self, name: &str, len: usize) -> Vec<u8> {
+        let at = usize::from(self.rig.label(name) - SPARE_BASE);
+        self.rig.m.ram_page(SPARE_PAGE)[at..at + len].to_vec()
+    }
+
+    /// The node table as (first token, last token, depth) for `count` nodes.
+    pub fn table(&mut self, count: usize) -> Vec<(usize, usize, usize)> {
+        let first = self.memory("FM_FIRST", count);
+        let last = self.memory("FM_LAST", count);
+        let depth = self.memory("FM_DEPTH", count);
+        (0..count)
+            .map(|i| (first[i].into(), last[i].into(), depth[i].into()))
+            .collect()
     }
 
     pub fn clear(&mut self) {
