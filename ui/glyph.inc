@@ -165,15 +165,12 @@ ut_loop:
 	cp SPACE_CODE+1
 	jr c,ut_odd
 	push hl
-	rlca
-	rlca
-	rlca
 	ld l,a
-	and 7
-	ld h,a
-	xor l
-	ld l,a
-	ld bc,(ui_fontp)
+	ld h,ui_toff>>8
+	ld c,(hl)
+	inc h
+	ld b,(hl)
+	ld hl,(ui_fontp)
 	add hl,bc
 	ld c,(hl)
 	inc hl
@@ -188,12 +185,12 @@ ut_loop:
 	ld a,(hl)
 	cp c
 	jr c,ut_two
-	ld h,ui_tblk>>8
+	inc h
 	ld b,(hl)
 	ld c,$80
 ut_go:
 	push bc
-	ld h,ui_tcol>>8
+	inc h
 	ld c,(hl)
 	ld b,0
 	ld hl,(ui_rowbase)
@@ -206,7 +203,7 @@ ut_two:
 	ld a,l
 	cp 88
 	jr nc,ut_back
-	ld h,ui_tblk>>8
+	inc h
 	ld a,(hl)
 	add a,8
 	ld b,a
@@ -226,7 +223,7 @@ ut_tall:
 	ld a,(hl)
 	cp c
 	jr c,ut_two_tall
-	ld h,ui_tblk>>8
+	inc h
 	ld b,(hl)
 	ld c,0
 	jr ut_go
@@ -237,7 +234,7 @@ ut_two_tall:
 	ld a,l
 	cp 88
 	jr nc,ut_back
-	ld h,ui_tblk>>8
+	inc h
 	ld a,(hl)
 	add a,8
 	ld b,a
@@ -554,6 +551,18 @@ ui_v7:	TAIL(7)
 #macro FITS
 	.db 8,7,6,5,4,3,2,1
 #endmacro
+#macro STEP8(v)
+	.db v,v+8,v+16,v+24,v+32,v+40,v+48,v+56
+#endmacro
+#macro LOW32
+	STEP8(0)
+	STEP8(64)
+	STEP8(128)
+	STEP8(192)
+#endmacro
+#macro HIGH32(v)
+	.fill 32,v
+#endmacro
 #macro PAGE(m)
 	m
 	m
@@ -570,10 +579,31 @@ ui_v7:	TAIL(7)
 	.fill 160,0
 #endmacro
 	.fill (256-($&255))&255,0
-ui_tcol:
-#if (ui_tcol&255) != 0
- .error "ui_tcol must be 256 byte aligned"
+ui_toff:
+#if (ui_toff&255) != 0
+ .error "ui_toff must be 256 byte aligned"
 #endif
+	LOW32
+	LOW32
+	LOW32
+	LOW32
+	LOW32
+	LOW32
+	LOW32
+	LOW32
+	HIGH32(0)
+	HIGH32(1)
+	HIGH32(2)
+	HIGH32(3)
+	HIGH32(4)
+	HIGH32(5)
+	HIGH32(6)
+	HIGH32(7)
+ui_tfit:
+	PAGE(FITS)
+ui_tblk:
+	PAGE(SHIFTS(ui_vblk>>8))
+ui_tcol:
 	BYTES8(0)
 	BYTES8(1)
 	BYTES8(2)
@@ -587,10 +617,12 @@ ui_tcol:
 	BYTES8(10)
 	BYTES8(11)
 	.fill 160,0
-ui_tfit:
-	PAGE(FITS)
-ui_tblk:
-	PAGE(SHIFTS(ui_vblk>>8))
+#if (ui_tblk-ui_tfit) != 256
+ .error "the x tables must be consecutive pages"
+#endif
+#if (ui_tcol-ui_tblk) != 256
+ .error "the x tables must be consecutive pages"
+#endif
 	.fill (16-($&15))&15,0
 ut_rows:
 #if (ut_rows&15) != 0
