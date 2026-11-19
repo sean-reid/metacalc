@@ -19,7 +19,7 @@ const REFS: &str = "$c R wff |- $. $v x y z $.
     ${ n.1 $e |- R x y $. ax-n $a |- R x y $. $}
     ${ $d x y $. th $p |- R x y $= ( ax-d ax-m ax-n ) ABABABCDE $. $}";
 
-fn packed(src: &str) -> Vec<u8> {
+pub(super) fn packed(src: &str) -> Vec<u8> {
     let db = parse(src);
     pack_kernel(&db, &all(&db)).expect("it packs")
 }
@@ -38,15 +38,15 @@ fn u32_at(bytes: &[u8], at: usize) -> usize {
 }
 
 /// Positions inside a record, read from the documented layout.
-struct Record {
+pub(super) struct Record {
     start: usize,
-    hyps: usize,
-    conclusion: usize,
-    refs: usize,
-    proof: usize,
+    pub(super) hyps: usize,
+    pub(super) conclusion: usize,
+    pub(super) refs: usize,
+    pub(super) proof: usize,
 }
 
-fn record(bytes: &[u8], id: usize) -> Record {
+pub(super) fn record(bytes: &[u8], id: usize) -> Record {
     let start = u32_at(bytes, u32_at(bytes, 16) + 4 * id);
     let mut at = start + 2 + bytes[start + 1] as usize;
     let hyps = at + 1;
@@ -84,7 +84,7 @@ fn record(bytes: &[u8], id: usize) -> Record {
 }
 
 /// Where symbol `id`'s name length and name sit in the symbol table.
-fn symbol(bytes: &[u8], id: usize) -> usize {
+pub(super) fn symbol(bytes: &[u8], id: usize) -> usize {
     let mut at = 20;
     for _ in 0..id {
         at += 2 + bytes[at + 1] as usize;
@@ -92,7 +92,7 @@ fn symbol(bytes: &[u8], id: usize) -> usize {
     at + 1
 }
 
-fn patched(mut bytes: Vec<u8>, edit: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
+pub(super) fn patched(mut bytes: Vec<u8>, edit: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
     edit(&mut bytes);
     reseal(&mut bytes);
     bytes

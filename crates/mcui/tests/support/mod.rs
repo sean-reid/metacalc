@@ -247,6 +247,40 @@ pub fn statuses(bytes: &[u8], unchecked: &[&str], failed: &[&str]) -> Vec<Status
         .collect()
 }
 
+/// The logic with the proof of `a1i` damaged so the kernel rejects it, and the table that records it.
+pub fn rejected_a1i() -> (Vec<u8>, Vec<Status>) {
+    let sound = logic_bytes();
+    let alid = index_of(&sound, "alid") as u16;
+    let bytes = refreshed(patch_reference(&sound, "a1i", 0, alid));
+    let table = statuses(&bytes, &[], &["a1i"]);
+    (bytes, table)
+}
+
+/// A user interface over `rejected_a1i`.
+pub fn rejected_ui() -> Ui {
+    let (bytes, table) = rejected_a1i();
+    Ui::new(
+        vec![Installed {
+            name: "logic".into(),
+            bytes,
+        }],
+        Statuses {
+            libraries: vec![table],
+            my_proofs: 2,
+        },
+    )
+    .expect("the library loads")
+}
+
+/// The proving library with the proof of `a1i` damaged so the kernel rejects it.
+pub fn rejected_proving_bytes() -> Vec<u8> {
+    let sound = proving_bytes();
+    let alid = index_of(&sound, "alid") as u16;
+    let bytes = refreshed(patch_reference(&sound, "a1i", 0, alid));
+    assert!(library::check(&bytes).is_err());
+    bytes
+}
+
 pub fn ui_with(unchecked: &[&str], failed: &[&str]) -> Ui {
     let bytes = logic_bytes();
     let table = statuses(&bytes, unchecked, failed);
