@@ -12,6 +12,7 @@ fn regions() -> Vec<(&'static str, usize, usize)> {
         ("UI_VARS", "UI_VARS_SIZE"),
         ("UI_FRAME", "UI_FRAME_SIZE"),
         ("KD_SCRATCH", "KD_SCRATCH_SIZE"),
+        ("FAR_VARS", "FAR_VARS_SIZE"),
         ("FM_SCRATCH", "FM_SCRATCH_SIZE"),
         ("LIB_STATE", "LIB_STATE_SIZE"),
         ("KERNEL_RAM_LOW", "LOW_SIZE"),
