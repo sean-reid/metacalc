@@ -34,20 +34,23 @@ for entry in 32768:4 32673:4 32672:3 32671:3 16385:3 17311:3 17312:3; do
 	esac
 done
 
-# Libraries whose apps hash to each trailer form (01 01 to 01 03, then 00) and to a signature of 63
-# bytes, the signer's output being a function of the app's bytes alone.
-for entry in 103:63 111:64 185:64 333:64; do
-	len=${entry%:*}
-	want=${entry#*:}
+# Libraries whose apps hash to each signature trailer form (01 01 to 01 03, then 00), and to a
+# signature of 63 bytes, the signer's output being a function of the app's bytes alone. Length,
+# signature bytes, trailer.
+for entry in 103:63:00 37:64:01\ 01 50:64:01\ 02 333:64:01\ 03; do
+	len=${entry%%:*}
+	rest=${entry#*:}
+	want=${rest%%:*}
+	form=${rest#*:}
 	make_library "$len"
 	rm -rf "$dir/build"
 	make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" > /dev/null
 	out=$(sh "$app/scripts/check-8xk.sh" -l "$dir/lib" "$dir/build/metacalc.8xk")
 	case $out in
-		*", $want-byte signature)") ;;
-		*) echo "test-library-pages: $len bytes: want a $want-byte signature: $out" >&2; exit 1 ;;
+		*", $want-byte signature, trailer $form)") ;;
+		*) echo "test-library-pages: $len bytes: want a $want-byte signature and trailer $form: $out" >&2; exit 1 ;;
 	esac
-	echo "test-library-pages: $len bytes: $want-byte signature"
+	echo "test-library-pages: $len bytes: $want-byte signature, trailer $form"
 done
 # A library of 952 bytes puts 0Ah in the file header's length field, which is not a line ending.
 make_library 952
