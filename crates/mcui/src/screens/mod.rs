@@ -8,6 +8,7 @@ mod list;
 mod notice;
 mod proof;
 mod proving;
+mod sections;
 mod theorem;
 
 use crate::canvas::Canvas;
@@ -27,6 +28,8 @@ pub enum Nav {
     Stay,
     Push(Box<Screen>),
     Pop,
+    /// Pops the screen and moves the list under it to the assertion.
+    Jump(usize),
 }
 
 impl Nav {
@@ -45,6 +48,7 @@ pub enum Screen {
     About(about::About),
     Checking(checking::Checking),
     Proving(Box<proving::Proving>),
+    Sections(sections::Sections),
 }
 
 /// What the proving screen lists under the goal.
@@ -111,6 +115,13 @@ pub enum State {
         /// Operations replayed to open the screen; none are replayed after that.
         replayed: usize,
     },
+    Sections {
+        library: usize,
+        title: Option<String>,
+        cursor: usize,
+        top: usize,
+        len: usize,
+    },
     Notice {
         title: String,
     },
@@ -130,6 +141,13 @@ impl Screen {
         Screen::Libraries(libraries::Libraries::default())
     }
 
+    /// Moves a list to `assertion` after the screen above it closed.
+    pub(crate) fn land(&mut self, ctx: &Ctx, assertion: usize) {
+        if let Screen::List(list) = self {
+            list.land(ctx, assertion);
+        }
+    }
+
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
         match self {
             Screen::Libraries(s) => s.press(ctx, key),
@@ -141,6 +159,7 @@ impl Screen {
             Screen::About(s) => s.press(key),
             Screen::Checking(s) => s.press(key),
             Screen::Proving(s) => s.press(ctx, key),
+            Screen::Sections(s) => s.press(ctx, key),
         }
     }
 
@@ -155,6 +174,7 @@ impl Screen {
             Screen::About(s) => s.draw(ctx, canvas),
             Screen::Checking(s) => s.draw(ctx, canvas),
             Screen::Proving(s) => s.draw(ctx, canvas),
+            Screen::Sections(s) => s.draw(ctx, canvas),
         }
     }
 
@@ -169,6 +189,7 @@ impl Screen {
             Screen::About(_) => State::About,
             Screen::Checking(s) => s.state(ctx),
             Screen::Proving(s) => s.state(ctx),
+            Screen::Sections(s) => s.state(ctx),
         }
     }
 }
@@ -198,7 +219,7 @@ pub(crate) fn step(cursor: usize, len: usize, key: Key, page: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{checking, libraries, list, notice, proof, proving, theorem};
+    use super::{checking, libraries, list, notice, proof, proving, sections, theorem};
     use crate::canvas::{key_text_width, soft_key_room};
 
     #[test]
@@ -213,6 +234,7 @@ mod tests {
             notice::KEYS,
             proving::KEYS,
             proving::HYPS_KEYS,
+            sections::KEYS,
         ];
         sets.push([proving::GO, "", "", proving::KEYS[3], proving::KEYS[4]]);
         for set in sets {

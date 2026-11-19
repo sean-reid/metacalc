@@ -18,7 +18,7 @@ pub use glyphs::{GlyphMap, Glyphs};
 pub use titles::Title;
 pub(super) use titles::select as select_titles;
 pub use trees::{AXIOM_CAPACITY, Node, Part, SyntaxAxiom, Tree, Trees, VARIABLE_CAPACITY};
-pub use truth::{SectionCheckError, verify_sections};
+pub use truth::{SectionCheckError, titles_in_order, verify_sections};
 
 pub const TRAILER_MAGIC: &[u8; 4] = b"MCSX";
 pub const TRAILER_VERSION: u8 = 1;

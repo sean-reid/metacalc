@@ -93,7 +93,7 @@ fi
 if [ ! -f "$libdir/libraries.list" ]; then
 	fail "$libdir" "no libraries.list"
 else
-	while read -r name; do
+	while read -r name || [ -n "$name" ]; do
 		[ -e "$libdir/$name.mm" ] || [ -L "$libdir/$name.mm" ] || fail "$libdir" "$name was built but $name.mm is missing"
 	done <"$libdir/libraries.list"
 	[ -s "$libdir/libraries.list" ] || fail "$libdir" "libraries.list is empty"

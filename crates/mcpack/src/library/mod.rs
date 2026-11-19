@@ -84,7 +84,8 @@ pub use read::{
 pub use sections::{
     AXIOM_CAPACITY, ENTRY_LEN, Entry, GLYPHS, GlyphMap, Glyphs, Node, Part, SectionCheckError,
     SectionError, Sections, SyntaxAxiom, TITLES, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION,
-    TREES, Title, Tree, Trees, VARIABLE_CAPACITY, locate as locate_sections, verify_sections,
+    TREES, Title, Tree, Trees, VARIABLE_CAPACITY, locate as locate_sections, titles_in_order,
+    verify_sections,
 };
 
 pub const MAGIC: &[u8; 4] = b"MCL1";

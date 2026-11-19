@@ -6,7 +6,7 @@ use mcpack::mm::{self, Database, Grammar, StmtId, Sym};
 use std::rc::Rc;
 
 pub const SRC: &str = "
-$c ( ) -> -. wff |- A. setvar ~ Q $.
+$c ( ) -> -. wff |- A. setvar ~ Q R QQ $.
 $v ph ps ch th x y z w q $.
 wph $f wff ph $.
 wps $f wff ps $.
@@ -151,6 +151,61 @@ ${
   tq-ok.1 $e |- ( Q y ch -> ps ) $.
   tq-ok.2 $e |- Q y ch $.
   tq-ok $p |- ps $= wch vy wq wps tq-ok.2 tq-ok.1 ax-mp $.
+$}
+${
+  tm.1 $e |- ( Q y ch -> ps ) $.
+  tm.2 $e |- Q y ch $.
+  tm $p |- ps $= wch vy wq wps tm.2 tm.1 ax-mp $.
+$}
+${
+  $d y ch $.
+  tm-ok.1 $e |- ( Q y ch -> ps ) $.
+  tm-ok.2 $e |- Q y ch $.
+  tm-ok $p |- ps $= wch vy wq wps tm-ok.2 tm-ok.1 ax-mp $.
+$}
+${
+  trest.1 $e |- Q y ch $.
+  trest $p |- Q y ch $= trest.1 $.
+$}
+wr $a wff R ph $.
+${
+  tnest.1 $e |- ( R Q y ch -> ps ) $.
+  tnest.2 $e |- R Q y ch $.
+  tnest $p |- ps $= wch vy wq wr wps tnest.2 tnest.1 ax-mp $.
+$}
+${
+  $d y ch $.
+  tnest-ok.1 $e |- ( R Q y ch -> ps ) $.
+  tnest-ok.2 $e |- R Q y ch $.
+  tnest-ok $p |- ps $= wch vy wq wr wps tnest-ok.2 tnest-ok.1 ax-mp $.
+$}
+${
+  $d x y $.
+  wqq $a wff QQ x y $.
+$}
+${
+  tsh.1 $e |- ( QQ y y -> ps ) $.
+  tsh.2 $e |- QQ y y $.
+  tsh $p |- ps $= vy vy wqq wps tsh.2 tsh.1 ax-mp $.
+$}
+${
+  tmulti.1 $e |- ( Q y ( ch -> th ) -> ps ) $.
+  tmulti.2 $e |- Q y ( ch -> th ) $.
+  tmulti $p |- ps $= wch wth wi vy wq wps tmulti.2 tmulti.1 ax-mp $.
+$}
+${
+  $d y ch th $.
+  tmulti-ok.1 $e |- ( Q y ( ch -> th ) -> ps ) $.
+  tmulti-ok.2 $e |- Q y ( ch -> th ) $.
+  tmulti-ok $p |- ps $= wch wth wi vy wq wps tmulti-ok.2 tmulti-ok.1 ax-mp $.
+$}
+${
+  ttwice.1 $e |- Q y ch $.
+  ttwice $p |- ( Q y ch -> Q y ch ) $= wch vy wq wch vy wq ttwice.1 ttwice.1 axpair $.
+$}
+${
+  tsolve.1 $e |- Q y ch $.
+  tsolve $p |- ( th -> Q y ch ) $= ? $.
 $}
 axd $a |- ( ( ps -> ps ) -> ps ) $.
 ${
