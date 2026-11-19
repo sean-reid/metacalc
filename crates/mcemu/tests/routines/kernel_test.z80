@@ -24,6 +24,9 @@ TEST_PORT5		.equ $FF28
 TEST_P5_WANT		.equ $FF29
 TEST_P5_BAD		.equ $FF2A
 TEST_P5_N		.equ $FF2B
+TEST_RESET_STATUS	.equ $FF2C
+TEST_SP			.equ $FF2D
+TEST_PORT7		.equ $FF31
 TEST_PARAMS		.equ $7F00
 
 .org $4000
@@ -34,6 +37,8 @@ TEST_PARAMS		.equ $7F00
 	jp entry_p5
 	jp entry_overhead
 	jp entry_baseline
+	jp entry_reset
+	jp entry_reset_alone
 
 entry_one:
 	di
@@ -43,6 +48,41 @@ entry_one:
 	call kernel_verify
 	ld (TEST_VERIFY_STATUS),a
 	call iff_flag
+	halt
+
+entry_reset:
+	di
+	call test_init
+	ld (TEST_INIT_STATUS),a
+	call kernel_reset
+	ld (TEST_RESET_STATUS),a
+	ld hl,(TEST_ASSERTION)
+	call kernel_verify
+	ld (TEST_VERIFY_STATUS),a
+	call test_init
+	ld (TEST_STATUSES),a
+	ld hl,(TEST_ASSERTION)
+	call kernel_verify
+	ld (TEST_VERIFY2_STATUS),a
+	halt
+
+entry_reset_alone:
+	xor a
+	out (3),a
+	ld a,(TEST_IFF_IN)
+	or a
+	jr z,ra_start
+	ei
+ra_start:
+	nop
+	ld (TEST_SP),sp
+	call kernel_reset
+	ld (TEST_RESET_STATUS),a
+	ld (TEST_SP+2),sp
+	in a,(7)
+	ld (TEST_PORT7),a
+	call iff_flag
+	di
 	halt
 
 entry_two:

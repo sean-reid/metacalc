@@ -28,6 +28,8 @@ mod records;
 mod references;
 #[path = "kernel/reinit.rs"]
 mod reinit;
+#[path = "kernel/reset.rs"]
+mod reset;
 #[path = "kernel/sources.rs"]
 mod sources;
 #[path = "common/stackfree.rs"]
