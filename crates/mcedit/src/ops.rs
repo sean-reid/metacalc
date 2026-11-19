@@ -219,3 +219,85 @@ impl Session<'_> {
         Ok(outcome)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog::Catalog;
+    use mcpack::mm::{self, Grammar};
+
+    const SRC: &str = "
+$c ( ) -> wff |- setvar Q $.
+$v ph ps ch x y $.
+wph $f wff ph $.
+wps $f wff ps $.
+wch $f wff ch $.
+vx $f setvar x $.
+vy $f setvar y $.
+wi $a wff ( ph -> ps ) $.
+${
+  $d x ph $.
+  wq $a wff Q x ph $.
+$}
+${
+  min $e |- ph $.
+  maj $e |- ( ph -> ps ) $.
+  ax-mp $a |- ps $.
+$}
+${
+  $d y ch $.
+  t.1 $e |- ( Q y ch -> ps ) $.
+  t.2 $e |- Q y ch $.
+  t $p |- ps $= ? $.
+$}
+";
+
+    fn state(s: &Session) -> String {
+        format!(
+            "{:?} {} {:?} {} {:?} {:?}",
+            s.goals,
+            s.dvs.len(),
+            s.ops,
+            s.undo.len(),
+            s.sizes(),
+            s.status()
+        )
+    }
+
+    #[test]
+    fn a_walk_that_fails_after_the_operation_rolls_it_back() {
+        let db = mm::parse(SRC.as_bytes().to_vec()).unwrap();
+        let grammar = Grammar::new(&db, &[("|-", "wff")]).unwrap();
+        let cat = Catalog::new(&db, &grammar, 0);
+        assert!(cat.syntax_dv());
+        let id = |label: &str| db.find(label).unwrap();
+        let mut s = Session::start_in(cat, id("t")).unwrap();
+        let ax_mp = id("ax-mp");
+        let parsed = s.usable(ax_mp).unwrap();
+        let before = state(&s);
+        let metas = s.store.meta_count();
+
+        let broken = s.broken().unwrap();
+        let undo = s.checkpoint(Some(0));
+        s.apply_unchecked(0, ax_mp, &parsed).unwrap();
+        let Some(GoalState::Applied { metas: at, .. }) = s.goals.first_mut().map(|g| &mut g.state)
+        else {
+            panic!("the goal was not applied");
+        };
+        *at = u32::MAX / 2;
+        let op = Op::Apply {
+            goal: 0,
+            assertion: ax_mp,
+        };
+        assert_eq!(s.commit(op, undo, &broken).err(), Some(Error::Corrupt));
+        assert_eq!(state(&s), before);
+        assert_eq!(s.store.meta_count(), metas);
+
+        let clean = s.apply(0, ax_mp).unwrap();
+        assert_eq!(clean.goals, 1..3);
+        assert_eq!(s.ops.len(), 1);
+        s.close(1, id("t.2")).unwrap();
+        s.close(2, id("t.1")).unwrap();
+        assert!(s.status().open.is_empty() && s.status().clean());
+    }
+}
