@@ -20,16 +20,24 @@ SNOOP = 4108h
 HOP = 4130h
 REPS = 1000
 SPARE_PAGE = 3
-BANK_C_SUM = 3F00h
+NEST_K0 = 0FFh - LEAF_K0
+NEST_K1 = 0FFh - LEAF_K1
+NEST_K2 = 0FFh - LEAF_K2
+; RAM page 3 is the kernel's: its regions cover C500h to D6FFh and DF00h to FEFFh, so C000h to
+; FEFFh is only read and compared by a digest. FF00h to FFFFh is in no region of the map; the
+; step copies it aside, runs the stack in its top 32 bytes, and compares it with the copy.
+DIGEST_LEN = 3F00h
+TAIL_C = 0FF00h
+TAIL_SIZE = 256
 STACK_C = 0FFE0h
-SAVE_C = 0FFC0h
-SAVE_C_SIZE = 32
+STACK_AREA = 0FFC0h
+STACK_AREA_SIZE = 32
 
 #ifndef PC_RAM
 PC_RAM          .equ $8806
 #endif
-PC_RAM_SIZE     .equ $E0
-PC_STACK_OFFSET .equ $60
+PC_RAM_SIZE     .equ $1C8
+PC_STACK_OFFSET .equ $148
 PC_STACK        .equ PC_RAM + PC_STACK_OFFSET
 PC_STACK_TOP    .equ PC_RAM + PC_RAM_SIZE
 
@@ -51,27 +59,29 @@ PC_VAR(pc_seen_pg, $06, 1)
 PC_VAR(pc_row, $07, 1)
 PC_VAR(pc_steps, $08, 1)
 PC_VAR(pc_tick, $09, 1)
-PC_VAR(pc_step, $0A, 2)
-PC_VAR(pc_got, $0C, 2)
-PC_VAR(pc_want, $0E, 2)
-PC_VAR(pc_rep, $10, 2)
-PC_VAR(pc_sp, $12, 2)
-PC_VAR(pc_sum, $14, 2)
-PC_VAR(pc_iy, $16, 2)
-PC_VAR(pc_nest_hl, $18, 2)
-PC_VAR(P_TMP, $1A, 2)
-PC_VAR(P_TMP2, $1C, 1)
-PC_VAR(P_STR, $1D, 2)
+PC_VAR(pc_hop, $0A, 1)
 #macro PC_AT(offset)
 RAM_AT(offset, PC_STACK_OFFSET, PC_NEXT, "PC_AT must not go back or past the stack")
 #define PC_NEXT eval(offset)
 #endmacro
-PC_AT($20)
-PC_VAR(pc_seen, $20, 8)
-PC_VAR(pc_ret, $28, 8)
-PC_VAR(pc_set, $30, 8)
-PC_VAR(pc_reply, $38, 8)
-PC_VAR(pc_save, $40, SAVE_C_SIZE)
+PC_AT($0C)
+PC_VAR(pc_step, $0C, 2)
+PC_VAR(pc_got, $0E, 2)
+PC_VAR(pc_want, $10, 2)
+PC_VAR(pc_rep, $12, 2)
+PC_VAR(pc_sp, $14, 2)
+PC_VAR(pc_iy, $16, 2)
+PC_VAR(pc_dig, $18, 4)
+PC_VAR(pc_dig2, $1C, 4)
+PC_VAR(P_TMP, $20, 2)
+PC_VAR(P_TMP2, $22, 1)
+PC_VAR(P_STR, $23, 2)
+PC_AT($28)
+PC_VAR(pc_seen, $28, 8)
+PC_VAR(pc_ret, $30, 8)
+PC_VAR(pc_set, $38, 8)
+PC_VAR(pc_reply, $40, 8)
+PC_VAR(pc_save, $48, TAIL_SIZE)
 
 pc_seen_af = pc_seen
 pc_seen_bc = pc_seen + 2
@@ -110,6 +120,8 @@ leaf:
 	ret
 leaf_k:
 	.db k
+nest_k:
+	.db 0FFh - k
 	.fill SNOOP - $, 0
 ; Records what it was called with and the page it ran on, and returns the registers in pc_reply.
 snoop:
@@ -129,10 +141,15 @@ snoop:
 	pop af
 	ret
 	.fill HOP - $, 0
-; Changes the page itself, to page 2, which holds this same ret.
+; Maps the page numbered in pc_hop, which holds this same code, records what port 6 reads, and
+; returns with A and F as it was called.
 hop:
-	ld a, (far_pg + 2)
+	push af
+	ld a, (pc_hop)
 	out (6), a
+	in a, (6)
+	ld (pc_seen_pg), a
+	pop af
 	ret
 #endmacro
 
@@ -398,8 +415,19 @@ test_nest:
 	ld c, a
 	ld ix, p1_nest
 	call far_page1
-	ld (pc_nest_hl), hl
+	push hl
+	push de
 	ld l, a
+	ld h, 0
+	ld de, NEST_K1
+	call expect
+	pop hl
+	push hl
+	ld h, 0
+	ld de, NEST_K2
+	call expect
+	pop hl
+	ld l, h
 	ld h, 0
 	ld a, LEAF_K1
 	add a, b
@@ -416,7 +444,7 @@ test_nest:
 	add a, c
 	ld h, a
 	ex de, hl
-	ld hl, (pc_nest_hl)
+	pop hl
 	jp expect
 
 #macro SNOOP_CALL(entry)
@@ -528,8 +556,8 @@ test_reps_more:
 	ret
 
 ; Interrupts off, SP in bank B, RAM page 3 in bank C: the state of a kernel or fm session. The
-; far calls run first with the stack in bank B, then with it at the top of page 3. Bank C below
-; the stack must come out as it went in.
+; far calls run first with the stack in bank B, then with it at the top of page 3. Page 3 must
+; come out as it went in.
 test_di:
 	ld a, i
 	jp pe, di_on
@@ -548,28 +576,34 @@ di_save:
 	ld sp, PC_STACK_TOP
 	ld a, SPARE_PAGE
 	out (5), a
-	call sum_bank_c
-	ld (pc_sum), hl
+	ld hl, TAIL_C
+	ld de, pc_save
+	ld bc, TAIL_SIZE
+	ldir
+	call digest
+	ld (pc_dig), de
+	ld (pc_dig + 2), ix
+di_passes:
 	ld b, 20
 	call passes
-	call sum_bank_c
-	ld de, (pc_sum)
-	call expect
-	ld hl, SAVE_C
-	ld de, pc_save
-	ld bc, SAVE_C_SIZE
-	ldir
+	call page_c_same
 	ld sp, STACK_C
 	ld b, 20
 	call passes
 	ld sp, PC_STACK_TOP
-	call sum_bank_c
-	ld de, (pc_sum)
-	call expect
-	ld hl, pc_save
-	ld de, SAVE_C
-	ld bc, SAVE_C_SIZE
+	ld hl, TAIL_C
+	ld de, pc_save
+	ld b, STACK_AREA - TAIL_C
+	call compare
+	ld hl, STACK_AREA + STACK_AREA_SIZE
+	ld de, pc_save + STACK_AREA - TAIL_C + STACK_AREA_SIZE
+	ld b, TAIL_C + TAIL_SIZE - STACK_AREA - STACK_AREA_SIZE
+	call compare
+	ld hl, pc_save + STACK_AREA - TAIL_C
+	ld de, STACK_AREA
+	ld bc, STACK_AREA_SIZE
 	ldir
+	call page_c_same
 	ld a, (pc_p5)
 	out (5), a
 	ld sp, (pc_sp)
@@ -579,6 +613,20 @@ di_save:
 	ei
 	ret
 
+; Compares what the step may read of page 3 with what it was at the start.
+page_c_same:
+	call digest
+	ld (pc_dig2), de
+	ld (pc_dig2 + 2), ix
+	ld hl, pc_dig2
+	ld de, pc_dig
+	ld b, 4
+	call compare
+	ld hl, TAIL_C
+	ld de, pc_save
+	ld b, 0
+	jp compare
+
 passes:
 	push bc
 	call pass
@@ -586,24 +634,25 @@ passes:
 	djnz passes
 	ret
 
-; Out: HL = the sum of the bytes of bank C below the stack area.
-sum_bank_c:
+; Out: DE = the sum of C000h to FEFFh and IX = the sum of the running sums, 16 bits each.
+digest:
 	ld hl, 0C000h
-	ld bc, BANK_C_SUM
+	ld bc, DIGEST_LEN
 	ld de, 0
-sum_next:
+	ld ix, 0
+digest_next:
 	ld a, (hl)
 	add a, e
 	ld e, a
 	adc a, d
 	sub e
 	ld d, a
+	add ix, de
 	inc hl
 	dec bc
 	ld a, b
 	or c
-	jr nz, sum_next
-	ex de, hl
+	jr nz, digest_next
 	ret
 
 text_ports:
@@ -657,14 +706,15 @@ regs_rows:
 #include "farcall.inc"
 	PAGE_FNS(LEAF_K1)
 
-; In: B, C. Out: A = page 1's constant + B + C, HL = (page 2's leaf result << 8) + page 0's
-; leaf result, both reached from here.
+; In: B, C. Out: D = page 1's leaf result, E = page 2's nest_k, A = page 1's nest_k, HL = (page 2's
+; leaf result << 8) + page 0's leaf result. Each nest_k is read after the inner call has returned.
 p1_nest:
 	call leaf
 	ld d, a
 	ld ix, p2_nest
 	call far_page2
-	ld a, d
+	ld e, a
+	ld a, (nest_k)
 	ret
 
 .fill 8000h - $, 0
@@ -672,12 +722,14 @@ p1_nest:
 #include "farcall.inc"
 	PAGE_FNS(LEAF_K2)
 
+; Out: H = page 2's leaf result, L = page 0's, A = page 2's nest_k read after the call returned.
 p2_nest:
 	call leaf
 	ld h, a
 	ld ix, leaf
 	call far_page0
 	ld l, a
+	ld a, (nest_k)
 	ret
 
 ; About a second at 6 MHz, with interrupts as the caller left them.

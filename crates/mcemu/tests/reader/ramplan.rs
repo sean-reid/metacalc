@@ -44,6 +44,16 @@ fn the_drivers_scratch_starts_at_libpage_and_the_reader_ends_inside_appbackupscr
         end <= at("APP_BACKUP_END"),
         "the state block ends at {end:#x}, past appBackUpScreen"
     );
+    let far = at("FAR_VARS");
+    assert!(
+        far >= at("KD_SCRATCH") + at("KD_SCRATCH_SIZE")
+            && far + at("FAR_VARS_SIZE") <= at("LIB_STATE"),
+        "the far call's scratch is between the driver's and the reader's"
+    );
+    assert!(
+        far + at("FAR_VARS_SIZE") <= at("APP_BACKUP_END"),
+        "the far call's scratch ends past appBackUpScreen"
+    );
 }
 
 #[test]

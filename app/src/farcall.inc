@@ -10,9 +10,12 @@
 ;     ld ix, target
 ;     call far_page1
 ;
-; far_init runs once on the entry page, before anything changes port 6. FAR_CALL is 3 bytes past the
-; entry point, where the entry page keeps the jump to its start. A page with no header defines
-; FAR_PAD to be padded up to FAR_CALL.
+; far_init runs once on the entry page, before anything changes port 6 and before the first far
+; call. far_a holds the caller's A from its store until the load after the port 6 write, so an
+; interrupt handler may make a far call only if it saves and restores far_a. The callee returns
+; with one of the app's code pages mapped, because the return half runs on whichever page is
+; mapped then. FAR_CALL is 3 bytes past the entry point, where the entry page keeps the jump to
+; its start. A page with no header defines FAR_PAD to be padded up to FAR_CALL.
 
 #include "ram_map.inc"
 

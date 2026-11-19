@@ -731,6 +731,7 @@ fn assemble_ui(out: &Path) {
         (&["UI_FRAME=$9572"][..], None),
         (&["UI_FRAME=$9B71"][..], None),
         (&["KD_SCRATCH=$9640"][..], None),
+        (&["LIB_STATE=$9896", "FAR_VARS=$9C00"][..], None),
         (&["LIB_STATE=$989A"][..], None),
         (&["KERNEL_RAM_HIGH=$D700"][..], None),
         (&["UI_VARS=$9340"][..], Some("UI_FRAME and UI_VARS overlap")),
@@ -1396,6 +1397,19 @@ fn assemble_far_call(out: &Path) {
         (&[][..], None),
         (&["FAR_VARS=$9898"][..], None),
         (&["FAR_VARS_SIZE=6"][..], None),
+        (&["KD_SCRATCH_SIZE=36"][..], None),
+        (
+            &["KD_SCRATCH_SIZE=37"][..],
+            Some("FAR_VARS and KD_SCRATCH overlap"),
+        ),
+        (
+            &["FAR_VARS=$9895"][..],
+            Some("FAR_VARS and KD_SCRATCH overlap"),
+        ),
+        (
+            &["FAR_VARS=$9899"][..],
+            Some("FAR_VARS and LIB_STATE overlap"),
+        ),
         (
             &["FAR_VARS=$86F0"][..],
             Some("FAR_VARS and UI_VARS overlap"),
@@ -1456,12 +1470,12 @@ fn assemble_far_call(out: &Path) {
     let go_back = "PC_AT must not go back or past the stack";
     for (lines, defines, want) in [
         ("", &[][..], None),
-        ("PC_VAR(probe_next, $60, 1)", &[][..], Some(layout)),
-        ("PC_VAR(probe_same, $5F, 1)", &[][..], Some(layout)),
-        ("PC_VAR(probe_gap, $5E, 1)", &[][..], Some(layout)),
+        ("PC_VAR(probe_next, $148, 1)", &[][..], Some(layout)),
+        ("PC_VAR(probe_same, $147, 1)", &[][..], Some(layout)),
+        ("PC_VAR(probe_overlap, $146, 1)", &[][..], Some(layout)),
         ("PC_AT($0)", &[][..], Some(go_back)),
-        ("PC_AT($61)", &[][..], Some(go_back)),
-        ("PC_AT($60)", &[][..], None),
+        ("PC_AT($149)", &[][..], Some(go_back)),
+        ("PC_AT($148)", &[][..], None),
     ] {
         fs::write(&app, format!("#include \"pagecheck.z80\"\n{lines}\n")).unwrap();
         expect(&app, &probe_out, defines, &args[..4], want);
@@ -1484,16 +1498,14 @@ fn assemble_far_call(out: &Path) {
     let fails = |d: &[&str], want: &str| expect(pagecheck, &probe_out, d, &probe_args, Some(want));
     ok(&[]);
     ok(&["PC_RAM=$8000"]);
-    ok(&["PC_RAM=$BF20"]);
-    fails(&["PC_RAM=$BF21"], bank);
+    ok(&["PC_RAM=$BE38"]);
+    fails(&["PC_RAM=$BE39"], bank);
     fails(&["PC_RAM=$7FFF"], bank);
-    for at in ["$9810", "$9892", "$9896", "$9899"] {
-        fails(
-            &[&format!("PC_RAM={at}")],
-            "the probe's RAM overlaps FAR_VARS",
-        );
-    }
-    ok(&["PC_RAM=$9776"]);
+    let far = "the probe's RAM overlaps FAR_VARS";
+    ok(&["PC_RAM=$96CE"]);
+    fails(&["PC_RAM=$96CF"], far);
+    fails(&["PC_RAM=$9896"], far);
+    fails(&["PC_RAM=$9899"], far);
     ok(&["PC_RAM=$989A"]);
     let wrapper = out.join("pagecheck_parts_probe.z80");
     for (part, want, define) in [
