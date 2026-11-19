@@ -276,3 +276,8 @@ text_none:
 	.db "NONE", 0
 text_bad:
 	.db "BAD", 0
+
+#macro PROBE_CLEAR(base, size, message)
+RAM_DISJOINT(S_PORT5, RAM_SIZE, base, size, message)
+#endmacro
+#include "ramcheck.inc"

@@ -8,15 +8,15 @@ ifneq ($(LIBRARY),)
 all: kernchk
 endif
 
-$(BUILD)/ramprobe.8xk: ramprobe.z80 ../app/src/equates.inc ../app/src/ram_map.inc
+$(BUILD)/ramprobe.8xk: ramprobe.z80 ramcheck.inc ../app/src/equates.inc ../app/src/ram_map.inc
 	mkdir -p "$(BUILD)"
 	$(ASM) -I ../app/src ramprobe.z80 $@
 
-$(BUILD)/sparecheck.8xk: sparecheck.z80 sparecore.inc sparescreen.inc printnum.inc ../app/src/equates.inc ../app/src/ram_map.inc
+$(BUILD)/sparecheck.8xk: sparecheck.z80 ramcheck.inc sparecore.inc sparescreen.inc printnum.inc ../app/src/equates.inc ../app/src/ram_map.inc
 	mkdir -p "$(BUILD)"
 	$(ASM) -I ../app/src -I . sparecheck.z80 $@
 
-$(BUILD)/storecheck.8xk: storecheck.z80 storeram.inc storedraw.inc ../app/src/store.inc ../app/src/store_count.inc ../app/src/store_open.inc ../app/src/header.inc ../app/src/equates.inc ../app/src/ram_map.inc
+$(BUILD)/storecheck.8xk: storecheck.z80 storeram.inc storeguard.inc ramcheck.inc storedraw.inc ../app/src/store.inc ../app/src/store_count.inc ../app/src/store_open.inc ../app/src/header.inc ../app/src/equates.inc ../app/src/ram_map.inc
 	mkdir -p "$(BUILD)"
 	"$(SPASM)" -I ../app/src -I . storecheck.z80 $@
 

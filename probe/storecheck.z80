@@ -43,7 +43,7 @@ CMD_ROOM     = 15
 CMD_LIST     = 16
 
 #include "storeram.inc"
-LOG_LIMIT   = LOG + 700
+LOG_LIMIT   = LOG + LOG_LIMIT_OFF
 S_PTR       = STATE
 S_AT        = STATE + 2
 S_REPEAT    = STATE + 4
@@ -424,3 +424,4 @@ log_result:
 
 #include "storedraw.inc"
 #include "store.inc"
+#include "storeguard.inc"
