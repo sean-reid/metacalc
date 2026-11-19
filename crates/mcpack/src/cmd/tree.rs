@@ -25,6 +25,8 @@ pub(super) fn read_links(path: &Path) -> Result<HashMap<String, String>, ExitCod
     let text = String::from_utf8(read(path)?)
         .map_err(|e| unusable(format_args!("{}: {e}", path.display())))?;
     text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
         .map(|line| {
             line.split_once(' ')
                 .map(|(label, page)| (label.to_string(), page.to_string()))
@@ -91,7 +93,7 @@ pub(super) fn render(
     let ascii = words(db, root).join(" ");
     let _ = writeln!(
         out,
-        "<ul class=\"tree\" data-statement=\"{}\">",
+        "<ul class=\"tree\" role=\"list\" data-statement=\"{}\">",
         escape(&ascii)
     );
     item(db, root, 1, links, &mut out)?;
@@ -139,7 +141,7 @@ fn item(
         return Ok(());
     }
     let _ = writeln!(out, "{:pad$}{head}", "");
-    let _ = writeln!(out, "{:pad$}<ul>", "", pad = pad + 2);
+    let _ = writeln!(out, "{:pad$}<ul role=\"list\">", "", pad = pad + 2);
     for child in &node.children {
         item(db, child, depth + 2, links, out)?;
     }
@@ -167,7 +169,7 @@ pub fn spell() -> Result<ExitCode, ExitCode> {
         out.push('\n');
     }
     if !missing.is_empty() {
-        return Err(unusable(format_args!(
+        return Err(super::fail(format_args!(
             "no Unicode spelling for {}",
             missing.join(" ")
         )));
