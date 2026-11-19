@@ -180,15 +180,6 @@ fn swapped_essential(original: Vec<u8>) -> Vec<u8> {
     })
 }
 
-const TWO_WAYS: &str = "$c |- wff R $. $v x y $.
-    ${ vx $f wff x $. vy $f wff y $. ax-a $a |- R x y $. $}
-    ${ wy $f wff y $. wx $f wff x $. ax-b $a |- R x y $. $}";
-
-const THREE_WAYS: &str = "$c |- wff R $. $v x y z $.
-    ${ vx $f wff x $. vy $f wff y $. ax-a $a |- R x y $. $}
-    ${ wy $f wff y $. wz $f wff z $. ax-b $a |- R y z $. $}
-    ${ xz $f wff z $. xx $f wff x $. ax-c $a |- R z x $. $}";
-
 const ORDERED_BY_TWO_RECORDS: &str = "$c |- wff R $. $v p q r $.
     ${ aq $f wff q $. ar $f wff r $. ax-1 $a |- R q r $. $}
     ${ bp $f wff p $. bq $f wff q $. ax-2 $a |- R p q $. $}";
