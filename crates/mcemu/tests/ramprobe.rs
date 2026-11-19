@@ -69,7 +69,7 @@ fn the_probe_reports_pages_2_to_7_as_aliases_and_restores_what_it_touched() {
     assert_eq!(run.stop, Stop::UnsupportedBcall(NEW_LINE));
     let got = m.ram_page(1)[RESULTS..RESULTS + PAGES.len()].to_vec();
     assert_eq!(got, expected(&mut m), "result per page");
-    assert_ne!(got, [0; 6], "the stub has pages that alias");
+    assert_ne!(got, [0; 6], "pages 82h to 87h are one page");
     assert_eq!(m.ram_page(2), pattern, "the shared page is as it was");
     assert_eq!(m.in_port(5), m.ram_page(1)[SCRATCH], "port 5 is restored");
 }
@@ -82,7 +82,7 @@ fn lit_rows(screen: &[bool], rows: std::ops::Range<usize>) -> usize {
 }
 
 /// The app as built for a calculator, run by the real OS: the title and one line per page are
-/// drawn with the OS's own text calls, the results are the ones the stub run gives, and a key
+/// drawn with the OS's own text calls, the results are the alias codes of one shared page behind 82h to 87h, and a key
 /// leaves the app.
 #[test]
 #[ignore = "needs the reference ROM image"]
@@ -112,6 +112,7 @@ fn on_the_reference_os_the_probe_prints_a_line_per_page_and_leaves_on_a_key() {
     }
     let got = os.ram(RESULTS, PAGES.len());
     assert_eq!(got, expected(&mut os.m), "result per page");
+    assert_ne!(got, [0; 6], "pages 82h to 87h are one page");
     os.tap(realos::KEY_CLEAR, 150, 600);
     let screen = os.screen();
     assert_eq!(
