@@ -7,28 +7,41 @@ fn screen() -> (mcglyph::Bitmap, Vec<Call>) {
     c.list_row(2, "ax-1 and a name", "\u{2713}", false);
     c.list_row(3, "ax-2", "", true);
     c.text(5, 4, "Select a library");
+    c.text_centered(6, "centred");
+    c.invert(70, 40, 20, 12);
     c.soft_keys(["Open", "Run", "Info", "Find", "Up"]);
     c.into_parts()
 }
 
-fn twice(calls: &[Call], between: &[Op]) -> Outcome {
+/// The screen drawn once, then drawn again with the variables zeroed before every call and
+/// `restore` run after the zeroing, and blitted.
+fn twice(calls: &[Call], restore: &[Op]) -> Outcome {
     let mut script = ops(calls);
-    script.push(Op::ClearVars);
     script.push(Op::Clear);
-    script.extend_from_slice(between);
-    script.extend(ops(calls));
+    for op in ops(calls) {
+        script.push(Op::ClearVars);
+        script.extend_from_slice(restore);
+        script.push(op);
+    }
+    script.push(Op::ClearVars);
+    script.extend_from_slice(restore);
+    script.push(Op::Blit);
     run(REAL, &script)
 }
 
 #[test]
-fn a_screen_drawn_again_after_the_variables_are_zeroed_and_the_font_set_is_the_same() {
+fn a_screen_drawn_with_the_variables_zeroed_and_the_font_set_before_every_call_is_the_same() {
     let (bitmap, calls) = screen();
     let got = twice(&calls, &[Op::BuiltinFont]);
     same_frame("after zeroed variables", &got.frame, &pack(&bitmap));
+    assert!(
+        (0..64).all(|y| (0..96).all(|x| got.lcd[y * 96 + x] == bitmap.get(x, y))),
+        "the LCD differs from the frame"
+    );
 }
 
 #[test]
-fn a_screen_drawn_after_the_variables_are_zeroed_without_setting_the_font_is_not() {
+fn a_screen_drawn_with_the_variables_zeroed_and_no_font_set_is_not() {
     let (bitmap, calls) = screen();
     let got = twice(&calls, &[]);
     assert_ne!(

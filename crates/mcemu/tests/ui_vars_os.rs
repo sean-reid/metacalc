@@ -11,6 +11,8 @@ const VARS: usize = 0x86EC - RAM_BASE;
 const VARS_SIZE: usize = 0x1A;
 const SAVE_SCREEN_SIZE: usize = 768;
 const RESULT: usize = 0xA800 - RAM_BASE;
+/// Set in port 3 when the OS has powered the calculator down.
+const POWER_DOWN: u8 = 0x10;
 const SEED: u8 = 0xA5;
 const STEP: u8 = 37;
 
@@ -59,6 +61,7 @@ fn auto_power_down_in_get_key_zeroes_save_screen() {
     assert_eq!(os.ram(RESULT, 1), [5], "the app is waiting in _GetKey");
     let fill = pattern(SAVE_SCREEN_SIZE);
     os.m.ram_page(1)[VARS..VARS + SAVE_SCREEN_SIZE].copy_from_slice(&fill);
+    let powered_down = |os: &mut RealOs| os.m.in_port(3) & POWER_DOWN != 0;
     for _ in 0..8 {
         os.run_ms(30_000);
         assert_eq!(
@@ -66,16 +69,38 @@ fn auto_power_down_in_get_key_zeroes_save_screen() {
             fill,
             "before auto power down"
         );
+        assert!(!powered_down(&mut os), "port 3 reports a power down early");
     }
     let mut zeroed = false;
-    for _ in 0..30 {
-        os.run_ms(5_000);
-        if os.ram(VARS, SAVE_SCREEN_SIZE).iter().all(|&b| b == 0) {
+    for _ in 0..150 {
+        os.run_ms(1_000);
+        let gone = os.ram(VARS, SAVE_SCREEN_SIZE).iter().all(|&b| b == 0);
+        let down = powered_down(&mut os);
+        if gone || down {
+            assert!(gone && down, "zeroed {gone}, port 3 powered down {down}");
             zeroed = true;
             break;
         }
     }
     assert!(zeroed, "auto power down never zeroed saveSScreen");
     assert_eq!(os.ram(RESULT, 1), [5], "_GetKey has not returned");
-    os.tap(Machine::KEY_ON, 150, 1500);
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn a_wait_that_polls_get_csc_between_halts_keeps_the_ui_variables_past_the_apd_time() {
+    let app = assemble_routine("ui_vars_csc_app.z80");
+    let mut os = RealOs::boot(&app);
+    os.launch();
+    os.run_ms(500);
+    assert_eq!(os.ram(VARS, VARS_SIZE), pattern(VARS_SIZE));
+    for _ in 0..14 {
+        os.run_ms(30_000);
+        assert_eq!(os.ram(VARS, VARS_SIZE), pattern(VARS_SIZE), "after a wait");
+        assert_eq!(
+            os.m.in_port(3) & POWER_DOWN,
+            0,
+            "port 3 reports a power down"
+        );
+    }
 }
