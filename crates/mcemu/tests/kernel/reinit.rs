@@ -3,6 +3,7 @@ use crate::support::*;
 use mcemu::FLASH_TEST_PAGE;
 use mcpack::library::{KernelError, Limits};
 use mcpack::mm::Database;
+use std::collections::BTreeSet;
 
 const CODE_BASE: u16 = 0x4000;
 
@@ -317,6 +318,10 @@ const SLED_LEN: usize = 8000;
 const STEP: usize = 5;
 const IRQ_VECTOR: u16 = 0x38;
 const STEPS_IN_WINDOW: usize = 150;
+const LD_A_I: [u8; 2] = [0xED, 0x57];
+const LD_A_I_LEN: u16 = LD_A_I.len() as u16;
+const JP_PE: u8 = 0xEA;
+const FLAG_PV: u16 = 0x04;
 
 struct Call {
     status: u8,
@@ -338,9 +343,21 @@ fn verify_end(device: &Device) -> u16 {
     device.label("ENTRY_VERIFY") + 10
 }
 
+/// Makes `ENTRY_VERIFY` start with `ei` instead of `di`, and end in a jump to itself, since with
+/// interrupts on a halt would run on into the next entry point at the first tick.
+fn interrupts_on_through_the_entry(device: &mut Device) {
+    let entry = device.label("ENTRY_VERIFY");
+    let at = usize::from(entry - CODE_BASE);
+    assert_eq!(device.image.code[at], 0xF3, "the entry starts with di");
+    device.m.load_flash(FLASH_TEST_PAGE, at, &[0xFB]);
+    let end = usize::from(verify_end(device) - CODE_BASE);
+    assert_eq!(device.image.code[end], 0x76, "the entry ends with halt");
+    device.m.load_flash(FLASH_TEST_PAGE, end, &[0x18, 0xFE]);
+}
+
 /// Starts `ENTRY_VERIFY` with interrupts on, `burn` T-states after a timer tick, and steps one
-/// T-state at a time until `kernel_enter` has turned them off. Returns where the first interrupt
-/// was taken from, if it was taken in that stretch.
+/// instruction at a time until `kernel_enter` has turned them off. Returns where the first
+/// interrupt was taken from, if it was taken in that stretch.
 fn entry_with_tick_at(device: &mut Device, burn: u32) -> Option<u16> {
     let (entry, done) = (device.label("ENTRY_VERIFY"), verify_end(device));
     device.m.run(SYNC_CODE, 2 * TIMER_PERIOD_15MHZ);
@@ -384,13 +401,7 @@ fn an_interrupt_taken_inside_kernel_enter_changes_neither_the_verdict_nor_the_wo
     let quiet = call(&mut device, size);
     assert_ne!(quiet.work, [0; 3]);
 
-    let entry = device.label("ENTRY_VERIFY");
-    let at = usize::from(entry - CODE_BASE);
-    assert_eq!(device.image.code[at], 0xF3, "the entry starts with di");
-    device.m.load_flash(FLASH_TEST_PAGE, at, &[0xFB]);
-    let end = usize::from(verify_end(&device) - CODE_BASE);
-    assert_eq!(device.image.code[end], 0x76, "the entry ends with halt");
-    device.m.load_flash(FLASH_TEST_PAGE, end, &[0x18, 0xFE]);
+    interrupts_on_through_the_entry(&mut device);
     device.m.load_ram(SYNC_CODE, &[0xFB, 0x76, 0xF3, 0x76]);
     device.m.load_ram(SLED, &vec![0; SLED_LEN]);
     device.m.out_port(PORT_MASK, MASK_ON_AND_TIMER);
@@ -398,22 +409,84 @@ fn an_interrupt_taken_inside_kernel_enter_changes_neither_the_verdict_nor_the_wo
         .m
         .load_ram(device.label("TEST_ASSERTION"), &(id as u16).to_le_bytes());
 
-    let window = device.label("KERNEL_ENTER")..=device.label("KE_SAVE");
-    let mut inside = Vec::new();
-    for burn in (0..TIMER_PERIOD_15MHZ - 400).step_by(STEP) {
+    let (first, second) = (
+        device.label("KERNEL_ENTER"),
+        device.label("KERNEL_ENTER") + LD_A_I_LEN,
+    );
+    let window = first..=device.label("KE_SAVE");
+    let mut boundaries = BTreeSet::from([first, second, device.label("KE_ON"), *window.end()]);
+    let mut inside = BTreeSet::new();
+    let mut burn = 0;
+    loop {
+        assert!(
+            burn < TIMER_PERIOD_15MHZ,
+            "the tick never moved ahead of kernel_enter"
+        );
         fill(&mut device);
         let taken = entry_with_tick_at(&mut device, burn);
         let got = call(&mut device, size);
         assert_eq!(got.status, quiet.status, "status, tick {burn} T-states in");
         assert_eq!(got.work, quiet.work, "work, tick {burn} T-states in");
         assert_eq!(got.stack, quiet.stack, "stack, tick {burn} T-states in");
-        if taken.is_some_and(|pc| window.contains(&pc)) {
-            inside.push(burn);
+        match taken {
+            Some(pc) if window.contains(&pc) => {
+                inside.insert(pc);
+            }
+            Some(pc) if pc < first => break,
+            _ => {}
         }
+        burn += STEP as u32;
     }
-    println!("interrupts taken inside kernel_enter at offsets {inside:?}");
+    println!("interrupts taken inside kernel_enter from {inside:x?}");
+    boundaries.retain(|pc| !inside.contains(pc));
     assert!(
-        !inside.is_empty(),
-        "no offset took its interrupt inside kernel_enter"
+        boundaries.is_empty(),
+        "no interrupt was taken from {boundaries:x?}, only from {inside:x?}"
     );
+}
+
+#[test]
+fn kernel_enter_reads_the_interrupt_flag_again_when_the_first_read_comes_back_clear() {
+    let (db, bytes) = small_library();
+    let id = number(&db, "both");
+    let mut device = Device::with_library(&bytes);
+    assert_eq!(device.verify(id, ASKED_UNBOUNDED).verify, status(Ok(())));
+    interrupts_on_through_the_entry(&mut device);
+    device.m.out_port(PORT_MASK, 0);
+    let enter = usize::from(device.label("KERNEL_ENTER") - CODE_BASE);
+    let code = &device.image.code;
+    assert_eq!(
+        code[enter..enter + 2],
+        LD_A_I,
+        "kernel_enter starts with ld a,i"
+    );
+    assert_eq!(code[enter + 2], JP_PE, "then jp pe");
+    let (first_jp, entry) = (
+        device.label("KERNEL_ENTER") + LD_A_I_LEN,
+        device.label("ENTRY_VERIFY"),
+    );
+    device
+        .m
+        .load_ram(device.label("TEST_ASSERTION"), &(id as u16).to_le_bytes());
+    device.m.run(entry, 1);
+    for _ in 0..STEPS_IN_WINDOW {
+        if device.m.pc() == first_jp {
+            break;
+        }
+        device.m.resume(1);
+    }
+    assert_eq!(device.m.pc(), first_jp, "the first ld a,i has run");
+    let mut regs = device.m.regs();
+    assert_eq!(regs.iff1, 1, "interrupts are on");
+    regs.af &= !FLAG_PV;
+    device.m.set_regs(&regs);
+    let done = verify_end(&device);
+    for _ in 0..MAX_SLICES {
+        if (done..=done + 1).contains(&device.m.pc()) {
+            break;
+        }
+        device.m.resume(SLICE);
+    }
+    assert_eq!(device.byte("TEST_VERIFY_STATUS"), status(Ok(())));
+    assert_eq!(device.m.regs().iff1, 1, "interrupts are back on at exit");
 }
