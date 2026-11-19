@@ -57,13 +57,14 @@ pub fn pack_kernel(db: &Database, closure: &[StmtId]) -> Result<Vec<u8>, PackErr
 /// Builds a library from `closure`. The kernel requires every record's floats to come first and
 /// name variables in strictly rising id, so variables are numbered by a topological sort: each
 /// assertion in the closure puts the variable of each of its floats before the variable of the
-/// next. Where those constraints leave a choice, the variable whose first `$f` outside any block
-/// comes earliest goes first, then the one whose first `$f` anywhere does, then the one declared
-/// first by `$v`. The block preference matters because set.mm declares x, y and A in local blocks
-/// long before the global `$f` its later records use: ordering by the first `$f` anywhere leaves
-/// 253 ring records out of order. When the tie-break alone satisfies every record, the ids are
-/// exactly the tie-break's order. Constraints that form a cycle have no numbering, and the pack
-/// is refused with `PackError::FloatOrder` naming the assertions on the cycle.
+/// next. Where those constraints leave a choice, the variable with the lowest position goes
+/// first. A variable's position is that of its first `$f` outside any block if it has one, else
+/// of its first `$f`; a variable with no `$f` comes last, and equal positions go by `$v` order.
+/// Blocks count for less because set.mm declares x, y and A in local blocks long before the
+/// global `$f` its later records use, so the first `$f` anywhere is a poor position. When those
+/// positions alone satisfy every record, the ids are exactly their order. Constraints that form
+/// a cycle have no numbering, and the pack is refused with `PackError::FloatOrder` naming the
+/// assertions on the cycle.
 fn build(db: &Database, closure: &[StmtId], sections: bool) -> Result<Vec<u8>, PackError> {
     let stmts = || closure.iter().map(|&id| (id, db.stmt(id)));
     let mut typecode_of: HashMap<Sym, Sym> = HashMap::new();

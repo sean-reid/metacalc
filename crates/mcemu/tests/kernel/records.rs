@@ -14,7 +14,7 @@ fn the_kernel_accepts_and_refuses_the_same_records_as_the_model() {
 
 const ORDERED_BY_TWO_RECORDS: &str = "
 $c |- T $.
-$v p q r $.
+$v r q p $.
 ${
   a.q $f T q $.
   a.r $f T r $.

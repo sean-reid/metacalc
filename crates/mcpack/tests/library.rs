@@ -1039,7 +1039,7 @@ fn a_record_off_the_cycle_is_not_named() {
 
 #[test]
 fn floats_that_only_one_numbering_orders_pack_in_that_numbering() {
-    let src = "$c |- wff R $. $v p q r $.
+    let src = "$c |- wff R $. $v r q p $.
         ${ aq $f wff q $. ar $f wff r $. ax-1 $a |- R q r $. $}
         ${ bp $f wff p $. bq $f wff q $. ax-2 $a |- R p q $. $}";
     let db = db(src);

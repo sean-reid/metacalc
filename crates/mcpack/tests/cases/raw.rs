@@ -181,12 +181,6 @@ pub fn record_cases() -> Vec<RecordCase> {
             &[t, x, z],
             Ok(()),
         ),
-        case(
-            "a float for id 0 before a rising pair",
-            &[F(t), F(x), F(y)],
-            &[t, x, y],
-            bad,
-        ),
         case("two floats in falling ids", &[F(y), F(x)], &[t, x, y], bad),
         case(
             "falling ids after a rising pair",

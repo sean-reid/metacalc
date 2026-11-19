@@ -180,15 +180,18 @@ fn swapped_essential(original: Vec<u8>) -> Vec<u8> {
     })
 }
 
-const ORDERED_BY_TWO_RECORDS: &str = "$c |- wff R $. $v p q r $.
-    ${ aq $f wff q $. ar $f wff r $. ax-1 $a |- R q r $. $}
-    ${ bp $f wff p $. bq $f wff q $. ax-2 $a |- R p q $. $}";
+const ORDERED_BY_TWO_RECORDS: &str = "$c |- wff R $. $v r q p $.
+    ${ aq $f wff q $. ar $f wff r $. a.1 $e |- R q r $. ax-1 $a |- R r q $. $}
+    ${ bp $f wff p $. bq $f wff q $. b.1 $e |- R p q $. ax-2 $a |- R q p $. $}
+    ${ tp $f wff p $. tq $f wff q $. th.1 $e |- R p q $.
+       th $p |- R p q $= tq tp tp tq th.1 ax-2 ax-1 $. $}";
 
 #[test]
 fn records_whose_floats_only_one_numbering_orders_pack_check_and_export() {
-    let bytes = packed(ORDERED_BY_TWO_RECORDS);
-    check(&bytes).expect("the kernel accepts the library");
-    assert_eq!(exports_and_verifies(&bytes), Ok(()));
+    let db = parse(ORDERED_BY_TWO_RECORDS);
+    let out = round_trip("two records", &db);
+    check(&out.bytes).expect("the kernel accepts the library");
+    assert_eq!(exports_and_verifies(&out.bytes), Ok(()));
 }
 
 #[test]
