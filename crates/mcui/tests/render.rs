@@ -94,7 +94,7 @@ fn every_used_soft_key_is_its_own_inverted_box_with_the_label_centred_inside() {
             for y in 56..64 {
                 for x in from..=to {
                     let inside = x >= from && x < to;
-                    let ink = if label.is_empty() || !inside {
+                    let ink = if label.is_empty() || !inside || y == 56 {
                         false
                     } else {
                         let text = font.text(label);
@@ -147,6 +147,23 @@ fn a_highlighted_first_row_leaves_a_clear_line_under_the_title_bar() {
     assert!((0..WIDTH).all(|x| frame.get(x, ROW - 1)));
     assert!(row_is_clear(&frame, ROW));
     assert!((0..WIDTH).all(|x| frame.get(x, ROW + 1)));
+}
+
+#[test]
+fn a_highlighted_sixth_row_leaves_a_clear_line_above_the_key_boxes() {
+    let mut canvas = Canvas::default();
+    canvas.list_row(6, "", "", true);
+    canvas.soft_keys(["ace", "oxen", "sum", "zeus", "van"]);
+    let frame = canvas.into_bitmap();
+    assert!((0..WIDTH).all(|x| frame.get(x, 55)));
+    assert!(row_is_clear(&frame, 56));
+    for x in 0..WIDTH {
+        let in_box = (0..5).any(|i| {
+            let (from, to) = ((WIDTH * i + 2) / 5, (WIDTH * (i + 1) + 2) / 5 - 1);
+            (from..to).contains(&x)
+        });
+        assert_eq!(frame.get(x, 57), in_box, "column {x}");
+    }
 }
 
 #[test]
