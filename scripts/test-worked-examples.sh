@@ -91,7 +91,7 @@ cat >"$good" <<'PAGE'
 
 [`th-g`](../libraries/tiny.md#th-g), tiny library
 
-![th-g](examples/th-g.png)
+![th-g: the statement drawn in the calculator font](examples/th-g.png)
 
 <!-- outline: th-g -->
 <ul class="tree">
@@ -108,7 +108,7 @@ Hypotheses:
 
 [`th-m`](../libraries/tiny.md#th-m), tiny library
 
-![th-m](examples/th-m.png)
+![th-m: the statement drawn in the calculator font](examples/th-m.png)
 
 <!-- outline: th-m -->
 <ul class="tree">
@@ -124,7 +124,7 @@ Hypotheses:
 
 [`th-k`](../libraries/tiny.md#th-k), tiny library
 
-![th-k](examples/th-k.png)
+![th-k: the statement drawn in the calculator font](examples/th-k.png)
 
 <!-- outline: th-k -->
 <ul class="tree">
@@ -187,7 +187,7 @@ Then:\
 harmless bullet-after-blank-ignored '/^- `⊢ ( 𝜑 → 𝜓 )`$/a\
 \
 - `⊢ ( 𝜑 → 𝜑 )`'
-damaged hypothesis-spurious "the hypotheses listed for th-g differ from the database" '/^!\[th-g\]/a\
+damaged hypothesis-spurious "the hypotheses listed for th-g differ from the database" '/^!\[th-g:/a\
 \
 Hypotheses:\
 \
@@ -195,7 +195,7 @@ Hypotheses:\
 damaged link-label-differs "the link names th-g but the marker names th-m" 's/^\[`th-m`\](\.\.\/libraries\/tiny\.md#th-m)/[`th-g`](..\/libraries\/tiny.md#th-g)/'
 damaged link-anchor-differs "the link text th-m and its anchor th-g differ" 's/#th-m)/#th-g)/'
 damaged link-target-missing "docs/src/libraries/gone.md, which does not exist" 's/tiny\.md#th-m/gone.md#th-m/'
-damaged image-alt-differs "the image names th-g but the marker names th-m" 's/^!\[th-m\]/![th-g]/'
+damaged image-alt-differs "the image names th-g but the marker names th-m" 's/^!\[th-m:/![th-g:/'
 damaged image-path-differs "the image file is wrong.png but the marker names th-m" 's|examples/th-m\.png|examples/wrong.png|'
 damaged link-removed "expected one library link, found 0" '/^\[`th-m`\]/d'
 damaged tree-label-stale "the tree for th-g in .* differs from the database" 's/>ax-g</>ax-x</'
@@ -210,7 +210,23 @@ damaged symbol-row-miscounted "the symbol table row 𝜑 𝜓 has 2 symbols and 
 damaged symbol-markers-missing "the page must have exactly one line <!-- /symbols -->" '/^<!-- \/symbols -->$/d'
 damaged ascii-token-in-prose "line .* of the page has the ASCII token ph in inline code" 's/^Prose\.$/Prose with `ph`./'
 damaged ascii-statement-in-prose "has the ASCII token -> in inline code" '/^## 1\./,/^## 2\./s/^Prose\.$/Prose with `( 𝜑 -> 𝜓 )`./'
+damaged image-alt-without-description "the image alt text must read th-m: followed by a description" 's/^!\[th-m: [^]]*\]/![th-m]/'
+harmless single-letter-span-allowed 's/^Prose\.$/Prose with `y`./'
+damaged ascii-statement-with-a-letter "has the ASCII token y in inline code" 's/^Prose\.$/Prose with `A. y ps`./'
 damaged ascii-token-in-hypothesis "has the ASCII token |- in inline code" 's/^- `⊢ 𝜑`$/- `|- ph`/'
+
+cp "$good" "$page"
+cat >"$fake/libraries/aaa.toml" <<'TOML'
+name = "aaa"
+title = "Broken"
+description = "Cannot build."
+order = 0
+roots = ["no-such-theorem"]
+TOML
+page_fails library-build-fails "building the library aaa failed"
+printf 'name = "aaa"\ntitle = "Broken"\ndescription = "No order."\nroots = ["th-g"]\n' >"$fake/libraries/aaa.toml"
+page_fails library-without-order "aaa.toml has no order line"
+rm "$fake/libraries/aaa.toml"
 
 printf '# Page\n\nNo examples here.\n' >"$page"
 page_fails no-numbered-sections "the page has no numbered example sections"

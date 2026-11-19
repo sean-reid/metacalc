@@ -45,6 +45,7 @@ structure() {
 			if (images != 1) bad(title ": expected one image, found " images)
 			if (markers == 1 && links == 1 && marker != link) bad(title ": the link names " link " but the marker names " marker)
 			if (markers == 1 && images == 1 && marker != image) bad(title ": the image names " image " but the marker names " marker)
+			if (images == 1 && !described) bad(title ": the image alt text must read " marker ": followed by a description")
 			if (markers == 1 && images == 1 && marker != imagefile) bad(title ": the image file is " imagefile ".png but the marker names " marker)
 			if (markers == 1 && !fenced) bad(title ": the marker for " marker " is not followed by a tree")
 			if (markers == 1 && seen[marker]++) bad(title ": the marker " marker " is used in another section")
@@ -58,7 +59,7 @@ structure() {
 		/^## / {
 			flush()
 			title = ($0 ~ /^## [0-9]+\. /) ? $0 : ""
-			links = markers = images = fenced = inh = afterMarker = 0
+			links = markers = images = described = fenced = inh = afterMarker = 0
 			hyps = ""
 			examples += (title != "")
 			next
@@ -92,6 +93,8 @@ structure() {
 			image = $0
 			sub(/^!\[/, "", image)
 			sub(/\].*/, "", image)
+			described = (image ~ /^[^:]+: ./)
+			sub(/: .*/, "", image)
 			imagefile = $0
 			sub(/^!\[[^]]*\]\(examples\//, "", imagefile)
 			sub(/\.png\)$/, "", imagefile)
@@ -145,12 +148,21 @@ essentials() {
 # Writes "label page" for each label of the database the shipped libraries hold, the page being that
 # of the first library, in manifest order, that holds it, to the file $2. Builds in the directory $1.
 links() {
+	: >"$1/manifests"
 	for manifest in "$root"/libraries/*.toml; do
-		[ "$(basename "$manifest")" = source.toml ] || echo "$(sed -n 's/^order = //p' "$manifest") $manifest"
-	done | sort -n | while read -r _ manifest; do
+		[ "$(basename "$manifest")" = source.toml ] && continue
+		order=$(sed -n 's/^order = \([0-9][0-9]*\)$/\1/p' "$manifest")
+		[ -n "$order" ] || { echo "worked-examples: $manifest has no order line" >&2; return 1; }
+		echo "$order $manifest" >>"$1/manifests"
+	done
+	sort -n "$1/manifests" >"$1/manifests.sorted"
+	: >"$1/links.all"
+	while read -r _ manifest; do
 		name=$(basename "$manifest" .toml)
-		mcpack build "$manifest" --database "$target" -o "$1/$name.mclib" >/dev/null
-		mcpack export "$1/$name.mclib" -o "$1/$name.mm" >/dev/null
+		mcpack build "$manifest" --database "$target" -o "$1/$name.mclib" >/dev/null ||
+			{ echo "worked-examples: building the library $name failed" >&2; return 1; }
+		mcpack export "$1/$name.mclib" -o "$1/$name.mm" >/dev/null ||
+			{ echo "worked-examples: exporting the library $name failed" >&2; return 1; }
 		awk -v page="../libraries/$name.md" '
 			{
 				for (i = 1; i <= NF; i++) {
@@ -163,13 +175,14 @@ links() {
 					prev = t
 				}
 			}
-		' "$1/$name.mm"
-	done | awk '!seen[$1]++' >"$2"
+		' "$1/$name.mm" >>"$1/links.all" || { echo "worked-examples: reading the export of $name failed" >&2; return 1; }
+	done <"$1/manifests.sorted"
+	awk '!seen[$1]++' "$1/links.all" >"$2"
 }
 
 outlines() {
 	mkdir -p "$1"
-	links "$1" "$1/links"
+	links "$1" "$1/links" || return 1
 	for label in $(labels); do
 		mcpack outline "$target" "$label" --html --links "$1/links" >"$1/$label"
 		mcpack outline "$target" "$label" >"$1/$label.ascii"
@@ -202,10 +215,12 @@ symbol_rows() {
 	' "$page"
 }
 
-# Prints the ASCII Metamath tokens left in inline code outside the symbol table and the trees.
+# Prints "line:token" for each ASCII Metamath token left in inline code outside the symbol table and
+# the trees. The tokens are those of the file $1, one per line. A span holding one single-letter
+# token is not flagged, since prose names variables that way.
 leftovers() {
-	awk '
-		BEGIN { n = split("|- -> <-> -. /\\ \\/ e. C_ ph ps ch A B C G R X .+ .0. .x.", w, " "); for (i = 1; i <= n; i++) banned[w[i]] = 1 }
+	awk -v banned="$1" '
+		BEGIN { while ((getline t < banned) > 0) ban[t] = 1 }
 		$0 == "<!-- symbols -->" { skip = 1 }
 		$0 == "<!-- /symbols -->" { skip = 0; next }
 		/^<ul class="tree"/ { skip = 1 }
@@ -214,14 +229,21 @@ leftovers() {
 		skip || fenced { next }
 		{
 			line = $0
-			if (line ~ /^- ``.*``$/) { sub(/^- ``/, "", line); sub(/``$/, "", line); spans = line }
+			if (line ~ /^- ``.*``$/) { sub(/^- ``/, "", line); sub(/``$/, "", line); spans = line "\001" }
 			else {
 				k = split(line, part, "`")
 				spans = ""
-				for (i = 2; i <= k; i += 2) spans = spans " " part[i]
+				for (i = 2; i <= k; i += 2) spans = spans part[i] "\001"
 			}
-			m = split(spans, tok, " ")
-			for (i = 1; i <= m; i++) if (tok[i] in banned) printf "%d:%s\n", NR, tok[i]
+			count = split(spans, span, "\001")
+			for (j = 1; j < count; j++) {
+				m = split(span[j], tok, " ")
+				for (i = 1; i <= m; i++) {
+					if (!(tok[i] in ban)) continue
+					if (m == 1 && length(tok[i]) == 1) continue
+					printf "%d:%s\n", NR, tok[i]
+				}
+			}
 		}
 	' "$page"
 }
@@ -233,7 +255,7 @@ check)
 	status=0
 	: >"$tmp/structure"
 	structure "$tmp/structure" || status=1
-	outlines "$tmp"
+	outlines "$tmp" || exit 1
 	wanted=$(labels | tr '\n' ' ')
 	essentials "$target" "$wanted" >"$tmp/essentials"
 	cut -f1 "$tmp/essentials" >"$tmp/essential.names"
@@ -272,6 +294,7 @@ check)
 	{ tokens "$tmp"/*.ascii; cut -f2 "$tmp/essentials" | tr -s ' ' '\n'; } | sed '/^$/d' | sort -u >"$tmp/used"
 	cut -f2 "$tmp/rows" | tr -s ' ' '\n' | sed '/^$/d' | sort -u >"$tmp/tabled"
 	sort -u "$tmp/used" "$tmp/tabled" >"$tmp/all"
+	: >"$tmp/spellings"
 	if mcpack spell <"$tmp/all" >"$tmp/spelled" 2>"$tmp/spell.err"; then
 		paste "$tmp/all" "$tmp/spelled" >"$tmp/spellings"
 		awk -F'\t' '
@@ -300,7 +323,8 @@ check)
 		status=1
 	fi
 	[ -s "$tmp/rows" ] || { echo "worked-examples: the page has no symbol table" >&2; status=1; }
-	leftovers >"$tmp/leftovers"
+	awk -F'\t' 'function same(a, b) { return length(a) == length(b) && index(a, b) == 1 } !same($1, $2) { print $1 }' "$tmp/spellings" >"$tmp/banned"
+	leftovers "$tmp/banned" >"$tmp/leftovers"
 	while IFS=: read -r number token; do
 		echo "worked-examples: line $number of the page has the ASCII token $token in inline code" >&2
 		status=1
@@ -311,7 +335,7 @@ check)
 write)
 	tmp=$(mktemp -d)
 	trap 'rm -rf "$tmp"' EXIT
-	outlines "$tmp"
+	outlines "$tmp" || exit 1
 	awk -v dir="$tmp" '
 		/^<!-- outline: .* -->$/ { label = $0; sub(/^<!-- outline: /, "", label); sub(/ -->$/, "", label); want = 1; print; next }
 		want && !inside {
@@ -327,7 +351,7 @@ images)
 	mkdir -p "$target"
 	set -f
 	for label in $(labels); do
-		statement=$(block "$label" | sed -n '1s/^<ul class="tree" data-statement="\(.*\)">$/\1/p' |
+		statement=$(block "$label" | sed -n '1s/^<ul class="tree" role="list" data-statement="\(.*\)">$/\1/p' |
 			sed 's/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&amp;/\&/g')
 		# shellcheck disable=SC2086
 		mcglyph -o "$target/$label.png" $statement

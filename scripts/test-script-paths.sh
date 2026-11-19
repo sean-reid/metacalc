@@ -65,7 +65,7 @@ cat >"$fake/docs/src/guide/worked-examples.md" <<'PAGE'
 
 [`th-g`](../libraries/tiny.md#th-g)
 
-![th-g](examples/th-g.png)
+![th-g: the statement drawn in the calculator font](examples/th-g.png)
 
 <!-- outline: th-g -->
 <ul class="tree">

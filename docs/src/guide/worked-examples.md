@@ -45,14 +45,14 @@ The root statement of each example is also drawn in the calculator's font. These
 
 [`id`](../libraries/prop.md#id), propositional calculus library
 
-![id](examples/id.png)
+![id: the statement drawn in the calculator font](examples/id.png)
 
-*Rendering of the statement in the calculator font.*
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: id -->
-<ul class="tree" data-statement="|- ( ph -&gt; ph )">
+<ul class="tree" role="list" data-statement="|- ( ph -&gt; ph )">
   <li><span class="st">⊢ ( 𝜑 → 𝜑 )</span> <a class="lb" href="../libraries/prop.md#mpd">mpd</a>
-    <ul>
+    <ul role="list">
       <li><span class="st">⊢ ( 𝜑 → ( 𝜑 → 𝜑 ) )</span> <a class="lb" href="../libraries/prop.md#ax-1">ax-1</a></li>
       <li><span class="st">⊢ ( 𝜑 → ( ( 𝜑 → 𝜑 ) → 𝜑 ) )</span> <a class="lb" href="../libraries/prop.md#ax-1">ax-1</a></li>
     </ul>
@@ -72,17 +72,17 @@ Hypotheses:
 
 [`syl`](../libraries/prop.md#syl), propositional calculus library
 
-![syl](examples/syl.png)
+![syl: the statement drawn in the calculator font](examples/syl.png)
 
-*Rendering of the statement in the calculator font.*
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: syl -->
-<ul class="tree" data-statement="|- ( ph -&gt; ch )">
+<ul class="tree" role="list" data-statement="|- ( ph -&gt; ch )">
   <li><span class="st">⊢ ( 𝜑 → 𝜒 )</span> <a class="lb" href="../libraries/prop.md#mpd">mpd</a>
-    <ul>
+    <ul role="list">
       <li><span class="st">⊢ ( 𝜑 → 𝜓 )</span> <span class="lb">syl.1</span></li>
       <li><span class="st">⊢ ( 𝜑 → ( 𝜓 → 𝜒 ) )</span> <a class="lb" href="../libraries/prop.md#a1i">a1i</a>
-        <ul>
+        <ul role="list">
           <li><span class="st">⊢ ( 𝜓 → 𝜒 )</span> <span class="lb">syl.2</span></li>
         </ul>
       </li>
@@ -102,14 +102,14 @@ Hypotheses:
 
 [`con3i`](../libraries/prop.md#con3i), propositional calculus library
 
-![con3i](examples/con3i.png)
+![con3i: the statement drawn in the calculator font](examples/con3i.png)
 
-*Rendering of the statement in the calculator font.*
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: con3i -->
-<ul class="tree" data-statement="|- ( -. ps -&gt; -. ph )">
+<ul class="tree" role="list" data-statement="|- ( -. ps -&gt; -. ph )">
   <li><span class="st">⊢ ( ¬ 𝜓 → ¬ 𝜑 )</span> <a class="lb" href="../libraries/prop.md#nsyl">nsyl</a>
-    <ul>
+    <ul role="list">
       <li><span class="st">⊢ ( ¬ 𝜓 → ¬ 𝜓 )</span> <a class="lb" href="../libraries/prop.md#id">id</a></li>
       <li><span class="st">⊢ ( 𝜑 → 𝜓 )</span> <span class="lb">con3i.a</span></li>
     </ul>
@@ -129,16 +129,16 @@ Hypotheses:
 
 [`pm2.61i`](../libraries/prop.md#pm2.61i), propositional calculus library
 
-![pm2.61i](examples/pm2.61i.png)
+![pm2.61i: the statement drawn in the calculator font](examples/pm2.61i.png)
 
-*Rendering of the statement in the calculator font.*
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: pm2.61i -->
-<ul class="tree" data-statement="|- ps">
+<ul class="tree" role="list" data-statement="|- ps">
   <li><span class="st">⊢ 𝜓</span> <a class="lb" href="../libraries/prop.md#pm2.18i">pm2.18i</a>
-    <ul>
+    <ul role="list">
       <li><span class="st">⊢ ( ¬ 𝜓 → 𝜓 )</span> <a class="lb" href="../libraries/prop.md#nsyl4">nsyl4</a>
-        <ul>
+        <ul role="list">
           <li><span class="st">⊢ ( 𝜑 → 𝜓 )</span> <span class="lb">pm2.61i.1</span></li>
           <li><span class="st">⊢ ( ¬ 𝜑 → 𝜓 )</span> <span class="lb">pm2.61i.2</span></li>
         </ul>
@@ -155,14 +155,14 @@ Not both `𝜑` and `𝜓` holds exactly when `𝜑` fails or `𝜓` fails.
 
 [`ianor`](../libraries/prop.md#ianor), propositional calculus library
 
-![ianor](examples/ianor.png)
+![ianor: the statement drawn in the calculator font](examples/ianor.png)
 
-*Rendering of the statement in the calculator font.*
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: ianor -->
-<ul class="tree" data-statement="|- ( -. ( ph /\ ps ) &lt;-&gt; ( -. ph \/ -. ps ) )">
+<ul class="tree" role="list" data-statement="|- ( -. ( ph /\ ps ) &lt;-&gt; ( -. ph \/ -. ps ) )">
   <li><span class="st">⊢ ( ¬ ( 𝜑 ∧ 𝜓 ) ↔ ( ¬ 𝜑 ∨ ¬ 𝜓 ) )</span> <a class="lb" href="../libraries/prop.md#bitr3i">bitr3i</a>
-    <ul>
+    <ul role="list">
       <li><span class="st">⊢ ( ( 𝜑 → ¬ 𝜓 ) ↔ ¬ ( 𝜑 ∧ 𝜓 ) )</span> <a class="lb" href="../libraries/prop.md#imnan">imnan</a></li>
       <li><span class="st">⊢ ( ( 𝜑 → ¬ 𝜓 ) ↔ ( ¬ 𝜑 ∨ ¬ 𝜓 ) )</span> <a class="lb" href="../libraries/prop.md#pm4.62">pm4.62</a></li>
     </ul>
@@ -182,14 +182,14 @@ Hypotheses:
 
 [`sstri`](../libraries/ring.md#sstri), ring theory library
 
-![sstri](examples/sstri.png)
+![sstri: the statement drawn in the calculator font](examples/sstri.png)
 
-*Rendering of the statement in the calculator font.*
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: sstri -->
-<ul class="tree" data-statement="|- A C_ C">
+<ul class="tree" role="list" data-statement="|- A C_ C">
   <li><span class="st">⊢ 𝐴 ⊆ 𝐶</span> <a class="lb" href="../libraries/prop.md#mp2">mp2</a>
-    <ul>
+    <ul role="list">
       <li><span class="st">⊢ 𝐴 ⊆ 𝐵</span> <span class="lb">sstri.1</span></li>
       <li><span class="st">⊢ 𝐵 ⊆ 𝐶</span> <span class="lb">sstri.2</span></li>
       <li><span class="st">⊢ ( 𝐴 ⊆ 𝐵 → ( 𝐵 ⊆ 𝐶 → 𝐴 ⊆ 𝐶 ) )</span> <a class="lb" href="../libraries/ring.md#sstr2">sstr2</a></li>
@@ -211,17 +211,17 @@ Hypotheses:
 
 [`grplid`](../libraries/ring.md#grplid), ring theory library
 
-![grplid](examples/grplid.png)
+![grplid: the statement drawn in the calculator font](examples/grplid.png)
 
-*Rendering of the statement in the calculator font.*
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: grplid -->
-<ul class="tree" data-statement="|- ( ( G e. Grp /\ X e. B ) -&gt; ( .0. .+ X ) = X )">
+<ul class="tree" role="list" data-statement="|- ( ( G e. Grp /\ X e. B ) -&gt; ( .0. .+ X ) = X )">
   <li><span class="st">⊢ ( ( 𝐺 ∈ Grp ∧ 𝑋 ∈ 𝐵 ) → ( <span class="s">0</span> <span class="s">+</span> 𝑋 ) = 𝑋 )</span> <a class="lb" href="../libraries/prop.md#sylan">sylan</a>
-    <ul>
+    <ul role="list">
       <li><span class="st">⊢ ( 𝐺 ∈ Grp → 𝐺 ∈ Mnd )</span> <a class="lb" href="../libraries/ring.md#grpmnd">grpmnd</a></li>
       <li><span class="st">⊢ ( ( 𝐺 ∈ Mnd ∧ 𝑋 ∈ 𝐵 ) → ( <span class="s">0</span> <span class="s">+</span> 𝑋 ) = 𝑋 )</span> <a class="lb" href="../libraries/ring.md#mndlid">mndlid</a>
-        <ul>
+        <ul role="list">
           <li><span class="st">⊢ 𝐵 = ( Base ‘ 𝐺 )</span> <span class="lb">grpbn0.b</span></li>
           <li><span class="st">⊢ <span class="s">+</span> = ( +g ‘ 𝐺 )</span> <span class="lb">grplid.p</span></li>
           <li><span class="st">⊢ <span class="s">0</span> = ( 0g ‘ 𝐺 )</span> <span class="lb">grplid.o</span></li>
@@ -245,17 +245,17 @@ Hypotheses:
 
 [`ringlz`](../libraries/ring.md#ringlz), ring theory library
 
-![ringlz](examples/ringlz.png)
+![ringlz: the statement drawn in the calculator font](examples/ringlz.png)
 
-*Rendering of the statement in the calculator font.*
+*A rendering of the statement in the calculator's font, not a screen capture.*
 
 <!-- outline: ringlz -->
-<ul class="tree" data-statement="|- ( ( R e. Ring /\ X e. B ) -&gt; ( .0. .x. X ) = .0. )">
+<ul class="tree" role="list" data-statement="|- ( ( R e. Ring /\ X e. B ) -&gt; ( .0. .x. X ) = .0. )">
   <li><span class="st">⊢ ( ( 𝑅 ∈ Ring ∧ 𝑋 ∈ 𝐵 ) → ( <span class="s">0</span> <span class="s">·</span> 𝑋 ) = <span class="s">0</span> )</span> <a class="lb" href="../libraries/prop.md#sylan">sylan</a>
-    <ul>
+    <ul role="list">
       <li><span class="st">⊢ ( 𝑅 ∈ Ring → 𝑅 ∈ Rng )</span> <a class="lb" href="../libraries/ring.md#ringrng">ringrng</a></li>
       <li><span class="st">⊢ ( ( 𝑅 ∈ Rng ∧ 𝑋 ∈ 𝐵 ) → ( <span class="s">0</span> <span class="s">·</span> 𝑋 ) = <span class="s">0</span> )</span> <a class="lb" href="../libraries/ring.md#rnglz">rnglz</a>
-        <ul>
+        <ul role="list">
           <li><span class="st">⊢ 𝐵 = ( Base ‘ 𝑅 )</span> <span class="lb">ringz.b</span></li>
           <li><span class="st">⊢ <span class="s">·</span> = ( .r ‘ 𝑅 )</span> <span class="lb">ringz.t</span></li>
           <li><span class="st">⊢ <span class="s">0</span> = ( 0g ‘ 𝑅 )</span> <span class="lb">ringz.z</span></li>
