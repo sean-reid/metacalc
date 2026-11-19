@@ -9,6 +9,7 @@ OUT_BUF   = 0A010h
 OUT_IFF   = 0A004h
 OUT_FLAGGED = 0A006h
 IY_TEST   = 089F0h
+UI_SNAPSHOT = 0B000h
 
 .org 4000h
 	jp main
@@ -28,6 +29,10 @@ main:
 	ld de, 0
 	ld b, 0
 	call ui_text
+	ld hl, UI_VARS
+	ld de, UI_SNAPSHOT
+	ld bc, UI_VARS_SIZE
+	ldir
 #endif
 	ei
 	nop

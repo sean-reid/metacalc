@@ -263,27 +263,34 @@ fn ui_label(name: &str) -> u16 {
         .unwrap_or_else(|| panic!("no label {name}"))
 }
 
+/// Where the image copies the UI's variables after drawing, before it calls the driver.
+const UI_SNAPSHOT: u16 = 0xB000;
+
 #[test]
-fn a_kernel_driver_run_leaves_the_uis_font_and_row_base_pointers_alone() {
+fn a_kernel_driver_run_leaves_every_byte_of_the_uis_variables_alone() {
     let bytes = axioms(300);
     let mut rig = Rig::with_code(&bytes, Speed::Mhz15, UI_CODE);
+    let scratch = ui_label("K_PARAMS");
+    let scratch_len = usize::from(ui_label("K_END") - ui_label("K_PARAMS"));
+    let before = rig.ram(scratch, scratch_len);
     rig.run_to_end();
     let (_, result) = screens(&rig.trace());
     assert_eq!(result, report(&bytes));
     assert_eq!(rig.word_at(ui_label("K_ACCEPTED")), 300);
-    let font = ui_label("UI_FONT");
-    assert_eq!(rig.word_at(ui_label("UI_FONTP")), font - ui_label("SLOT"));
-    assert_eq!(
-        rig.word_at(ui_label("UI_ROWBASE")),
-        ui_label("UI_FRAME") + ui_label("UI_STRIDE")
+    assert_ne!(
+        rig.ram(scratch, scratch_len),
+        before,
+        "the driver wrote nothing to its scratch"
     );
-    let scratch = ui_label("K_PARAMS")..ui_label("K_END");
-    for name in ["UI_FONTP", "UI_ROWBASE"] {
-        assert!(
-            !scratch.contains(&ui_label(name)),
-            "{name} is in the driver's scratch"
-        );
-    }
+    let vars = ui_label("UI_VARS");
+    let len = usize::from(ui_label("UI_VARS_SIZE"));
+    let drawn = rig.ram(UI_SNAPSHOT, len);
+    assert_eq!(
+        rig.word_at(ui_label("UI_FONTP")),
+        ui_label("UI_FONT") - ui_label("SLOT")
+    );
+    assert!(drawn.iter().any(|&b| b != 0), "the UI set no variables");
+    assert_eq!(rig.ram(vars, len), drawn);
 }
 
 #[test]
