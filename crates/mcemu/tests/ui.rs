@@ -12,3 +12,5 @@ mod shapes;
 mod speed;
 #[path = "ui/support.rs"]
 mod support;
+#[path = "ui/vars.rs"]
+mod vars;

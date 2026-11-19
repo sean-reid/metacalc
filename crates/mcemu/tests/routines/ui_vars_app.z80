@@ -1,0 +1,101 @@
+#include "equates.inc"
+#define APP_NAME "uivarsap"
+#include "header.inc"
+
+; Fills UI_VARS with a pattern, calls what the OS might use saveSScreen for, and after each call
+; compares the pattern. RESULT is the number of the last call that returned, RESULT + 1 the first
+; call after which the pattern differed, 0 for none, RESULT + 2 the 26 bytes as that call left them.
+RESULT  = 0A800h
+STEP    = 37
+SEED    = 0A5h
+
+start:
+	ei
+	xor a
+	ld (RESULT), a
+	ld (RESULT + 1), a
+	ld hl, UI_VARS
+	ld b, UI_VARS_SIZE
+	ld a, SEED
+fill:
+	ld (hl), a
+	inc hl
+	add a, STEP
+	djnz fill
+
+	xor a
+	ld (curRow), a
+	ld (curCol), a
+
+	bcall(_GetCSC)
+	ld b, 1
+	call check
+	ld a, 'A'
+	bcall(_PutC)
+	ld b, 2
+	call check
+	bcall(_ClrLCDFull)
+	ld b, 3
+	call check
+	bcall(_GrBufCpy)
+	ld b, 4
+	call check
+	bcall(_NewLine)
+	ld b, 5
+	call check
+	bcall(_GetKey)
+	ld b, 6
+	call check
+	call name_op1
+	ld hl, 8
+	bcall(_CreateAppVar)
+	ld b, 7
+	call check
+	call name_op1
+	bcall(_Arc_Unarc)
+	ld b, 8
+	call check
+done:
+	ei
+	halt
+	jr done
+
+; In: B = the call that just returned.
+check:
+	ld a, b
+	ld (RESULT), a
+	ld hl, UI_VARS
+	ld c, UI_VARS_SIZE
+	ld d, SEED
+compare:
+	ld a, (hl)
+	cp d
+	jr nz, differs
+	inc hl
+	ld a, d
+	add a, STEP
+	ld d, a
+	dec c
+	jr nz, compare
+	ret
+differs:
+	ld a, (RESULT + 1)
+	or a
+	ret nz
+	ld a, b
+	ld (RESULT + 1), a
+	ld hl, UI_VARS
+	ld de, RESULT + 2
+	ld bc, UI_VARS_SIZE
+	ldir
+	ret
+
+name_op1:
+	ld hl, arc_name
+	ld de, OP1
+	ld bc, 9
+	ldir
+	ret
+
+arc_name:
+	.db 15h, "uivars", 0, 0

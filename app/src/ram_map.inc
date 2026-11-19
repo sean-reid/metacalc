@@ -4,7 +4,8 @@
 ; two regions overlap or a region leaves its bank.
 ;
 ;   name              bank  where
-;   UI_VARS           B     the UI's variables, in saveSScreen
+;   UI_VARS           B     the UI's variables, in saveSScreen; the OS zeroes it when auto power
+;                           down fires in _GetKey
 ;   UI_FRAME          B     the UI's 96 by 64 frame, plotSScreen
 ;   KD_SCRATCH        B     the kernel driver's scratch, from libPage, in appBackUpScreen
 ;   LIB_STATE         B     the reader's state, after the driver's scratch
