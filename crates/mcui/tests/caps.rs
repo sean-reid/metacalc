@@ -40,6 +40,15 @@ fn expression(shape: Shape) -> String {
 /// A library whose only assertion of interest is the axiom `big`, with one hypothesis per shape
 /// before the last and the last as its conclusion.
 fn library(shapes: &[Shape]) -> Vec<u8> {
+    packed(shapes, false)
+}
+
+/// [`library`] with `big` a theorem proved by an axiom that states its conclusion.
+fn proved_library(shapes: &[Shape]) -> Vec<u8> {
+    packed(shapes, true)
+}
+
+fn packed(shapes: &[Shape], proved: bool) -> Vec<u8> {
     let mut syntax = String::new();
     let mut runs: Vec<usize> = shapes.iter().map(|&s| parts(s).2).collect();
     runs.sort();
@@ -53,11 +62,16 @@ fn library(shapes: &[Shape]) -> Vec<u8> {
         .enumerate()
         .map(|(i, &s)| format!("  big.{} $e {} $.\n", i + 1, expression(s)))
         .collect();
+    let conclusion = expression(*conclusion);
+    let (before, kind, proof) = if proved {
+        (format!("ax $a {conclusion} $.\n"), "$p", "$= ax ")
+    } else {
+        (String::new(), "$a", "")
+    };
     let src = format!(
         "$c ( ) wff setvar |- zz yy $.\n$v ph x $.\nwph $f wff ph $.\nvx $f setvar x $.\n\
-         wu $a wff yy ph $.\nwp $a wff x ph $.\n{syntax}\
-         ${{\n{hyps}  big $a {} $.\n$}}\n",
-        expression(*conclusion)
+         wu $a wff yy ph $.\nwp $a wff x ph $.\n{syntax}{before}\
+         ${{\n{hyps}  big {kind} {conclusion} {proof}$.\n$}}\n"
     );
     pack_all(&db(&src)).expect("the library packs")
 }
@@ -87,7 +101,10 @@ fn assert_measured(bytes: &[u8], shapes: &[Shape]) {
 }
 
 fn opened(shapes: &[Shape]) -> Ui {
-    let bytes = library(shapes);
+    opened_in(library(shapes), shapes)
+}
+
+fn opened_in(bytes: Vec<u8>, shapes: &[Shape]) -> Ui {
     assert_measured(&bytes, shapes);
     let mut ui = ui_over(bytes, &[], &[]);
     open(&mut ui, "big");
@@ -105,7 +122,11 @@ fn spread(count: usize, tokens: usize, nodes: usize) -> Vec<Shape> {
 }
 
 fn notice_is_drawn(frame: &Bitmap) -> bool {
-    let lines = wrap(SENTENCE, TEXT_WIDTH);
+    sentence_is_drawn(frame, SENTENCE)
+}
+
+fn sentence_is_drawn(frame: &Bitmap, sentence: &str) -> bool {
+    let lines = wrap(sentence, TEXT_WIDTH);
     let first = 1 + (CONTENT_ROWS - lines.len()) / 2;
     lines.iter().enumerate().all(|(i, line)| {
         text_at(
@@ -234,4 +255,41 @@ fn no_shipped_assertion_is_past_a_cap() {
             assert!(mcui::caps::statement_within(&statement.conclusion));
         }
     }
+}
+
+fn tried(shapes: &[Shape]) -> Ui {
+    let mut ui = opened_in(proved_library(shapes), shapes);
+    ui.press(F4);
+    ui
+}
+
+const TRY_NOTICE: &str = "its statement is too large";
+
+fn try_is_refused(shapes: &[Shape]) {
+    let ui = tried(shapes);
+    assert!(matches!(ui.state(), State::Notice { ref title } if title == "Prove"));
+    assert_eq!(ui.depth(), 4);
+    let frame = ui.frame();
+    assert!(sentence_is_drawn(&frame, TRY_NOTICE));
+    check_frame(&frame, "proving-too-large");
+}
+
+fn try_opens(shapes: &[Shape], name: &str) {
+    let ui = tried(shapes);
+    assert!(matches!(ui.state(), State::Proving { ref label, .. } if label == "big"));
+    check_frame(&ui.frame(), &format!("proving-within-{name}"));
+}
+
+#[test]
+fn try_on_a_theorem_past_a_cap_gives_the_prove_notice() {
+    try_is_refused(&spread(33, 66, 33));
+    try_is_refused(&spread(4, 769, 8));
+    try_is_refused(&spread(4, 400, 385));
+}
+
+#[test]
+fn try_on_a_theorem_at_each_cap_opens_the_proving_screen() {
+    try_opens(&spread(32, 64, 32), "statements");
+    try_opens(&spread(4, 768, 8), "tokens");
+    try_opens(&spread(4, 400, 384), "nodes");
 }
