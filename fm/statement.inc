@@ -50,6 +50,33 @@ fg_spaced:
 	ld e,1+FM_SPACE
 	ret
 
+; out: Z when the reader has open the library fm_open copied from, else NZ and A =
+; FM_ERR_NOT_OPEN. Destroys all but IX, IY.
+fm_same_library:
+	call lib_glyphs
+	jr nz,fs_other
+	ld a,(fv_lib+2)
+	cp e
+	jr nz,fs_other
+	ld de,(fv_lib)
+	or a
+	sbc hl,de
+	jr nz,fs_other
+	ld hl,(fv_lib+3)
+	or a
+	sbc hl,bc
+	jr nz,fs_other
+	ld a,(lr_page)
+	ld hl,fv_lib+5
+	cp (hl)
+	jr nz,fs_other
+	xor a
+	ret
+fs_other:
+	ld a,FM_ERR_NOT_OPEN
+	or a
+	ret
+
 statement_body:
 	call fm_need
 	jp nz,fm_fail
@@ -58,6 +85,8 @@ statement_body:
 	ld (fv_cn),hl
 	xor a
 	ld (fv_count),a
+	call fm_same_library
+	jp nz,fm_fail
 	ld a,(fv_k)
 	inc a
 	jr z,sb_conclusion

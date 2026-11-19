@@ -33,7 +33,7 @@ fn calls(n: u16, k: u8) -> Vec<(&'static str, Regs, u8)> {
     ]
 }
 
-fn restored(fm: &mut Fm, what: &str, ei: bool, port5: u8) {
+fn restored(fm: &mut Fm, what: &str, ei: bool, port5: u8, port7: u8) {
     fm.rig.ei = ei;
     fm.rig.m.out_port(5, port5);
     let (n, k, _) = longest(&fixture::library());
@@ -42,7 +42,7 @@ fn restored(fm: &mut Fm, what: &str, ei: bool, port5: u8) {
         let what = format!("{what}: {target} with interrupts {ei}, port 5 {port5}");
         assert_eq!(out.status(), status, "{what}: status");
         assert_eq!(out.port5, port5, "{what}: port 5");
-        assert_eq!(out.port7, 0x81, "{what}: port 7");
+        assert_eq!(out.port7, port7, "{what}: port 7");
         assert_eq!(out.iff, u8::from(ei), "{what}: interrupt flag");
         assert_eq!(out.iy, IY, "{what}: IY");
         assert_eq!(fm.rig.m.regs().sp, fm.rig.sp, "{what}: SP");
@@ -54,9 +54,9 @@ fn restored(fm: &mut Fm, what: &str, ei: bool, port5: u8) {
 fn every_routine_hands_back_the_ports_the_stack_and_the_interrupt_state_it_was_given() {
     let bytes = fixture::library();
     for ei in [false, true] {
-        for port5 in [0, 1, 3, 5] {
-            let mut fm = Fm::bare(&bytes);
-            restored(&mut fm, "fm closed", ei, port5);
+        for (port5, port7) in [(0, 0x81), (1, 0x89), (3, 0x89), (5, 0x81)] {
+            let mut fm = Fm::bare_in(&bytes, port7);
+            restored(&mut fm, "fm closed", ei, port5, port7);
         }
     }
 }
@@ -81,67 +81,91 @@ fn a_routine_on_a_closed_fm_returns_not_open_and_hands_the_state_back_too() {
     }
 }
 
-fn sweep(fm: &mut Fm, target: &str, regs: Regs) -> usize {
+/// T-states from the start of a driver call to fm's first instruction and to the driver's code
+/// after fm's return, found by stepping the call.
+fn span(fm: &mut Fm, target: &str, regs: Regs) -> (u32, u32) {
+    fm.rig.prepare(target, regs);
+    let (entry, done) = (fm.rig.label(target), fm.rig.label("CALL_DONE"));
+    let (mut spent, mut start) = (0, None);
+    let mut run = fm.rig.m.run(fm.rig.label("CALL_ENTRY"), 1);
+    loop {
+        spent += run.tstates;
+        let pc = fm.rig.m.pc();
+        if start.is_none() && pc == entry {
+            start = Some(spent);
+        }
+        if pc == done {
+            return (start.expect("fm ran"), spent);
+        }
+        run = fm.rig.m.resume(1);
+    }
+}
+
+/// An interrupt arrives after every T-state of the first and last 450 of the session, from fm's
+/// first instruction to the driver's code after its return. Each time the status and result, the
+/// frame, the ports, SP and the interrupt flag must be those of the run with no interrupt, and
+/// the interrupt must have been taken.
+fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8) -> usize {
     fm.rig.install_handler();
     fm.rig.ei = true;
+    let clear = |fm: &mut Fm| {
+        if target == "FM_DRAW" {
+            fm.clear();
+        }
+    };
+    clear(fm);
     let want = fm.rig.call(target, regs);
-    let total = want.tstates;
-    let mut fired = 0;
-    let early = 1..=450;
-    let late = total.saturating_sub(450)..=total + 10;
-    for after in early.chain(late) {
+    let frame = fm.frame();
+    let rows = fm.rows(94).bc;
+    let (start, end) = span(fm, target, regs);
+    let mut trials = 0;
+    for after in (start..=start + 450).chain(end.saturating_sub(450)..=end) {
+        clear(fm);
         let (out, taken) = fm.rig.call_interrupted(target, regs, after);
-        fired += usize::from(taken > 0);
-        let what = format!("{target}, interrupt after {after} of {total} T-states");
+        let what = format!("{target}, interrupt after {after} of {start} to {end} T-states");
+        assert_eq!(taken, 1, "{what}: taken");
         assert_eq!((out.af >> 8, out.bc), (want.af >> 8, want.bc), "{what}");
-        assert_eq!((out.port5, out.port7, out.iff), (0, 0x81, 1), "{what}");
+        assert_eq!((out.port5, out.port7, out.iff), (0, port7, 1), "{what}");
         assert_eq!(fm.rig.m.regs().sp, fm.rig.sp, "{what}: SP");
+        assert_eq!(fm.frame(), frame, "{what}: frame");
+        assert_eq!(fm.rows(94).bc, rows, "{what}: rows");
+        trials += 1;
     }
-    fired
+    trials
 }
 
 #[test]
 fn an_interrupt_in_the_entry_or_the_exit_of_a_session_changes_nothing() {
     let bytes = fixture::library();
     let (n, k, tokens) = longest(&bytes);
-    let mut fm = Fm::new(&bytes);
-    let mut fired = 0;
-    fired += sweep(
-        &mut fm,
-        "FM_STATEMENT",
-        Regs {
+    for port7 in [0x81, 0x89] {
+        let mut fm = Fm::bare_in(&bytes, port7);
+        assert_eq!(fm.open().status(), 0);
+        let statement = Regs {
             hl: n,
             de: u16::from(k),
             ..Regs::default()
-        },
-    );
-    fired += sweep(
-        &mut fm,
-        "FM_ROWS",
-        Regs {
+        };
+        assert!(sweep(&mut fm, "FM_STATEMENT", statement, port7) > 800);
+        let rows = Regs {
             de: 94 << 8,
             ..Regs::default()
-        },
-    );
-    fm.clear();
-    fired += sweep(
-        &mut fm,
-        "FM_DRAW",
-        Regs {
-            hl: 0,
+        };
+        assert!(sweep(&mut fm, "FM_ROWS", rows, port7) > 800);
+        let draw = Regs {
             de: (94 << 8) | 1,
             bc: 8,
             ..Regs::default()
-        },
-    );
-    assert!(fired > 500, "{fired} interrupts landed");
-    fm.clear();
-    fm.draw(1, 0, 94, (0, 8));
-    crate::ui_support::same_frame(
-        "after the sweeps",
-        &fm.frame(),
-        &model_frame(&tokens, 94, 1, 0, 0..8),
-    );
+        };
+        assert!(sweep(&mut fm, "FM_DRAW", draw, port7) > 800);
+        fm.clear();
+        fm.draw(1, 0, 94, (0, 8));
+        crate::ui_support::same_frame(
+            "after the sweeps",
+            &fm.frame(),
+            &model_frame(&tokens, 94, 1, 0, 0..8),
+        );
+    }
 }
 
 const BANK_B_EXTRA: [(&str, &str); 3] = [
@@ -176,14 +200,52 @@ fn a_run_of_every_routine_writes_only_fms_memory_the_frame_the_ui_variables_and_
         assert_eq!(fm.draw(1, -3, 94, (0, 8)).status(), 0);
         assert_eq!(fm.statement(0x7FFF, 0).status(), code("FM_ERR_INDEX"));
     }
+    let broken = fixture::patched(|b| {
+        let at = fixture::section(b) + 3;
+        b[at] = 0xFF;
+        b[at + 1] = 0xFF;
+    });
+    let font = fixture::patched(|b| {
+        let at = fixture::section(b);
+        b[at] ^= 1;
+    });
+    for (what, other) in [
+        ("no map", fixture::plain()),
+        ("another font", font),
+        ("a bad entry", broken),
+        ("another library", fixture::other()),
+    ] {
+        fm.rig.load(&other);
+        fm.rig.open_ok();
+        let status = fm.statement(n, k).status();
+        assert_eq!(status, code("FM_ERR_NOT_OPEN"), "{what}: statement");
+        if what != "another library" {
+            assert_ne!(fm.open().status(), 0, "{what}: open");
+        }
+    }
+    let row = fm.rig.label("LS_GL") + 3;
+    fm.rig.poke(row, &[0x01, 0x08, 0]);
+    assert_eq!(fm.open().status(), code("FM_ERR_TOO_BIG"));
     let at = |name: &str| label_in(WITH_FM, name);
     let mut allowed = Allowed::of(WITH_FM);
     for (base, size) in BANK_B_EXTRA {
         let size = constant_of(WITH_FM.labels, size) as usize;
         allowed.extra.push((APP_PAGE, at(base), size));
     }
-    let size = constant_of(WITH_FM.labels, "FM_RAM_SIZE") as usize;
-    allowed.extra.push((SPARE_PAGE, at("FM_RAM"), size));
+    for (base, size) in [
+        (
+            at("FM_RAM"),
+            constant_of(WITH_FM.labels, "FM_VARS_SIZE") as usize,
+        ),
+        (at("FM_STACK"), 0x100),
+        (
+            at("FM_GLYPHS"),
+            constant_of(WITH_FM.labels, "FM_GLYPHS_SIZE") as usize,
+        ),
+        (at("FM_IDS"), 0x400),
+    ] {
+        allowed.extra.push((SPARE_PAGE, base, size));
+    }
     allowed.extra.push((SPARE_PAGE, at("KV_READY"), 2));
     let found = stray(&mut fm.rig, &allowed);
     assert!(found.is_empty(), "stray writes at {found:x?}");

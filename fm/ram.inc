@@ -4,7 +4,7 @@
 #endif
 
 #ifndef FM_VARS_SIZE
-FM_VARS_SIZE        .equ $26
+FM_VARS_SIZE        .equ $2C
 #endif
 #if FM_VARS_SIZE > $100
  .error "FM_VARS_SIZE must leave the stack at FM_RAM + $100 alone"
@@ -62,8 +62,13 @@ FM_VAR(fv_seen, $21, 1)
 FM_VAR(fv_tmp, $22, 1)
 FM_VAR(fv_end, $23, 2)
 FM_VAR(fv_byte, $25, 1)
+FM_VAR(fv_lib, $26, 6)
 
 FM_OPEN_MAGIC       .equ $464D
+FM_OWNED            .equ $4F46
+#if (FM_OWNED == READY_MAGIC) || (FM_OWNED == 0)
+ .error "FM_OWNED must differ from the kernel's ready magic and from 0"
+#endif
 FM_SPACE            .equ 2
 
 FM_OK               .equ 0

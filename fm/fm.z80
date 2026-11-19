@@ -25,25 +25,36 @@
 ; accessors write; it holds nothing between calls.
 ;
 ; Sessions. Every public routine runs as a session, as the kernel's calls do: it reads the
-; interrupt state with ld a,i twice, turns interrupts off, saves port 5 and SP, maps the spare page,
-; switches to FM_STACK and works there, and on every exit restores port 5, SP and the interrupt
-; state. The reader and the canvas run inside it: lib_read saves the caller's port 5, which is the
-; spare page, and puts it back, with no stack instruction in between, and needs its buffer in bank B;
-; the canvas touches only bank B, the stack and the font table it was given. A session calls no OS
-; routine. Port 7 is never changed by fm.
+; interrupt state with ld a,i twice, turns interrupts off, reads port 5, maps the spare page, saves
+; the old port 5 and SP in it, switches to FM_STACK and works there, and on every exit restores SP,
+; port 5 and the interrupt state. Interrupts stay off for the whole session; the longest one
+; measured is fm_draw of a full window on the ring library, 216,215 T-states (36 ms at 6 MHz). The
+; reader and the canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
+; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
+; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
+; Port 7 changes only inside lib_read, which puts it back.
 ;
-; The kernel's contract. On entry a session reads the kernel's ready mark, kv_ready. A mark that is
-; set means kernel_init has run since the last session and may have written the high region, so
-; fm is closed: every routine but fm_open then returns FM_ERR_NOT_OPEN and draws nothing. Then the
-; session always clears the mark, so kernel_verify refuses until kernel_init runs again. A caller
-; opens fm again with fm_open, which copies the glyph section afresh. The memory of an app that
-; ran before holds a stale open mark until fm_open or a session sees a set mark, so an app calls
-; fm_open once the library is open.
+; The kernel's contract. The ready mark kv_ready holds READY_MAGIC after a good kernel_init and
+; nothing else makes the kernel treat it as set. On entry a session reads the mark: unless it holds
+; FM_OWNED, some kernel entry (kernel_init, good or refused, or kernel_reset) has run since the last
+; fm session and may have written the high region, so fm is closed: every routine but fm_open then
+; returns FM_ERR_NOT_OPEN and draws nothing. Then the session always writes FM_OWNED to the mark,
+; so kernel_verify and kernel_crc_chunk refuse until kernel_init runs again. An fm call between
+; kernel_crc_begin and the last kernel_crc_chunk therefore ends the CRC run: the next chunk is
+; refused. A caller opens fm again with fm_open, which copies the glyph section afresh; fm_open
+; also keeps where the section was and the flash page of the library, and fm_statement returns
+; FM_ERR_NOT_OPEN when the reader has another library open.
+;
+; The test image (crates/mcemu/tests/routines/reader_test.z80) starts at $3000, in page 0, because
+; the kernel, the reader, the canvas and fm together are longer than one 16 KB page. That is the
+; test's layout and not the app's.
 ;
 ; Calling. Status comes back in A, 0 meaning ok, with the zero flag set exactly when A is 0. Every
 ; routine destroys all registers but IY and keeps the reader's rule for ports 5 and 7 and for the
-; interrupt state, which are the caller's again on every exit. A session pushes at most 14 bytes on
-; its private stack, the call into the reader or the canvas included.
+; interrupt state, which are the caller's again on every exit. The private stack is 256 bytes, FM_STACK
+; to FM_STACK_TOP, and the fm variables lie right below it. The tests measure 14 bytes pushed, the
+; deepest of any session they run; that is a measurement and not a bound, since the reader alone may
+; push 16 bytes below its return address.
 ;
 ;   fm_open       in:  the reader open with lib_open
 ;                 out: A = status. Copies the whole glyph section into FM_GLYPHS, checks that

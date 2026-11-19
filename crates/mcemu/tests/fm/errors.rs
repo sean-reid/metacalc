@@ -1,32 +1,9 @@
-use crate::fixture;
+use crate::fixture::{self, entry, patched, plain, section};
 use crate::rig::*;
 use crate::support::*;
-use mcpack::library::{GLYPHS, pack_kernel};
-use mcpack::mm::StmtId;
 
 const SPARE_BASE: u16 = 0xC000;
 const IY: u16 = 0x2468;
-
-fn section(bytes: &[u8]) -> usize {
-    let sections = decoded(bytes).sections.unwrap();
-    sections
-        .table
-        .iter()
-        .find(|e| e.id == GLYPHS)
-        .unwrap()
-        .offset
-}
-
-fn entry(bytes: &[u8], symbol: usize) -> usize {
-    let at = section(bytes) + 3 + 2 * symbol;
-    section(bytes) + usize::from(u16::from_le_bytes([bytes[at], bytes[at + 1]]))
-}
-
-fn patched(change: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
-    let mut bytes = fixture::library();
-    change(&mut bytes);
-    bytes
-}
 
 fn symbols(bytes: &[u8]) -> usize {
     decoded(bytes)
@@ -91,9 +68,7 @@ fn record_of(bytes: &[u8], n: u16, field: &str) -> usize {
 /// Every way a call can be refused, one case each.
 fn refusals() -> Vec<Refusal> {
     let good = fixture::library();
-    let db = parse(&fixture::source());
-    let all: Vec<StmtId> = (0..db.stmts.len() as StmtId).collect();
-    let plain = pack_kernel(&db, &all).unwrap();
+    let plain = plain();
     let last = symbols(&good) - 1;
     let one = assertion("ax-1");
     let mut out = vec![

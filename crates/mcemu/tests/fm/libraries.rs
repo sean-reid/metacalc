@@ -17,27 +17,27 @@ struct Ceilings {
 const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "prop",
-        open: 25364,
-        median: 28210,
-        statement: 72940,
-        rows: 11357,
-        draw: 107959,
+        open: 25476,
+        median: 28818,
+        statement: 73548,
+        rows: 11351,
+        draw: 107953,
     },
     Ceilings {
         name: "pred",
-        open: 38194,
-        median: 28446,
-        statement: 76890,
-        rows: 11357,
-        draw: 103280,
+        open: 38306,
+        median: 29054,
+        statement: 77498,
+        rows: 11351,
+        draw: 107953,
     },
     Ceilings {
         name: "ring",
-        open: 167572,
-        median: 28811,
-        statement: 141795,
-        rows: 22602,
-        draw: 223183,
+        open: 167683,
+        median: 29419,
+        statement: 142403,
+        rows: 22595,
+        draw: 227026,
     },
 ];
 
@@ -57,6 +57,7 @@ fn the_shipped_libraries_lay_out_and_draw_as_the_model_does() {
         let (_, _, section) = fm.rig.glyphs();
         let (mut statement, mut rows, mut draw) = (Vec::new(), 0, 0);
         let mut frames = 0;
+        let most = all.iter().map(|(_, _, t)| t.len()).max().unwrap();
         for (i, (n, k, tokens)) in all.iter().enumerate() {
             let out = fm.statement(*n, *k);
             assert_eq!(out.status(), 0, "{name}: statement {k} of {n}");
@@ -73,7 +74,8 @@ fn the_shipped_libraries_lay_out_and_draw_as_the_model_does() {
                 );
                 rows = rows.max(out.tstates - base);
             }
-            let compare = name == "prop" || i % 7 == 0;
+            let tall = model_rows(tokens, STATEMENT_WIDTH) >= 6;
+            let compare = name == "prop" || i % 7 == 0 || tall || tokens.len() == most;
             for width in [STATEMENT_WIDTH, TEXT_WIDTH] {
                 if width == TEXT_WIDTH && !compare {
                     continue;
@@ -81,8 +83,9 @@ fn the_shipped_libraries_lay_out_and_draw_as_the_model_does() {
                 fm.clear();
                 let out = fm.draw(GUTTER, 0, width, (0, 8));
                 assert_eq!(out.status(), 0);
+                let heaviest = out.tstates - base > draw;
                 draw = draw.max(out.tstates - base);
-                if compare {
+                if compare || heaviest {
                     let want = model_frame(tokens, width, GUTTER, 0, 0..8);
                     same_frame(
                         &format!("{name}: {k} of {n} at {width}"),

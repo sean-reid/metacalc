@@ -1,8 +1,9 @@
 use crate::fixture;
 use crate::rig::*;
 use crate::support::*;
-use crate::ui_support::{key_table, table};
+use crate::ui_support::{key_table, pack, same_frame, table};
 use mcglyph::Font;
+use mcui::canvas::Canvas;
 use mcui::canvas::{GUTTER, STATEMENT_WIDTH};
 use mcui::expr::Expr;
 use mcui::fold::{Folds, layout};
@@ -58,7 +59,8 @@ fn put(fm: &mut Fm, at: &mut u16, bytes: &[u8]) -> u16 {
 
 /// The frame a screen of this statement makes: ui_clear, a title, fm_draw of the statement on
 /// the six content rows, the soft keys and ui_blit, as the screens draw them.
-fn frame(fm: &mut Fm, n: u16, k: u8, shape: (usize, usize)) -> Frame {
+fn frame(fm: &mut Fm, at: (u16, u8, &[String]), shape: (usize, usize)) -> Frame {
+    let (n, k, tokens) = at;
     assert_eq!(fm.statement(n, k).status(), 0);
     fm.rig.m.out_port(0x10, 0x03);
     let mut at = STRINGS;
@@ -92,6 +94,13 @@ fn frame(fm: &mut Fm, n: u16, k: u8, shape: (usize, usize)) -> Frame {
     let keys = spent(fm);
     fm.rig.call("UI_BLIT", Regs::default());
     let blit = spent(fm);
+    let expr = Expr::flat(vec![tokens[0].clone()], &tokens[1..]);
+    let laid = layout(&expr, &Folds::none(&expr), STATEMENT_WIDTH);
+    let mut canvas = Canvas::default();
+    canvas.title("Ring of numbers", "12/40");
+    canvas.layout(&laid, GUTTER, isize::from(CONTENT_ROW), 1..7);
+    canvas.soft_keys(["Open", "Find", "Kind", "Try", ""]);
+    same_frame("six rows", &fm.frame(), &pack(&canvas.into_bitmap()));
     Frame {
         clear,
         title,
@@ -130,9 +139,9 @@ fn heaviest_frame(name: &str, bytes: &[u8]) -> Frame {
     let all = statements(&decoded(bytes));
     let mut fm = Fm::new(bytes);
     let base = fm.rig.call("CALL_NOP", Regs::default()).tstates;
-    let mut worst = (0, 0, 0, (0, 0));
+    let mut worst = (0, 0, 0, (0, 0), 0);
     let mut candidates = 0;
-    for (n, k, tokens) in &all {
+    for (at, (n, k, tokens)) in all.iter().enumerate() {
         let Some(shape) = six_rows(tokens) else {
             continue;
         };
@@ -140,7 +149,7 @@ fn heaviest_frame(name: &str, bytes: &[u8]) -> Frame {
         assert_eq!(fm.statement(*n, *k).status(), 0);
         let out = fm.draw(GUTTER, CONTENT_ROW, STATEMENT_WIDTH, (1, 7));
         if out.tstates - base > worst.0 {
-            worst = (out.tstates - base, *n, *k, shape);
+            worst = (out.tstates - base, *n, *k, shape, at);
         }
     }
     assert!(candidates > 0, "a statement of six lines");
@@ -148,7 +157,7 @@ fn heaviest_frame(name: &str, bytes: &[u8]) -> Frame {
         "{name}: {candidates} statements of six lines or more, the heaviest draws in {}",
         worst.0
     );
-    let best = frame(&mut fm, worst.1, worst.2, worst.3);
+    let best = frame(&mut fm, (worst.1, worst.2, &all[worst.4].2), worst.3);
     report(name, &best);
     best
 }

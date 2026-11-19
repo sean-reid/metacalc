@@ -14,7 +14,6 @@ pub const WITH_FM: Image = Image {
     org: 0x3000,
 };
 
-pub const FRAME: u16 = 0x9340;
 pub const FRAME_LEN: usize = 768;
 
 /// The caller of fm: the reader's rig on the image with the kernel, the reader, the canvas and
@@ -23,14 +22,37 @@ pub struct Fm {
     pub rig: Rig,
 }
 
+/// The FM_ERR_ numbers as the header lists them, written out here and not read from the image.
+pub const STATUSES: [(&str, u8); 8] = [
+    ("FM_ERR_NOT_OPEN", 1),
+    ("FM_ERR_CLOSED", 2),
+    ("FM_ERR_NO_MAP", 3),
+    ("FM_ERR_FONT", 4),
+    ("FM_ERR_TOO_BIG", 5),
+    ("FM_ERR_BAD", 6),
+    ("FM_ERR_INDEX", 7),
+    ("FM_ERR_READ", 8),
+];
+
+/// A status of fm by its name, or a constant of the image, such as the kernel's ST_MALFORMED.
 pub fn code(name: &str) -> u8 {
-    constant_of(WITH_FM.labels, name) as u8
+    match STATUSES.iter().find(|(n, _)| *n == name) {
+        Some(&(_, number)) => number,
+        None => constant_of(WITH_FM.labels, name) as u8,
+    }
 }
 
 impl Fm {
     /// The reader open on `library` and the font set, with fm not yet open.
     pub fn bare(library: &[u8]) -> Fm {
+        Fm::bare_in(library, 0x81)
+    }
+
+    /// `bare` with the caller's bank B on RAM page `port7` and 80h to 87h, so that a restore of
+    /// port 7 shows apart from a write of 81h.
+    pub fn bare_in(library: &[u8], port7: u8) -> Fm {
         let mut rig = Rig::with_image(WITH_FM);
+        rig.m.out_port(7, port7);
         rig.load(library);
         rig.open_ok();
         let mut fm = Fm { rig };
@@ -89,7 +111,8 @@ impl Fm {
     }
 
     pub fn frame(&mut self) -> Vec<u8> {
-        self.rig.peek(FRAME, FRAME_LEN)
+        let at = self.rig.label("UI_FRAME");
+        self.rig.peek(at, FRAME_LEN)
     }
 }
 

@@ -10,10 +10,15 @@ open_body:
 	call fm_reader_status
 	jp fm_fail
 op_got:
+	ld (fv_lib),hl
 	ld (fv_src),hl
 	ld a,e
 	ld (fv_src+2),a
+	ld (fv_lib+2),a
 	ld (fv_glen),bc
+	ld (fv_lib+3),bc
+	ld a,(lr_page)
+	ld (fv_lib+5),a
 	ld hl,FM_GLYPHS_SIZE
 	or a
 	sbc hl,bc

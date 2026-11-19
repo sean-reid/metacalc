@@ -51,14 +51,14 @@ fe_window_end:
 	push hl
 	push de
 	ld hl,(kv_ready)
-	ld de,READY_MAGIC
+	ld de,FM_OWNED
 	or a
 	sbc hl,de
-	jr nz,fe_clear
-	ld (fv_open),hl
-fe_clear:
+	jr z,fe_own
 	ld hl,0
-	ld (kv_ready),hl
+	ld (fv_open),hl
+fe_own:
+	ld (kv_ready),de
 	pop de
 	pop hl
 	jp (ix)

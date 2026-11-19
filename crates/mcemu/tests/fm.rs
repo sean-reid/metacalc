@@ -22,6 +22,8 @@ mod speed;
 #[allow(dead_code)]
 #[path = "reader/support.rs"]
 mod support;
+#[path = "fm/swap.rs"]
+mod swap;
 #[allow(dead_code)]
 #[path = "ui/support.rs"]
 mod ui_support;

@@ -772,6 +772,8 @@ fn assemble_ui(out: &Path) {
             Some("UI_FRAME_SIZE in ram_map.inc must be UI_STRIDE*UI_HEIGHT"),
         ),
         (&["FM_SCRATCH=$9100"][..], None),
+        (&["FM_SCRATCH=$8000"][..], None),
+        (&["FM_SCRATCH=$9240"][..], None),
         (&["FM_SCRATCH=$BF00"][..], None),
         (&["FM_RAM_SIZE=$1F00"][..], None),
         (&["FM_RAM=$E000"][..], None),
@@ -892,6 +894,7 @@ fn assemble_reader(out: &Path) {
     );
     for (defines, refusal) in [
         (&["FM_RAM_SIZE=$1600"][..], None),
+        (&["FM_VARS_SIZE=$100"][..], None),
         (&["FM_RAM_SIZE=$1F00"][..], None),
         (&["FM_RAM=$E000"][..], None),
         (
@@ -1066,7 +1069,7 @@ fn assemble_layout_probes(out: &Path) {
             "#include \"fm/ram.inc\"\n".to_string(),
             &ui_args[..],
             "FM_VARS_SIZE=$30",
-            0x26,
+            0x2C,
             "the fm variables overlap, leave a gap, or run past FM_VARS_SIZE",
         ),
         (

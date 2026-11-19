@@ -1,4 +1,6 @@
 use crate::support::*;
+use mcpack::library::{GLYPHS, pack_kernel};
+use mcpack::mm::StmtId;
 
 const HEAD: &str = "$c ( ) -> -. <-> /\\ \\/ A. E. = e. { } | , wff |- setvar class $.\n\
     $v ph ps ch th ta x y z A B $.\n\
@@ -50,4 +52,39 @@ pub fn source() -> String {
 
 pub fn library() -> Vec<u8> {
     pack_all(&parse(&source()))
+}
+
+/// A second library over the same symbols, so with a glyph section somewhere else.
+pub fn other() -> Vec<u8> {
+    pack_all(&parse(&format!("{HEAD}ax-a $a |- ( ph -> ph ) $.\n")))
+}
+
+/// The fixture packed without sections.
+pub fn plain() -> Vec<u8> {
+    let db = parse(&source());
+    let all: Vec<StmtId> = (0..db.stmts.len() as StmtId).collect();
+    pack_kernel(&db, &all).unwrap()
+}
+
+pub fn section(bytes: &[u8]) -> usize {
+    let sections = decoded(bytes).sections.unwrap();
+    sections
+        .table
+        .iter()
+        .find(|e| e.id == GLYPHS)
+        .unwrap()
+        .offset
+}
+
+/// Where the glyph entry of `symbol` starts in the library.
+pub fn entry(bytes: &[u8], symbol: usize) -> usize {
+    let at = section(bytes) + 3 + 2 * symbol;
+    section(bytes) + usize::from(u16::from_le_bytes([bytes[at], bytes[at + 1]]))
+}
+
+/// The fixture with `change` applied to its bytes.
+pub fn patched(change: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
+    let mut bytes = library();
+    change(&mut bytes);
+    bytes
 }
