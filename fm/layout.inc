@@ -118,7 +118,7 @@ sn_done:
 ; ly_scan for a line inside the window, drawing it on text row fv_rowb. The glyph codes of tokens
 ; one column apart are put together in FM_SCRATCH and drawn with one ui_text, which leaves one
 ; blank column between glyphs; a token farther from the one before it starts a run at the x after
-; the last glyph plus its gap.
+; the last glyph plus its gap. A run is also cut after FM_RUN_MAX codes and continues one column on.
 ly_draw:
 	ld a,(fv_x0)
 	ld l,a

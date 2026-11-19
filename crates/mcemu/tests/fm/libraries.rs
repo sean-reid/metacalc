@@ -108,6 +108,10 @@ fn the_shipped_libraries_lay_out_and_draw_as_the_model_does() {
              {name}: fm_draw largest {draw}",
             all.len()
         );
+        if name == "ring" {
+            assert_header_agrees("fm_open on the ring library, ", open);
+            assert_header_agrees("a full window, at most ", draw);
+        }
         for (what, got, ceiling) in [
             ("fm_open", open, ceiling.open),
             ("fm_statement median", median, ceiling.median),
@@ -188,6 +192,9 @@ fn the_shipped_libraries_build_the_node_tables_the_model_has() {
              {name}: explicit stack deepest use {deepest} of {size} bytes",
             all.len()
         );
+        if name == "ring" {
+            assert_header_agrees("fm_nodes of its largest statement, ", largest);
+        }
         for (what, got, ceiling) in [
             ("fm_nodes median", median, ceiling.median),
             ("fm_nodes largest", largest, ceiling.largest),

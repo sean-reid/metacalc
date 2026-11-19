@@ -48,9 +48,9 @@
 ; interrupt state with ld a,i twice, turns interrupts off, reads port 5, maps the spare page, saves
 ; the old port 5 and SP in it, switches to FM_STACK and works there, and on every exit restores SP,
 ; port 5 and the interrupt state. Interrupts stay off for the whole session; the longest one
-; measured is fm_open on the ring library, 553,229 T-states (92 ms at 6 MHz), then fm_nodes of its
+; measured is fm_open on the ring library, 575,592 T-states (96 ms at 6 MHz), then fm_nodes of its
 ; largest statement, 379,323, fm_assertion of its largest assertion, 187,195, and fm_draw of a full
-; window, at most 176,576. The reader and the
+; window, at most 177,967. The reader and the
 ; canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
 ; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
@@ -93,7 +93,8 @@
 ;                      glyph map. FM_ERR_FONT: its map is for another font. FM_ERR_TOO_BIG: the
 ;                      glyph section or the shapes section is longer than 2,048 bytes.
 ;                      FM_ERR_BAD: an entry or an item they cannot hold, or only one of trees and
-;                      shapes. FM_ERR_READ: the reader refused a read.
+;                      shapes; an entry holds a glyph code of 0, which ends a string, no code at
+;                      all, or more than 128. FM_ERR_READ: the reader refused a read.
 ;   fm_assertion in:  HL = assertion number
 ;                 out: A = status, B = the number of statements. Loads every statement of the
 ;                      assertion, the essential hypotheses in record order and then the
@@ -131,6 +132,7 @@
 ;                      the run are put together in FM_SCRATCH, and a token three columns from
 ;                      the one before it starts the next run at the x after the last glyph plus
 ;                      three. The space glyph is two columns wide and would make the gap four.
+;                      A run is also cut after FM_RUN_MAX codes and continues one column on.
 ;   fm_nodes      in:  nothing; the selected statement
 ;                 out: A = status, B = the number of nodes. Builds the node table of the selected
 ;                      statement, which is the model's Expr for it: the nodes in preorder, node 0

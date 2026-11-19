@@ -444,6 +444,9 @@ fn the_shipped_libraries_load_every_assertion_and_select_every_statement_within_
             "{name}: fm_assertion median {median}, largest {largest}\n\
              {name}: fm_select largest {selects} in all, {body} beyond the session"
         );
+        if name == "ring" {
+            assert_header_agrees("fm_assertion of its largest assertion, ", largest);
+        }
         assert!(body <= SELECT_BODY, "{name}: fm_select body took {body}");
         assert!(selects <= SELECT_TOTAL, "{name}: fm_select took {selects}");
         assert!(

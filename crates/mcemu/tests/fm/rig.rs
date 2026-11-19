@@ -260,3 +260,27 @@ pub fn model_frame(
     canvas.layout(&laid, x, row, window);
     pack(&canvas.into_bitmap())
 }
+
+/// The number that follows `after` in the header of fm/fm.z80, commas dropped.
+pub fn header_figure(after: &str) -> u32 {
+    let header = include_str!("../../../../fm/fm.z80");
+    let flat = header.replace("\n;", "");
+    let at = flat.find(after).expect("the header states it") + after.len();
+    let digits: String = flat[at..]
+        .chars()
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(|c| c.is_ascii_digit() || *c == ',')
+        .filter(|c| *c != ',')
+        .collect();
+    digits.parse().expect("a number")
+}
+
+/// Fails when the header's `figure` is more than 3 percent from what was `measured`.
+pub fn assert_header_agrees(after: &str, measured: u32) {
+    let said = header_figure(after);
+    let (low, high) = (measured * 97 / 100, measured * 103 / 100);
+    assert!(
+        (low..=high).contains(&said),
+        "the header says {said} after {after:?}, measured {measured}"
+    );
+}
