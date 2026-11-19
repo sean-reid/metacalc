@@ -2,8 +2,7 @@ use super::check::{HOST_LIMITS, Rejected, check_each};
 use super::read::{Assertion, Hypothesis, Library, Reference, Step, decode};
 use super::{CheckError, KernelError, Limits, ReadError};
 use crate::mm::shown;
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 mod lines;
@@ -22,8 +21,6 @@ pub enum ExportError {
     Label(String),
     /// The labelled assertion cannot be written as a Metamath assertion, and why.
     Assertion(String, &'static str),
-    /// The assertions on a cycle of float orders: each puts a variable before one that the next puts before it, so no sequence of `$f` statements gives all of them.
-    FloatOrder(Vec<String>),
 }
 
 impl fmt::Display for ExportError {
@@ -40,15 +37,6 @@ impl fmt::Display for ExportError {
                 shown(label.as_bytes())
             ),
             ExportError::Assertion(label, why) => write!(f, "{}: {why}", shown(label.as_bytes())),
-            ExportError::FloatOrder(labels) => write!(
-                f,
-                "the floating hypotheses of {} order the variables in a cycle",
-                labels
-                    .iter()
-                    .map(|l| shown(l.as_bytes()))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
         }
     }
 }
@@ -79,8 +67,8 @@ pub struct Export {
 
 /// Writes a packed library the kernel accepts as a Metamath database, using nothing but its bytes.
 ///
-/// Every variable's float is declared once after `$v`, in an order that gives each record its
-/// floats in the order it stores them, and each assertion gets a block for its `$d` and `$e`.
+/// Every variable's float is declared once after `$v`, in table order, which is the order every
+/// record stores its floats in, and each assertion gets a block for its `$d` and `$e`.
 pub fn export(bytes: &[u8]) -> Result<String, ExportError> {
     let (count, rejected) = check_each(bytes, HOST_LIMITS, false)?;
     debug_assert!(rejected.is_empty());
@@ -136,7 +124,6 @@ fn write(bytes: &[u8], count: usize, rejected: &Rejected) -> Result<String, Expo
     for assertion in &library.assertions {
         records.push(record_floats(assertion, &index)?);
     }
-    let order = float_order(&library, &records)?;
     let mut unproved = vec![false; library.assertions.len()];
     for (at, _, _) in rejected {
         unproved[*at] = library.assertions[*at].theorem;
@@ -153,7 +140,7 @@ fn write(bytes: &[u8], count: usize, rejected: &Rejected) -> Result<String, Expo
         floats: vec![String::new(); variables.len()],
         out,
     };
-    for &var in &order {
+    for var in 0..variables.len() {
         writer.float(var);
     }
     for (at, floats) in records.iter().enumerate() {
@@ -204,76 +191,6 @@ fn record_floats(
         ));
     }
     Ok(floats)
-}
-
-/// A total order of the variables in which every record's floats keep their order, the lowest
-/// variable first wherever the records leave the choice open.
-fn float_order(library: &Library, records: &[Vec<usize>]) -> Result<Vec<usize>, ExportError> {
-    let count = library.variables.len();
-    let mut after: Vec<Vec<usize>> = vec![Vec::new(); count];
-    let mut waiting = vec![0usize; count];
-    let mut witness: HashMap<(usize, usize), usize> = HashMap::new();
-    for (at, floats) in records.iter().enumerate() {
-        for pair in floats.windows(2) {
-            if witness.insert((pair[0], pair[1]), at).is_none() {
-                after[pair[0]].push(pair[1]);
-                waiting[pair[1]] += 1;
-            }
-        }
-    }
-    let mut ready: BinaryHeap<Reverse<usize>> = (0..count)
-        .filter(|&v| waiting[v] == 0)
-        .map(Reverse)
-        .collect();
-    let mut order = Vec::with_capacity(count);
-    while let Some(Reverse(var)) = ready.pop() {
-        order.push(var);
-        for &next in &after[var] {
-            waiting[next] -= 1;
-            if waiting[next] == 0 {
-                ready.push(Reverse(next));
-            }
-        }
-    }
-    if order.len() == count {
-        return Ok(order);
-    }
-    Err(float_conflict(library, &witness, &waiting))
-}
-
-/// The error for a set of constraints with a cycle: the records of the edges on one.
-/// `waiting` is nonzero exactly for the variables the order could not place.
-fn float_conflict(
-    library: &Library,
-    witness: &HashMap<(usize, usize), usize>,
-    waiting: &[usize],
-) -> ExportError {
-    let stuck = |v: usize| waiting[v] > 0;
-    let mut earlier: HashMap<usize, usize> = HashMap::new();
-    let mut edges: Vec<_> = witness.keys().collect();
-    edges.sort_unstable();
-    for &&(a, b) in &edges {
-        if stuck(a) && stuck(b) {
-            earlier.entry(b).or_insert(a);
-        }
-    }
-    let mut at = edges.iter().map(|e| e.1).find(|&v| stuck(v)).unwrap_or(0);
-    let mut seen: Vec<usize> = Vec::new();
-    while !seen.contains(&at) {
-        seen.push(at);
-        at = earlier.get(&at).copied().unwrap_or(at);
-    }
-    let cycle = &seen[seen.iter().position(|&v| v == at).unwrap_or(0)..];
-    let mut labels: Vec<&String> = Vec::new();
-    for (i, &var) in cycle.iter().enumerate() {
-        let next = cycle[(i + 1) % cycle.len()];
-        let record = witness.get(&(next, var)).copied().unwrap_or(0);
-        let label = &library.assertions[record].label;
-        if !labels.contains(&label) {
-            labels.push(label);
-        }
-    }
-    ExportError::FloatOrder(labels.into_iter().cloned().collect())
 }
 
 fn declaration(out: &mut String, keyword: &str, names: &[String]) {

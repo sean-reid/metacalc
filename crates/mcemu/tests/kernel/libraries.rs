@@ -1,5 +1,5 @@
 use crate::support::*;
-use mcpack::library::{Kernel, WORK_LIMIT};
+use mcpack::library::{Kernel, KernelError, WORK_LIMIT};
 
 // T-state ceilings per library, 5 percent above the measured cost; they fail a kernel change that slows verification.
 const CEILINGS: [(&str, u32); 3] = [
@@ -42,6 +42,32 @@ fn the_shipped_libraries_verify_on_the_device_as_the_model_does() {
             tstates <= ceiling,
             "{name} took {tstates} T-states, over the ceiling of {ceiling}"
         );
+    }
+}
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn every_record_of_the_shipped_libraries_passes_the_record_check_on_the_device_and_in_the_model() {
+    let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    for (name, records) in [("prop", 779), ("pred", 1171), ("ring", 3326)] {
+        let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
+        let (init, model) = model_statuses(&bytes, ASKED_UNBOUNDED);
+        let (device_init, device, _) =
+            Device::with_library(&bytes).verify_all(model.len(), ASKED_UNBOUNDED);
+        assert_eq!((init, device_init), (0, 0), "{name}");
+        let bad_record = status(Err(KernelError::BadRecord));
+        let refused = model.iter().filter(|&&s| s == bad_record).count();
+        let accepted = model.iter().filter(|&&s| s == 0).count();
+        println!(
+            "{name}: {accepted} of {} accepted, {refused} refused as bad records",
+            model.len()
+        );
+        assert_eq!(
+            (model.len(), accepted, refused),
+            (records, records, 0),
+            "{name}: model"
+        );
+        assert_eq!(device, model, "{name}: device");
     }
 }
 

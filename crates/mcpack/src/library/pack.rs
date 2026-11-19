@@ -71,7 +71,20 @@ fn build(db: &Database, closure: &[StmtId], sections: bool) -> Result<Vec<u8>, P
         let syms = (0..db.syms.len() as Sym).filter(|&s| used[s as usize]);
         syms.filter(move |&s| db.syms[s as usize].is_var == want_var)
     };
-    let order: Vec<Sym> = used(false).chain(used(true)).collect();
+    let mut variables: Vec<Sym> = used(true).collect();
+    let mut float_at: HashMap<Sym, (bool, usize)> = HashMap::new();
+    for (at, stmt) in db.stmts.iter().enumerate() {
+        if stmt.kind != Kind::Float {
+            continue;
+        }
+        let global = stmt.scope_end == StmtId::MAX;
+        let first = float_at.entry(stmt.expr[1]).or_insert((global, at));
+        if global && !first.0 {
+            *first = (true, at);
+        }
+    }
+    variables.sort_by_key(|var| float_at.get(var).map_or(usize::MAX, |first| first.1));
+    let order: Vec<Sym> = used(false).chain(variables).collect();
     let constants = used(false).count();
     if order.len() > 255 {
         return Err(PackError::TooManySymbols);
@@ -172,11 +185,16 @@ impl Packer<'_> {
             }
         }
         let pairs = |out: &mut Vec<u8>, dv: &[(Sym, Sym)]| {
-            out.extend(word(dv.len())?.to_le_bytes());
-            out.extend(
-                dv.iter()
-                    .flat_map(|(a, b)| [self.local_sym[a], self.local_sym[b]]),
-            );
+            let mut ids: Vec<(u8, u8)> = dv
+                .iter()
+                .map(|(a, b)| {
+                    let (a, b) = (self.local_sym[a], self.local_sym[b]);
+                    (a.min(b), a.max(b))
+                })
+                .collect();
+            ids.sort_unstable();
+            out.extend(word(ids.len())?.to_le_bytes());
+            out.extend(ids.iter().flat_map(|&(a, b)| [a, b]));
             Ok(())
         };
         pairs(&mut out, &stmt.frame.dv)?;

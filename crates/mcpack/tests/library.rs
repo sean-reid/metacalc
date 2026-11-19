@@ -970,3 +970,34 @@ fn structured_edits_of_reference_lists_are_judged_by_the_rule() {
     }
     assert!(changed_and_accepted > 0);
 }
+
+#[test]
+fn disjoint_pairs_are_written_by_variable_id_whatever_the_declaration_order() {
+    let src = "
+$c R wff |- $.
+$v z y x $.
+vx $f wff x $.
+vy $f wff y $.
+vz $f wff z $.
+${
+  $d x y z $.
+  ax-d $a |- R x y z $.
+$}
+";
+    let db = db(src);
+    let bytes = pack(&db, &everything(&db)).unwrap();
+    let names: Vec<String> = library::decode(&bytes)
+        .unwrap()
+        .variables
+        .into_iter()
+        .map(|v| v.name)
+        .collect();
+    assert_eq!(names, ["x", "y", "z"]);
+    let read = library::read(&bytes).unwrap();
+    let pairs: Vec<(&str, &str)> = read[0]
+        .disjoint
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    assert_eq!(pairs, [("x", "y"), ("x", "z"), ("y", "z")]);
+}

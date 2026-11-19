@@ -18,6 +18,8 @@
 //!            pair count (u16) and the disjoint pairs that involve a dummy variable,
 //!            reference count (u16), each 8000h + dummy variable or an assertion number,
 //!            proof length (u16), proof
+//! hypotheses a record's floats come first and name variables in strictly rising id; variables
+//!            are numbered by their first floating hypothesis outside any block in the source
 //! references in first-use order: a proof's first step naming an entry names entry 0, the next
 //!            new one entry 1, and so on, every entry is named, no two entries are equal, and
 //!            a dummy entry never names a variable with a float hypothesis of its own
