@@ -142,17 +142,32 @@ wi $a wff ( p -> q ) $.
 ";
 
 #[test]
-fn a_cut_before_a_syntax_axiom_a_kept_statement_needs_does_not_pack() {
+fn packing_a_set_that_lacks_a_syntax_axiom_a_statement_needs_is_refused() {
     let db = mm::parse(SYNTAX_AFTER_CUT.as_bytes().to_vec()).expect("database parses");
-    let cut = build::closure(&db, &manifest("\"ax\"", "before = \"mark\"\n")).unwrap();
-    assert_eq!(labels(&db, &cut), ["wp", "wq", "ax"]);
+    let kept: Vec<StmtId> = ["wp", "wq", "ax"]
+        .iter()
+        .map(|label| db.find(label).unwrap())
+        .collect();
     assert_eq!(
-        pack(&db, &cut),
+        pack(&db, &kept),
         Err(PackError::SyntaxAfterCut {
             statement: "ax".into(),
             axiom: "wi".into()
         })
     );
+}
+
+#[test]
+fn closure_refuses_a_cut_before_a_syntax_axiom_a_kept_statement_needs() {
+    let db = mm::parse(SYNTAX_AFTER_CUT.as_bytes().to_vec()).expect("database parses");
+    let err = build::closure(&db, &manifest("\"ax\"", "before = \"mark\"\n")).unwrap_err();
+    assert!(err.is_bad_input());
+    assert_eq!(
+        err.to_string(),
+        "ax needs the syntax axiom wi, which the cut before = mark drops; move the cut past wi or drop ax"
+    );
+    let uncut = build::closure(&db, &manifest("\"ax\"", "")).unwrap();
+    assert_eq!(labels(&db, &uncut), ["wp", "wq", "ax", "wi"]);
 }
 
 #[test]
@@ -506,11 +521,37 @@ fn build_fails_cleanly_when_the_cut_leaves_out_a_syntax_axiom_a_kept_statement_n
         Path::new("-o"),
         &library,
     ]);
-    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(out.status.code(), Some(2));
     let stderr = text(out.stderr);
-    assert!(stderr.contains("SyntaxAfterCut"), "{stderr}");
+    assert_eq!(
+        stderr,
+        "ax needs the syntax axiom wi, which the cut before = mark drops; move the cut past wi or drop ax\n"
+    );
     assert!(!stderr.contains("panicked"), "{stderr}");
     assert!(!library.exists());
+}
+
+const TWO_AXIOMS_AFTER_CUT: &str = "
+$c ( ) -> -. wff |- $.
+$v p q $.
+wp $f wff p $.
+wq $f wff q $.
+ax $a |- ( -. p -> q ) $.
+mark $a |- p $.
+wn $a wff -. p $.
+wi $a wff ( p -> q ) $.
+";
+
+#[test]
+fn a_cut_that_drops_two_syntax_axioms_names_the_outermost_one() {
+    let db = mm::parse(TWO_AXIOMS_AFTER_CUT.as_bytes().to_vec()).expect("database parses");
+    for _ in 0..3 {
+        let err = build::closure(&db, &manifest("\"ax\"", "before = \"mark\"\n")).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "ax needs the syntax axiom wi, which the cut before = mark drops; move the cut past wi or drop ax"
+        );
+    }
 }
 
 #[test]
