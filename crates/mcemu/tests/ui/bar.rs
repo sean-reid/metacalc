@@ -33,8 +33,8 @@ fn script(bars: &[(usize, usize, usize)], under: bool) -> Vec<Op> {
     for &(row, done, total) in bars {
         ops.push(Op::Bar {
             row: byte(row),
-            done: u16::try_from(done).expect("done fits 16 bits"),
-            total: u16::try_from(total).expect("total fits 16 bits"),
+            done: count(done),
+            total: count(total),
         });
     }
     ops

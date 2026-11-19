@@ -154,6 +154,11 @@ pub enum Call {
         selected: bool,
     },
     Marker(usize),
+    Bar {
+        row: usize,
+        done: usize,
+        total: usize,
+    },
     /// Laid out tokens or a ready made bitmap, which only the host can draw: the pixels the
     /// call set, as a layer the size of the screen.
     Ink(Bitmap),
@@ -403,16 +408,19 @@ impl Canvas {
         let filled = (inner * done.min(total))
             .checked_div(total)
             .unwrap_or(inner);
-        self.ink(|bitmap| {
-            for y in 0..height {
-                for x in 0..width {
-                    let edge = y == 0 || y == height - 1 || x == 0 || x == width - 1;
-                    let fill = (2..height - 2).contains(&y) && (2..2 + filled).contains(&x);
-                    if edge || fill {
-                        bitmap.set(MARGIN + x, Self::top(row) + 1 + y, true);
+        self.record(|| Call::Bar { row, done, total });
+        self.nested(|c| {
+            c.ink(|bitmap| {
+                for y in 0..height {
+                    for x in 0..width {
+                        let edge = y == 0 || y == height - 1 || x == 0 || x == width - 1;
+                        let fill = (2..height - 2).contains(&y) && (2..2 + filled).contains(&x);
+                        if edge || fill {
+                            bitmap.set(MARGIN + x, Self::top(row) + 1 + y, true);
+                        }
                     }
                 }
-            }
+            });
         });
     }
 

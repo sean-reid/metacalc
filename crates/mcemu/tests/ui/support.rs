@@ -120,6 +120,11 @@ pub fn byte(value: usize) -> u8 {
     u8::try_from(value).unwrap_or_else(|_| panic!("{value} does not fit a byte"))
 }
 
+/// A count as the 16 bits the Z80 takes; one past them is a bug in the test.
+pub fn count(value: usize) -> u16 {
+    u16::try_from(value).unwrap_or_else(|_| panic!("{value} does not fit 16 bits"))
+}
+
 pub fn ops(calls: &[Call]) -> Vec<Op> {
     let t = table();
     let enc = |s: &str| t.encode(s);
@@ -168,6 +173,11 @@ pub fn ops(calls: &[Call]) -> Vec<Op> {
                 selected: *selected,
             },
             Call::Marker(row) => Op::Marker(byte(*row)),
+            Call::Bar { row, done, total } => Op::Bar {
+                row: byte(*row),
+                done: count(*done),
+                total: count(*total),
+            },
             Call::Ink(layer) => Op::Ink(layer.clone()),
         })
         .collect()
