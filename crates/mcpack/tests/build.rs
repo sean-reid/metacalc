@@ -545,13 +545,36 @@ wi $a wff ( p -> q ) $.
 #[test]
 fn a_cut_that_drops_two_syntax_axioms_names_the_outermost_one() {
     let db = mm::parse(TWO_AXIOMS_AFTER_CUT.as_bytes().to_vec()).expect("database parses");
-    for _ in 0..3 {
-        let err = build::closure(&db, &manifest("\"ax\"", "before = \"mark\"\n")).unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "ax needs the syntax axiom wi, which the cut before = mark drops; move the cut past wi or drop ax"
-        );
-    }
+    let err = build::closure(&db, &manifest("\"ax\"", "before = \"mark\"\n")).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "ax needs the syntax axiom wi, which the cut before = mark drops; move the cut past wi or drop ax"
+    );
+}
+
+const AXIOM_IN_A_HYPOTHESIS_AFTER_CUT: &str = "
+$c ( ) -> wff |- $.
+$v p q $.
+wp $f wff p $.
+wq $f wff q $.
+${
+  hy.1 $e |- ( p -> q ) $.
+  hy $a |- p $.
+$}
+mark $a |- q $.
+wi $a wff ( p -> q ) $.
+";
+
+#[test]
+fn a_cut_that_drops_a_syntax_axiom_only_a_hypothesis_needs_is_refused() {
+    let db =
+        mm::parse(AXIOM_IN_A_HYPOTHESIS_AFTER_CUT.as_bytes().to_vec()).expect("database parses");
+    let err = build::closure(&db, &manifest("\"hy\"", "before = \"mark\"\n")).unwrap_err();
+    assert!(err.is_bad_input());
+    assert_eq!(
+        err.to_string(),
+        "hy needs the syntax axiom wi, which the cut before = mark drops; move the cut past wi or drop hy"
+    );
 }
 
 #[test]

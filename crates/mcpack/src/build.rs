@@ -88,7 +88,9 @@ fn dropped_syntax(db: &Database, grammar: &Grammar, kept: &[StmtId]) -> Option<(
         if !matches!(db.stmt(id).kind, Kind::Axiom | Kind::Theorem) {
             continue;
         }
-        let parsed = grammar.parse(id).ok()?;
+        let Ok(parsed) = grammar.parse(id) else {
+            continue;
+        };
         let mut trees: Vec<&Tree> = parsed.hyps.iter().map(|tree| &**tree).collect();
         trees.push(&parsed.conclusion);
         while let Some(tree) = trees.pop() {
