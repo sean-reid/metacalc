@@ -54,6 +54,7 @@ fn the_shipped_libraries_lay_out_and_draw_as_the_model_does() {
         let open = fm.open();
         assert_eq!(open.status(), 0, "{name}: fm_open");
         let open = open.tstates - base;
+        let (_, _, section) = fm.rig.glyphs();
         let (mut statement, mut rows, mut draw) = (Vec::new(), 0, 0);
         let mut frames = 0;
         for (i, (n, k, tokens)) in all.iter().enumerate() {
@@ -96,6 +97,7 @@ fn the_shipped_libraries_lay_out_and_draw_as_the_model_does() {
         let (median, largest) = (statement[statement.len() / 2], *statement.last().unwrap());
         println!(
             "{name}: {} statements, {frames} frames compared\n\
+             {name}: glyph section {section} bytes of 2048\n\
              {name}: fm_open {open} T-states\n\
              {name}: fm_statement median {median}, largest {largest}\n\
              {name}: fm_rows largest {rows}\n\
