@@ -134,7 +134,10 @@ impl Lib {
             installed: status,
             assertions,
             names,
-            titles: sections.titles.unwrap_or_default(),
+            titles: sections
+                .titles
+                .filter(|titles| library::titles_in_order(titles).is_ok())
+                .unwrap_or_default(),
             trees: sections.trees,
             source: OnceCell::new(),
             statements: RefCell::default(),
@@ -153,6 +156,14 @@ impl Lib {
     /// empty when the library carries none.
     pub fn titles(&self) -> &[Title] {
         &self.titles
+    }
+
+    /// The title that holds assertion `i`: the last one that starts at or before it, or the first
+    /// when `i` comes before every title.
+    pub fn section_of(&self, i: usize) -> usize {
+        self.titles
+            .partition_point(|t| t.assertion <= i)
+            .saturating_sub(1)
     }
 
     pub fn label(&self, i: usize) -> &str {

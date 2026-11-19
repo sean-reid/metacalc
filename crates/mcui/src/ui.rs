@@ -59,7 +59,8 @@ impl Ui {
             proofs: &self.proofs,
         };
         let top = self.stack.last_mut().expect("a screen is always open");
-        match top.press(&ctx, key) {
+        let nav = top.press(&ctx, key);
+        match nav {
             Nav::Stay => {}
             Nav::Push(screen) => {
                 if self.stack.len() == MAX_DEPTH {
@@ -70,6 +71,14 @@ impl Ui {
             Nav::Pop => {
                 if self.stack.len() > 1 {
                     self.stack.pop();
+                }
+            }
+            Nav::Jump(assertion) => {
+                if self.stack.len() > 1 {
+                    self.stack.pop();
+                    if let Some(below) = self.stack.last_mut() {
+                        below.land(&ctx, assertion);
+                    }
                 }
             }
         }
