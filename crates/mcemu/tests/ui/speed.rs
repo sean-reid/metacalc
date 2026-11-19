@@ -184,7 +184,7 @@ fn the_heavy_frames_and_their_blit_redraw_within_50_ms_at_6_mhz() {
 
 /// Six rows of `i` take 57.0 ms at 6 MHz, 7 ms over the budget.
 #[test]
-#[ignore = "the title bar, six list rows of sixty i with no right-hand text, and the soft keys take 57.0 ms with the blit at 6 MHz (341,934 T-states) against a 50 ms budget"]
+#[ignore = "the title bar, six list rows of sixty i with no right-hand text, and the soft keys take 57.0 ms with the blit at 6 MHz (341,816 T-states) against a 50 ms budget"]
 fn six_rows_of_the_narrowest_glyph_and_the_blit_redraw_within_50_ms_at_6_mhz() {
     within_budget_at_6_mhz("six rows of i", &narrowest_rows());
 }

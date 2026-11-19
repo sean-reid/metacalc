@@ -125,12 +125,39 @@ fn a_list_row_has_its_mark_at_the_right_margin_and_a_selected_row_is_inverted() 
     let chosen = chosen.into_bitmap();
     for y in 2 * ROW..3 * ROW {
         for x in 0..WIDTH {
-            assert_eq!(chosen.get(x, y), !plain.get(x, y));
+            let flipped = y > 2 * ROW;
+            assert_eq!(chosen.get(x, y), plain.get(x, y) ^ flipped, "{x},{y}");
         }
     }
     for y in (0..2 * ROW).chain(3 * ROW..HEIGHT) {
         assert!((0..WIDTH).all(|x| !chosen.get(x, y)));
     }
+}
+
+fn row_is_clear(frame: &Bitmap, y: usize) -> bool {
+    (0..WIDTH).all(|x| !frame.get(x, y))
+}
+
+#[test]
+fn a_highlighted_first_row_leaves_a_clear_line_under_the_title_bar() {
+    let mut canvas = Canvas::default();
+    canvas.title("", "");
+    canvas.list_row(1, "", "", true);
+    let frame = canvas.into_bitmap();
+    assert!((0..WIDTH).all(|x| frame.get(x, ROW - 1)));
+    assert!(row_is_clear(&frame, ROW));
+    assert!((0..WIDTH).all(|x| frame.get(x, ROW + 1)));
+}
+
+#[test]
+fn a_descender_does_not_touch_the_highlight_below_it() {
+    let mut canvas = Canvas::default();
+    canvas.list_row(1, "gypsy", "", false);
+    canvas.list_row(2, "", "", true);
+    let frame = canvas.into_bitmap();
+    assert!((0..WIDTH).any(|x| frame.get(x, 2 * ROW - 1)));
+    assert!(row_is_clear(&frame, 2 * ROW));
+    assert!((0..WIDTH).all(|x| frame.get(x, 2 * ROW + 1)));
 }
 
 #[test]
