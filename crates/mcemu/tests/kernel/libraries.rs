@@ -1,5 +1,5 @@
 use crate::support::*;
-use mcpack::library::{Kernel, WORK_LIMIT};
+use mcpack::library::{CACHE_IDS, Kernel, WORK_LIMIT};
 
 // T-state ceilings per library, 5 percent above the measured cost; they fail a kernel change that slows verification.
 const CEILINGS: [(&str, u32); 3] = [
@@ -87,4 +87,27 @@ fn no_honest_proof_in_a_shipped_library_charges_over_an_eighth_of_the_work_limit
         "{} is over an eighth of {WORK_LIMIT}",
         largest.0
     );
+}
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn no_shipped_library_reaches_the_uncached_path() {
+    let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    let mut largest = 0;
+    for name in ["prop", "pred", "ring"] {
+        let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
+        let mut kernel = Kernel::new(&bytes, clamped(ASKED_UNBOUNDED)).expect("library loads");
+        let count = kernel.assertions();
+        assert!(count <= CACHE_IDS, "{name} has {count} assertions");
+        let worst = (0..count)
+            .map(|id| {
+                assert_eq!(kernel.verify(id), Ok(()), "{name} {id}");
+                kernel.work()
+            })
+            .max()
+            .unwrap();
+        println!("{name}: {count} assertions, largest count {worst}");
+        largest = largest.max(worst);
+    }
+    println!("largest count {largest}");
 }

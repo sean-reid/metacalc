@@ -1,5 +1,12 @@
-use super::{Ctx, Nav, Screen, State, dist::Dist, notice::Notice, proof::Proof, proving::Proving};
+use super::{
+    Ctx, Nav, Screen, State,
+    dist::Dist,
+    notice::{self, Notice},
+    proof::Proof,
+    proving::Proving,
+};
 use crate::canvas::{CONTENT_ROWS, Canvas, GUTTER, STATEMENT_WIDTH, text_width};
+use crate::caps;
 use crate::data::Statement;
 use crate::fold::{Fit, Folds, Layout, fit, fit_one, layout};
 use crate::key::Key;
@@ -8,7 +15,15 @@ use std::rc::Rc;
 /// The labels of the five keys.
 pub(crate) const KEYS: [&str; 5] = ["Fold", "Dist", "Why", "Try", ""];
 
+/// The keys that work on a theorem past a cap.
+const REFUSED_KEYS: [&str; 5] = ["", "Dist", "", "Try", ""];
+
+/// The sentence that stands in for the statements of an assertion past a cap.
+const TOO_LARGE: &str = "This theorem is too large to show on the calculator";
+
 pub struct Theorem {
+    /// The assertion is past a cap: nothing is laid out and the statements are not drawn.
+    too_large: bool,
     library: usize,
     index: usize,
     statement: Rc<Statement>,
@@ -33,6 +48,7 @@ impl Theorem {
             text_width(&format!("{}.", statement.hyps.len())) + 2
         };
         let mut screen = Theorem {
+            too_large: !caps::within(&statement.all()),
             library,
             index,
             folds: Vec::new(),
@@ -44,6 +60,9 @@ impl Theorem {
             hyp_indent,
             statement,
         };
+        if screen.too_large {
+            return Screen::Theorem(screen);
+        }
         let exprs = screen.statement.all();
         let items: Vec<Fit> = exprs
             .iter()
@@ -117,7 +136,22 @@ impl Theorem {
         self.scroll = self.scroll.min(self.rows.saturating_sub(CONTENT_ROWS));
     }
 
+    fn proof(&self, ctx: &Ctx) -> Nav {
+        Nav::push(match Proof::open(ctx, self.library, self.index) {
+            Ok(screen) => screen,
+            Err(why) => Notice::screen("Proof", &[why]),
+        })
+    }
+
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
+        if self.too_large {
+            return match key {
+                Key::F2 => Nav::push(Dist::open(self.library, self.index)),
+                Key::F4 => Nav::push(Proving::open(ctx, self.library, self.index)),
+                Key::Clear => Nav::Pop,
+                _ => Nav::Stay,
+            };
+        }
         let (s, node) = self.cursor;
         let statement = Rc::clone(&self.statement);
         let expr = statement.at(s);
@@ -165,12 +199,7 @@ impl Theorem {
                 }
             }
             Key::F2 => return Nav::push(Dist::open(self.library, self.index)),
-            Key::F3 => {
-                return Nav::push(match Proof::open(ctx, self.library, self.index) {
-                    Ok(screen) => screen,
-                    Err(why) => Notice::screen("Proof", &[why]),
-                });
-            }
+            Key::F3 => return self.proof(ctx),
             Key::F4 => return Nav::push(Proving::open(ctx, self.library, self.index)),
             Key::Clear => return Nav::Pop,
             _ => {}
@@ -190,6 +219,11 @@ impl Theorem {
         };
         let status = format!("{} {kind}", lib.mark(self.index).glyph());
         canvas.title(lib.label(self.index), &status);
+        if self.too_large {
+            notice::body(canvas, &[TOO_LARGE]);
+            canvas.soft_keys(REFUSED_KEYS);
+            return;
+        }
         let window = 1..1 + CONTENT_ROWS as isize;
         for (s, layout) in self.layouts.iter().enumerate() {
             let row = 1 + self.starts[s] as isize - self.scroll as isize;
@@ -213,6 +247,17 @@ impl Theorem {
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {
+        if self.too_large {
+            return State::Theorem {
+                library: self.library,
+                label: ctx.libs[self.library].label(self.index).to_string(),
+                statement: self.cursor.0,
+                node: 0,
+                scroll: 0,
+                folded: 0,
+                hidden: false,
+            };
+        }
         State::Theorem {
             library: self.library,
             label: ctx.libs[self.library].label(self.index).to_string(),

@@ -1,15 +1,17 @@
-//! Whole screens replayed on the Z80. Statements, goals, hypotheses, tree lines and bars are laid
+//! Whole screens replayed on the Z80. Statements, goals, hypotheses and tree lines are laid
 //! out by the host, so they arrive as ink layers that the test ORs into the frame where the model
-//! drew them. What these tests prove is the layering of the Z80 calls (title, rows, soft keys,
-//! inverts, markers and the order they and the ink go in); every replay prints how many of the
-//! lit pixels the Z80 calls also light on their own and requires some. Glyph drawing itself is proved in draw.rs
-//! and font.rs, and the mutation test below shows that a wrong glyph fails a replay.
+//! drew them; bars are the exception and go through ui_bar. What these tests prove is the
+//! layering of the Z80 calls (title, rows, soft keys, bars, inverts, markers and the order they
+//! and the ink go in); every replay prints how many of the lit pixels the Z80 calls also light on
+//! their own and requires some. Glyph drawing itself is proved in draw.rs and font.rs, and the
+//! mutation test below shows that a wrong glyph fails a replay.
 
 #[path = "../../../mcui/tests/support/mod.rs"]
 mod model;
 
 use crate::support::*;
 use mcui::Key::*;
+use mcui::canvas::Call;
 use mcui::{State, Ui};
 use model::{extra_ui, logic_bytes, open, press, proving_bytes, typed, ui, ui_over, unchecked_ui};
 use std::io::Write;
@@ -193,12 +195,33 @@ fn the_tree_outline_and_its_cursor() {
 fn the_checking_screen_at_the_start_midway_and_finished() {
     let mut ui = unchecked_ui(logic_bytes());
     press(&mut ui, &[F2]);
+    let no_ink = |ui: &Ui| {
+        let calls = ui.frame_calls().1;
+        assert!(
+            !calls.iter().any(|c| matches!(c, Call::Ink(_))),
+            "the checking screen records host ink, which the replay would OR over a broken bar"
+        );
+    };
+    no_ink(&ui);
     replay("checking-start", &ui);
     for _ in 0..5 {
         ui.step_check();
     }
+    no_ink(&ui);
     assert!(replay("checking-midway", &ui) >= 5);
+    let bar = |ui: &Ui| {
+        ui.frame_calls().1.into_iter().find_map(|c| match c {
+            Call::Bar { done, total, .. } => Some((done, total)),
+            _ => None,
+        })
+    };
+    let (done, total) = bar(&ui).expect("the checking screen records a bar call");
+    assert!(
+        0 < done && done < total,
+        "a half drawn bar: {done} of {total}"
+    );
     while ui.step_check() != mcui::CheckStep::Finished {}
+    no_ink(&ui);
     replay("checking-finished", &ui);
 }
 

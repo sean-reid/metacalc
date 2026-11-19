@@ -41,3 +41,8 @@ newline:
 	ret
 
 #include "sparescreen.inc"
+
+#macro PROBE_CLEAR(base, size, message)
+RAM_DISJOINT(S_PORT5, SPARE_RAM_SIZE, base, size, message)
+#endmacro
+#include "ramcheck.inc"

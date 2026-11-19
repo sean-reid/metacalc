@@ -33,13 +33,7 @@ PC_STACK_OFFSET .equ $60
 PC_STACK        .equ PC_RAM + PC_STACK_OFFSET
 PC_STACK_TOP    .equ PC_RAM + PC_RAM_SIZE
 
-RAM_WITHIN(PC_RAM, PC_RAM_SIZE, $8000, $C000, "PC_RAM runs past bank B")
-RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, UI_VARS, UI_VARS_SIZE, "PC_RAM and UI_VARS overlap")
-RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, UI_FRAME, UI_FRAME_SIZE, "PC_RAM and UI_FRAME overlap")
-RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "PC_RAM and KD_SCRATCH overlap")
-RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, FAR_VARS, FAR_VARS_SIZE, "PC_RAM and FAR_VARS overlap")
-RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, LIB_STATE, LIB_STATE_SIZE, "PC_RAM and LIB_STATE overlap")
-RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, FM_SCRATCH, FM_SCRATCH_SIZE, "PC_RAM and FM_SCRATCH overlap")
+RAM_WITHIN(PC_RAM, PC_RAM_SIZE, $8000, $C000, "pagecheck's RAM runs past bank B")
 
 #define PC_NEXT 0
 #macro PC_VAR(name, offset, size)
@@ -700,3 +694,8 @@ spin_inner:
 	jp nz, spin_outer
 	ret
 	.fill 1000, 0
+
+#macro PROBE_CLEAR(base, size, message)
+RAM_DISJOINT(PC_RAM, PC_RAM_SIZE, base, size, message)
+#endmacro
+#include "ramcheck.inc"

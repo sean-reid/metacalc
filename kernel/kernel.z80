@@ -107,6 +107,10 @@
 ;   named again) and of each entry saved, before it is copied;
 ;   1 per symbol of an expression substituted into and 1 per symbol it writes, once it is built;
 ;   the disjoint-variable check below.
+; An apply of an assertion with an id of CACHE_IDS or more first charges what the repeated check
+; of its record does, in three charges: 1 per pair of the mandatory list, 1 per pair of the extra
+; list, and 1 per hypothesis plus 1 per symbol of each essential hypothesis and of the conclusion.
+; Ids below CACHE_IDS are checked once per kernel_init and never charged.
 ; The disjoint-variable check of a proof step takes the pairs of the applied
 ; assertion one at a time, with X and Y the expressions that replace its two variables, and
 ; charges every loop iteration before it runs:

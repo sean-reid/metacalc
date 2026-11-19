@@ -186,3 +186,34 @@ fn the_heavy_frames_and_their_blit_redraw_within_50_ms_at_6_mhz() {
 fn six_rows_of_the_narrowest_glyph_and_the_blit_redraw_within_50_ms_at_6_mhz() {
     within_budget_at_6_mhz("six rows of i", &narrowest_rows());
 }
+
+/// Ceiling in T-states for the slowest bar, a little above what it takes.
+const BAR_CEILING: u32 = 5_700;
+
+#[test]
+fn the_slowest_bar_takes_under_its_ceiling_at_6_mhz() {
+    let mut slowest = (0, (0u16, 0u16));
+    for total in [1u16, 2, 90, 94, 779, 3326, 40000, 65535] {
+        let step = usize::from(total / 97 + 1);
+        for done in (0..=total).step_by(step).chain([total - 1, total]) {
+            let ops = [Op::Bar {
+                row: 7,
+                done,
+                total,
+            }];
+            let took = cost(Speed::Mhz6, &ops);
+            if took > slowest.0 {
+                slowest = (took, (done, total));
+            }
+        }
+    }
+    let (took, (done, total)) = slowest;
+    report(format!(
+        "6 MHz: slowest bar, {done} of {total}: {took} T-states, {:.2} ms",
+        f64::from(took) / 6000.0
+    ));
+    assert!(
+        took < BAR_CEILING,
+        "the slowest bar took {took} T-states against a ceiling of {BAR_CEILING}"
+    );
+}

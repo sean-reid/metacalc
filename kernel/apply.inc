@@ -221,6 +221,7 @@ ps_none:
 apply:
 	ld ix,USED_DESC
 	call parse_record
+	call charge_record
 	call require_sound
 	ld hl,(kv_nstack)
 	ld a,(USED_DESC+D_NHYPS)
