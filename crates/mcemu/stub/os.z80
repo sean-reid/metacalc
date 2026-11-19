@@ -3,6 +3,7 @@
 TEST_PAGE .equ $20
 
 _GetCSC           .equ $4018
+_GetKey           .equ $4972
 _JForceCmdNoChar  .equ $4027
 _ClrLCDFull       .equ $4540
 _GrBufCpy         .equ $486A
@@ -21,6 +22,7 @@ E_BAD_CALL        .equ $FF
 
 kbdScanCode       .equ $843F
 kbdKey            .equ $8445
+gkMods            .equ $8446
 plotSScreen       .equ $9340
 
 PORT_KEYS         .equ $01
@@ -238,6 +240,7 @@ fault_bjump:
 
 bcall_table:
 	.dw _GetCSC, get_csc
+	.dw _GetKey, get_key
 	.dw _ClrLCDFull, clr_lcd_full
 	.dw _GrBufCpy, gr_buf_cpy
 	.dw _PutC, put_c
@@ -280,6 +283,90 @@ get_csc:
 	cp $FF
 	ei
 	ret
+
+; A returns the key code TI-OS 2.43 reports for the key taken next, spinning with interrupts open
+; until one is down, because a HALT in the stub stops the machine. 2nd and ALPHA set a modifier
+; for the next key, within one call, and return nothing, and a key with no code in its table is waited out. With
+; the OS break flag set, which ON does, it returns 0 at once and leaves the flag, as the OS does.
+; Alpha lock and power off are not modelled. Every register but IX, IY and SP is junk on return,
+; which has interrupts on.
+get_key:
+	xor a
+	ld (gkMods),a
+get_key_wait:
+	ei
+	nop
+	nop
+	di
+	ld a,(flags+onFlags)
+	and 1<<onInterrupt
+	jr nz,get_key_break
+	ld hl,kbdScanCode
+	ld a,(hl)
+	ld (hl),0
+	or a
+	jr z,get_key_wait
+	ld b,a
+	ld hl,gkMods
+	ld a,b
+	cp SCAN_2ND
+	jr nz,get_key_not_2nd
+	set 0,(hl)
+	jr get_key_wait
+get_key_not_2nd:
+	cp SCAN_ALPHA
+	jr nz,get_key_look
+	set 1,(hl)
+	jr get_key_wait
+get_key_look:
+	ld c,(hl)
+	ld (hl),0
+	ld hl,key_plain
+	bit 0,c
+	jr z,get_key_not_2nd_table
+	ld hl,key_2nd
+	jr get_key_index
+get_key_not_2nd_table:
+	bit 1,c
+	jr z,get_key_index
+	ld hl,key_alpha
+get_key_index:
+	ld d,0
+	ld e,b
+	dec e
+	add hl,de
+	ld a,(hl)
+	or a
+	jr z,get_key_wait
+	jr get_key_done
+get_key_break:
+	xor a
+get_key_done:
+	push af
+	call junk_all
+	pop af
+	ei
+	ret
+
+SCAN_2ND          .equ $36
+SCAN_ALPHA        .equ $30
+
+; Indexed by scancode - 1, measured on the reference OS; 0 for a key with no code.
+key_plain:
+	.db $04,$02,$01,$03,0,0,0,0,$05,$80,$81,$82,$83,$84,$09,0
+	.db $8C,$91,$94,$97,$86,$BB,$35,0,$8D,$90,$93,$96,$85,$B9,$2D,$31
+	.db $8E,$8F,$92,$95,$8B,$B7,$2C,$B4,0,$8A,$BF,$C1,$BD,$B6,$32,0
+	.db $44,$5A,$2E,$48,$49,0,$45,$0A
+key_2nd:
+	.db 0,$0E,$0F,0,0,0,0,0,$0D,$36,$88,$87,$EF,$B5,$09,0
+	.db $C5,$F5,$F8,$FB,$ED,$BC,$38,0,$EE,$F4,$F7,$FA,$EC,$BA,$2F,$3A
+	.db $3E,$F3,$F6,$F9,$98,$B8,$39,$41,0,$0C,$C0,$C2,$BE,$37,$33,0
+	.db $4A,$3B,$57,$4B,$30,0,$40,$0B
+key_alpha:
+	.db $04,$02,$01,$03,0,0,0,0,$05,$CB,$B0,$AB,$A6,$A1,$09,0
+	.db $CA,$CC,$AF,$AA,$A5,$A0,$35,0,$C6,$B3,$AE,$A9,$A4,$9F,$9C,$31
+	.db $99,$B2,$AD,$A8,$A3,$9E,$9B,$B4,0,$B1,$AC,$A7,$A2,$9D,$9A,0
+	.db $44,$5A,$2E,$48,$49,0,$45,$0A
 
 ; Draws one character's worth of nothing. Destroys every register but IX, IY and SP and
 ; returns with interrupts off.
