@@ -15,6 +15,9 @@ map_used:
 stack_push:
 	push hl
 	push bc
+	ld d,b
+	ld e,c
+	call work_charge
 	ld hl,(kv_nstack)
 	inc hl
 	ld de,(kv_ent_limit)
@@ -387,6 +390,9 @@ vb_save:
 	ld c,l
 	push de
 	push bc
+	ld d,b
+	ld e,c
+	call work_charge
 	ld hl,(kv_nsaved)
 	inc hl
 	ld de,(kv_saved_ent_limit)

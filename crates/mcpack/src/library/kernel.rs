@@ -21,7 +21,7 @@ pub enum KernelError {
     WrongConclusion,
     /// A theorem's proof names its references out of first-use order, or leaves one unused.
     LooseReference,
-    /// The disjoint-variable checks of one `verify` call would pass `WORK_LIMIT` units of work.
+    /// The charges of one `verify` call would pass `WORK_LIMIT` units of work.
     WorkLimit,
     /// A symbol name is empty, has a byte outside 21h to 7Eh or a `$`, or equals another name.
     BadSymbol,
@@ -54,20 +54,24 @@ impl KernelError {
 
 /// The most work one `verify` call may spend. Before the proof runs, the check on the reference
 /// list charges 1 per entry for the dummy check and 1 per comparison for the duplicate check,
-/// `r * (r + 1) / 2` for `r` entries, so a list longer than 511 entries cannot pass them within
+/// `r * (r + 1) / 2` for `r` entries, so a list longer than 670 entries cannot pass them within
 /// the work limit. The count is defined only after a call that returned `Ok`: the Z80 kernel
 /// charges the comparisons of a short list in one step, so after a refusal its count and this
-/// one may differ. The
-/// disjoint-variable check of each proof step applies one pair of the applied assertion at a time,
-/// to the two substituted expressions `X` and `Y` that replace its variables, and every loop
-/// iteration is charged before it runs:
+/// one may differ. The proof steps then charge, in the order they run: 1 per symbol of each entry
+/// pushed on the stack (a hypothesis, a dummy variable, a saved step named again) and of each entry
+/// saved, before it is copied; 1 per symbol of an expression substituted into and 1 per symbol it
+/// writes, once it is built; and the disjoint-variable check. The check of each proof step applies
+/// one pair of the applied assertion at a time, to the two substituted expressions `X` and `Y` that
+/// replace its variables, and every loop iteration is charged before it runs:
 /// 1 per pair of the applied assertion; 1 per symbol of `X`, constant or variable; for each
 /// variable of `X`, 1 per symbol of `Y`; and for each variable of `X` against each variable of `Y`,
 /// `1 + n` more, `n` being the number of pairs in the theorem being checked (both lists), however
 /// early the scan would find a match. A charge that would take the total past `WORK_LIMIT` makes
-/// the call return `WorkLimit` without doing that work. Kernel status 14 (ON key pressed) is never
-/// produced here.
-pub const WORK_LIMIT: u32 = 131072;
+/// the call return `WorkLimit`. The limit stops a proof whose disjoint checks, reference lists,
+/// substitutions or copies are far beyond any honest proof. It is not a bound on the time of a
+/// call, and the Z80 kernel reads the ON key at least once per proof step and on every 256 units.
+/// Kernel status 14 (ON key pressed) is never produced here.
+pub const WORK_LIMIT: u32 = 225000;
 
 /// The working memory a check may use, in the units the calculator budgets.
 #[derive(Debug, Clone, Copy)]
@@ -419,6 +423,7 @@ impl<'a> Kernel<'a> {
             let number = match proof.u8()? {
                 SAVE => {
                     let top = *self.starts.last().ok_or(KernelError::StackUnderflow)?;
+                    charge(&mut self.work, (self.stack.len() - top) as u32)?;
                     self.saved_starts.push(self.saved.len());
                     self.saved.extend_from_slice(&self.stack[top..]);
                     if self.saved.len() > self.limits.saved_syms
@@ -522,6 +527,7 @@ impl<'a> Kernel<'a> {
     }
 
     fn push(&mut self, expr: &[u8]) -> Res<()> {
+        charge(&mut self.work, expr.len() as u32)?;
         self.starts.push(self.stack.len());
         self.stack.extend_from_slice(expr);
         self.within_limits()
@@ -622,6 +628,6 @@ impl<'a> Kernel<'a> {
             }
             self.within_limits()?;
         }
-        Ok(())
+        charge(&mut self.work, (expr.len() + self.scratch.len()) as u32)
     }
 }
