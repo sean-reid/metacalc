@@ -4,7 +4,7 @@ use mcpack::library::Library;
 
 /// T-state ceilings per library, about 10 percent above the measured cost: every label, record
 /// and conclusion; lib_open with the sections; every title; a title lookup for every assertion;
-/// every glyph entry; every tree.
+/// every glyph entry; every tree; every shape.
 struct Ceilings {
     name: &'static str,
     statements: u64,
@@ -13,6 +13,7 @@ struct Ceilings {
     lookups: u64,
     glyphs: u64,
     trees: u64,
+    shapes: u64,
 }
 
 const CEILINGS: [Ceilings; 3] = [
@@ -24,6 +25,7 @@ const CEILINGS: [Ceilings; 3] = [
         lookups: 14_740_000,
         glyphs: 140_000,
         trees: 38_740_000,
+        shapes: 79_100,
     },
     Ceilings {
         name: "pred",
@@ -33,6 +35,7 @@ const CEILINGS: [Ceilings; 3] = [
         lookups: 27_160_000,
         glyphs: 223_700,
         trees: 53_500_000,
+        shapes: 118_900,
     },
     Ceilings {
         name: "ring",
@@ -42,6 +45,7 @@ const CEILINGS: [Ceilings; 3] = [
         lookups: 106_950_000,
         glyphs: 1_003_000,
         trees: 139_230_000,
+        shapes: 792_000,
     },
 ];
 
@@ -51,6 +55,7 @@ struct Costs {
     lookups: (u64, u32, u64),
     glyphs: (u64, u32, u64),
     trees: (u64, u32, u64),
+    shapes: (u64, u32, u64),
 }
 
 fn add(sum: &mut (u64, u32, u64), spent: u32) {
@@ -91,6 +96,10 @@ fn measure(rig: &mut Rig, library: &Library) -> Costs {
             rig.tree(n as u16, k as u8);
             add(&mut costs.trees, rig.spent - base);
         }
+    }
+    for i in 0..sections.shapes.as_ref().unwrap().axioms.len() {
+        rig.shape(i as u16);
+        add(&mut costs.shapes, rig.spent - base);
     }
     costs
 }
@@ -159,6 +168,7 @@ fn the_shipped_libraries_read_back_as_the_decoder_decodes_them() {
         );
         println!("{name}: {}", show("glyph entries", costs.glyphs));
         println!("{name}: {}", show("trees", costs.trees));
+        println!("{name}: {}", show("shapes", costs.shapes));
         assert!(
             total <= ceiling.statements,
             "{name}: {total} T-states, ceiling {}",
@@ -174,6 +184,7 @@ fn the_shipped_libraries_read_back_as_the_decoder_decodes_them() {
             ("lookups", costs.lookups.0, ceiling.lookups),
             ("glyphs", costs.glyphs.0, ceiling.glyphs),
             ("trees", costs.trees.0, ceiling.trees),
+            ("shapes", costs.shapes.0, ceiling.shapes),
         ] {
             assert!(
                 got <= ceiling,

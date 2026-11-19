@@ -189,7 +189,10 @@ lsx_check:
 	ld de,ls_tr
 	ld b,LS_TREES
 	cp 3
-	jr nz,lsx_ends
+	jr z,lsx_keep
+	cp 4
+	jr z,lsx_keep_shapes
+	jr lsx_ends
 lsx_keep:
 	ld hl,ls_have
 	ld a,(hl)
@@ -202,6 +205,23 @@ lsx_keep:
 	inc hl
 	ld bc,3
 	ldir
+	jr lsx_ends
+lsx_keep_shapes:
+	ld hl,ls_have
+	ld a,(hl)
+	or LS_SHAPES
+	ld (hl),a
+	ld hl,(lr_bufp)
+	inc hl
+	ld de,ls_sh
+	ld bc,3
+	ldir
+	inc hl
+	ld bc,2
+	ldir
+	ld a,(hl)
+	or a
+	jp nz,lsx_bad_section
 lsx_ends:
 	ld hl,(lr_bufp)
 	ld de,5

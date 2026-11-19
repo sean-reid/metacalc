@@ -1,5 +1,5 @@
 use crate::support::*;
-use mcpack::library::{GLYPHS, TITLES, TREES};
+use mcpack::library::{GLYPHS, SHAPES, TITLES, TREES};
 
 pub const ST_TRAILER: u8 = 6;
 pub const ST_TABLE: u8 = 7;
@@ -11,6 +11,7 @@ pub const HAVE_TITLES: u8 = 1;
 pub const HAVE_GLYPHS: u8 = 2;
 pub const HAVE_TREES: u8 = 4;
 pub const FONT_MATCHES: u8 = 8;
+pub const HAVE_SHAPES: u8 = 16;
 
 /// The foreign-font image keeps a fingerprint the packer never writes.
 pub const FOREIGN: Image = Image {
@@ -96,6 +97,28 @@ impl Rig {
         (out.status(), out.hl, (out.bc >> 8) as u8)
     }
 
+    /// (status, offset, length).
+    pub fn shapes(&mut self) -> (u8, u32, u16) {
+        let out = self.call("LIB_SHAPES", Regs::default());
+        (
+            out.status(),
+            (u32::from(out.de) << 16) | u32::from(out.hl),
+            out.bc,
+        )
+    }
+
+    /// (status, the part bytes).
+    pub fn shape(&mut self, i: u16) -> (u8, Vec<u8>) {
+        let regs = Regs {
+            hl: i,
+            de: BUF,
+            ..Regs::default()
+        };
+        let out = self.call("LIB_SHAPE", regs);
+        let len = usize::from(out.bc >> 8);
+        (out.status(), self.peek(BUF, len))
+    }
+
     /// Statement `k` of assertion `n`, FFh for the conclusion. `bytes` holds what the call copied.
     pub fn tree(&mut self, n: u16, k: u8) -> Tree {
         let regs = Regs {
@@ -169,15 +192,17 @@ impl Rig {
         (ST_OK, nodes)
     }
 
-    /// The ls_ fields: (have, [(offset, length, first item); 3], title count, fingerprint,
+    /// The ls_ fields: (have, [(offset, length, first item); 4], title count, fingerprint,
     /// syntax count).
     pub fn section_state(&mut self) -> SectionState {
         let have = self.state_byte("LS_HAVE");
-        let mut rows = [(0, 0, 0); 3];
+        let mut rows = [(0, 0, 0); 4];
         for (row, name) in rows.iter_mut().zip(["LS_TI", "LS_GL", "LS_TR"]) {
             let b = self.named(name, 9);
             *row = (word(&b[0..3]), word(&b[3..6]), word(&b[6..9]));
         }
+        let b = self.named("LS_SH", 5);
+        rows[3] = (word(&b[0..3]), word(&b[3..5]), 0);
         SectionState {
             have,
             rows,
@@ -191,12 +216,21 @@ impl Rig {
 #[derive(Debug, PartialEq, Eq)]
 pub struct SectionState {
     pub have: u8,
-    pub rows: [(u32, u32, u32); 3],
+    pub rows: [(u32, u32, u32); 4],
     pub titles: u16,
     pub fingerprint: u16,
     pub syntax: u16,
 }
 
-pub fn ids() -> [u8; 3] {
-    [TITLES, GLYPHS, TREES]
+pub fn ids() -> [u8; 4] {
+    [TITLES, GLYPHS, TREES, SHAPES]
+}
+
+/// The bit of `ls_have` that says the section with `id` is there.
+pub fn have_bit(id: u8) -> u8 {
+    if id == SHAPES {
+        HAVE_SHAPES
+    } else {
+        1 << (id - 1)
+    }
 }
