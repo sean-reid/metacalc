@@ -124,6 +124,8 @@
 ;                          for another font's or another symbol count; HL = the fingerprint the
 ;                          library's map carries, 0 without one. lib_glyph gives the same 9 and
 ;                          10, so a caller that sees 10 draws the symbols some other way.
+;   lib_glyphs        out: A = status as lib_glyph_map gives it; E:HL = the section's offset in the
+;                          library, BC = its length, FFFFh when it is 65,535 bytes or longer
 ;   lib_glyph         in:  A = symbol id; DE = buffer of 255 bytes
 ;                     out: C = spacing flags (bit 0 gap before, 1 gap after, 2 gap beside another
 ;                          variable, 3 no gap after), B = glyph count; the codes of the main

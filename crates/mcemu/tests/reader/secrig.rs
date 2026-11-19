@@ -70,6 +70,13 @@ impl Rig {
         (out.status(), out.hl)
     }
 
+    /// (status, offset, length) of the glyph section.
+    pub fn glyphs(&mut self) -> (u8, u32, u16) {
+        let out = self.call("LIB_GLYPHS", Regs::default());
+        let offset = (u32::from(out.de as u8) << 16) | u32::from(out.hl);
+        (out.status(), offset, out.bc)
+    }
+
     /// (status, flags, codes).
     pub fn glyph(&mut self, id: u8) -> (u8, u8, Vec<u8>) {
         let regs = Regs {

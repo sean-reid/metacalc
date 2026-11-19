@@ -299,6 +299,7 @@ fn a_glyph_map_for_another_font_or_symbol_count_opens_and_is_unusable() {
     );
     assert_eq!(rig.glyph_map(), (ST_GLYPHS, fingerprint ^ 1));
     assert_eq!(rig.glyph(0).0, ST_GLYPHS);
+    assert_eq!(rig.glyphs().0, ST_GLYPHS);
     assert_eq!(
         rig.sections(),
         (ST_OK, HAVE_TITLES | HAVE_GLYPHS | HAVE_TREES)
@@ -313,6 +314,20 @@ fn a_glyph_map_for_another_font_or_symbol_count_opens_and_is_unusable() {
     );
     assert_eq!(rig.glyph_map().0, ST_GLYPHS);
     assert_eq!(rig.glyph(0).0, ST_GLYPHS);
+    assert_eq!(rig.glyphs().0, ST_GLYPHS);
+}
+
+#[test]
+fn a_glyph_section_of_65535_bytes_or_more_reports_a_length_of_ffff() {
+    let good = base();
+    let (mut rig, status, _) = both(&good);
+    assert_eq!(status, ST_OK);
+    let (_, offset, length) = rig.glyphs();
+    let row = rig.label("LS_GL") + 3;
+    rig.poke(row, &[length as u8, (length >> 8) as u8, 0]);
+    assert_eq!(rig.glyphs(), (ST_OK, offset, length));
+    rig.poke(row, &[length as u8, (length >> 8) as u8, 1]);
+    assert_eq!(rig.glyphs(), (ST_OK, offset, 0xFFFF));
 }
 
 #[test]

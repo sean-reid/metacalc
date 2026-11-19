@@ -1,6 +1,6 @@
 use crate::secrig::*;
 use crate::support::*;
-use mcpack::library::{Library, Node, Sections, decode, pack_kernel};
+use mcpack::library::{GLYPHS, Library, Node, Sections, decode, pack_kernel};
 use mcpack::mm::{self, Database, StmtId};
 
 /// A grammar with a few rules over the variables p q r s.
@@ -177,10 +177,14 @@ fn check_glyphs(
 ) {
     let Some(map) = &sections.glyphs else {
         assert_eq!(rig.glyph_map().0, ST_NONE, "{what}");
+        assert_eq!(rig.glyphs().0, ST_NONE, "{what}");
         assert_eq!(rig.glyph(0).0, ST_NONE, "{what}");
         return;
     };
     assert_eq!(rig.glyph_map(), (ST_OK, map.fingerprint), "{what}");
+    let row = sections.table.iter().find(|e| e.id == GLYPHS).unwrap();
+    let section = (ST_OK, row.offset as u32, row.length as u16);
+    assert_eq!(rig.glyphs(), section, "{what}: glyph section");
     for id in order(map.symbols.len()) {
         let g = &map.symbols[id];
         assert_eq!(
