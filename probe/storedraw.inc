@@ -3,8 +3,8 @@
 LOG_SHOWN = 120
 
 draw_log:
-	ld hl, plotSScreen
-	ld de, plotSScreen + 1
+	ld hl, UI_FRAME
+	ld de, UI_FRAME + 1
 	ld bc, 767
 	ld (hl), 0
 	ldir
@@ -75,7 +75,7 @@ draw_digit:
 	push hl
 	ld a, (S_DRAW + 5)
 	ld b, a
-	ld hl, plotSScreen
+	ld hl, UI_FRAME
 	ld de, 72
 	inc b
 	jr dd_start

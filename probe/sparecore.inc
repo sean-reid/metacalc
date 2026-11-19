@@ -32,11 +32,11 @@ SIG_LEN        = 8
 
 ; Per range: start, length, seed. The signature is the first SIG_LEN bytes of the low region.
 spare_ranges:
-	.dw 0C500h, SIG_LEN
+	.dw KERNEL_RAM_LOW, SIG_LEN
 	.db 0A5h ^ 0FFh
-	.dw 0C500h + SIG_LEN, 1200h - SIG_LEN
+	.dw KERNEL_RAM_LOW + SIG_LEN, LOW_SIZE - SIG_LEN
 	.db 0A5h
-	.dw 0DF00h, 2000h
+	.dw KERNEL_RAM_HIGH, HIGH_SIZE
 	.db 3Ch
 
 spare_core:
