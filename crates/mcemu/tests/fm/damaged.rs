@@ -396,7 +396,7 @@ fn every_damaged_library_is_refused_with_its_status_and_leaves_what_the_header_s
             }
             Kind::Nodes(tokens) => {
                 nodes += 1;
-                assert_eq!(fm.memory("FV_NODES", 1), [0], "{what}: no table built");
+                assert_eq!(fm.header().nodes, 0, "{what}: no table built");
                 let rows = fm.rows(94);
                 assert_eq!(
                     (rows.status(), count(rows) > 0),

@@ -10,6 +10,14 @@ fm_statement:
 	ld ix,statement_body
 	jr fm_enter
 
+fm_assertion:
+	ld ix,assertion_body
+	jr fm_enter
+
+fm_select:
+	ld ix,select_body
+	jr fm_enter
+
 fm_rows:
 	ld ix,rows_body
 	jr fm_enter

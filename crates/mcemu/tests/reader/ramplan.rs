@@ -66,3 +66,17 @@ fn fms_scratch_follows_the_ui_variables_and_its_memory_stays_off_the_bounce_buff
     let bounce = (at("LIB_BOUNCE"), at("LIB_BOUNCE_SIZE"));
     assert!(base + size <= bounce.0 || bounce.0 + bounce.1 <= base);
 }
+
+#[test]
+fn fm_low_overlays_the_kernels_low_region_above_the_page_of_its_parameters() {
+    let (base, size) = (at("FM_LOW"), at("FM_LOW_SIZE"));
+    let low = (at("KERNEL_RAM_LOW"), at("LOW_SIZE"));
+    assert_eq!((base, size), (0xC600, 0x1100));
+    assert!(base >= low.0 + 0x100, "the kernel's first page stays alone");
+    assert!(base + size <= low.0 + low.1);
+    assert_eq!(
+        base + size,
+        low.0 + low.1,
+        "it runs to the end of the region"
+    );
+}

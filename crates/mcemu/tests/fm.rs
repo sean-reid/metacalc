@@ -23,6 +23,8 @@ mod secrig;
 mod session;
 #[path = "fm/speed.rs"]
 mod speed;
+#[path = "fm/store.rs"]
+mod store;
 #[allow(dead_code)]
 #[path = "reader/support.rs"]
 mod support;

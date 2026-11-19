@@ -26,6 +26,11 @@ impl Model {
         }
     }
 
+    /// Whether the model's caps hold the whole of assertion `n`.
+    pub fn within(&self, n: u16) -> bool {
+        mcui::caps::within(&self.lib.statement(usize::from(n)).all())
+    }
+
     /// The nodes of statement `k` of assertion `n`, from the model's `Expr`.
     pub fn table(&self, n: u16, k: u8) -> Table {
         let statement = self.lib.statement(usize::from(n));
@@ -198,7 +203,7 @@ fn the_table_is_built_once_for_a_loaded_statement_and_a_new_statement_unbuilds_i
     let bytes = fixture::library();
     let library = decoded(&bytes);
     let mut fm = Fm::new(&bytes);
-    let built = |fm: &mut Fm| fm.memory("FV_NODES", 1)[0];
+    let built = |fm: &mut Fm| fm.header().nodes;
     let (n, k, _) = statements(&library)
         .into_iter()
         .find(|s| s.2.len() > 9)
@@ -357,7 +362,7 @@ fn a_refill_that_ends_where_the_library_does_is_read_and_one_byte_short_is_not()
 }
 
 #[test]
-fn a_shapes_section_of_2048_bytes_is_not_too_big_and_one_of_2049_is() {
+fn a_shapes_section_of_2048_bytes_passes_the_size_gate_and_one_of_2049_does_not() {
     let bytes = fixture::library();
     let state = |length: u16| {
         let mut fm = Fm::bare(&bytes);
@@ -368,4 +373,9 @@ fn a_shapes_section_of_2048_bytes_is_not_too_big_and_one_of_2049_is() {
     assert_eq!(state(2049), code("FM_ERR_TOO_BIG"));
     assert_eq!(state(0xFFFF), code("FM_ERR_TOO_BIG"));
     assert_ne!(state(2048), code("FM_ERR_TOO_BIG"));
+    assert_eq!(
+        state(2048),
+        code("FM_ERR_READ"),
+        "past the gate, the reader cannot read 2048 bytes from where the real section starts"
+    );
 }

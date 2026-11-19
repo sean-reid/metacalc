@@ -45,6 +45,11 @@ fn longest() -> String {
     )
 }
 
+/// The fixture's header and syntax axioms followed by `extra`, packed with a glyph map and trees.
+pub fn custom(extra: &str) -> Vec<u8> {
+    pack_all(&parse(&format!("{HEAD}{extra}")))
+}
+
 /// Statements of set.mm's shapes: short and long, many hypotheses, a token wider than a narrow
 /// line, and one of 255 symbols.
 pub fn source() -> String {
@@ -105,6 +110,12 @@ pub fn nodes_library() -> Vec<u8> {
     PACKED
         .get_or_init(|| pack_all(&parse(&format!("{}{}", source(), structure()))))
         .clone()
+}
+
+/// A closed subset of the propositional and predicate libraries with its real proofs: theorems with
+/// hypotheses, disjoint variables and saved steps, and one theorem whose proof is wrong.
+pub fn proofs() -> Vec<u8> {
+    pack_all(&parse(include_str!("proofs.mm")))
 }
 
 pub fn library() -> Vec<u8> {
