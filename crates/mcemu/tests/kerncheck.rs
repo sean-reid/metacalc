@@ -756,11 +756,20 @@ fn a_ready_mark_left_in_kernel_ram_does_not_change_the_run_or_write_the_os_part_
 }
 
 #[test]
-fn the_app_clears_the_ready_mark_before_anything_else() {
+fn the_app_clears_the_ready_mark_before_it_reaches_kernel_init() {
     let bytes = axioms(40);
     let mut rig = Rig::new(&bytes, Speed::Mhz15);
     seed_kernel_state(&mut rig);
-    rig.run_until_trace_has("\x0c", 100);
+    let init = label("KERNEL_INIT");
+    let mut run = rig.m.run(ENTRY, 1);
+    for _ in 0..1_000_000 {
+        if rig.m.pc() == init {
+            break;
+        }
+        assert_eq!(run.stop, Stop::Limit, "the app ended before kernel_init");
+        run = rig.m.resume(1);
+    }
+    assert_eq!(rig.m.pc(), init, "kernel_init was never reached");
     let at = usize::from(label("KV_READY") - 0xC000);
     assert_eq!(rig.m.ram_page(KERNEL_PAGE)[at..at + 2], [0, 0]);
 }
