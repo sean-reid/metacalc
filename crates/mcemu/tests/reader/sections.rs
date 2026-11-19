@@ -85,6 +85,7 @@ fn mask_of(sections: &Sections) -> u8 {
     bit(sections.titles.is_some(), HAVE_TITLES)
         | bit(sections.glyphs.is_some(), HAVE_GLYPHS)
         | bit(sections.trees.is_some(), HAVE_TREES)
+        | bit(sections.shapes.is_some(), HAVE_SHAPES)
 }
 
 /// Every answer of the section routines for `bytes`, against what the decoder says. `order`
@@ -110,6 +111,8 @@ pub fn check_sections_with(
     let Some(sections) = library.sections.as_ref() else {
         assert_eq!(rig.sections(), (ST_OK, 0), "{what}");
         assert_eq!(rig.title_count().0, ST_NONE, "{what}");
+        assert_eq!(rig.shapes().0, ST_NONE, "{what}");
+        assert_eq!(rig.shape(0).0, ST_NONE, "{what}");
         return;
     };
     assert_eq!(rig.sections(), (ST_OK, mask_of(sections)), "{what}");
@@ -121,7 +124,7 @@ pub fn check_sections_with(
                 (e.offset, e.length),
                 "{what}: row {id}"
             ),
-            None => assert_eq!(state.have & (1 << (id - 1)), 0, "{what}: row {id}"),
+            None => assert_eq!(state.have & have_bit(id), 0, "{what}: row {id}"),
         }
     }
     check_titles(rig, &library, sections, what, order);
@@ -129,6 +132,38 @@ pub fn check_sections_with(
         check_glyphs(rig, &library, sections, what, order);
     }
     check_trees(rig, &library, sections, what, order);
+    check_shapes(rig, sections, what, order);
+}
+
+fn check_shapes(
+    rig: &mut Rig,
+    sections: &Sections,
+    what: &str,
+    order: &dyn Fn(usize) -> Vec<usize>,
+) {
+    let Some(shapes) = &sections.shapes else {
+        assert_eq!(rig.shapes().0, ST_NONE, "{what}");
+        assert_eq!(rig.shape(0).0, ST_NONE, "{what}");
+        return;
+    };
+    let entry = sections
+        .table
+        .iter()
+        .find(|e| e.id == mcpack::library::SHAPES);
+    let entry = entry.expect("a shapes row");
+    assert_eq!(
+        rig.shapes(),
+        (ST_OK, entry.offset as u32, entry.length as u16),
+        "{what}"
+    );
+    for i in order(shapes.axioms.len()) {
+        assert_eq!(
+            rig.shape(i as u16),
+            (ST_OK, shapes.axioms[i].clone()),
+            "{what}: shape {i}"
+        );
+    }
+    assert_eq!(rig.shape(shapes.axioms.len() as u16).0, ST_INDEX, "{what}");
 }
 
 fn check_titles(

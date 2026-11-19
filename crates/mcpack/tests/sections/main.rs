@@ -1,3 +1,4 @@
+mod shapes;
 mod trees;
 
 use mcglyph::z80::Table;

@@ -1,4 +1,4 @@
-use super::{Ctx, Cursor, Entry, SectionError, TREES, Writer, within_chunk};
+use super::{Ctx, Cursor, Entry, SectionError, Shapes, TREES, Writer, within_chunk};
 use crate::library::{Assertion, Hypothesis, PackError};
 use crate::mm::{Database, Grammar, Kind, StmtId, Sym, Tree as Parsed};
 use std::collections::{BTreeSet, HashMap};
@@ -59,6 +59,13 @@ pub struct Trees {
 }
 
 impl Trees {
+    /// The shape bytes of every syntax axiom, in table order.
+    pub fn shapes(&self) -> Shapes {
+        Shapes {
+            axioms: self.syntax.iter().map(|a| shape_bytes(&a.parts)).collect(),
+        }
+    }
+
     /// Statements the grammar could not read.
     pub fn without_tree(&self) -> usize {
         self.items.iter().flatten().filter(|t| t.is_none()).count()
@@ -100,6 +107,7 @@ impl Trees {
 /// preorder bytes of every statement's tree.
 pub(super) struct Prepared {
     syntax: Vec<(u16, u8)>,
+    shapes: Vec<Vec<u8>>,
     items: Vec<Vec<Option<Vec<u8>>>>,
 }
 
@@ -163,6 +171,10 @@ pub(super) fn prepare(
         .iter()
         .map(|n| (*n, db.stmt(by_number[n]).frame.hyps.len() as u8))
         .collect();
+    let shapes = numbers
+        .iter()
+        .map(|n| shape_of(db, by_number[n]))
+        .collect::<Result<Vec<_>, _>>()?;
     let mut items = Vec::with_capacity(parsed.len());
     for (&id, trees) in assertions.iter().zip(&parsed) {
         let mut item = Vec::with_capacity(trees.len());
@@ -194,7 +206,43 @@ pub(super) fn prepare(
         }
         items.push(item);
     }
-    Ok(Some(Prepared { syntax, items }))
+    Ok(Some(Prepared {
+        syntax,
+        shapes,
+        items,
+    }))
+}
+
+impl Prepared {
+    /// Each syntax axiom's shape bytes, in table order.
+    pub(super) fn shapes(&self) -> &[Vec<u8>] {
+        &self.shapes
+    }
+}
+
+/// The shape bytes of a syntax axiom: 0 for a constant, else 1 + the position of the float
+/// hypothesis whose variable stands there.
+fn shape_of(db: &Database, axiom: StmtId) -> Result<Vec<u8>, PackError> {
+    let stmt = db.stmt(axiom);
+    let slots: Vec<Sym> = stmt
+        .frame
+        .hyps
+        .iter()
+        .map(|&h| db.stmt(h).expr[1])
+        .collect();
+    let shape: Vec<u8> = stmt.expr[1..]
+        .iter()
+        .map(|sym| {
+            slots
+                .iter()
+                .position(|s| s == sym)
+                .map_or(0, |k| k as u8 + 1)
+        })
+        .collect();
+    if shape.is_empty() || shape.len() > usize::from(u8::MAX) {
+        return Err(PackError::SectionTooLarge);
+    }
+    Ok(shape)
 }
 
 /// Writes `n` as `base + n` when it fits under the escape byte, else the escape and `n - 127`.
@@ -237,6 +285,17 @@ pub(super) fn encode(w: &mut Writer, trees: &Prepared) -> Result<(), PackError> 
     }
     w.close();
     Ok(())
+}
+
+/// The shape bytes of `parts`: 0 for a token, 1 + k for child k.
+pub(super) fn shape_bytes(parts: &[Part]) -> Vec<u8> {
+    parts
+        .iter()
+        .map(|part| match part {
+            Part::Token(_) => 0,
+            Part::Child(k) => (k + 1) as u8,
+        })
+        .collect()
 }
 
 fn syntax_parts(assertion: &Assertion) -> Option<Vec<Part>> {

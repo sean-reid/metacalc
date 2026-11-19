@@ -716,7 +716,7 @@ fn assemble_ui(out: &Path) {
         (&["UI_VARS=$9326", "FM_SCRATCH=$A000"][..], None),
         (&["UI_VARS=$9640"][..], None),
         (&["UI_FRAME=$9572"][..], None),
-        (&["UI_FRAME=$9B6C"][..], None),
+        (&["UI_FRAME=$9B71"][..], None),
         (&["KD_SCRATCH=$9640"][..], None),
         (&["LIB_STATE=$9896"][..], None),
         (&["KERNEL_RAM_HIGH=$D700"][..], None),
@@ -735,6 +735,10 @@ fn assemble_ui(out: &Path) {
         ),
         (
             &["UI_FRAME=$9B00"][..],
+            Some("UI_FRAME and LIB_STATE overlap"),
+        ),
+        (
+            &["UI_FRAME=$9B70"][..],
             Some("UI_FRAME and LIB_STATE overlap"),
         ),
         (
@@ -932,7 +936,7 @@ fn assemble_reader(out: &Path) {
             Some(regions),
         ),
         (
-            &["LIB_STATE_SIZE=$2CF"][..],
+            &["LIB_STATE_SIZE=$2D4"][..],
             Some("the reader's state overlaps, leaves a gap, or runs past LIB_STATE_SIZE"),
         ),
         (&["LIB_BOUNCE=$FE80", "LIB_BOUNCE_ANYWHERE"][..], None),
@@ -1078,7 +1082,7 @@ fn assemble_layout_probes(out: &Path) {
             reader,
             &reader_args[..],
             "LIB_STATE_SIZE=$2E0",
-            0x2D0,
+            0x2D5,
             "the reader's state overlaps, leaves a gap, or runs past LIB_STATE_SIZE",
         ),
     ] {

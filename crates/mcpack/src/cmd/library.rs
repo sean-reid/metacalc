@@ -56,6 +56,13 @@ fn print_sections(library: &library::Library) {
         ),
         None => println!("parse trees: none, the database has no grammar"),
     }
+    if let Some(shapes) = &sections.shapes {
+        println!(
+            "shapes: {} bytes, {} syntax axioms",
+            size(library::SHAPES),
+            shapes.axioms.len()
+        );
+    }
 }
 
 pub fn pack(db: &Database, roots: &[String], output: &Path) -> Result<ExitCode, ExitCode> {

@@ -17,7 +17,7 @@ fn everything(db: &Database) -> Vec<StmtId> {
 }
 
 /// The closure of every assertion of `db`, or `None` when it has no grammar or does not close.
-fn kept(db: &Database) -> Option<Vec<StmtId>> {
+pub(super) fn kept(db: &Database) -> Option<Vec<StmtId>> {
     let grammar = Grammar::new(db, &[("|-", "wff")]).ok()?;
     let roots: Vec<StmtId> = everything(db)
         .into_iter()
@@ -26,7 +26,7 @@ fn kept(db: &Database) -> Option<Vec<StmtId>> {
     mm::closure(db, &grammar, &roots).ok()
 }
 
-fn corpus() -> Vec<(String, Database)> {
+pub(super) fn corpus() -> Vec<(String, Database)> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
     let mut files: Vec<_> = std::fs::read_dir(dir)
         .unwrap()
@@ -234,7 +234,7 @@ fn strings(n: usize) -> Vec<String> {
     out
 }
 
-fn axioms(n: usize) -> Database {
+pub(super) fn axioms(n: usize) -> Database {
     let mut src = String::from("$c |- wff a b $.\n");
     for (i, body) in strings(n).iter().enumerate() {
         src += &format!("w{i} $a wff {body} $.\nax-{i} $a |- {body} $.\n");
@@ -418,6 +418,8 @@ fn the_shipped_libraries_carry_the_grammars_trees_and_none_is_missing() {
         let bytes = std::fs::read(Path::new(&dir).join(format!("{name}.mclib"))).unwrap();
         library::check(&bytes).unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(trees_of(&bytes).without_tree(), 0, "{name}");
+        let shapes = decode(&bytes).unwrap().sections.unwrap().shapes.unwrap();
+        assert_eq!(shapes, trees_of(&bytes).shapes(), "{name}");
         let exported = library::export(&bytes).unwrap();
         let db = mm::parse(exported.into_bytes()).unwrap();
         let compared = agree(&db, &bytes, &everything(&db));

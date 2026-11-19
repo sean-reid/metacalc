@@ -2,7 +2,7 @@ use crate::damaged::{get32, put32, reseal, row_of, rows};
 use crate::placements::{find, layout, symbolic, titled};
 use crate::sections::*;
 use crate::support::*;
-use mcpack::library::{GLYPHS, TITLES, TREES, decode};
+use mcpack::library::{ENTRY_LEN, GLYPHS, TITLES, TREES, decode};
 
 /// An item the packer padded to the start of a chunk: its number, its place and length, the room
 /// the padding left before it, and where the index entry for it and the entry's base lie.
@@ -246,14 +246,22 @@ fn an_item_that_ends_on_the_last_byte_before_a_64_kb_multiple_reads_as_the_decod
     }
 }
 
-/// The library with `extra` zero bytes after the trees section, which the section then covers.
+/// The library with `extra` zero bytes after the trees section, which the section then covers,
+/// and the sections after it moved down by as much.
 fn with_longer_trees(good: &[u8], extra: usize) -> Vec<u8> {
     let row = row_of(good, TREES);
     let mut out = good.to_vec();
+    let end = (get32(&out, row + 1) + get32(&out, row + 5)) as usize;
     let length = get32(&out, row + 5) + extra as u32;
     put32(&mut out, row + 5, length);
-    let table = rows(good).1;
-    out.splice(table..table, std::iter::repeat_n(0, extra));
+    let (count, table) = rows(good);
+    for at in (0..count).map(|i| table + i * ENTRY_LEN) {
+        let offset = get32(&out, at + 1);
+        if offset as usize >= end {
+            put32(&mut out, at + 1, offset + extra as u32);
+        }
+    }
+    out.splice(end..end, std::iter::repeat_n(0, extra));
     reseal(&mut out);
     out
 }
@@ -261,7 +269,7 @@ fn with_longer_trees(good: &[u8], extra: usize) -> Vec<u8> {
 #[test]
 fn a_tree_item_of_64_kb_ending_in_the_same_quarter_of_the_next_64_kb_is_refused() {
     let base = titled(100, 0);
-    let good = with_longer_trees(&base, 70000);
+    let good = with_longer_trees(&base, 5 * 16384);
     let row = row_of(&good, TREES);
     let section_end = (get32(&good, row + 1) + get32(&good, row + 5)) as usize;
     let items = layout(&base, TREES).unwrap().items;

@@ -19,6 +19,7 @@ pub enum SectionError {
     Titles,
     Glyphs,
     Trees,
+    Shapes,
 }
 
 impl std::fmt::Display for SectionError {
@@ -29,6 +30,9 @@ impl std::fmt::Display for SectionError {
             SectionError::Titles => "the titles section is damaged",
             SectionError::Glyphs => "the glyph map is damaged",
             SectionError::Trees => "the parse tree section is damaged",
+            SectionError::Shapes => {
+                "the shapes section is damaged or does not match the parse trees"
+            }
         })
     }
 }
@@ -98,6 +102,20 @@ impl Writer {
         self.out.len()
     }
 
+    /// Opens a section of `len` bytes that starts at a chunk boundary when it would cross one
+    /// otherwise.
+    pub fn open_whole(&mut self, id: u8, len: usize) -> Result<(), TooLarge> {
+        if len > CHUNK {
+            return Err(TooLarge);
+        }
+        let start = self.out.len().next_multiple_of(4);
+        if start % CHUNK + len > CHUNK {
+            self.out.resize(start.next_multiple_of(CHUNK), 0);
+        }
+        self.open(id);
+        Ok(())
+    }
+
     pub fn open(&mut self, id: u8) {
         debug_assert!(self.open.is_none());
         self.out.resize(self.out.len().next_multiple_of(4), 0);
@@ -149,5 +167,30 @@ impl Writer {
         self.out.extend(TRAILER_MAGIC);
         u32::try_from(self.out.len()).map_err(|_| TooLarge)?;
         Ok(self.out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn opened_at(before: usize, len: usize) -> Result<usize, TooLarge> {
+        let mut w = Writer::new(vec![1; before]);
+        w.open_whole(9, len)?;
+        Ok(w.len())
+    }
+
+    #[test]
+    fn a_whole_section_starts_where_it_stays_inside_one_chunk() {
+        assert_eq!(opened_at(0, CHUNK), Ok(0));
+        assert_eq!(opened_at(4, CHUNK), Ok(CHUNK));
+        assert_eq!(opened_at(0, CHUNK - 2), Ok(0));
+        assert_eq!(opened_at(4, CHUNK - 2), Ok(CHUNK));
+        assert_eq!(opened_at(4, CHUNK - 4), Ok(4));
+        assert_eq!(opened_at(8, CHUNK - 4), Ok(CHUNK));
+        assert_eq!(opened_at(CHUNK + 2, 100), Ok(CHUNK + 4));
+        assert_eq!(opened_at(2 * CHUNK - 100, 100), Ok(2 * CHUNK - 100));
+        assert_eq!(opened_at(2 * CHUNK - 100, 101), Ok(2 * CHUNK));
+        assert_eq!(opened_at(10, CHUNK + 1), Err(TooLarge));
     }
 }

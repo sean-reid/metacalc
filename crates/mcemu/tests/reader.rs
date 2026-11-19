@@ -40,6 +40,8 @@ mod safety;
 mod secrig;
 #[path = "reader/sections.rs"]
 mod sections;
+#[path = "reader/shapes.rs"]
+mod shapes;
 #[path = "reader/speed.rs"]
 mod speed;
 #[path = "common/stackfree.rs"]

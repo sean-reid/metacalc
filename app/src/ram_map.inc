@@ -43,7 +43,7 @@ KD_SCRATCH_SIZE     .equ 36
 LIB_STATE           .equ $989C
 #endif
 #ifndef LIB_STATE_SIZE
-LIB_STATE_SIZE      .equ $2D0
+LIB_STATE_SIZE      .equ $2D5
 #endif
 #ifndef KERNEL_RAM_LOW
 KERNEL_RAM_LOW      .equ $C500
