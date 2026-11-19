@@ -37,10 +37,10 @@ fn worst(routine: &'static str, text: &str, to: usize) -> (u32, usize) {
 /// Ceilings in T-states, a little above what the 40 glyphs and the 60 glyphs take at 6 MHz.
 /// Ceilings per routine: to 94 px, and at any width.
 const CUT_CEILINGS: [(&str, u32, u32); 2] =
-    [("ui_truncate", 6_700, 10_700), ("ui_tail", 14_000, 17_600)];
+    [("ui_truncate", 6_650, 10_550), ("ui_tail", 14_000, 17_600)];
 /// The 60 glyphs at 94 px, and at the narrowest widths below it.
 const WRAP_SCREEN_CEILING: u32 = 35_000;
-const WRAP_CEILING: u32 = 68_000;
+const WRAP_CEILING: u32 = 67_600;
 
 #[test]
 fn cutting_forty_glyphs_takes_little_of_a_frame() {
@@ -98,12 +98,13 @@ fn wrapping_sixty_glyphs_into_lines_takes_little_of_a_frame() {
 }
 
 #[test]
-fn the_fitting_routines_reach_at_most_their_documented_stack() {
+fn the_fitting_routines_reach_exactly_the_stack_the_assembler_and_header_give() {
     let codes = table().encode(&format!("{SIXTY} {}", ODD[12]));
-    for (routine, lines, most) in [
-        ("ui_truncate", 1, 18),
-        ("ui_tail", 1, 12),
-        ("ui_wrap", 6, 30),
+    let header = include_str!("../../../../ui/ui.z80");
+    for (routine, lines, constant, name) in [
+        ("ui_truncate", 1, "FIT_STACK_TRUNCATE", "ui_truncate"),
+        ("ui_tail", 1, "FIT_STACK_TAIL", "ui_tail"),
+        ("ui_wrap", 6, "FIT_STACK_WRAP", "ui_wrap"),
     ] {
         let mut deepest = 0;
         for limit in [0, 3, 10, 20, 30, 45, 60, 94, 255] {
@@ -117,24 +118,31 @@ fn the_fitting_routines_reach_at_most_their_documented_stack() {
             deepest = deepest.max(stack_depth(REAL, &ops));
         }
         report(format!("{routine}: {deepest} bytes of stack"));
+        let given = usize::from(label(REAL, constant));
+        assert_eq!(
+            deepest, given,
+            "{routine} reached {deepest}, {constant} says {given}"
+        );
         assert!(
-            deepest <= most,
-            "{routine} reached {deepest}, documented {most}"
+            header.contains(&format!("{given} for {name}")),
+            "ui.z80's header does not say {given} bytes for {name}"
         );
     }
 }
 
-const WIDTH_CEILING: u32 = 10_000;
+/// `ui_text_width` takes what it took before its lookup became a macro, 6,520 T-states on these
+/// 40 glyphs.
+const WIDTH_BEFORE: u32 = 6_520;
 
 #[test]
-fn measuring_forty_glyphs_is_reported() {
+fn measuring_forty_glyphs_takes_what_it_took_before_the_shared_macro() {
     let took = cost(&[Op::Width(table().encode(FORTY))]);
     report(format!(
         "6 MHz: ui_text_width on 40 glyphs: {took} T-states"
     ));
     assert!(
-        took < WIDTH_CEILING,
-        "measuring took {took} against {WIDTH_CEILING}"
+        took.abs_diff(WIDTH_BEFORE) * 100 <= WIDTH_BEFORE,
+        "measuring took {took} against {WIDTH_BEFORE}"
     );
 }
 

@@ -8,6 +8,8 @@ mod draw;
 mod fit;
 #[path = "ui/fit_cost.rs"]
 mod fit_cost;
+#[path = "ui/fit_wrap.rs"]
+mod fit_wrap;
 #[path = "ui/font.rs"]
 mod font;
 #[path = "ui/frames.rs"]

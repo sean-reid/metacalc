@@ -3,26 +3,39 @@
 ; output buffer, B = the buffer's size in bytes with the 0 that ends the result counted, and
 ; C = the width in pixels, 0 to 255. The source is only read and nothing is written outside
 ; the buffer. A result that does not fit it is refused before any byte is written. Out:
-; A = 0 written, 1 refused, and the flags follow A. Each destroys AF BC DE HL.
+; A = 0 written, 1 refused, and the flags follow A. Each destroys AF BC DE HL and nothing else;
+; IX, IY and the shadow registers are untouched.
 ;
 ; The ellipsis is UI_FONT_CH_2026 of the main font, so that table must be the one set. A glyph
 ; is one code, so a cut never splits one. The advance of a glyph is its width and the blank
-; column after it, measured by ui_text_width, and a string fits when its advances add up to at
-; most the width plus one. Each glyph is measured once, and a cut stops at the first glyph that
-; does not fit. A source for ui_tail may hold some 6000 glyphs, for the others any number.
+; column after it, from GLYPH_ADV, and a string fits when its advances add up to at most the
+; width plus one. A cut reads forward until the first glyph that does not fit, then steps back
+; over the few glyphs that leave no room for the ellipsis; ui_tail also measures the whole
+; string once to see whether it fits; ui_wrap measures each word to place it and copies it in a
+; second pass. A source for ui_tail may hold some 6000 glyphs, for the others any number.
+; Only the space code, 1, separates words; the app's strings hold no other whitespace.
 ;
 ; ui_truncate   the string whole when it fits, else its longest prefix that fits with an
 ;               ellipsis after it, then the ellipsis; just the ellipsis when not even that fits
 ; ui_tail       the string whole when it fits, else an ellipsis then the longest suffix that fits
 ;               with it, down to the ellipsis alone
-; ui_wrap       one line of the string cut at spaces. In: HL = where to start, the string's first
-;               code for the first line. Out: HL = the end of the last word on the line, where
-;               the next call starts; A = 2 when no word is left, with nothing written. HL is
-;               kept when A is not 0. Runs of spaces count as one, a word is cut as ui_truncate
-;               cuts it, and words join a line while it stays within the width.
+; ui_wrap       one line of the string cut at spaces, in wrap.inc. In: HL = where to start, the
+;               string's first code for the first line. Out: HL = the end of the last word on
+;               the line, where the next call starts; A = 2 when no word is left, with nothing
+;               written. HL is kept when A is not 0. Runs of spaces count as one, a word is
+;               cut as ui_truncate cuts it, and words join a line while it stays within the
+;               width.
+;
+; The stack each needs, counting the caller's return address, is measured by the tests, which
+; read these constants from the label file.
+FIT_STACK_TRUNCATE      .equ 18
+FIT_STACK_TAIL          .equ 12
+FIT_STACK_WRAP          .equ 30
 
 TF_ELLIPSIS             .equ UI_FONT_CH_2026
 TF_WORDEND              .equ SPACE_CODE+1
+TF_SPACE_ADV            .equ UI_FONT_SPACE_WIDTH+1
+TF_MAX_ADV              .equ UI_FONT_MAX_WIDTH+1
 
 ; tf_take   in:  A = a glyph code, not 0, DE = a budget in pixels
 ;           out: A = its advance; DE less that and carry clear, or DE kept and carry set when
@@ -307,192 +320,4 @@ fit_tl_go:
 	call tf_copy
 	xor a
 	ld (de),a
-	ret
-
-; tf_skip   in: HL = a string; out: HL = its first code that is not a space; destroys AF
-tf_skip:
-	ld a,(hl)
-	dec a
-	ret nz
-	inc hl
-	jr tf_skip
-
-; tf_word   in:  HL = the start of a word, C = width
-;           out: HL = the end of the word, DE = its advance as cut to the width, A = glyphs kept
-;                and one for an ellipsis
-;           destroys F
-tf_word:
-	push hl
-	ld e,c
-	ld d,0
-	inc de
-	scf
-	call tf_cut
-	ld a,l
-	adc a,0
-	ex (sp),hl
-	sub l
-	pop hl
-	push af
-fit_wd_skip:
-	ld a,(hl)
-	cp TF_WORDEND
-	jr c,fit_wd_done
-	inc hl
-	jr fit_wd_skip
-fit_wd_done:
-	pop af
-	ret
-
-; tf_line   in:  HL = where the line starts, C = width
-;           out: HL = the end of the last word on the line, B = the bytes the line takes without
-;                its 0, 0 when no word is left; keeps C
-;           destroys AF DE
-tf_line:
-	push hl
-	ld e,c
-	ld d,0
-	inc de
-	push de
-	ld b,0
-fit_tn_next:
-	call tf_skip
-	ld a,(hl)
-	or a
-	jr z,fit_tn_end
-	call tf_word
-	ex (sp),hl
-	or a
-	sbc hl,de
-	jr nc,fit_tn_fit
-	inc b
-	dec b
-	jr nz,fit_tn_end
-	ld hl,0
-	jr fit_tn_take
-fit_tn_fit:
-	ld de,3
-	or a
-	sbc hl,de
-	jr nc,fit_tn_take
-	ld hl,0
-fit_tn_take:
-	ld e,a
-	ld a,b
-	or a
-	jr z,fit_tn_add
-	inc a
-fit_tn_add:
-	add a,e
-	ld b,a
-	pop de
-	pop af
-	push de
-	push hl
-	ex de,hl
-	jr fit_tn_next
-fit_tn_end:
-	pop af
-	pop hl
-	ret
-
-ui_wrap:
-	push de
-	push hl
-	ld a,b
-	push af
-	call tf_line
-	pop af
-	inc b
-	dec b
-	jr z,fit_wr_none
-	inc b
-	cp b
-	jr c,fit_wr_refuse
-	pop de
-	ex (sp),hl
-	ex de,hl
-	ld b,0
-	ld a,c
-	sub 9
-	jr c,fit_wr_loop
-fit_wr_m:
-	inc b
-	sub 10
-	jr nc,fit_wr_m
-fit_wr_loop:
-	call tf_skip
-	push de
-	push hl
-	ld e,0
-fit_wr_count:
-	ld a,(hl)
-	cp TF_WORDEND
-	jr c,fit_wr_short
-	inc hl
-	inc e
-	ld a,b
-	cp e
-	jr nc,fit_wr_count
-	pop hl
-	push hl
-	ld e,c
-	ld d,0
-	inc de
-	scf
-	call tf_cut
-	ld a,l
-	pop de
-	sub e
-	ex de,hl
-	pop de
-	call tf_copy
-	ld a,(hl)
-	cp TF_WORDEND
-	jr c,fit_wr_whole
-	ld a,TF_ELLIPSIS
-	ld (de),a
-	inc de
-	jr fit_wr_rest
-fit_wr_short:
-	ld a,e
-	pop hl
-	pop de
-	call tf_copy
-	jr fit_wr_whole
-fit_wr_rest:
-	inc hl
-	ld a,(hl)
-	cp TF_WORDEND
-	jr nc,fit_wr_rest
-fit_wr_whole:
-	ex de,hl
-	ex (sp),hl
-	ld a,l
-	cp e
-	jr nz,fit_wr_more
-	ld a,h
-	cp d
-	jr z,fit_wr_done
-fit_wr_more:
-	ex (sp),hl
-	ex de,hl
-	ld a,SPACE_CODE
-	ld (de),a
-	inc de
-	jr fit_wr_loop
-fit_wr_done:
-	pop de
-	xor a
-	ld (de),a
-	ret
-fit_wr_none:
-	ld a,2
-	jr fit_wr_out
-fit_wr_refuse:
-	ld a,1
-fit_wr_out:
-	pop hl
-	pop de
-	or a
 	ret

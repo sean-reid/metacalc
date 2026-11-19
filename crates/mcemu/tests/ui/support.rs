@@ -113,6 +113,10 @@ pub enum Op {
     ClearVars,
     /// Pixels only the host draws, ORed into the frame between two Z80 calls.
     Ink(Bitmap),
+    /// Loads IX, IY and the shadow registers with `SHADOWS`; `Op::CheckShadows` keeps what they
+    /// hold, as six words after every other result.
+    Shadows,
+    CheckShadows,
     /// `lines` calls of a fitting routine, `ui_truncate`, `ui_tail` or `ui_wrap`, each into its
     /// own buffer of `cap` bytes between `FIT_GUARD` bytes of `MARK` on each side; every call
     /// after the first starts where the one before it left HL.
@@ -124,6 +128,9 @@ pub enum Op {
         lines: usize,
     },
 }
+
+/// IX, IY, BC', DE', HL' and AF' as `Op::Shadows` loads them.
+pub const SHADOWS: [u16; 6] = [0x1234, 0x5678, 0x9ABC, 0xDEF0, 0x1357, 0x2468];
 
 /// Bytes of `MARK` before and after each buffer of an `Op::Fit`.
 pub const FIT_GUARD: usize = 4;
@@ -352,6 +359,22 @@ impl Script {
                 self.word(&[0x21], label(self.image, "ui_font"));
                 self.run("ui_set_font", &[], call);
             }
+            Op::Shadows if call => self.code.extend_from_slice(&[
+                0xDD, 0x21, 0x34, 0x12, 0xFD, 0x21, 0x78, 0x56, 0x01, 0xBC, 0x9A, 0x11, 0xF0, 0xDE,
+                0x21, 0x57, 0x13, 0xD9, 0x01, 0x68, 0x24, 0xC5, 0xF1, 0x08,
+            ]),
+            Op::CheckShadows if call => {
+                self.keep(&[0xDD, 0x22]);
+                self.keep(&[0xFD, 0x22]);
+                self.code.push(0xD9);
+                self.keep(&[0xED, 0x43]);
+                self.keep(&[0xED, 0x53]);
+                self.keep(&[0x22]);
+                self.code.extend_from_slice(&[0xD9, 0x08, 0xF5, 0xC1]);
+                self.keep(&[0xED, 0x43]);
+                self.code.push(0x08);
+            }
+            Op::Shadows | Op::CheckShadows => {}
             Op::Fit {
                 routine,
                 text,
