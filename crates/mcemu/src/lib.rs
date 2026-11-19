@@ -330,6 +330,12 @@ impl Machine {
         self.calc.regs()
     }
 
+    /// Replaces the CPU registers, `pc` and the interrupt flip-flops included, and wakes a halted
+    /// CPU. A `resume` goes on from there.
+    pub fn set_regs(&mut self, regs: &Regs) {
+        self.calc.set_regs(regs);
+    }
+
     /// The screen as the core renders it: all pixels off while the controller is off (its
     /// reset state, until the program sends the on command), and also while the CPU is
     /// halted with bit 3 of port 3 clear. The CPU is halted from a HALT that executes until
