@@ -243,12 +243,7 @@ fn spell_bytes(input: &[u8]) -> Output {
         .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("mcpack runs");
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(input)
-        .unwrap();
+    child.stdin.take().unwrap().write_all(input).unwrap();
     child.wait_with_output().unwrap()
 }
 
