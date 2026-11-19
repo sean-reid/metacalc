@@ -211,9 +211,21 @@ damaged symbol-markers-missing "the page must have exactly one line <!-- /symbol
 damaged ascii-token-in-prose "line .* of the page has the ASCII token ph in inline code" 's/^Prose\.$/Prose with `ph`./'
 damaged ascii-statement-in-prose "has the ASCII token -> in inline code" '/^## 1\./,/^## 2\./s/^Prose\.$/Prose with `( 𝜑 -> 𝜓 )`./'
 damaged image-alt-without-description "the image alt text must read th-m: followed by a description" 's/^!\[th-m: [^]]*\]/![th-m]/'
-harmless single-letter-span-allowed 's/^Prose\.$/Prose with `y`./'
+damaged single-letter-in-prose "has the ASCII token y in inline code" 's/^Prose\.$/Prose with `y`./'
+damaged lone-capital-in-prose "has the ASCII token A in inline code" '/^| 𝑦 /a\
+| 𝐴 | any statement | `A` |
+s/^Prose\.$/Prose with `A`./'
 damaged ascii-statement-with-a-letter "has the ASCII token y in inline code" 's/^Prose\.$/Prose with `A. y ps`./'
 damaged ascii-token-in-hypothesis "has the ASCII token |- in inline code" 's/^- `⊢ 𝜑`$/- `|- ph`/'
+
+sed 's/^<!-- outline: th-m -->$/<!-- outline: no-such -->/' "$good" >"$page"
+cp "$page" "$tmp/unknown-label.md"
+if run write; then
+	echo "FAIL write-unknown-label: write succeeded" >&2
+	exit 1
+fi
+cmp -s "$page" "$tmp/unknown-label.md" || { echo "FAIL write-unknown-label: the page changed" >&2; exit 1; }
+echo "ok write-unknown-label"
 
 cp "$good" "$page"
 cat >"$fake/libraries/aaa.toml" <<'TOML'

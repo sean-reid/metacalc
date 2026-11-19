@@ -148,15 +148,15 @@ essentials() {
 # Writes "label page" for each label of the database the shipped libraries hold, the page being that
 # of the first library, in manifest order, that holds it, to the file $2. Builds in the directory $1.
 links() {
-	: >"$1/manifests"
+	: >"$1/manifests" || return 1
 	for manifest in "$root"/libraries/*.toml; do
 		[ "$(basename "$manifest")" = source.toml ] && continue
-		order=$(sed -n 's/^order = \([0-9][0-9]*\)$/\1/p' "$manifest")
+		order=$(sed -n 's/^order = \([0-9][0-9]*\)$/\1/p' "$manifest") || return 1
 		[ -n "$order" ] || { echo "worked-examples: $manifest has no order line" >&2; return 1; }
-		echo "$order $manifest" >>"$1/manifests"
+		echo "$order $manifest" >>"$1/manifests" || return 1
 	done
-	sort -n "$1/manifests" >"$1/manifests.sorted"
-	: >"$1/links.all"
+	sort -n "$1/manifests" >"$1/manifests.sorted" || return 1
+	: >"$1/links.all" || return 1
 	while read -r _ manifest; do
 		name=$(basename "$manifest" .toml)
 		mcpack build "$manifest" --database "$target" -o "$1/$name.mclib" >/dev/null ||
@@ -177,15 +177,16 @@ links() {
 			}
 		' "$1/$name.mm" >>"$1/links.all" || { echo "worked-examples: reading the export of $name failed" >&2; return 1; }
 	done <"$1/manifests.sorted"
-	awk '!seen[$1]++' "$1/links.all" >"$2"
+	awk '!seen[$1]++' "$1/links.all" >"$2" || return 1
 }
 
+# Callers run these under ||, which turns set -e off, so every command here returns its own failure.
 outlines() {
-	mkdir -p "$1"
+	mkdir -p "$1" || return 1
 	links "$1" "$1/links" || return 1
 	for label in $(labels); do
-		mcpack outline "$target" "$label" --html --links "$1/links" >"$1/$label"
-		mcpack outline "$target" "$label" >"$1/$label.ascii"
+		mcpack outline "$target" "$label" --html --links "$1/links" >"$1/$label" || return 1
+		mcpack outline "$target" "$label" >"$1/$label.ascii" || return 1
 	done
 }
 
@@ -216,8 +217,7 @@ symbol_rows() {
 }
 
 # Prints "line:token" for each ASCII Metamath token left in inline code outside the symbol table and
-# the trees. The tokens are those of the file $1, one per line. A span holding one single-letter
-# token is not flagged, since prose names variables that way.
+# the trees. The tokens are those of the file $1, one per line.
 leftovers() {
 	awk -v banned="$1" '
 		BEGIN { while ((getline t < banned) > 0) ban[t] = 1 }
@@ -240,7 +240,6 @@ leftovers() {
 				m = split(span[j], tok, " ")
 				for (i = 1; i <= m; i++) {
 					if (!(tok[i] in ban)) continue
-					if (m == 1 && length(tok[i]) == 1) continue
 					printf "%d:%s\n", NR, tok[i]
 				}
 			}
@@ -295,7 +294,9 @@ check)
 	cut -f2 "$tmp/rows" | tr -s ' ' '\n' | sed '/^$/d' | sort -u >"$tmp/tabled"
 	sort -u "$tmp/used" "$tmp/tabled" >"$tmp/all"
 	: >"$tmp/spellings"
-	if mcpack spell <"$tmp/all" >"$tmp/spelled" 2>"$tmp/spell.err"; then
+	spell_status=0
+	mcpack spell <"$tmp/all" >"$tmp/spelled" 2>"$tmp/spell.err" || spell_status=$?
+	if [ $spell_status -eq 0 ]; then
 		paste "$tmp/all" "$tmp/spelled" >"$tmp/spellings"
 		awk -F'\t' '
 			function bad(msg) { print "worked-examples: " msg > "/dev/stderr"; failed = 1 }
@@ -317,9 +318,13 @@ check)
 				exit failed
 			}
 		' "$tmp/spellings" "$tmp/used" "$tmp/rows" || status=1
-	else
+	elif [ $spell_status -eq 1 ]; then
 		cat "$tmp/spell.err" >&2
 		echo "worked-examples: a symbol of the page or the examples has no Unicode spelling" >&2
+		status=1
+	else
+		cat "$tmp/spell.err" >&2
+		echo "worked-examples: mcpack spell failed with status $spell_status" >&2
 		status=1
 	fi
 	[ -s "$tmp/rows" ] || { echo "worked-examples: the page has no symbol table" >&2; status=1; }
