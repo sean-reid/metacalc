@@ -150,6 +150,17 @@ ltr_whole:
 	ld (ls_ts+2),a
 	call lsx_chunk
 	ret nz
+	ld hl,(ls_te)
+	ld de,(ls_ts)
+	or a
+	sbc hl,de
+	ld b,h
+	ld c,l
+	ld hl,(lr_tr)
+	ld a,(lr_tr+2)
+	ld de,ls_tr
+	call lsx_within
+	ret nz
 	ld a,(lr_sid)
 	or a
 	jp nz,lsx_nothing

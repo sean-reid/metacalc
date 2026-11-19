@@ -4,7 +4,7 @@ use mcpack::library::{Library, Node, Sections, decode, pack_kernel};
 use mcpack::mm::{self, Database, StmtId};
 
 /// A grammar with a few rules over the variables p q r s.
-const GRAMMAR: &str = "$c wff |- ( ) -> & -. $.\n$v p q r s $.\n\
+pub const GRAMMAR: &str = "$c wff |- ( ) -> & -. $.\n$v p q r s $.\n\
     wp $f wff p $.\nwq $f wff q $.\nwr $f wff r $.\nws $f wff s $.\n\
     wn $a wff -. p $.\nwi $a wff ( p -> q ) $.\nwa $a wff ( p & q ) $.\n";
 

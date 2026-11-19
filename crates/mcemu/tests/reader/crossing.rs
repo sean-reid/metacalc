@@ -137,3 +137,52 @@ fn a_tree_item_that_crosses_a_chunk_is_refused_as_the_decoder_refuses_it() {
         out
     });
 }
+
+/// The start of each statement of the tree item at `at`, up to its end at `end`.
+fn statements(bytes: &[u8], at: usize, end: usize) -> Vec<usize> {
+    let mut starts = Vec::new();
+    let mut p = at;
+    while p < end {
+        starts.push(p);
+        p += match bytes[p] {
+            0xFE => 1,
+            0xFF => 3 + usize::from(u16::from_le_bytes([bytes[p + 1], bytes[p + 2]])),
+            n => 1 + usize::from(n),
+        };
+    }
+    assert_eq!(p, end);
+    starts
+}
+
+#[test]
+fn a_tree_item_whose_last_statement_runs_past_its_section_is_refused_for_every_statement() {
+    let src = format!(
+        "{GRAMMAR}ax-0 $a |- p $.\n${{\nh1 $e |- p $.\nh2 $e |- ( p -> q ) $.\nax-last $a |- q $.\n$}}\n"
+    );
+    let good = pack_with_sections(&src);
+    let table = decoded(&good).sections.unwrap().table;
+    let section = table.iter().find(|e| e.id == TREES).unwrap();
+    let section_end = section.offset + section.length;
+    let (at, len) = *layout(&good, TREES).unwrap().items.last().unwrap();
+    assert_eq!(at + len, section_end, "the last item ends the section");
+    let starts = statements(&good, at, at + len);
+    assert!(starts.len() >= 2, "{starts:?}");
+    let last = *starts.last().unwrap();
+    assert!(good[last] < 0xFE, "the last statement is a tree");
+    let mut bytes = good.clone();
+    bytes[last] = 0xFD;
+    reseal(&mut bytes);
+    assert!(last + 1 + 0xFD > section_end);
+    assert!(decode(&bytes).is_err(), "the decoder refuses");
+    let n = (decoded(&good).assertions.len() - 1) as u16;
+    let mut rig = opened(&bytes);
+    for k in (0..starts.len() as u8 - 1).chain([0xFF]) {
+        assert_eq!(rig.tree(n, k).status, ST_BAD, "statement {k}");
+    }
+    let mut rig = opened(&good);
+    assert_eq!(
+        rig.tree(n, 0xFF).status,
+        ST_OK,
+        "the unchanged library reads"
+    );
+}
