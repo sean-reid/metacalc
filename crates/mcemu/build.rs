@@ -534,14 +534,14 @@ fn assemble_kernel(out: &Path) {
         &dir.join("kernel.z80"),
         &out.join("kernel_standalone.bin"),
         &[],
-        &["-I", include],
+        &["-I", include, "-I", "../../app/src"],
     );
     let assemble = |defines: &[&str]| {
         spasm_try(
             &dir.join("kernel.z80"),
             &out.join("kernel_base_probe.bin"),
             defines,
-            &["-I", include],
+            &["-I", include, "-I", "../../app/src"],
         )
     };
     let overlap = "the low and high regions overlap";
@@ -620,7 +620,7 @@ fn assemble_kernel(out: &Path) {
             Path::new("tests/routines/kernel_test.z80"),
             &out.join(format!("{name}.bin")),
             defines,
-            &["-I", include, "-L"],
+            &["-I", include, "-I", "../../app/src", "-L"],
         );
     }
 }
@@ -632,6 +632,7 @@ fn assemble_ui(out: &Path) {
     for entry in fs::read_dir(dir).unwrap().flatten() {
         println!("cargo:rerun-if-changed={}", entry.path().display());
     }
+    println!("cargo:rerun-if-changed=../../app/src/ram_map.inc");
     let font_dir = out.join("ui_font");
     fs::create_dir_all(&font_dir).unwrap();
     fs::write(font_dir.join("font.inc"), mcglyph::z80::fonts_include()).unwrap();
@@ -641,7 +642,15 @@ fn assemble_ui(out: &Path) {
             &dir.join("ui.z80"),
             output,
             defines,
-            &["-I", include, "-I", font_dir.to_str().unwrap(), "-L"],
+            &[
+                "-I",
+                include,
+                "-I",
+                font_dir.to_str().unwrap(),
+                "-I",
+                "../../app/src",
+                "-L",
+            ],
         )
     };
     for (name, defines) in [
@@ -657,6 +666,31 @@ fn assemble_ui(out: &Path) {
         other => fail(&format!(
             "overlapping canvas blocks gave {other:?}, not an overlap error"
         )),
+    }
+    for (defines, want) in [
+        (&["UI_VARS=$9340"][..], "UI_FRAME and UI_VARS overlap"),
+        (&["UI_VARS=$9880"][..], "UI_VARS and KD_SCRATCH overlap"),
+        (&["UI_VARS=$9B60"][..], "UI_VARS and LIB_STATE overlap"),
+        (&["UI_FRAME=$9860"][..], "UI_FRAME and KD_SCRATCH overlap"),
+        (&["UI_FRAME=$9B00"][..], "UI_FRAME and LIB_STATE overlap"),
+        (&["LIB_STATE=$9890"][..], "KD_SCRATCH and LIB_STATE overlap"),
+        (&["UI_VARS=$BFF0"][..], "UI_VARS runs past bank B"),
+        (&["UI_VARS=$7FF0"][..], "UI_VARS runs past bank B"),
+        (
+            &["KERNEL_RAM_HIGH=$C000"][..],
+            "KERNEL_RAM_LOW and KERNEL_RAM_HIGH overlap",
+        ),
+        (
+            &["KERNEL_RAM_LOW=$F000"][..],
+            "KERNEL_RAM_LOW runs past bank C",
+        ),
+    ] {
+        match assemble(defines, &out.join("ui_probe.bin")) {
+            Err(why) if why.contains(want) => {}
+            other => fail(&format!(
+                "the RAM map with {defines:?} gave {other:?}, wanted {want}"
+            )),
+        }
     }
     const BOX_ERROR: &str =
         "a soft key box must span one or two whole bytes between its edge bytes";
@@ -683,6 +717,8 @@ fn assemble_reader(out: &Path) {
     let args = [
         "-I",
         "../../kernel",
+        "-I",
+        "../../app/src",
         "-I",
         "../..",
         "-I",

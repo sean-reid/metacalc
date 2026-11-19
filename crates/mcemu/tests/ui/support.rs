@@ -16,7 +16,7 @@ pub const REAL: Image = Image {
     code: include_bytes!(concat!(env!("OUT_DIR"), "/ui_test.bin")),
     labels: include_str!(concat!(env!("OUT_DIR"), "/ui_test.lab")),
     frame: 0x9340,
-    vars: 0x9882,
+    vars: 0x86EC,
 };
 
 pub const MOVED: Image = Image {

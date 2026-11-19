@@ -38,6 +38,9 @@ P_TMP        = K_PARAMS + 31
 P_TMP2       = K_PARAMS + 33
 P_STR        = K_PARAMS + 34
 K_END        = K_PARAMS + 36
+#if ((K_END - K_PARAMS) < KD_SCRATCH_SIZE) || ((K_END - K_PARAMS) > KD_SCRATCH_SIZE)
+ .error "KD_SCRATCH_SIZE in ram_map.inc must be K_END - K_PARAMS"
+#endif
 
 CRC_NONE    = 0
 CRC_OK      = 1

@@ -1,9 +1,4 @@
-#ifndef LIB_STATE
-LIB_STATE           .equ $989C
-#endif
-#ifndef LIB_BOUNCE
-LIB_BOUNCE          .equ $FE00
-#endif
+#include "ram_map.inc"
 #ifndef LIB_SPARE_PAGE
 LIB_SPARE_PAGE      .equ 3
 #endif
@@ -32,7 +27,6 @@ LIB_SPARE_PAGE      .equ 3
 #if LIB_STATE < $8000
  .error "LIB_STATE must be in bank B"
 #endif
-LIB_STATE_SIZE      .equ $2D0
 LIB_INDEX           .equ LIB_STATE+$A8
 #if LIB_STATE + LIB_STATE_SIZE > $C000
  .error "LIB_STATE and its index must end below $C000"

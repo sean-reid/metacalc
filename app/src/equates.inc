@@ -1,3 +1,5 @@
+#include "ram_map.inc"
+
 #define bcall(addr) rst 28h \ .dw addr
 #define bjump(addr) call 50h \ .dw addr
 
@@ -23,7 +25,7 @@ OP3              = 848Eh
 appVarObj        = 15h
 plotSScreen      = 9340h
 appBackUpScreen  = 9872h
-libPage          = appBackUpScreen
+libPage          = KD_SCRATCH
 skClear          = 0Fh
 onFlags          = 9
 onInterrupt      = 4

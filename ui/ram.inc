@@ -9,24 +9,9 @@ UI_MARGIN               .equ 1
 UI_SOFT_ROW             .equ 7
 UI_BUSY_LIMIT           .equ 255
 
-#ifndef UI_FRAME
-UI_FRAME                .equ $9340
-#endif
-#ifndef UI_VARS
-UI_VARS                 .equ $9882
-#endif
-UI_FRAME_SIZE           .equ UI_STRIDE*UI_HEIGHT
-UI_VARS_SIZE            .equ $1A
-#if (UI_FRAME + UI_FRAME_SIZE) > $FFFF
- .error "UI_FRAME must end at or below $FFFF"
-#endif
-#if (UI_VARS + UI_VARS_SIZE) > $10000
- .error "UI_VARS must leave 26 bytes"
-#endif
-#if UI_FRAME < (UI_VARS + UI_VARS_SIZE)
-#if UI_VARS < (UI_FRAME + UI_FRAME_SIZE)
- .error "UI_FRAME and UI_VARS overlap"
-#endif
+#include "ram_map.inc"
+#if (UI_FRAME_SIZE < (UI_STRIDE * UI_HEIGHT)) || (UI_FRAME_SIZE > (UI_STRIDE * UI_HEIGHT))
+ .error "UI_FRAME_SIZE in ram_map.inc must be UI_STRIDE*UI_HEIGHT"
 #endif
 
 ui_rowbase              .equ UI_VARS+$00
@@ -47,6 +32,9 @@ ui_fontp                .equ UI_VARS+$14
 ui_sp                   .equ UI_VARS+$16
 ui_iff                  .equ UI_VARS+$18
 ui_blk                  .equ UI_VARS+$19
+#if (ui_blk + 1) > (UI_VARS + UI_VARS_SIZE)
+ .error "UI_VARS_SIZE in ram_map.inc is too small for the UI variables"
+#endif
 
 SLOT                    .equ 8
 SPACE_CODE              .equ 1

@@ -7,14 +7,7 @@ KERNEL_RAM_PAGE             .equ 3
 #if KERNEL_RAM_PAGE > 7
  .error "KERNEL_RAM_PAGE must be 2 to 7, there are no pages above 7"
 #endif
-#ifndef KERNEL_RAM_LOW
-KERNEL_RAM_LOW              .equ $C500
-#endif
-#ifndef KERNEL_RAM_HIGH
-KERNEL_RAM_HIGH             .equ $DF00
-#endif
-LOW_SIZE                    .equ $1200
-HIGH_SIZE                   .equ $2000
+#include "ram_map.inc"
 #if KERNEL_RAM_LOW & $FF
  .error "KERNEL_RAM_LOW must be a multiple of $100"
 #endif
