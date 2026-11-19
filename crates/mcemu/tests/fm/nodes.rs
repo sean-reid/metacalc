@@ -229,3 +229,26 @@ fn the_table_is_built_once_for_a_loaded_statement_and_a_new_statement_unbuilds_i
         "open leaves no statement"
     );
 }
+
+#[test]
+fn the_deepest_tree_leaves_six_bytes_of_the_explicit_stack_and_writes_only_fms_memory() {
+    let bytes = fixture::nodes_library();
+    let library = decoded(&bytes);
+    let deep = library
+        .assertions
+        .iter()
+        .position(|a| a.label == "deep")
+        .unwrap() as u16;
+    let mut fm = Fm::opened_primed(&bytes);
+    assert_eq!(fm.statement(deep, 0xFF).status(), 0);
+    let pile = usize::from(fm.rig.label("FM_PILE") - SPARE_BASE);
+    let size = constant_of(WITH_FM.labels, "FM_PILE_SIZE") as usize;
+    fm.rig.m.ram_page(SPARE_PAGE)[pile..pile + size].fill(0xA5);
+    let out = fm.nodes();
+    assert_eq!((out.status(), count(out)), (0, fixture::CHAIN + 1));
+    let page = fm.rig.m.ram_page(SPARE_PAGE);
+    let used = page[pile..pile + size].iter().rposition(|&b| b != 0xA5);
+    assert_eq!(used.map(|at| at + 1), Some(2 * fixture::CHAIN));
+    let found = crate::guard::stray(&mut fm.rig, &crate::session::allowed());
+    assert!(found.is_empty(), "stray writes at {found:x?}");
+}
