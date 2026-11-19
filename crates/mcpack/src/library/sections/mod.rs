@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 mod frame;
 mod glyphs;
+mod shapes;
 mod titles;
 mod trees;
 mod truth;
@@ -15,6 +16,7 @@ use frame::table;
 pub use frame::table as locate;
 pub use frame::{Entry, SectionError};
 pub use glyphs::{GlyphMap, Glyphs};
+pub use shapes::{SHAPE_CAPACITY, Shapes};
 pub use titles::Title;
 pub(super) use titles::select as select_titles;
 pub use trees::{AXIOM_CAPACITY, Node, Part, SyntaxAxiom, Tree, Trees, VARIABLE_CAPACITY};
@@ -28,6 +30,7 @@ pub const ENTRY_LEN: usize = 9;
 pub const TITLES: u8 = 1;
 pub const GLYPHS: u8 = 2;
 pub const TREES: u8 = 3;
+pub const SHAPES: u8 = 4;
 
 /// What a library carries after its records.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -37,6 +40,7 @@ pub struct Sections {
     pub titles: Option<Vec<Title>>,
     pub glyphs: Option<GlyphMap>,
     pub trees: Option<Trees>,
+    pub shapes: Option<Shapes>,
 }
 
 /// A library's own parts, which the sections are read against.
@@ -108,11 +112,17 @@ pub(crate) fn read(bytes: &[u8], ctx: &Ctx) -> Result<Option<Sections>, SectionE
     let trees = find(TREES)
         .map(|entry| trees::decode(bytes, entry, ctx))
         .transpose()?;
+    let shapes = match (&trees, find(SHAPES)) {
+        (Some(trees), Some(entry)) => Some(shapes::decode(bytes, entry, trees)?),
+        (None, None) => None,
+        _ => return Err(SectionError::Shapes),
+    };
     Ok(Some(Sections {
         table,
         titles,
         glyphs,
         trees,
+        shapes,
     }))
 }
 
@@ -145,6 +155,7 @@ pub(super) fn append(
     )?;
     if let Some(trees) = &trees {
         trees::encode(&mut writer, trees)?;
+        shapes::encode(&mut writer, trees.shapes())?;
     }
     writer.finish().map_err(|_| PackError::SectionTooLarge)
 }

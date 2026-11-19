@@ -37,6 +37,8 @@ fn every(watch: &mut Watch, rig: &mut Rig, tag: &str, buf: u16, want: Option<u8>
         ("LIB_SYNTAX", at(index, 0)),
         ("LIB_TREE", at(index, 0)),
         ("LIB_TREE", at(0, 0x7000)),
+        ("LIB_SHAPES", Regs::default()),
+        ("LIB_SHAPE", at(index, 0)),
         (
             "LIB_NODE",
             Regs {
@@ -72,7 +74,7 @@ fn every_status_of_every_section_routine_comes_with_matching_flags() {
     let mut rig = Rig::with_library(&good);
     rig.open_ok();
     rig.poke(BUF, &[0x7F]);
-    for target in ["LIB_TITLE", "LIB_GLYPH", "LIB_TREE"] {
+    for target in ["LIB_TITLE", "LIB_GLYPH", "LIB_TREE", "LIB_SHAPE"] {
         let state = rig.label("LIB_STATE");
         let regs = Regs {
             de: state,
@@ -127,12 +129,25 @@ fn every_status_of_every_section_routine_comes_with_matching_flags() {
     let mut bare = Rig::with_library(&kernel);
     bare.open_ok();
     every(&mut watch, &mut bare, "no sections", BUF, None, 0);
-    for target in ["LIB_TITLE_COUNT", "LIB_GLYPH_MAP", "LIB_SYNTAX_COUNT"] {
+    for target in [
+        "LIB_TITLE_COUNT",
+        "LIB_GLYPH_MAP",
+        "LIB_SYNTAX_COUNT",
+        "LIB_SHAPES",
+    ] {
         assert_eq!(
             watch.call(&mut bare, "no sections", target, Regs::default()),
             ST_NONE
         );
     }
+    let shape = Regs {
+        de: BUF,
+        ..Regs::default()
+    };
+    assert_eq!(
+        watch.call(&mut bare, "no sections", "LIB_SHAPE", shape),
+        ST_NONE
+    );
 
     let mut foreign = Rig::with_image(FOREIGN);
     foreign.load(&good);

@@ -106,10 +106,12 @@ LR_VAR(ls_gl_fp, $2C6, 2)
 LR_VAR(ls_tr_n, $2C8, 2)
 LR_VAR(ls_ts, $2CA, 3)
 LR_VAR(ls_te, $2CD, 3)
+LR_VAR(ls_sh, $2D0, 5)
 LS_TITLES           .equ 1
 LS_GLYPHS           .equ 2
 LS_TREES            .equ 4
 LS_FONT             .equ 8
+LS_SHAPES           .equ 16
 LS_FIRST            .equ 6
 
 ls_lo               .equ lr_n

@@ -159,7 +159,7 @@ lsx_glyph:
 lsx_trees:
 	ld a,(ls_have)
 	and LS_TREES
-	ret z
+	jr z,lsx_shapes
 	ld hl,ls_tr
 	ld c,2
 	call lsx_head
@@ -188,7 +188,42 @@ lsx_trees:
 	ld bc,2
 	call lr_adv
 	ld de,ls_tr
-	jp lsx_first
+	call lsx_first
+	ret nz
+lsx_shapes:
+	ld a,(ls_have)
+	ld b,a
+	and LS_TREES
+	jr z,lsx_shapes_alone
+	ld a,b
+	and LS_SHAPES
+	jp z,lsx_bad_section
+	ld hl,ls_sh
+	ld c,2
+	call lsx_head
+	ret nz
+	ld hl,(lr_hdr)
+	ld de,(ls_tr_n)
+	or a
+	sbc hl,de
+	jp nz,lsx_bad_section
+	ld hl,(ls_tr_n)
+	add hl,hl
+	ld bc,4
+	add hl,bc
+	ld de,(ls_sh+3)
+	or a
+	sbc hl,de
+	jp z,lsx_shapes_end
+	jp nc,lsx_bad_section
+lsx_shapes_end:
+	xor a
+	ret
+lsx_shapes_alone:
+	ld a,b
+	and LS_SHAPES
+	ret z
+	jp lsx_bad_section
 
 ; in: A:HL = the bytes between a section's start and its first item, DE = the section's
 ; struct. Sets the struct's first item and checks it is not past the section's end.

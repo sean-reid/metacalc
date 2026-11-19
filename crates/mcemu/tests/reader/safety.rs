@@ -10,7 +10,7 @@ fn workout(rig: &mut Rig, bytes: &[u8]) {
     let titles = sections.titles.as_ref().unwrap().len() as u16;
     let symbols = sections.glyphs.as_ref().unwrap().symbols.len() as u8;
     let assertions = library.assertions.len() as u16;
-    assert_eq!(rig.sections(), (ST_OK, 7));
+    assert_eq!(rig.sections(), (ST_OK, 23));
     assert_eq!(rig.title_count().0, ST_OK);
     for n in [0, 1, titles / 2, titles - 1] {
         assert_eq!(rig.title(n).0, ST_OK);
@@ -28,6 +28,9 @@ fn workout(rig: &mut Rig, bytes: &[u8]) {
     assert_eq!(rig.syntax_count().0, ST_OK);
     assert_eq!(rig.syntax(0).0, ST_OK);
     assert_eq!(rig.syntax(500).0, ST_INDEX);
+    assert_eq!(rig.shapes().0, ST_OK);
+    assert_eq!(rig.shape(0).0, ST_OK);
+    assert_eq!(rig.shape(500).0, ST_INDEX);
     for n in (0..assertions).step_by(37).chain([assertions - 1]) {
         for k in [0u8, 1, 0xFF, 9] {
             rig.tree(n, k);
@@ -144,6 +147,8 @@ fn an_interrupt_at_any_point_of_a_section_call_changes_nothing() {
         ("LIB_GLYPH", at(5, 0)),
         ("LIB_TREE", at(250, 0xFF00)),
         ("LIB_TREE", at(251, 0x0100)),
+        ("LIB_SHAPE", at(1, 0)),
+        ("LIB_SHAPE", at(2, 0)),
     ] {
         let fired = sweep(&mut rig, target, regs, 13, &|_| {});
         println!("{target}: {fired} interrupts landed inside the call");
