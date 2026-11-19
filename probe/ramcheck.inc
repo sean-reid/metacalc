@@ -14,3 +14,6 @@ PROBE_CLEAR(LIB_STATE, LIB_STATE_SIZE, "the probe's RAM overlaps LIB_STATE")
 #ifdef KD_NEXT
 PROBE_CLEAR(KD_SCRATCH, KD_SCRATCH_SIZE, "the probe's RAM overlaps KD_SCRATCH")
 #endif
+#ifdef FAR_NEXT
+PROBE_CLEAR(FAR_VARS, FAR_VARS_SIZE, "the probe's RAM overlaps FAR_VARS")
+#endif

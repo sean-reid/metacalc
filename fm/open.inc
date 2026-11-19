@@ -5,8 +5,8 @@ open_body:
 	xor a
 	ld (fv_open),a
 	ld (fv_open+1),a
-	ld (fv_count),a
-	ld (fv_nodes),a
+	call fm_clear
+	xor a
 	ld (fv_sk+5),a
 	ld (fv_ns),a
 	ld (fv_ns+1),a
@@ -80,7 +80,8 @@ op_copy:
 	jr fm_copy
 
 ; Every symbol's offset is inside the copy and its entry, flags, count and codes, ends inside it,
-; with no flag above bit 3.
+; with no flag above bit 3 and one to 128 codes, none of them 0, which ends a string: the font gives
+; every token glyphs, its codes start at 1 and a token of 129 is over 255 pixels wide.
 op_check:
 	ld a,(FM_GLYPHS+2)
 	ld (fv_nsyms),a
@@ -99,6 +100,16 @@ op_table:
 	ld a,(fv_nsyms)
 	or a
 	jp z,op_shapes
+	ld hl,FM_SYMF
+	ld de,FM_SYMF+1
+	ld (hl),0
+	ld b,0
+	ld c,a
+	dec c
+	jr z,op_one
+	ldir
+op_one:
+	ld a,(fv_nsyms)
 	ld b,a
 	ld hl,FM_GLYPHS+3
 op_entry:
@@ -147,6 +158,11 @@ op_entry_ok:
 oe_head:
 	dec hl
 	ld c,(hl)
+	ld a,c
+	or a
+	jr z,oe_bad
+	cp 129
+	jr nc,oe_bad
 	dec hl
 	ld a,(hl)
 	and $F0
@@ -154,11 +170,21 @@ oe_head:
 	inc hl
 	inc hl
 	ld b,0
+	push hl
 	add hl,bc
 	or a
 	sbc hl,de
-	jr c,oe_ok
+	pop hl
+	jr c,oe_codes
 	jr nz,oe_bad
+oe_codes:
+	ld b,c
+oe_scan:
+	ld a,(hl)
+	inc hl
+	or a
+	jr z,oe_bad
+	djnz oe_scan
 oe_ok:
 	xor a
 	ret

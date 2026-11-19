@@ -260,3 +260,213 @@ fn only_the_whole_word_fm_owned_keeps_fm_open() {
         assert_eq!(ready(&mut fm), word, "{what}: the session takes the mark");
     }
 }
+
+/// What a kernel run on the loaded library says: the init status, the verdict of every proof, the
+/// CRC run's begin status, each chunk's status and the CRC the last chunk returns.
+#[derive(Debug, PartialEq)]
+struct KernelRun {
+    init: u8,
+    /// The typecode table and the part of the check cache kernel_init clears, read back after it.
+    tables: Vec<u8>,
+    verdicts: Vec<u8>,
+    begin: u8,
+    chunks: Vec<u8>,
+    crc: u32,
+}
+
+fn init_tables(rig: &mut Rig, assertions: usize) -> Vec<u8> {
+    let at = |name: &str| usize::from(rig.label(name) - SPARE_BASE);
+    let ids = usize::from(rig.label("CACHE_IDS"));
+    let cleared = assertions.min(ids).div_ceil(8);
+    let (typecodes, cache) = (at("TYPECODES"), at("CACHE"));
+    let page = rig.m.ram_page(SPARE_PAGE);
+    let mut out = page[typecodes..typecodes + 256].to_vec();
+    out.extend_from_slice(&page[cache..cache + cleared]);
+    out
+}
+
+fn kernel_run(rig: &mut Rig, assertions: usize) -> KernelRun {
+    let init = rig.kernel_init();
+    let tables = init_tables(rig, assertions);
+    let verdicts = (0..assertions).map(|id| rig.kernel_verify(id)).collect();
+    let begin = rig.call("KERNEL_CRC_BEGIN", Regs::default()).status();
+    let mut chunks = Vec::new();
+    let crc = loop {
+        let out = rig.call("KERNEL_CRC_CHUNK", Regs::default());
+        chunks.push(out.status());
+        if out.status() != 0xFF {
+            break (u32::from(out.de) << 16) | u32::from(out.hl);
+        }
+    };
+    KernelRun {
+        init,
+        tables,
+        verdicts,
+        begin,
+        chunks,
+        crc,
+    }
+}
+
+fn clean_run(bytes: &[u8]) -> KernelRun {
+    let mut rig = Rig::with_image(WITH_FM);
+    rig.load(bytes);
+    rig.open_ok();
+    let run = kernel_run(&mut rig, decoded(bytes).assertions.len());
+    assert_eq!(run.init, 0);
+    assert_eq!(run.chunks.last(), Some(&0), "the CRC matches");
+    run
+}
+
+/// The assertion with the most tokens in all, which fills the most of fm's memory.
+fn fullest(bytes: &[u8]) -> u16 {
+    let mut total = std::collections::BTreeMap::new();
+    for (n, _, tokens) in statements(&decoded(bytes)) {
+        *total.entry(n).or_insert(0) += tokens.len();
+    }
+    total.into_iter().max_by_key(|&(_, t)| t).unwrap().0
+}
+
+fn scribble(fm: &mut Fm, region: &str, size: &str, byte: impl Fn(usize) -> u8) {
+    let at = usize::from(fm.rig.label(region) - SPARE_BASE);
+    let len = usize::from(fm.rig.label(size));
+    let page = fm.rig.m.ram_page(SPARE_PAGE);
+    for (i, b) in page[at..at + len].iter_mut().enumerate() {
+        *b = byte(i);
+    }
+}
+
+fn the_kernel_after_fm(bytes: &[u8]) {
+    let assertions = decoded(bytes).assertions.len();
+    let want = clean_run(bytes);
+    let seeded = |i: usize| (i.wrapping_mul(2_654_435_761) >> 13) as u8;
+    let patterns: [(&str, &dyn Fn(usize) -> u8); 3] =
+        [("FF", &|_| 0xFF), ("00", &|_| 0), ("seeded", &seeded)];
+    for (what, byte) in patterns {
+        let mut fm = Fm::new(bytes);
+        assert_eq!(fm.assertion(fullest(bytes)).status(), 0);
+        scribble(&mut fm, "FM_LOW", "FM_LOW_SIZE", byte);
+        scribble(&mut fm, "FM_RAM", "FM_RAM_SIZE", byte);
+        let got = kernel_run(&mut fm.rig, assertions);
+        assert_eq!(got, want, "after fm and a write of {what}");
+    }
+}
+
+#[test]
+fn the_kernel_gives_the_same_verdicts_and_crc_after_fm_filled_its_regions_and_a_test_overwrote_them()
+ {
+    let bytes = fixture::library();
+    assert!(decoded(&bytes).assertions.len() > 10);
+    the_kernel_after_fm(&bytes);
+}
+
+#[test]
+fn the_kernel_gives_the_same_verdicts_and_crc_after_fm_on_a_library_with_proofs_to_check() {
+    let bytes = fixture::proofs();
+    let labels: Vec<String> = decoded(&bytes)
+        .assertions
+        .iter()
+        .map(|a| a.label.clone())
+        .collect();
+    let verdicts = clean_run(&bytes).verdicts;
+    for (label, verdict) in labels.iter().zip(&verdicts) {
+        assert_eq!(*verdict == 0, label != "bad", "{label}: {verdict}");
+    }
+    assert!(labels.len() > 50, "{} assertions", labels.len());
+    the_kernel_after_fm(&bytes);
+}
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib>"]
+fn the_kernel_gives_the_same_verdicts_and_crc_on_prop_after_fm_and_a_write_over_its_regions() {
+    let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    let bytes = std::fs::read(format!("{dir}/prop.mclib")).expect("library reads");
+    the_kernel_after_fm(&bytes);
+}
+
+type Entry<'a> = (&'a str, &'a dyn Fn(&mut Fm));
+
+#[test]
+fn after_any_kernel_entry_that_may_write_the_regions_fm_assertion_and_fm_select_are_closed() {
+    let bytes = fixture::library();
+    let n = fullest(&bytes);
+    let closed = code("FM_ERR_NOT_OPEN");
+    let entries: [Entry; 4] = [
+        ("a good init", &|fm| assert_eq!(fm.rig.kernel_init(), 0)),
+        ("a refused init", &|fm| {
+            fm.rig.poke(KERNEL_PARAMS, &[0x90, 0, 0, 0, 0, 0, 0, 0, 0]);
+            let regs = Regs {
+                hl: KERNEL_PARAMS,
+                ..Regs::default()
+            };
+            assert_eq!(fm.rig.call("KERNEL_INIT", regs).status(), malformed());
+        }),
+        ("a reset", &|fm| {
+            assert_eq!(fm.rig.call("KERNEL_RESET", Regs::default()).status(), 0);
+        }),
+        ("an init and a verify", &|fm| {
+            assert_eq!(fm.rig.kernel_init(), 0);
+            fm.rig.kernel_verify(0);
+        }),
+    ];
+    for (what, entry) in entries {
+        let mut fm = Fm::new(&bytes);
+        assert_eq!(fm.assertion(n).status(), 0, "{what}");
+        entry(&mut fm);
+        let out = fm.assertion(n);
+        assert_eq!((out.status(), count(out)), (closed, 0), "{what}: assertion");
+        let out = fm.select(0xFF);
+        assert_eq!((out.status(), count(out)), (closed, 0), "{what}: select");
+        assert_eq!(fm.open().status(), 0, "{what}: open");
+        assert_eq!(fm.assertion(n).status(), 0, "{what}: assertion after open");
+        assert_eq!(fm.select(0xFF).status(), 0, "{what}: select after open");
+    }
+}
+
+#[test]
+fn a_verify_or_crc_call_the_kernel_refuses_while_fm_owns_the_mark_writes_only_its_stack_page() {
+    let bytes = fixture::library();
+    let mut fm = Fm::new(&bytes);
+    assert_eq!(fm.assertion(fullest(&bytes)).status(), 0);
+    let (stack, top) = (fm.rig.label("KSTACK"), fm.rig.label("KSTACK_TOP"));
+    let (scratch, size) = (fm.rig.label("FM_TCNT"), fm.rig.label("FM_TREE_SIZE"));
+    assert!(
+        scratch <= stack && top <= scratch + size,
+        "the kernel's stack page is inside FM_TCNT, which holds nothing between fm calls"
+    );
+    let regions = |fm: &mut Fm| {
+        let mut all = Vec::new();
+        for (region, size) in [("FM_LOW", "FM_LOW_SIZE"), ("FM_RAM", "FM_RAM_SIZE")] {
+            let at = usize::from(fm.rig.label(region) - SPARE_BASE);
+            let len = usize::from(fm.rig.label(size));
+            let mut bytes = fm.rig.m.ram_page(SPARE_PAGE)[at..at + len].to_vec();
+            let (low, high) = (stack, top);
+            for addr in low..high {
+                let i = usize::from(addr - SPARE_BASE);
+                if (at..at + len).contains(&i) {
+                    bytes[i - at] = 0;
+                }
+            }
+            all.extend(bytes);
+        }
+        all
+    };
+    let before = regions(&mut fm);
+    assert_eq!(fm.rig.kernel_verify(0), malformed());
+    for entry in ["KERNEL_CRC_BEGIN", "KERNEL_CRC_CHUNK"] {
+        assert_eq!(fm.rig.call(entry, Regs::default()).status(), malformed());
+    }
+    assert!(
+        regions(&mut fm) == before,
+        "a refused kernel call wrote outside its stack"
+    );
+    let page = fm.rig.m.ram_page(SPARE_PAGE);
+    let at = usize::from(top - SPARE_BASE);
+    assert!(
+        page[at - 8..at].iter().any(|&b| b != 0),
+        "the stack page was used"
+    );
+    assert_eq!(fm.select(0xFF).status(), 0, "fm is still open");
+    let out = fm.nodes();
+    assert_eq!(out.status(), 0, "and its headers are intact");
+}

@@ -1,4 +1,5 @@
-; fm_statement: loads one statement's symbols and each token's width and spacing flags.
+; fm_statement and the loader fm_assertion shares: a statement's symbols, each token's width and
+; spacing flags, and the statement's header in the store.
 
 ; in: A = a symbol id below fv_nsyms. out: HL = the symbol's glyph codes, with a 0 written after
 ; them over the byte that was there; fm_restore puts that byte back. Destroys AF BC DE.
@@ -118,9 +119,7 @@ statement_body:
 	ld a,e
 	ld (fv_k),a
 	ld (fv_cn),hl
-	xor a
-	ld (fv_count),a
-	ld (fv_nodes),a
+	call fm_clear
 	call fm_same_library
 	jp nz,fm_fail
 	ld a,(fv_k)
@@ -163,29 +162,136 @@ sb_conclusion:
 
 ; in: B = the symbol count, the symbols in FM_SCRATCH.
 sb_load:
-	ld a,b
-	ld (fv_j),a
-	or a
-	jr z,sb_done
-	ld c,b
-	ld b,0
-	ld hl,FM_SCRATCH
-	ld de,FM_IDS
-	ldir
+	ld a,(fv_k)
+	ld c,a
+	call ld_statement
+	jp nz,fm_fail
+	ld a,(fv_k)
+	inc a
+	ld a,1
+	jr nz,sb_hyp
+	dec a
+	ld (fv_last),a
+sb_hyp:
+	ld (fv_nhyps),a
 	xor a
-	ld (fv_i),a
-	ld (fv_prev),a
-sb_token:
-	ld a,(fv_i)
-	ld hl,fv_j
-	cp (hl)
-	jr z,sb_done
-	ld h,FM_IDS>>8
+	call sel_index
+	jp fm_leave
+
+; Appends the statement in FM_SCRATCH to the store: its header, then a record of four bytes for
+; each token, the symbol id, the width, the columns before it and its spacing flags.
+; in: B = the symbol count, C = the statement's number for lib_tree.
+; out: Z, or NZ with A = FM_ERR_LIMIT when the store is full or FM_ERR_BAD for a symbol past the
+; glyph map or a token wider than 255 pixels. Destroys all but IX and IY.
+ld_statement:
+	ld a,(fv_nw)
+	cp FM_MAX_STMTS
+	jp nc,lt_limit
+	ld hl,(fv_ntok)
+	ld e,b
+	ld d,0
+	add hl,de
+	ld (fv_ntok),hl
+	ld de,FM_MAX_TOKENS+1
+	or a
+	sbc hl,de
+	jp nc,lt_limit
+	ld a,(fv_nw)
 	ld l,a
+	ld h,0
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	ld de,FM_HDR
+	add hl,de
+	ld de,(fv_tokp)
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	inc hl
+	ld (hl),b
+	inc hl
+	xor a
+	ld (hl),a
+	inc hl
+	ld (hl),a
+	inc hl
+	ld (hl),a
+	inc hl
+	ld (hl),c
+	ld a,b
+	or a
+	jr z,lt_done
+	ld (fv_i),a
+	ld hl,FM_SCRATCH
+	ld (fv_ip),hl
+	xor a
+	ld (fv_prev),a
+lt_token:
+	ld hl,(fv_ip)
 	ld a,(hl)
+	inc hl
+	ld (fv_ip),hl
 	ld hl,fv_nsyms
 	cp (hl)
-	jr nc,sb_bad
+	jp nc,lt_bad
+	ld (fv_id),a
+	ld e,a
+	ld d,FM_SYMF>>8
+	ld a,(de)
+	or a
+	jp m,lt_have
+	call lt_measure
+	jp nz,lt_failed
+	ld a,(fv_id)
+	ld e,a
+	ld d,FM_SYMF>>8
+	ld a,(de)
+lt_have:
+	and $0F
+	ld c,a
+	dec d
+	ld a,(de)
+	ld b,a
+	ld a,(fv_prev)
+	ld d,a
+	ld a,c
+	ld (fv_prev),a
+	call fm_gap
+	ld hl,(fv_tokp)
+	ld a,(fv_id)
+	ld (hl),a
+	inc hl
+	ld (hl),b
+	inc hl
+	ld (hl),e
+	inc hl
+	ld (hl),c
+	inc hl
+	ld (fv_tokp),hl
+	ld hl,fv_i
+	dec (hl)
+	jp nz,lt_token
+lt_done:
+	ld hl,fv_nw
+	inc (hl)
+	xor a
+	ret
+lt_bad:
+	ld a,FM_ERR_BAD
+lt_failed:
+	or a
+	ret
+lt_limit:
+	ld a,FM_ERR_LIMIT
+	or a
+	ret
+
+; Measures symbol fv_id once for the library: its token's width and spacing flags go to FM_SYMW and
+; FM_SYMF, the flags with bit 7 set. out: Z, or NZ with A = FM_ERR_BAD for a token wider than 255
+; pixels. Destroys all but IX and IY.
+lt_measure:
+	ld a,(fv_id)
 	call fm_codes
 	push hl
 	dec hl
@@ -198,33 +304,18 @@ sb_token:
 	call fm_restore
 	ld a,d
 	or a
-	jr nz,sb_bad
-	ld a,(fv_i)
+	jr nz,lt_unfit
+	ld a,(fv_id)
 	ld l,a
-	ld h,FM_WIDTHS>>8
+	ld h,FM_SYMW>>8
 	ld (hl),e
 	inc h
-	push hl
 	ld a,(fv_tmp)
-	ld c,a
-	ld a,(fv_prev)
-	ld d,a
-	ld a,c
-	ld (fv_prev),a
-	call fm_gap
-	pop hl
-	ld (hl),e
-	inc h
-	ld (hl),c
-	ld hl,fv_i
-	inc (hl)
-	jr sb_token
-sb_done:
-	ld a,(fv_j)
-	ld (fv_count),a
-	ld b,a
+	or $80
+	ld (hl),a
 	xor a
-	jp fm_leave
-sb_bad:
+	ret
+lt_unfit:
 	ld a,FM_ERR_BAD
-	jp fm_fail
+	or a
+	ret

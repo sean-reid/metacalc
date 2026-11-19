@@ -5,7 +5,7 @@
 ; trusted: the model requires it to equal the library's real size, the kernel requires it to be
 ; at least the header, below 2^24 and within the flash pages left, and reads no further than it.
 ; Limits above a buffer's capacity are clamped to it, where the model takes them as given.
-; kernel_init and kernel_verify can return ST_INTERRUPTED, which the model never does.
+; Every call but kernel_reset can return ST_INTERRUPTED, which the model never does.
 ;
 ; Code runs from flash in bank A and is position dependent. Assembling this file
 ; alone places it at $4000, with -I app/src so that ram_map.inc is found; an including file
@@ -28,25 +28,29 @@
 ; the caller's stack, port 5 and the interrupt state, in that order. Preserves IY and the shadow
 ; registers, destroys the rest. Between the port 5 write and the stack switch, and between the
 ; stack restore and the port 5 restore, no instruction uses the stack. Entry and exit together
-; cost 374 T-states.
+; cost 415 T-states.
 ;
 ;   kernel_init     in:  HL = parameter block outside bank C: the library flash page (1 byte),
 ;                        then the four limits as 16-bit little-endian words: stack symbols,
 ;                        stack entries, saved symbols, saved entries. 9 bytes, copied before
 ;                        port 7 changes, so the block may be in bank B. HL above $BFF7, a block
 ;                        that touches bank C, is refused with Malformed before it is read.
-;                   out: A = status
+;                   out: A = status; ST_INTERRUPTED replaces it when ON is down or latched at exit
 ;   kernel_reset    in:  nothing
 ;                   out: A = 0. Clears the ready mark and the CRC-32 run state.
 ;   kernel_verify   in:  HL = assertion number, kernel_init returned 0
-;                   out: A = status, 0 meaning accepted
+;                   out: A = status, 0 meaning accepted; ST_INTERRUPTED replaces it when ON is
+;                        down or latched at exit
 ;   kernel_crc_begin  in:  kernel_init returned 0
-;                     out: A = status, 0 or Malformed
+;                     out: A = status, 0 or Malformed; ST_INTERRUPTED replaces it when ON is down
+;                          or latched at exit
 ;   kernel_crc_chunk  in:  kernel_crc_begin returned 0
 ;                     out: A = ST_CRC_MORE until the last chunk, then 0 if the CRC-32 of the
 ;                          library bytes from offset 8 to its end equals the header's, else
 ;                          Malformed. With 0, DE:HL = the CRC-32, DE the high 16 bits and HL the
 ;                          low 16; with Malformed, DE:HL = 0; otherwise DE and HL are destroyed.
+;                          ST_INTERRUPTED replaces any of these when ON is down or latched at
+;                          exit, and DE:HL are then undefined, whatever the chunk had computed.
 ;
 ; kernel_verify returns Malformed unless the ready mark, which kernel_init sets when it succeeds
 ; and clears when it fails, is in place. The mark holds the magic from a completed kernel_init until
@@ -140,12 +144,26 @@
 ;
 ; kernel_init reads ON as well, once at the top of each outer iteration of its comparison of
 ; symbol names, and returns ST_INTERRUPTED with ON down. The ready mark is then clear, as when
-; init never ran, so kernel_verify refuses with Malformed until a kernel_init succeeds; the
-; caller treats the status as a stop and not as a damaged library. An outer iteration costs at
-; most 0.91 million T-states (255 names of 62 bytes sharing 60, 0.15 s at 6 MHz), and ON held from
+; init never ran, so kernel_verify refuses with Malformed until a kernel_init succeeds (while ON is
+; still down it returns the stop instead); the caller treats the status as a stop and not as a
+; damaged library. An outer iteration costs at most 0.91 million T-states (255 names of 62 bytes
+; sharing 60, 0.15 s at 6 MHz), and ON held from
 ; the start stops init within 2.0 million, 0.33 s at 6 MHz, because the symbol loop and the byte
 ; checks before the comparison do not read it. That library takes 117.9 million T-states to
 ; initialise, 19.6 s at 6 MHz. The model's init is not interruptible.
+;
+; Every exit but kernel_reset's reads port 4 once more, before it restores the caller's banks and
+; interrupts, and returns ST_INTERRUPTED in place of its status when ON is down or its interrupt is
+; latched (bit 0).
+; A tap anywhere inside a call, however short, is therefore reported by that call, and the OS cannot
+; take it unseen: its handler acknowledges the latch and sets its break flag only for a key still
+; down. The read replaces any status, a verdict, a refusal or ST_CRC_MORE, so the caller repeats the
+; call. A kernel_init that had finished returns the stop with the ready mark clear, so it is run
+; again. A kernel_crc_chunk that ended the run returns the stop and no defined checksum; kernel_crc_begin
+; starts the run again. The latch is left as it was, for the OS or the caller to acknowledge. Only a
+; tap that ends before the call starts, with interrupts on, was acknowledged by the OS already; with
+; interrupts off the latch is still set and the call reports it. A tap in the 149 T-states between
+; the read and the return, 196 for a kernel_init that succeeds (counted in the emulator), is not seen.
 ;
 ; Status (ST_* in ram.inc)
 ;           0 ok               1 Malformed        2 BadRecord
@@ -153,7 +171,7 @@
 ;           5 OutOfMemory      6 StackUnderflow   7 BadBackReference
 ;           8 TypecodeMismatch 9 HypothesisMismatch
 ;          10 DisjointViolation 11 StackNotSingleton 12 WrongConclusion
-;          13 WorkLimit         14 Interrupted (kernel_verify, and kernel_init)
+;          13 WorkLimit         14 Interrupted (every call but kernel_reset)
 ;          15 LooseReference  16 BadSymbol (kernel_init only)
 ;         255 ST_CRC_MORE (kernel_crc_chunk only)
 ;
@@ -228,6 +246,12 @@ exit_ok:
 ; in: A = status. DE and HL pass through to the caller.
 leave:
 	ld c,a
+	in a,(4)
+	xor 8
+	and 9
+	jr z,leave_c
+	ld c,ST_INTERRUPTED
+leave_c:
 	ld a,(kv_saved_bank)
 	out (7),a
 	ld a,(kv_saved_iff)
@@ -248,7 +272,8 @@ reset_body:
 	ld hl,0
 	ld (kv_ready),hl
 	ld (kv_crc_state),hl
-	jp exit_ok
+	ld c,l
+	jr leave_c
 
 fail_malformed:
 	ld a,ST_MALFORMED

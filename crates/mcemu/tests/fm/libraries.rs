@@ -18,27 +18,27 @@ struct Ceilings {
 const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "prop",
-        open: 69383,
-        median: 29514,
-        statement: 74244,
-        rows: 11351,
-        draw: 107953,
+        open: 70222,
+        median: 23949,
+        statement: 63260,
+        rows: 7831,
+        draw: 87648,
     },
     Ceilings {
         name: "pred",
-        open: 102878,
-        median: 29750,
-        statement: 78194,
-        rows: 11351,
-        draw: 107953,
+        open: 104095,
+        median: 23738,
+        statement: 63260,
+        rows: 7831,
+        draw: 87648,
     },
     Ceilings {
         name: "ring",
-        open: 576171,
-        median: 30116,
-        statement: 143099,
-        rows: 22595,
-        draw: 227026,
+        open: 580891,
+        median: 23093,
+        statement: 100016,
+        rows: 15307,
+        draw: 185405,
     },
 ];
 
@@ -108,6 +108,10 @@ fn the_shipped_libraries_lay_out_and_draw_as_the_model_does() {
              {name}: fm_draw largest {draw}",
             all.len()
         );
+        if name == "ring" {
+            assert_header_agrees("fm_open on the ring library, ", open);
+            assert_header_agrees("a full window, at most ", draw);
+        }
         for (what, got, ceiling) in [
             ("fm_open", open, ceiling.open),
             ("fm_statement median", median, ceiling.median),
@@ -133,18 +137,18 @@ struct NodeCeilings {
 const NODE_CEILINGS: [NodeCeilings; 3] = [
     NodeCeilings {
         name: "prop",
-        median: 38290,
-        largest: 120259,
+        median: 39522,
+        largest: 125401,
     },
     NodeCeilings {
         name: "pred",
-        median: 38882,
-        largest: 143939,
+        median: 39984,
+        largest: 150055,
     },
     NodeCeilings {
         name: "ring",
-        median: 41990,
-        largest: 381115,
+        median: 43310,
+        largest: 398290,
     },
 ];
 
@@ -188,6 +192,9 @@ fn the_shipped_libraries_build_the_node_tables_the_model_has() {
              {name}: explicit stack deepest use {deepest} of {size} bytes",
             all.len()
         );
+        if name == "ring" {
+            assert_header_agrees("fm_nodes of its largest statement, ", largest);
+        }
         for (what, got, ceiling) in [
             ("fm_nodes median", median, ceiling.median),
             ("fm_nodes largest", largest, ceiling.largest),

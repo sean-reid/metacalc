@@ -12,6 +12,7 @@ fn regions() -> Vec<(&'static str, usize, usize)> {
         ("UI_VARS", "UI_VARS_SIZE"),
         ("UI_FRAME", "UI_FRAME_SIZE"),
         ("KD_SCRATCH", "KD_SCRATCH_SIZE"),
+        ("FAR_VARS", "FAR_VARS_SIZE"),
         ("FM_SCRATCH", "FM_SCRATCH_SIZE"),
         ("LIB_STATE", "LIB_STATE_SIZE"),
         ("KERNEL_RAM_LOW", "LOW_SIZE"),
@@ -43,6 +44,16 @@ fn the_drivers_scratch_starts_at_libpage_and_the_reader_ends_inside_appbackupscr
         end <= at("APP_BACKUP_END"),
         "the state block ends at {end:#x}, past appBackUpScreen"
     );
+    let far = at("FAR_VARS");
+    assert!(
+        far >= at("KD_SCRATCH") + at("KD_SCRATCH_SIZE")
+            && far + at("FAR_VARS_SIZE") <= at("LIB_STATE"),
+        "the far call's scratch is between the driver's and the reader's"
+    );
+    assert!(
+        far + at("FAR_VARS_SIZE") <= at("APP_BACKUP_END"),
+        "the far call's scratch ends past appBackUpScreen"
+    );
 }
 
 #[test]
@@ -54,4 +65,18 @@ fn fms_scratch_follows_the_ui_variables_and_its_memory_stays_off_the_bounce_buff
     assert!(base >= high.0 && base + size <= high.0 + high.1);
     let bounce = (at("LIB_BOUNCE"), at("LIB_BOUNCE_SIZE"));
     assert!(base + size <= bounce.0 || bounce.0 + bounce.1 <= base);
+}
+
+#[test]
+fn fm_low_overlays_the_kernels_low_region_above_the_page_of_its_parameters() {
+    let (base, size) = (at("FM_LOW"), at("FM_LOW_SIZE"));
+    let low = (at("KERNEL_RAM_LOW"), at("LOW_SIZE"));
+    assert_eq!((base, size), (0xC600, 0x1100));
+    assert!(base >= low.0 + 0x100, "the kernel's first page stays alone");
+    assert!(base + size <= low.0 + low.1);
+    assert_eq!(
+        base + size,
+        low.0 + low.1,
+        "it runs to the end of the region"
+    );
 }
