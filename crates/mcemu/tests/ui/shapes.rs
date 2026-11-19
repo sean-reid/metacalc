@@ -213,3 +213,37 @@ fn text_below_the_frame_still_returns_the_x_it_advanced_to() {
     let got: Vec<usize> = got.results.iter().map(|&r| usize::from(r)).collect();
     assert_eq!(got, want);
 }
+
+fn z80_frame(draw: impl FnOnce(&mut Canvas)) -> Vec<u8> {
+    let mut canvas = Canvas::recording();
+    draw(&mut canvas);
+    run(REAL, &ops(&canvas.into_parts().1)).frame
+}
+
+fn scanline(frame: &[u8], y: usize) -> &[u8] {
+    &frame[y * 12..(y + 1) * 12]
+}
+
+#[test]
+fn a_highlighted_first_row_leaves_the_scanline_under_the_title_bar_clear() {
+    let frame = z80_frame(|c| {
+        c.title("", "");
+        c.list_row(1, "", "", true);
+    });
+    assert!(scanline(&frame, 7).iter().all(|&b| b == 0xFF));
+    assert!(scanline(&frame, 8).iter().all(|&b| b == 0));
+    assert!(scanline(&frame, 9).iter().all(|&b| b == 0xFF));
+    assert!(scanline(&frame, 15).iter().all(|&b| b == 0xFF));
+    assert!(scanline(&frame, 16).iter().all(|&b| b == 0));
+}
+
+#[test]
+fn a_descender_does_not_touch_the_highlight_below_it() {
+    let frame = z80_frame(|c| {
+        c.list_row(1, "gypsy", "", false);
+        c.list_row(2, "", "", true);
+    });
+    assert!(scanline(&frame, 15).iter().any(|&b| b != 0));
+    assert!(scanline(&frame, 16).iter().all(|&b| b == 0));
+    assert!(scanline(&frame, 17).iter().all(|&b| b == 0xFF));
+}

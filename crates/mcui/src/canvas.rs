@@ -290,9 +290,11 @@ impl Canvas {
         }
     }
 
+    /// Inverts a text row except its top pixel row, which keeps a highlight clear of whatever is
+    /// above it.
     pub fn invert_row(&mut self, row: usize) {
         self.record(|| Call::InvertRow(row));
-        self.nested(|c| c.invert(0, Self::top(row), WIDTH, ROW));
+        self.nested(|c| c.invert(0, Self::top(row) + 1, WIDTH, ROW - 1));
     }
 
     /// The title bar: `left` and `right` in white on a black row, the left side cut short with an
@@ -308,7 +310,7 @@ impl Canvas {
         self.nested(|c| {
             c.text(MARGIN, 0, &left);
             c.text_right(0, right);
-            c.invert_row(0);
+            c.invert(0, 0, WIDTH, ROW);
         });
     }
 
