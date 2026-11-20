@@ -28,6 +28,7 @@ TEST_BUF	.equ $A100
 TEST_MASK	.equ $A01F
 NODE_COUNT	.equ $A020
 NODE_PTR	.equ $A022
+WALK_MORE	.equ $A024
 NODES		.equ $AC00
 IRQ_COUNT	.equ $A5F0
 IRQ_HANDLER	.equ $A600
@@ -63,8 +64,11 @@ call_load:
 call_nop:
 	ret
 
-; Runs lib_node over the bytes at HL, C of them, and lists the nodes at NODES as kind, value (2).
+#ifdef WITH_FM
+; Runs fm_tree_node over the bytes at HL, C of them, and lists the nodes at NODES as kind, value (2).
+; With A nonzero, more of the tree follows the bytes and the walk stops with fewer than 2 left.
 call_walk:
+	ld (WALK_MORE),a
 	push hl
 	ld hl,NODES
 	ld (NODE_PTR),hl
@@ -75,7 +79,13 @@ walk_loop:
 	ld a,c
 	or a
 	jr z,walk_done
-	call lib_node
+	cp 2
+	jr nc,walk_node
+	ld a,(WALK_MORE)
+	or a
+	jr nz,walk_done
+walk_node:
+	call fm_tree_node
 	ret nz
 	push hl
 	ld hl,(NODE_PTR)
@@ -93,6 +103,7 @@ walk_loop:
 walk_done:
 	xor a
 	ret
+#endif
 
 ; Runs from RAM at IRQ_HANDLER: acknowledges the interrupt by writing port 3 as zero and then again,
 ; counts it, and leaves the shadow registers holding junk. It does not scan the keys.

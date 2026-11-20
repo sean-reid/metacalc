@@ -3,7 +3,7 @@ use crate::fixture;
 use crate::rig::*;
 use crate::session::allowed_for;
 use crate::support::*;
-use mcpack::library::SHAPES;
+use mcpack::library::{SHAPES, TREES};
 
 /// A refused call built by damaging the packed bytes after the host has packed them, which the
 /// host decoder would refuse: the machine as it stands before the call, and what the call must
@@ -43,6 +43,12 @@ fn shapes(bytes: &[u8]) -> (usize, usize) {
     let table = decoded(bytes).sections.unwrap().table;
     let row = table.iter().find(|e| e.id == SHAPES).unwrap();
     (row.offset, get(bytes, row.offset))
+}
+
+/// Where the assertion number of syntax axiom `i` sits in the trees section's table.
+fn syntax_entry(bytes: &[u8], i: usize) -> usize {
+    let table = decoded(bytes).sections.unwrap().table;
+    table.iter().find(|e| e.id == TREES).unwrap().offset + 2 + 3 * i
 }
 
 /// The start of axiom `i`'s shape and one past its end in the library file.
@@ -174,6 +180,40 @@ pub fn cases() -> Vec<Damaged> {
             |b| {
                 let (start, count) = shapes(b);
                 word(b, start, count as u16 + 1);
+            },
+            |_| {},
+        ),
+        open_case(
+            "a syntax entry that names no assertion",
+            "FM_ERR_READ",
+            |b| {
+                let at = syntax_entry(b, 2);
+                let count = decoded(b).assertions.len() as u16;
+                word(b, at, count);
+            },
+            |_| {},
+        ),
+        open_case(
+            "an item that is wrong before a syntax entry that names no assertion",
+            "FM_ERR_BAD",
+            |b| {
+                let (start, _) = shapes(b);
+                let end = table(b) as u16;
+                let at = syntax_entry(b, 5);
+                word(b, at, 0xFFFF);
+                word(b, start + 2, end - 2);
+            },
+            |_| {},
+        ),
+        open_case(
+            "a syntax entry that names no assertion before an item that is wrong",
+            "FM_ERR_READ",
+            |b| {
+                let (start, count) = shapes(b);
+                let end = item(b, count - 1).1 - start;
+                let at = syntax_entry(b, 5);
+                word(b, at, 0xFFFF);
+                word(b, start + 2 + 2 * count, end as u16 + 1);
             },
             |_| {},
         ),
@@ -418,5 +458,5 @@ fn every_damaged_library_is_refused_with_its_status_and_leaves_what_the_header_s
         let found = crate::guard::stray(&mut fm.rig, &allowed_for(nodes, true));
         assert!(found.is_empty(), "{what}: stray writes at {found:x?}");
     }
-    assert_eq!((opened, nodes), (13, 9));
+    assert_eq!((opened, nodes), (16, 9));
 }

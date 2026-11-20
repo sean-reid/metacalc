@@ -50,6 +50,8 @@ mod stackfree;
 mod support;
 #[path = "reader/syntax.rs"]
 mod syntax;
+#[path = "reader/treelibs.rs"]
+mod treelibs;
 #[path = "reader/unordered.rs"]
 mod unordered;
 #[path = "reader/windows.rs"]

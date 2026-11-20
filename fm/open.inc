@@ -10,6 +10,9 @@ open_body:
 	ld (fv_sk+5),a
 	ld (fv_ns),a
 	ld (fv_ns+1),a
+	call lib_symbol_counts
+	ld a,b
+	ld (fv_consts),a
 	call lib_glyphs
 	jr z,op_got
 	call fm_reader_status
