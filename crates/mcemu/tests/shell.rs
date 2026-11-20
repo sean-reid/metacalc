@@ -55,7 +55,7 @@ fn flags(os: &mut RealOs) -> Vec<u8> {
 /// Runs the app to its CLEAR exit, with ON held for `hold_on` ms inside it, and settles at the
 /// home screen.
 fn visit(os: &mut RealOs, hold_on: u32) {
-    os.launch();
+    os.launch_in_key_wait();
     os.run_ms(300);
     if hold_on > 0 {
         os.m.press_key(Machine::KEY_ON);
@@ -171,13 +171,14 @@ fn an_on_press_inside_the_app_is_cleared_before_the_app_hands_over() {
     os.tap(KEY_GRAPH, 150, 2500);
     os.tap(KEY_CLEAR, 150, 800);
     assert_eq!(os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW, 0, "a valid graph");
-    os.launch();
+    os.launch_in_key_wait();
     os.run_ms(300);
     os.m.press_key(Machine::KEY_ON);
     os.run_ms(200);
     os.m.release_key(Machine::KEY_ON);
     os.run_ms(300);
-    assert_ne!(os.on_flags() & ON_INTERRUPT, 0, "the OS flagged the press");
+    assert_eq!(os.on_flags() & ON_INTERRUPT, 0, "app_key took the press");
+    assert_eq!(os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW, 0, "still running");
     os.m.press_key(KEY_CLEAR);
     // graphDraw is the app's last mark before it hands the machine to the OS.
     for _ in 0..2000 {
@@ -260,7 +261,7 @@ fn the_wait_loop_enables_interrupts_on_every_pass() {
 fn a_fault_in_a_real_os_run_fails_the_test() {
     let app = assemble_routine("fault_app.z80");
     let mut os = RealOs::boot(&app);
-    os.launch();
+    os.launch_in_key_wait();
     os.run_ms(300);
 }
 

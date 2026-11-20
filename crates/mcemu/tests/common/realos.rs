@@ -65,6 +65,20 @@ impl RealOs {
 
     /// Starts the app from the APPS menu, where it is the second entry after Finance.
     pub fn launch(&mut self) {
+        self.start_from_menu();
+        let page = self.m.in_port(0x06);
+        assert_eq!(
+            page, BASE,
+            "expected the app to run on flash page {BASE:02X}"
+        );
+    }
+
+    /// `launch` for an app that waits in the OS's `_GetKey`, where port 6 reads the OS's page.
+    pub fn launch_in_key_wait(&mut self) {
+        self.start_from_menu();
+    }
+
+    fn start_from_menu(&mut self) {
         self.tap(KEY_APPS, 150, 600);
         let menu = self.screen();
         let lit =
@@ -74,11 +88,6 @@ impl RealOs {
             "expected the APPS menu with two entries, Finance and the app"
         );
         self.tap(KEY_2, 150, 300);
-        let page = self.m.in_port(0x06);
-        assert_eq!(
-            page, BASE,
-            "expected the app to run on flash page {BASE:02X}"
-        );
     }
 
     pub fn ram(&mut self, offset: usize, len: usize) -> Vec<u8> {
@@ -110,6 +119,7 @@ pub fn make_app(dir: &str, name: &str, args: &[String]) -> PathBuf {
         .arg(&source)
         .arg(format!("SPASM={}", spasm.to_string_lossy()))
         .arg(format!("BUILD={}", build.display()))
+        .arg(format!("FONT={}/ui_font", env!("OUT_DIR")))
         .args(args)
         .output()
         .expect("make runs");

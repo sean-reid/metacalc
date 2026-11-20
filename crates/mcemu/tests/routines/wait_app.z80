@@ -2,12 +2,12 @@
 #define APP_NAME "waitonly"
 #include "header.inc"
 
-; The shell's wait for CLEAR and exit with none of its drawing.
+; The shell's wait for CLEAR through _GetKey and exit with none of its drawing.
 start:
 wait_for_clear:
 	ei
-	halt
-	bcall(_GetCSC)
-	cp skClear
+	bcall(_GetKey)
+	cp 09h
 	jr nz, wait_for_clear
+	di
 	bjump(_JForceCmdNoChar)

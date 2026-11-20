@@ -7,6 +7,8 @@ use common::{PAGE, Signature, build_8xk, expected_image, record, sample_pages, w
 use mcsend::tifile::App;
 
 const FIXTURE: &[u8] = include_bytes!("fixtures/metacalc.8xk");
+/// The code pages of the app `make -C app` builds: entry, draw and data.
+const CODE_PAGES: usize = 3;
 
 fn refusal(file: &[u8]) -> String {
     App::parse(file)
@@ -14,10 +16,10 @@ fn refusal(file: &[u8]) -> String {
         .to_string()
 }
 
-/// `make -C app` output, no library. `sh app/scripts/check-8xk.sh` accepts it as 1 page named
+/// The fixture is a one-page app. `sh app/scripts/check-8xk.sh` accepts it as 1 page named
 /// metacalc, and its type 00 records hold 688 hex digits, 344 bytes.
 #[test]
-fn the_app_the_repo_builds_reads_as_check_8xk_sees_it() {
+fn a_one_page_app_reads_as_check_8xk_sees_it() {
     let app = App::parse(FIXTURE).unwrap();
     assert_eq!(app.name, "metacalc");
     assert_eq!(app.page_count(), 1);
@@ -41,8 +43,9 @@ fn a_multi_page_app_keeps_its_pages_in_order_and_pads_the_last() {
 }
 
 /// A real multi-page app: `MCSEND_APP` is built by `make -C app LIBRARY=...` from the file in
-/// `MCSEND_LIBRARY`. Page count is the one `check-8xk.sh -l` requires, the library chunks sit on
-/// pages 1 onward, and the data length is what the type 00 records add up to.
+/// `MCSEND_LIBRARY`. Page count is the one `check-8xk.sh -p 3 -l` requires, the library chunks sit
+/// on the pages after the app's three code pages, and the data length is what the type 00 records
+/// add up to.
 #[test]
 #[ignore = "needs an app built with a library"]
 fn an_app_built_with_a_library_reads_as_check_8xk_requires() {
@@ -50,10 +53,13 @@ fn an_app_built_with_a_library_reads_as_check_8xk_requires() {
     let library = std::fs::read(std::env::var("MCSEND_LIBRARY").expect("MCSEND_LIBRARY")).unwrap();
     let file = std::fs::read(app_path).unwrap();
     let app = App::parse(&file).unwrap();
-    assert_eq!(app.page_count(), (PAGE + library.len() + 96).div_ceil(PAGE));
+    assert_eq!(
+        app.page_count(),
+        (CODE_PAGES * PAGE + library.len() + 96).div_ceil(PAGE)
+    );
     let image = app.image();
     for (n, chunk) in library.chunks(PAGE).enumerate() {
-        let at = (n + 1) * PAGE;
+        let at = (n + CODE_PAGES) * PAGE;
         assert_eq!(&image[at..at + chunk.len()], chunk, "library chunk {n}");
     }
     let text = String::from_utf8_lossy(&file);
