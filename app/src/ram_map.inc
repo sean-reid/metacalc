@@ -12,8 +12,8 @@
 ; SCR_STACK with spaces and SCR_VARS with zeros on every way out. appData did not keep its
 ; bytes: with an ONSCRPT AppVar in RAM and bit 0 of the flag byte at iy+33h set, the OS copied a
 ; zero and the script's first 63 bytes over 8000h when it woke, so the state is not there; an
-; OFFSCRPT in RAM with bit 1 set is copied the same way at 2nd+OFF. At an auto
-; power down the OS copied the screen's pixels into saveSScreen.
+; OFFSCRPT in RAM with bit 1 set is copied the same way at 2nd+OFF. At an auto power down the OS
+; copied the screen's pixels into saveSScreen.
 ;
 ;   name              bank  where
 ;   UI_VARS           B     the UI's variables, in saveSScreen; the OS overwrites it with the
