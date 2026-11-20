@@ -292,7 +292,7 @@ fn a_buffer_ends_at_the_top_of_memory_short_of_the_last_byte_and_not_on_it() {
         "the moved bounce buffer is well below the top"
     );
     let n = 383;
-    refused(&mut rig, (0xFFFF - n + 1), n, "last byte $FFFF");
+    refused(&mut rig, 0xFFFF - n + 1, n, "last byte $FFFF");
     accepted(&mut rig, 0xFFFF - n, &want, "last byte $FFFE");
     refused(
         &mut rig,
