@@ -5,21 +5,33 @@ cursor_body:
 	call fm_need
 	jp nz,fm_fail
 	ld a,e
-	ld (fv_fn),a
 	inc a
 	jr z,cb_store
-	call fo_node
-	jp nz,fm_fail
+	ld a,(fv_count)
+	or a
+	jr z,cb_index
+	ld hl,(fv_hdr)
+	inc hl
+	inc hl
+	inc hl
+	ld a,(hl)
+	cp e
+	jr c,cb_index
+	jr z,cb_index
 cb_store:
-	ld a,(fv_fn)
+	ld a,e
 	ld (fv_curn),a
 	xor a
 	ld b,a
 	jp fm_leave
+cb_index:
+	ld a,FM_ERR_INDEX
+	jp fm_fail
 
 ; Sets fv_cc when the cursor node is in the selected statement's table: fv_cf and fv_cl are then
 ; the first and last token of the node drawn in its place, the node itself or the outermost
-; folded node it is hidden inside. Destroys all but IX and IY.
+; folded node it is hidden inside. A node whose first token has a width is not hidden, since a fold
+; gives every token it hides width 0. Destroys all but IX and IY.
 cu_prepare:
 	call fo_table
 	ret z
@@ -27,6 +39,26 @@ cu_prepare:
 	ld hl,fv_tcnt
 	cp (hl)
 	ret nc
+	ld de,0
+	call fo_row
+	ld a,(hl)
+	ld (fv_cf),a
+	ld de,FM_PLANE
+	add hl,de
+	ld a,(hl)
+	ld (fv_cl),a
+	ld a,(fv_cf)
+	ld l,a
+	ld h,0
+	add hl,hl
+	add hl,hl
+	ld de,(fv_tok)
+	add hl,de
+	inc hl
+	ld a,(hl)
+	or a
+	jr nz,cp_shown
+	ld a,(fv_curn)
 	call fo_effective
 	ld de,0
 	call fo_row
@@ -36,24 +68,23 @@ cu_prepare:
 	add hl,de
 	ld a,(hl)
 	ld (fv_cl),a
+cp_shown:
+	ld a,(fv_x0)
+	or a
+	jr z,cp_x
+	dec a
+cp_x:
+	ld (fv_x1),a
 	ld a,1
 	ld (fv_cc),a
 	ret
 
-; fm_lay calls cu_start, ly_draw and cu_end for a line it draws with the cursor set. The line is the
-; tokens fv_cs to fv_ce - 1, from the record at fv_cptr, with fv_room columns left; cu_end inverts
-; the cursor's pieces on it. A line the node holds whole, which is every line of a node that runs
+; fm_lay saves the line's first record in fv_cptr and its first token in fv_cs, calls ly_draw and
+; then cu_end, which inverts the cursor's pieces on the line, the tokens fv_cs to fv_ce - 1 with
+; fv_room columns left. A line the node holds whole, which is every line of a node that runs
 ; to the end of the statement, is inverted from column 0 to the width less the columns left, the
 ; way cu_rect would.
-cu_start:
-	exx
-	ld (fv_cptr),hl
-	ld a,(fv_count)
-	sub b
-	ld (fv_cs),a
-	exx
-	ret
-
+; in: the line just drawn. Destroys AF, BC, DE and HL; the shadow registers come back as they were.
 cu_end:
 	exx
 	ld a,(fv_count)
@@ -65,20 +96,6 @@ cu_end:
 	pop de
 	ld bc,(fv_cf)
 	ld a,(fv_cs)
-	ld h,a
-	ld a,b
-	cp h
-	jr c,cl_off
-	ld a,c
-	cp d
-	ret nc
-	ld a,b
-	cp d
-	jr nc,cl_keep
-	xor a
-	ld (fv_cc),a
-cl_keep:
-	ld a,h
 	cp c
 	jr c,cl_part
 	ld a,d
@@ -105,15 +122,25 @@ cw_w:
 	add a,a
 	add a,a
 	ld c,a
-	ld a,(fv_x0)
-	or a
-	jr z,cw_x
-	dec a
-cw_x:
+	ld a,(fv_x1)
 	ld b,a
 	ld e,8
 	jp ui_invert
 cl_part:
+	ld a,(fv_cs)
+	ld h,a
+	ld a,b
+	cp h
+	jr c,cl_off
+	ld a,c
+	cp d
+	ret nc
+	ld a,b
+	cp d
+	jr nc,cl_keep
+	xor a
+	ld (fv_cc),a
+cl_keep:
 	ld a,d
 	ld (fv_ce),a
 	ld a,e
@@ -158,7 +185,17 @@ cr_hi:
 	dec b
 	jr z,cr_at
 cr_skip:
-	call cu_step
+	inc hl
+	inc hl
+	inc hl
+	inc hl
+	ld a,(hl)
+	add a,e
+	ld d,a
+	dec hl
+	add a,(hl)
+	ld e,a
+	inc hl
 	djnz cr_skip
 cr_at:
 	ld a,d

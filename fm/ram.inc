@@ -4,7 +4,7 @@
 #endif
 
 #ifndef FM_VARS_SIZE
-FM_VARS_SIZE        .equ $85
+FM_VARS_SIZE        .equ $86
 #endif
 #if FM_VARS_SIZE > $100
  .error "FM_VARS_SIZE must leave the stack at FM_RAM + $100 alone"
@@ -162,6 +162,7 @@ FM_VAR(fv_xe, $81, 1)
 FM_VAR(fv_curn, $82, 1)
 FM_VAR(fv_cc, $83, 1)
 FM_VAR(fv_room, $84, 1)
+FM_VAR(fv_x1, $85, 1)
 
 FM_OPEN_MAGIC       .equ $464D
 FM_OWNED            .equ $4F46

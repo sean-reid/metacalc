@@ -141,6 +141,42 @@ iv_h:
 	add a,d
 	dec a
 	ld d,a
+	ld a,b
+	cp 8
+	jr nc,iv_gen
+	ld a,d
+	cp 8*(UI_STRIDE-1)
+	jr c,iv_gen
+	and 7
+	or iv_rmasks & $FF
+	ld l,a
+	ld h,iv_rmasks >> 8
+	ld d,(hl)
+	ld a,b
+	or iv_lmasks & $FF
+	ld l,a
+	ld b,e
+	ld e,(hl)
+	ld a,c
+	add a,a
+	add a,c
+	ld l,a
+	ld h,0
+	add hl,hl
+	add hl,hl
+	ld a,l
+	add a,UI_FRAME & $FF
+	ld l,a
+	ld a,h
+	adc a,UI_FRAME >> 8
+	ld h,a
+	ld c,e
+	ld a,b
+	cp 8
+	jp z,iv_rows8
+	jp iv_flip_row
+iv_gen:
+	ld a,d
 	and 7
 	or iv_rmasks & $FF
 	ld l,a
@@ -189,8 +225,6 @@ iv_a:
 	ld a,d
 	or a
 	jp z,iv_one
-	cp UI_STRIDE-1
-	jp z,iv_run
 	ld a,UI_STRIDE
 	sub d
 	ld (ui_mid),a
@@ -245,10 +279,8 @@ iv_next:
 	djnz iv_row
 	ret
 
-; The rectangle spans all twelve bytes of each scanline, so its scanlines are one run of bytes.
-iv_run:
-	ld a,(ui_rm)
-	ld d,a
+; The rectangle spans all twelve bytes of each scanline, so its scanlines are one run of bytes. HL =
+; the first byte, B = scanlines, C = the left mask, D = the right mask.
 #macro CPL_HL
 	ld a,(hl)
 	cpl
@@ -275,6 +307,132 @@ iv_flip_row:
 	ld (hl),a
 	inc hl
 	djnz iv_flip_row
+	ret
+
+; The same for eight scanlines, with no loop.
+#macro ROW12
+	ld a,(hl)
+	xor c
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc hl
+	ld a,(hl)
+	xor d
+	ld (hl),a
+	inc hl
+#endmacro
+; With the run inside one 256 byte page the pointer steps through L alone.
+#macro ROW12L
+	ld a,(hl)
+	xor c
+	ld (hl),a
+	inc l
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc l
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc l
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc l
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc l
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc l
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc l
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc l
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc l
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc l
+	ld a,(hl)
+	cpl
+	ld (hl),a
+	inc l
+	ld a,(hl)
+	xor d
+	ld (hl),a
+	inc l
+#endmacro
+iv_rows8:
+	ld a,l
+	add a,8*UI_STRIDE-1
+	jp c,iv_rows8w
+	ROW12L
+	ROW12L
+	ROW12L
+	ROW12L
+	ROW12L
+	ROW12L
+	ROW12L
+	ROW12L
+	ret
+iv_rows8w:
+	ROW12
+	ROW12
+	ROW12
+	ROW12
+	ROW12
+	ROW12
+	ROW12
+	ROW12
 	ret
 
 ; One byte column: HL = its first byte, B = scanlines, C = the left mask.

@@ -195,13 +195,7 @@ fn heaviest_frame(name: &str, bytes: &[u8], folds: &crate::foldspeed::Ceilings) 
     let (ones, threes) = joins(&mut fm, &all[worst.4].2);
     println!("{name}: in its six lines {ones} joins one column apart and {threes} three apart");
     report(name, &best);
-    crate::foldspeed::cursor_costs(
-        name,
-        bytes,
-        (worst.1, worst.2),
-        (best.total(), best.draw),
-        folds,
-    );
+    crate::foldspeed::cursor_costs(name, bytes, (best.total(), best.draw), folds);
     best
 }
 
@@ -237,4 +231,22 @@ fn applying_folds_and_fm_fold_stay_within_their_ceilings_on_ring() {
     let bytes = std::fs::read(format!("{dir}/ring.mclib")).expect("library reads");
     let disjoint = crate::foldspeed::apply_costs("ring", &bytes, &crate::foldspeed::RING);
     assert!(disjoint > 1, "{disjoint} folds of one depth");
+}
+
+#[test]
+fn zz_tmp() {
+    let bytes = fixture::library();
+    let (n, k) = heaviest_six_row_statements(&bytes, 1)[0];
+    let mut fm = Fm::new(&bytes);
+    let zero = fm.rig.call("CALL_NOP", Regs::default()).tstates;
+    fm.built(n, k);
+    for node in [0xFFu8, 0, 1, 2, 3] {
+        fm.cursor(node);
+        fm.clear();
+        let t = fm
+            .draw(GUTTER, CONTENT_ROW, STATEMENT_WIDTH, (1, 7))
+            .tstates
+            - zero;
+        println!("ZZ node {node}: {t}");
+    }
 }

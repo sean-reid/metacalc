@@ -8,7 +8,7 @@ use crate::app::*;
 use crate::draw::{on_draw_page, opened_on, statement};
 use crate::fixture;
 use crate::realos::BASE;
-use crate::rig::{Fm, model_rows, statements};
+use crate::rig::{Fm, heaviest_six_row_statements, model_rows, statements, worst_cursor};
 use crate::support::{Regs, decoded};
 use mcui::canvas::{GUTTER, STATEMENT_WIDTH};
 
@@ -18,9 +18,9 @@ const BUDGET: u32 = 50 * 6000;
 /// entry page included.
 const FIXTURE_FRAME: u32 = 274_000;
 const RING_FRAME: u32 = 268_000;
-/// The same frames with the cursor on node 0.
-const FIXTURE_CURSOR_FRAME: u32 = 299_500;
-const RING_CURSOR_FRAME: u32 = 294_300;
+/// The same frames with the cursor on the node that makes fm_draw dearest.
+const FIXTURE_CURSOR_FRAME: u32 = 299_020;
+const RING_CURSOR_FRAME: u32 = 293_040;
 
 /// The T-states a routine takes beyond the driver's own call and halt, which a call of a RAM
 /// `ret` measures.
@@ -189,6 +189,21 @@ fn heaviest(bytes: &[u8]) -> (u16, u8, Vec<String>) {
     (worst.1, worst.2, worst.3)
 }
 
+/// The statement among the three heaviest of six lines, and the node of it, that make fm_draw
+/// dearest with the cursor there.
+fn worst_node(bytes: &[u8]) -> (u16, u8, u8) {
+    let mut fm = Fm::new(bytes);
+    heaviest_six_row_statements(bytes, 3)
+        .into_iter()
+        .map(|(n, k)| {
+            let (node, spent) = worst_cursor(&mut fm, n, k);
+            (spent, n, k, node)
+        })
+        .max()
+        .map(|(_, n, k, node)| (n, k, node))
+        .expect("a statement of six lines")
+}
+
 fn frame(name: &str, built: &'static Built, bytes: &[u8], ceilings: (u32, u32)) {
     let (n, k, _) = heaviest(bytes);
     let mut app = opened_on(built);
@@ -268,6 +283,16 @@ fn frame(name: &str, built: &'static Built, bytes: &[u8], ceilings: (u32, u32)) 
         ceilings.0
     );
 
+    let (wn, wk, node) = worst_node(bytes);
+    let loaded = app.far(
+        "far_fm_statement",
+        In {
+            hl: wn,
+            de: u16::from(wk),
+            ..In::default()
+        },
+    );
+    assert_eq!(loaded.status(), 0);
     assert_eq!(app.far("far_fm_nodes", In::default()).status(), 0);
     let calls = [
         ("far_ui_clear", In::default()),
@@ -279,7 +304,13 @@ fn frame(name: &str, built: &'static Built, bytes: &[u8], ceilings: (u32, u32)) 
                 ..In::default()
             },
         ),
-        ("far_fm_cursor", In::default()),
+        (
+            "far_fm_cursor",
+            In {
+                a: node,
+                ..In::default()
+            },
+        ),
         ("far_fm_draw", draw_input),
         (
             "far_ui_soft_keys",
@@ -299,7 +330,7 @@ fn frame(name: &str, built: &'static Built, bytes: &[u8], ceilings: (u32, u32)) 
         marked += done.tstates - driver;
     }
     println!(
-        "{name}: the same frame with the cursor on node 0: {marked} T-states, {:.1} ms at 6 MHz, \
+        "{name}: the same frame with the cursor on node {node} of statement {wk} of assertion {wn}: {marked} T-states, {:.1} ms at 6 MHz, \
          headroom {} of {BUDGET}",
         f64::from(marked) / 6000.0,
         BUDGET.saturating_sub(marked)

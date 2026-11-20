@@ -10,8 +10,7 @@ const BUDGET: u32 = 50 * 6000;
 /// T-state ceilings, a little above what each took.
 pub struct Ceilings {
     pub set: u32,
-    pub frame_root: u32,
-    pub frame_child: u32,
+    pub frame_worst: u32,
     pub apply_one: u32,
     pub apply_all: u32,
     pub apply_depth: u32,
@@ -19,18 +18,16 @@ pub struct Ceilings {
 }
 
 pub const FIXTURE: Ceilings = Ceilings {
-    set: 1_000,
-    frame_root: 298_100,
-    frame_child: 299_400,
+    set: 730,
+    frame_worst: 297_600,
     apply_one: 128_500,
     apply_all: 81_500,
     apply_depth: 128_500,
     fold: 3_300,
 };
 pub const RING: Ceilings = Ceilings {
-    set: 1_000,
-    frame_root: 292_900,
-    frame_child: 293_000,
+    set: 730,
+    frame_worst: 291_600,
     apply_one: 51_000,
     apply_all: 32_500,
     apply_depth: 50_500,
@@ -41,66 +38,55 @@ fn base(fm: &mut Fm) -> u32 {
     fm.rig.call("CALL_NOP", Regs::default()).tstates
 }
 
-/// What fm_cursor costs alone, and the frame `frame` comes to when `draw` of it draws the cursor
-/// as well, on node 0 and on the child of node 0 with the most tokens, in the fm_draw of the
-/// statement the screens call. The frame is the calls of a screen, clear to blit, and `draw` is
-/// the share of it that is fm_draw.
+/// What fm_cursor costs alone, and the frame `frame` comes to when the cursor is on the node that
+/// makes fm_draw dearest, found by trying every node of the three heaviest six-row statements.
+/// `draw` is the share of `frame` that is fm_draw of the heaviest statement.
 pub fn cursor_costs(
     name: &str,
     bytes: &[u8],
-    at: (u16, u8),
     (frame, draw): (u32, u32),
     ceilings: &Ceilings,
-) {
+) -> (u16, u8, u8) {
     let mut fm = Fm::new(bytes);
     let zero = base(&mut fm);
-    let table = fm.built(at.0, at.1);
-    let child = (1..table.len())
-        .filter(|&i| table[i].2 == 1)
-        .max_by_key(|&i| table[i].1 - table[i].0)
-        .unwrap_or(0);
-    let mut costs = Vec::new();
-    for node in [0, child] {
-        let set = fm.cursor(node as u8);
-        assert_eq!(set.status(), 0);
-        fm.clear();
-        let out = fm.draw(GUTTER, 1, STATEMENT_WIDTH, (1, 7));
-        assert_eq!(out.status(), 0);
-        costs.push((set.tstates - zero, out.tstates - zero));
+    let mut worst = (0, 0, 0, 0);
+    for (n, k) in heaviest_six_row_statements(bytes, 3) {
+        let (node, spent) = worst_cursor(&mut fm, n, k);
+        println!(
+            "{name}: statement {k} of assertion {n}: fm_draw is dearest with the cursor on node {node}, {spent}"
+        );
+        if spent > worst.3 {
+            worst = (n, k, node, spent);
+        }
     }
+    let (n, k, node, drawn) = worst;
+    fm.built(n, k);
+    let set = fm.cursor(node);
+    assert_eq!(set.status(), 0);
+    let set = set.tstates - zero;
     assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
     fm.clear();
+    let top = heaviest_six_row_statements(bytes, 1)[0];
+    fm.built(top.0, top.1);
     let plain = fm.draw(GUTTER, 1, STATEMENT_WIDTH, (1, 7)).tstates - zero;
     assert_eq!(plain, draw, "fm_draw with no cursor");
-    let frames: Vec<u32> = costs
-        .iter()
-        .map(|&(set, drawn)| frame - draw + set + drawn)
-        .collect();
+    let total = frame - draw + set + drawn;
     println!(
-        "{name}: fm_cursor alone {}; fm_draw with the cursor on node 0 {} and on node {child} (the \
-         largest child, {} tokens) {}, against {draw} with none; the frame with the cursor on node 0 \
-         is {} T-states, with the child {}, against {BUDGET}",
-        costs[0].0,
-        costs[0].1,
-        table[child].1 - table[child].0 + 1,
-        costs[1].1,
-        frames[0],
-        frames[1]
+        "{name}: fm_cursor alone {set}; the worst cursor is node {node} of statement {k} of \
+         assertion {n}: fm_draw {drawn} against {draw} with none; the frame with it is {total} \
+         T-states against {BUDGET}"
+    );
+    assert!(set <= ceilings.set, "fm_cursor took {set}");
+    assert!(
+        total < BUDGET,
+        "the frame with the cursor on node {node}: {total}"
     );
     assert!(
-        costs[0].0 <= ceilings.set && costs[1].0 <= ceilings.set,
-        "fm_cursor took {costs:?}"
+        total <= ceilings.frame_worst,
+        "the frame with the cursor on node {node} took {total}, over {}",
+        ceilings.frame_worst
     );
-    for (what, took, ceiling) in [
-        ("node 0", frames[0], ceilings.frame_root),
-        ("the child", frames[1], ceilings.frame_child),
-    ] {
-        assert!(took < BUDGET, "the frame with the cursor on {what}: {took}");
-        assert!(
-            took <= ceiling,
-            "the frame with the cursor on {what} took {took}, over {ceiling}"
-        );
-    }
+    (n, k, node)
 }
 
 /// The pass that applies folds, on the statement with the most tokens: the rows call after one

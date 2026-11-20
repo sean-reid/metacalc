@@ -64,11 +64,11 @@
 ; measured is fm_open on the ring library, 484,449 T-states (81 ms at 6 MHz), then fm_nodes of its
 ; largest statement, 358,365, fm_assertion of its largest assertion, 187,619, and fm_draw of a full
 ; window, at most 180,804; fm_fold repeats fm_nodes with 3,300 more when the table is not built,
-; fm_cursor alone takes 975. fm_rows and fm_draw first run the pass that applies folds when the
+; fm_cursor alone takes 726. fm_rows and fm_draw first run the pass that applies folds when the
 ; statement is stale, so the call after an fm_fold costs its figure plus the pass, up to 128,000 on
 ; the fixture and 50,000 on ring. The six-row frame of the ring statement takes 266,746 T-states
-; and with the cursor on node 0 or on its largest child 292,830, within the 50 ms budget of 300,000:
-; the cursor adds one ui_invert for each line, 3,427 for a line as wide as the window. The reader
+; and with the cursor on the node that costs most 290,147, within the 50 ms budget of 300,000: the
+; cursor adds one ui_invert for each line, at most 3,203 for a line as wide as the window. The reader
 ; and the canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
 ; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
@@ -108,7 +108,8 @@
 ;                      table fits, every item lies after the table and inside the copy and has 1
 ;                      to 255 parts, and each child of its axiom's arity appears once and no
 ;                      other does. A library with neither trees nor shapes opens, and every
-;                      statement of it is one node. Marks fm open, closed until it returns 0, and clears the cursor.
+;                      statement of it is one node. Marks fm open, closed until it returns 0, and
+;                      clears the cursor.
 ;                      FM_ERR_CLOSED: the reader is not open. FM_ERR_NO_MAP: the library has no
 ;                      glyph map. FM_ERR_FONT: its map is for another font. FM_ERR_TOO_BIG: the
 ;                      glyph section or the shapes section is longer than 2,048 bytes.
@@ -125,7 +126,7 @@
 ;                      or a token wider than 255 pixels. FM_ERR_NOT_OPEN: fm closed or another
 ;                      library open. A refused call leaves nothing loaded and nothing selected.
 ;                      The node tables of an earlier load are gone and the cursor is cleared, also
-;                      when the call is refused.
+;                      when the call is refused after the open check.
 ;   fm_select     in:  E = statement, numbered as fm_statement numbers them: the hypotheses from
 ;                      0, FFh the conclusion
 ;                 out: A = status, B = its token count. Makes the statement the one fm_rows,
@@ -142,7 +143,8 @@
 ;                      first. Loads that one statement as a store of one and selects it.
 ;                      FM_ERR_INDEX: no such assertion or statement. FM_ERR_BAD: a symbol past
 ;                      the glyph map, or a token wider than 255 pixels. A refused call leaves no
-;                      statement loaded. Clears the cursor, also when refused.
+;                      statement loaded. Clears the cursor, also when
+;                      refused after the open check.
 ;   fm_rows       in:  D = width in pixels, 0 to 255
 ;                 out: A = status, B = the number of lines the selected statement takes, with its
 ;                      folds applied. A token wider than the width sits alone on its line.

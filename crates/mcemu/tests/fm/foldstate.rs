@@ -452,12 +452,18 @@ fn fm_open_fm_assertion_fm_statement_and_fm_select_clear_the_cursor_and_fm_fold_
 }
 
 #[test]
-fn a_cursor_refused_with_an_index_leaves_the_previous_one_and_none_always_succeeds() {
+fn a_cursor_refused_with_an_index_leaves_the_previous_one_and_none_succeeds_on_an_open_fm() {
     let bytes = fixture::nodes_library();
     let model = Model::new(&bytes);
     let (n, k) = mixed(&model, &bytes);
     let expr = model.expr(n, k);
     let plain = Folds::none(&expr);
+    let mut closed = Fm::bare(&bytes);
+    assert_eq!(
+        closed.cursor(NO_CURSOR).status(),
+        code("FM_ERR_NOT_OPEN"),
+        "none on a closed fm"
+    );
     let mut fm = Fm::new(&bytes);
     let index = code("FM_ERR_INDEX");
     assert_eq!(fm.cursor(NO_CURSOR).status(), 0, "none with nothing loaded");

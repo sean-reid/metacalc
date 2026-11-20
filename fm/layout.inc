@@ -77,7 +77,12 @@ ly_line:
 	call ly_draw
 	jr ly_more
 ly_cursor:
-	call cu_start
+	exx
+	ld (fv_cptr),hl
+	ld a,(fv_count)
+	sub b
+	ld (fv_cs),a
+	exx
 	call ly_draw
 	call cu_end
 	jr ly_more

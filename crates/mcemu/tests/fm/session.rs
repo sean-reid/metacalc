@@ -144,7 +144,8 @@ fn span(fm: &mut Fm, target: &str, regs: Regs) -> (u32, u32) {
 }
 
 /// An interrupt arrives after every T-state of the first and last 450 of the session, from fm's
-/// first instruction to the driver's code after its return. Each time the status and result, the
+/// first instruction to the driver's code after its return, and after every T-state of fm_cursor.
+/// Each time the status and result, the
 /// frame, the ports, SP and the interrupt flag must be those of the run with no interrupt, and
 /// the interrupt must have been taken.
 fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8, cached: bool) -> usize {
@@ -181,6 +182,13 @@ fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8, cached: bool) -> usiz
     let want = fm.rig.call(target, regs);
     settle(fm);
     let frame = fm.frame();
+    if target == "FM_CURSOR" {
+        assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
+        fm.clear();
+        assert_eq!(fm.draw(1, 0, 94, (0, 8)).status(), 0);
+        assert_ne!(fm.frame(), frame, "the cursor shows in the frame");
+        clear(fm);
+    }
     let rows = fm.rows(94).bc;
     let nodes = target == "FM_NODES";
     let table = if nodes {
@@ -191,7 +199,13 @@ fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8, cached: bool) -> usiz
     clear(fm);
     let (start, end) = span(fm, target, regs);
     let mut trials = 0;
-    for after in (start..=start + 450).chain(end.saturating_sub(450)..=end) {
+    let every = target == "FM_CURSOR";
+    let (head, tail) = if every {
+        (end, end + 1)
+    } else {
+        (start + 450, end.saturating_sub(450))
+    };
+    for after in (start..=head).chain(tail..=end) {
         clear(fm);
         let (out, taken) = fm.rig.call_interrupted(target, regs, after);
         let what = format!("{target}, interrupt after {after} of {start} to {end} T-states");

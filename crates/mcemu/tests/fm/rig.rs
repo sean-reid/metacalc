@@ -1,7 +1,7 @@
 use crate::support::*;
 use crate::ui_support::pack;
 use mcpack::library::{Hypothesis, Library};
-use mcui::canvas::Canvas;
+use mcui::canvas::{Canvas, GUTTER, STATEMENT_WIDTH};
 use mcui::expr::Expr;
 use mcui::fold::{Folds, layout};
 use std::ops::Range;
@@ -402,4 +402,43 @@ pub fn assert_header_agrees(after: &str, measured: u32) {
         (low..=high).contains(&said),
         "the header says {said} after {after:?}, measured {measured}"
     );
+}
+
+/// The `count` statements of six lines or more at the statement width whose fm_draw of the six
+/// content rows costs most, dearest first, as (assertion, statement).
+pub fn heaviest_six_row_statements(bytes: &[u8], count: usize) -> Vec<(u16, u8)> {
+    let mut fm = Fm::new(bytes);
+    let mut all = Vec::new();
+    for (n, k, tokens) in statements(&decoded(bytes)) {
+        if model_rows(&tokens, STATEMENT_WIDTH) < 6 {
+            continue;
+        }
+        assert_eq!(fm.statement(n, k).status(), 0);
+        let spent = fm.draw(GUTTER, 1, STATEMENT_WIDTH, (1, 7)).tstates;
+        all.push((spent, n, k));
+    }
+    all.sort_by(|a, b| b.cmp(a));
+    all.into_iter()
+        .take(count)
+        .map(|(_, n, k)| (n, k))
+        .collect()
+}
+
+/// fm_draw of the six content rows of the loaded statement with the cursor on every node in turn:
+/// the node that costs most and what the draw cost there.
+pub fn worst_cursor(fm: &mut Fm, n: u16, k: u8) -> (u8, u32) {
+    assert_eq!(fm.statement(n, k).status(), 0);
+    let nodes = count(fm.nodes());
+    let zero = fm.rig.call("CALL_NOP", Regs::default()).tstates;
+    let mut worst = (0, 0);
+    for node in 0..nodes {
+        assert_eq!(fm.cursor(node as u8).status(), 0);
+        fm.clear();
+        let spent = fm.draw(GUTTER, 1, STATEMENT_WIDTH, (1, 7)).tstates - zero;
+        if spent > worst.1 {
+            worst = (node as u8, spent);
+        }
+    }
+    assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
+    worst
 }
