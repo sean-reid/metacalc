@@ -28,8 +28,8 @@
 ; after the clear sets the flag again and is taken the same way by the next wait; a press made
 ; between waits is for the long job that polls ON.
 ;
-; The OS zeroes UI_VARS when auto power down fires inside _GetKey, and the font pointer, two
-; bytes, is the one thing in it that holds state between calls; app_key sets the canvas font
+; The OS copies the screen's pixels over UI_VARS when auto power down fires inside _GetKey, and
+; the font pointer, two bytes, is the one thing in it that holds state between calls; app_key sets the canvas font
 ; after every wait, power down or not. 2nd+OFF never returns: the OS leaves the app, and the app
 ; is not entered again when the calculator is turned back on.
 

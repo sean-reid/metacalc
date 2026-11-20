@@ -7,12 +7,12 @@
 ; SCR_VARS and SCR_STACK hold state that must outlive a wait in _GetKey. Measured under OS 2.43
 ; in the emulator, both keep every byte through keys, 2nd, ALPHA, alpha lock, ON, auto power down
 ; with ON to wake, and the OS calls the app makes. appData does not: the OS copies an ONSCRPT
-; script over its start when it wakes, so the state is not there. saveSScreen is zeroed by auto
-; power down.
+; script over its start when it wakes, so the state is not there. auto power down copies the
+; screen's pixels into saveSScreen.
 ;
 ;   name              bank  where
-;   UI_VARS           B     the UI's variables, in saveSScreen; the OS zeroes it when auto power
-;                           down fires in _GetKey
+;   UI_VARS           B     the UI's variables, in saveSScreen; the OS overwrites it with the
+;                           screen's pixels when auto power down fires in _GetKey
 ;   SCR_VARS          B     the framework's variables, 108 bytes: smallEditRAM, 90D3h to 913Eh,
 ;                           XFact follows
 ;   UI_FRAME          B     the UI's 96 by 64 frame, plotSScreen

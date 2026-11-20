@@ -291,12 +291,7 @@ impl Rig {
     /// Runs the OS until auto power down fires inside `_GetKey`, wakes it with ON and presses a
     /// key, recording what each changed.
     fn power_cycle(&mut self) {
-        self.lcd_at_apd = self
-            .os
-            .screen()
-            .chunks(8)
-            .map(|px| px.iter().fold(0u8, |b, &lit| (b << 1) | u8::from(lit)))
-            .collect();
+        self.lcd_at_apd = self.os.packed_screen();
         let mut seconds = 0;
         while self.os.m.in_port(3) & POWER_DOWN == 0 {
             assert!(seconds < 600, "no auto power down in 600 s");

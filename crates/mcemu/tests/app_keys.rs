@@ -366,16 +366,16 @@ fn same_screen(what: &str, got: &[bool], want: &[bool]) {
 }
 
 #[test]
-fn text_drawn_after_the_wait_is_right_when_the_variables_were_zeroed_during_it() {
+fn text_drawn_after_the_wait_is_right_when_the_variables_were_overwritten_during_it() {
     let mut rig = Rig::stub(KEYS_APP);
     message(&mut rig, "Key 12 x");
     assert_eq!(rig.count(), 0, "the app is waiting");
-    rig.poke(UI_VARS, &[0; SAVE_SCREEN_SIZE]);
+    rig.poke(UI_VARS, &[0xA5; SAVE_SCREEN_SIZE]);
     rig.tap(0x04);
     assert_eq!(rig.count(), 1);
     assert_eq!(rig.ram(LOG, 1), [code(Key::Up)]);
     let got = rig.screen();
-    same_screen("after the zeroed wait", &got, &drawn("Key 12 x"));
+    same_screen("after the overwritten wait", &got, &drawn("Key 12 x"));
     assert!(got.iter().any(|&p| p), "something is drawn");
 }
 
@@ -481,7 +481,7 @@ fn on_the_reference_os_alpha_lock_gives_the_face_characters_and_leaves_the_model
     );
 }
 
-/// Runs the real OS until its auto power down has fired, which zeroes saveSScreen, and returns
+/// Runs the real OS until its auto power down has fired, which overwrites saveSScreen with the screen's pixels, and returns
 /// the emulated seconds that took.
 fn power_down(rig: &mut Rig) {
     let mut seconds = 0;
