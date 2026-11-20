@@ -229,6 +229,8 @@ ld_statement:
 	ld (hl),a
 	inc hl
 	ld (hl),c
+	inc hl
+	ld (hl),0
 	ld a,b
 	or a
 	jr z,lt_done

@@ -3,14 +3,15 @@
 ; host model does (crates/mcui, crates/mcglyph): the tokens of the statement, each the glyph codes
 ; of its symbol from the library's glyph map, placed in lines by mcglyph's place and drawn with
 ; ui_text on the text row of its line, only on rows inside a window. It also builds the
-; subexpression table of each statement, the nodes of the model's Expr. Folding, the ellipsis and
-; the cursor are not here.
+; subexpression table of each statement, the nodes of the model's Expr, folds nodes behind an
+; ellipsis and inverts a node's runs as a cursor. Fitting a statement to a number of lines is
+; not here.
 ;
 ; Code runs from flash in bank A and is position dependent. An including file defines FM_EMBEDDED
 ; first and places the code itself, after the reader (lib/) and the canvas (ui/) it calls, with -I
 ; at the repository root and at app/src. The canvas's ui_set_font must have been called before
 ; fm_open, and the font stays the one set until the next fm_open: fm measures each symbol's token
-; once per open and fm_draw draws with the font in use.
+; and the ellipsis, UI_FONT_CH_2026, once per open and fm_draw draws with the font in use.
 ;
 ; Memory, placed by app/src/ram_map.inc. FM_RAM is in bank C of the kernel's spare page
 ; KERNEL_RAM_PAGE, from KERNEL_RAM_HIGH, $1E00 bytes, which the kernel uses only inside a kernel
@@ -21,14 +22,23 @@
 ;   +$A00 $800  FM_SECOND, the library's shapes section as lib_shapes finds it
 ;   +$1200 $C00 FM_TOKENS, the tokens of the loaded statements one after the other, at most 768,
 ;               a record of four bytes each: the symbol id, the width in pixels, the columns
-;               between the token and the one before it, 1 or 3, and its spacing flags
+;               between the token and the one before it, 1 or 3, and its spacing flags. Folds
+;               rewrite the width, the gap and the flags of the selected statement's records
+;               (fold.inc): a token a fold hides has width 0 and gap 0, the first token of a
+;               folded span has the ellipsis width, its gap and flags 4 | 80h, bit 7 marking the
+;               ellipsis. A hidden token's width and gap add up to 0, so ly_scan and ly_draw
+;               always fit it on the line it follows, at any width and after a first token wider
+;               than the width, and a line starts only where a token did not fit; token 0 is
+;               never hidden, so the visible tokens are placed as the model places them and
+;               fm_lay never reads the node table.
 ; FM_LOW is $1100 bytes from KERNEL_RAM_LOW + $100 in the same page, an overlay on the kernel's low
 ; region, and the kernel's first page, with its parameters, its save area and the ready mark, is
 ; never written but for kv_ready:
 ;   +$000 $100  FM_HDR, a header of eight bytes for each loaded statement, at most 32: the address
 ;               of its first token record, its token count, its node count (0 until fm_nodes has
 ;               built its table), the first row of its table in the node planes, its number for
-;               lib_tree, and a spare byte
+;               lib_tree, and a byte that is 1 when a fold has changed since the records were
+;               last rewritten
 ;   +$100 $100  FM_TLEN, FM_TCNT at +$200 and FM_TSIZE at +$300: what fm_nodes keeps for each node
 ;               of the stored tree, at most 255 (nodes.inc)
 ;   +$400 $200  FM_PILE, fm_nodes' explicit stack: 255 pairs of two bytes, one for each tree
@@ -41,7 +51,9 @@
 ;               statements one after the other, at most 384 rows
 ;   +$980 $180  FM_LAST, the last token of each node
 ;   +$B00 $180  FM_DEPTH, the depth of each node
-;   +$C80 $480  unused, kept free
+;   +$C80 $180  FM_FOLDS, the fold flag of each node, 0 or 1, in the same row as its FM_FIRST
+;               entry; cleared for a statement when its table is built
+;   +$E00 $300  unused, FM_LOW_FREE of it kept free
 ; FM_SCRATCH is 256 bytes in bank B, in saveSScreen after UI_VARS, for the buffers the reader's
 ; accessors write and the glyph codes of a run of tokens; it holds nothing between calls.
 ;
@@ -49,9 +61,14 @@
 ; interrupt state with ld a,i twice, turns interrupts off, reads port 5, maps the spare page, saves
 ; the old port 5 and SP in it, switches to FM_STACK and works there, and on every exit restores SP,
 ; port 5 and the interrupt state. Interrupts stay off for the whole session; the longest one
-; measured is fm_open on the ring library, 483,926 T-states (81 ms at 6 MHz), then fm_nodes of its
-; largest statement, 356,229, fm_assertion of its largest assertion, 187,195, and fm_draw of a full
-; window, at most 177,967. The reader and the
+; measured is fm_open on the ring library, 484,449 T-states (81 ms at 6 MHz), then fm_nodes of its
+; largest statement, 358,365, fm_assertion of its largest assertion, 187,619, and fm_draw of a full
+; window, at most 180,804; fm_fold repeats fm_nodes with 3,300 more when the table is not built,
+; fm_cursor alone takes up to 65,000. fm_rows, fm_draw and fm_cursor first run the pass that applies
+; folds when the statement is stale, so the call after an fm_fold costs its figure plus the pass,
+; up to 128,000 on the fixture and 50,000 on ring. The six-row frame of the ring statement with the
+; cursor on node 0 takes 329,512 T-states, over the 50 ms budget of 300,000: one ui_invert
+; for each line is most of the cursor. The reader and the
 ; canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
 ; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
@@ -111,7 +128,7 @@
 ;   fm_select     in:  E = statement, numbered as fm_statement numbers them: the hypotheses from
 ;                      0, FFh the conclusion
 ;                 out: A = status, B = its token count. Makes the statement the one fm_rows,
-;                      fm_draw and fm_nodes work on. Reads no flash and copies no token or node:
+;                      fm_draw, fm_nodes, fm_fold, fm_folded and fm_cursor work on. Reads no flash and copies no token or node:
 ;                      the stored statement is used where it is. FM_ERR_INDEX: the loaded
 ;                      assertion has no such statement, or nothing is loaded; the selection is
 ;                      kept. The statement of a store fm_statement loaded is number 0, or FFh
@@ -125,8 +142,8 @@
 ;                      the glyph map, or a token wider than 255 pixels. A refused call leaves no
 ;                      statement loaded.
 ;   fm_rows       in:  D = width in pixels, 0 to 255
-;                 out: A = status, B = the number of lines the selected statement takes. A token
-;                      wider than the width sits alone on its line.
+;                 out: A = status, B = the number of lines the selected statement takes, with its
+;                      folds applied. A token wider than the width sits alone on its line.
 ;   fm_draw       in:  HL = text row of the statement's first line, signed, -16384 to 16383;
 ;                      D = width in pixels; E = x of the statement's first column; B = the first
 ;                      text row of the window, C = one past its last
@@ -159,6 +176,29 @@
 ;                      FM_ERR_LIMIT: more than 255 tree nodes in the statement, which also bounds
 ;                      its table nodes, the depth and the stack at 255, or more than 384 nodes in
 ;                      the tables of the loaded statements together.
+;   fm_fold       in:  E = node of the selected statement, D = 0 clear, 1 set, 2 toggle
+;                 out: A = status, B = 1 when the flag changed, else 0. Checks D, then builds
+;                      the node table when it is not built, with fm_nodes' statuses. A flag is
+;                      cleared when its statement's table is built, kept across fm_select, and
+;                      gone with the tables on fm_assertion, fm_statement and fm_open. A node that is not
+;                      foldable, with no node after it in its table that is deeper, keeps its
+;                      flag at 0 and returns status 0 and B = 0. The records are rewritten by
+;                      the next fm_rows, fm_draw or fm_cursor, once for any number of changes.
+;                      FM_ERR_BAD: D above 2, checked before anything is built.
+;                      FM_ERR_INDEX: no node E in the table.
+;   fm_folded     in:  E = node of the selected statement
+;                 out: A = status, B = bit 0 its flag, bit 1 set when it is foldable, bit 2 set
+;                      when it is hidden inside a folded node. FM_ERR_INDEX: the table is not
+;                      built or has no node E.
+;   fm_cursor     in:  A = node, HL, D, E, B and C as fm_draw takes them
+;                 out: A = status. Inverts the node's runs, or those of its outermost folded
+;                      ancestor when it is hidden, for the pieces it shows: on each line that
+;                      holds some, the rectangle from the first one's x to the end of the last,
+;                      one column wider each side and the text row's 8 scanlines high, only on
+;                      rows inside the window and clipped to the screen. Call it after fm_draw
+;                      with the same arguments. FM_ERR_INDEX: the table is not built or has no
+;                      node A.
+;                      The node waits on the caller's stack through the entry's interrupt reads.
 ; Other statuses: FM_ERR_NOT_OPEN, from every routine but fm_open.
 
 #ifndef FM_EMBEDDED
@@ -172,5 +212,7 @@
 #include "fm/statement.inc"
 #include "fm/store.inc"
 #include "fm/layout.inc"
+#include "fm/fold.inc"
+#include "fm/cursor.inc"
 #include "fm/nodes.inc"
 #include "fm/tree.inc"
