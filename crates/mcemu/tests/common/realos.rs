@@ -126,6 +126,62 @@ impl RealOs {
     }
 }
 
+/// Contents with no two neighbouring bytes alike, so a restore from the wrong offset differs.
+pub fn varied(len: usize, seed: u8) -> Vec<u8> {
+    (0..len)
+        .map(|i| seed ^ (i as u8).wrapping_mul(7).wrapping_add((i / 5) as u8))
+        .collect()
+}
+
+/// A machine whose screen `assert_blank_home` can watch.
+pub trait Watch {
+    fn lcd(&mut self) -> Vec<bool>;
+    fn wait(&mut self, ms: u32);
+    fn dump(&self, name: &str, lcd: &[bool]);
+}
+
+impl Watch for RealOs {
+    fn lcd(&mut self) -> Vec<bool> {
+        self.screen()
+    }
+
+    fn wait(&mut self, ms: u32) {
+        self.run_ms(ms);
+    }
+
+    fn dump(&self, name: &str, lcd: &[bool]) {
+        write_pgm(&format!("exit-{}.pgm", name.replace([' ', ','], "-")), lcd);
+    }
+}
+
+/// Writes the LCD as a PGM under the target tree for looking at.
+pub fn write_pgm(file: &str, lcd: &[bool]) {
+    let mut pgm = b"P5\n96 64\n255\n".to_vec();
+    pgm.extend(lcd.iter().map(|&p| if p { 0 } else { 255 }));
+    let _ = std::fs::write(Path::new(env!("CARGO_TARGET_TMPDIR")).join(file), pgm);
+}
+
+/// The home screen is blank but for its cursor in the first cell, which shows at least once
+/// in a second and a half, since it blinks.
+pub fn assert_blank_home<W: Watch>(w: &mut W, name: &str) {
+    let mut cursor = false;
+    for _ in 0..30 {
+        let lcd = w.lcd();
+        let lit: Vec<usize> = (0..lcd.len()).filter(|&i| lcd[i]).collect();
+        let blank = lit.iter().all(|&i| i / 96 < 8 && i % 96 < 6);
+        if !blank {
+            w.dump(&format!("{name}-bad"), &lcd);
+        }
+        assert!(blank, "{name}: blank but for the cursor");
+        cursor |= !lit.is_empty();
+        if cursor {
+            w.dump(name, &lcd);
+        }
+        w.wait(50);
+    }
+    assert!(cursor, "{name}: the home screen shows its cursor");
+}
+
 /// What the model's canvas draws for the app's start screen: with no library the title bar and the
 /// hint on row 3; with one the title bar, the label of its first assertion on row 1, that
 /// assertion's conclusion on rows 2 to 6 and the hint on row 7. A status other than 0 is what the

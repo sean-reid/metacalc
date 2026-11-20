@@ -77,27 +77,6 @@ pub fn power_cycle(rig: &mut Rig) {
     );
 }
 
-/// The home screen is blank but for its cursor in the first cell, which shows at least once
-/// in a second and a half, since it blinks.
-pub fn assert_blank_home(rig: &mut Rig, name: &str) {
-    let mut cursor = false;
-    for _ in 0..30 {
-        let lcd = rig.os.screen();
-        let lit: Vec<usize> = (0..lcd.len()).filter(|&i| lcd[i]).collect();
-        let blank = lit.iter().all(|&i| i / 96 < 8 && i % 96 < 6);
-        if !blank {
-            rig.dump(&format!("{name}-bad"), &lcd);
-        }
-        assert!(blank, "{name}: blank but for the cursor");
-        cursor |= !lit.is_empty();
-        if cursor {
-            rig.dump(name, &lcd);
-        }
-        rig.run_ms(50);
-    }
-    assert!(cursor, "{name}: the home screen shows its cursor");
-}
-
 /// The four saved copies hold what they held when the probe started, and those of SCR_VARS
 /// and appData are what the owner's calculator held before the app was launched. The OS
 /// changes cmdShadow and textShadow when it launches an app, so only the first two can be
