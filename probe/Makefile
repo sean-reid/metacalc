@@ -57,3 +57,17 @@ check-pagecheck: $(BUILD)/pagecheck.8xk
 	sh ../app/scripts/test-check-8xk.sh -p 3 $(BUILD)/pagecheck.8xk pageschk
 
 .PHONY: check-pagecheck
+
+all: $(BUILD)/statecheck.8xk
+
+$(BUILD)/statecheck.8xk: statecheck.z80 statecheck.inc statecompare.inc onbreak.inc printnum.inc ../app/src/header.inc ../app/src/equates.inc ../app/src/ram_map.inc
+	mkdir -p "$(BUILD)"
+	$(ASM) -L -I ../app/src -I . statecheck.z80 $@
+
+check: check-statecheck
+
+check-statecheck: $(BUILD)/statecheck.8xk
+	sh ../app/scripts/check-8xk.sh $(BUILD)/statecheck.8xk statechk
+	sh ../app/scripts/test-check-8xk.sh $(BUILD)/statecheck.8xk statechk
+
+.PHONY: check-statecheck
