@@ -139,6 +139,17 @@
 ;                          as stored: the host decoder also refuses entries out of rising
 ;                          assertion order and an arity that is not the assertion's hypothesis
 ;                          count, and this does not check either.
+;   lib_arities       in:  DE = buffer, BC = its size in bytes, which must be at least the syntax
+;                          axiom count; the buffer may lie anywhere clear of the state block
+;                     out: A = status; HL = how many arities were written, the axiom count when the
+;                          status is 0. Writes one byte for each axiom in syntax order, its arity as
+;                          stored in the trees entry. An entry whose assertion number is not an
+;                          assertion of the library stops the call with status 3: HL is the index
+;                          of that entry, the arities before it are in the buffer and nothing past
+;                          them is written; lib_syntax refuses the same entry. Status 9 without a
+;                          trees section, then 2 for a buffer too small for the count or touching
+;                          the state block, with nothing written. The table fits the section, which
+;                          lib_open checks. Every library byte comes through the window.
 ;   lib_tree          in:  HL = assertion number; B = statement, the essential hypotheses in record
 ;                          order from 0, then the conclusion, which is also FFh; DE = buffer of
 ;                          255 bytes

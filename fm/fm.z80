@@ -32,7 +32,8 @@
 ;   +$100 $100  FM_TLEN, FM_TCNT at +$200 and FM_TSIZE at +$300: what fm_nodes keeps for each node
 ;               of the stored tree, at most 255 (nodes.inc)
 ;   +$400 $200  FM_PILE, fm_nodes' explicit stack: 255 pairs of two bytes, one for each tree
-;               node still open, so a tree of 255 nodes cannot overrun it
+;               node still open, so a tree of 255 nodes cannot overrun it; fm_open holds the
+;               syntax axioms' arities there, a byte each, at most 383, while it checks the shapes
 ;   +$600 $100  FM_SYMW, the width of each symbol's token, valid where its flags byte is set
 ;   +$700 $100  FM_SYMF, the token's spacing flags with bit 7 set once its width is measured;
 ;               fm_open clears the entries of the library's symbols
@@ -48,7 +49,7 @@
 ; interrupt state with ld a,i twice, turns interrupts off, reads port 5, maps the spare page, saves
 ; the old port 5 and SP in it, switches to FM_STACK and works there, and on every exit restores SP,
 ; port 5 and the interrupt state. Interrupts stay off for the whole session; the longest one
-; measured is fm_open on the ring library, 575,592 T-states (96 ms at 6 MHz), then fm_nodes of its
+; measured is fm_open on the ring library, 483,926 T-states (81 ms at 6 MHz), then fm_nodes of its
 ; largest statement, 356,229, fm_assertion of its largest assertion, 187,195, and fm_draw of a full
 ; window, at most 177,967. The reader and the
 ; canvas run inside it: lib_read saves the caller's port 5, which is the spare page,

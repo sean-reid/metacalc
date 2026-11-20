@@ -40,6 +40,7 @@ fn every(watch: &mut Watch, rig: &mut Rig, tag: &str, buf: u16, want: Option<u8>
         ("LIB_TREE", at(0, 0x7000)),
         ("LIB_SHAPES", Regs::default()),
         ("LIB_SHAPE", at(index, 0)),
+        ("LIB_ARITIES", at(index, 0x100)),
     ] {
         let status = watch.call(rig, &format!("{tag}: {target}"), target, regs);
         if let Some(want) = want {

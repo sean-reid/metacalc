@@ -87,6 +87,16 @@ fn every_tree_of_the_shipped_libraries_walks_to_the_nodes_the_decoder_reads() {
 fn fm_open_leaves_the_arities_and_the_counts_a_tree_is_decoded_against() {
     for bytes in [fixture::nodes_library(), fixture::library()] {
         let mut fm = Fm::new(&bytes);
+        let arities: Vec<u8> = decoded(&bytes)
+            .sections
+            .unwrap()
+            .trees
+            .unwrap()
+            .syntax
+            .iter()
+            .map(|s| s.arity as u8)
+            .collect();
+        assert_eq!(fm.memory("FM_PILE", arities.len()), arities);
         let (_, _, constants, variables) = fm.rig.counts();
         let (_, syntax) = fm.rig.syntax_count();
         assert!(syntax > 3 && constants > 3 && variables > 3);

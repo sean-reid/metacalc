@@ -102,6 +102,11 @@ fn everything(rig: &mut Rig) -> Vec<Verdict> {
         documented("syntax", status, &[ST_OK, ST_BAD, ST_INDEX, ST_NONE]);
         said.push((TREES, usize::from(i) | 0x1_0000, status == ST_BAD));
     }
+    let (status, written, _) = rig.arities(BUF, 0x200);
+    documented("arities", status, &[ST_OK, ST_BAD, ST_NONE]);
+    if status == ST_BAD {
+        said.push((TREES, usize::from(written) | 0x1_0000, true));
+    }
     for n in 0..assertions + 1 {
         for k in [0u8, 1, 2, 3, 4, 0xFF] {
             let tree = rig.tree(n, k);

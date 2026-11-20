@@ -29,6 +29,8 @@ fn workout(rig: &mut Rig, bytes: &[u8]) {
     assert_eq!(rig.syntax_count().0, ST_OK);
     assert_eq!(rig.syntax(0).0, ST_OK);
     assert_eq!(rig.syntax(500).0, ST_INDEX);
+    assert_eq!(rig.arities(BUF, 0x200).0, ST_OK);
+    assert_eq!(rig.arities(BUF, 1).0, ST_ARG);
     assert_eq!(rig.shapes().0, ST_OK);
     assert_eq!(rig.shape(0).0, ST_OK);
     assert_eq!(rig.shape(500).0, ST_INDEX);
@@ -148,6 +150,7 @@ fn an_interrupt_at_any_point_of_a_section_call_changes_nothing() {
         ("LIB_TREE", at(251, 0x0100)),
         ("LIB_SHAPE", at(1, 0)),
         ("LIB_SHAPE", at(2, 0)),
+        ("LIB_ARITIES", at(0, 0x200)),
     ] {
         let fired = sweep(&mut rig, target, regs, 13, &|_| {});
         println!("{target}: {fired} interrupts landed inside the call");

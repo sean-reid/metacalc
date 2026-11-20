@@ -47,6 +47,92 @@ lib_syntax:
 	xor a
 	ret
 
+lib_arities:
+	ld (lr_bufp),de
+	ld (lr_cn),bc
+	call lr_need
+	jr nz,la_refused
+	ld a,(ls_have)
+	and LS_TREES
+	jr nz,la_have
+	call lsx_nothing
+	jr la_refused
+la_have:
+	ld hl,(ls_tr_n)
+	ld de,(lr_cn)
+	ex de,hl
+	or a
+	sbc hl,de
+	jr c,la_arg
+	ex de,hl
+	ld a,h
+	or l
+	jr z,la_walk
+	ld b,h
+	ld c,l
+	ld de,(lr_bufp)
+	add hl,de
+	jr c,la_arg
+	call lr_overlap
+	jr z,la_walk
+la_refused:
+	ld hl,0
+	ret
+la_arg:
+	call lr_bad_arg
+	jr la_refused
+la_walk:
+	ld hl,2
+	xor a
+	ld de,ls_tr
+	call lsx_add3
+	call lw_seek
+	ld hl,(ls_tr_n)
+	ld (lr_cn),hl
+la_entry:
+	ld hl,(lr_cn)
+	ld a,h
+	or l
+	jr z,la_done
+	ld a,3
+	call lw_need
+	jr nz,la_stop
+	call lw_ptr
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	ld b,(hl)
+	ld hl,(lr_count)
+	ex de,hl
+	or a
+	sbc hl,de
+	jr nc,la_bad
+	ld hl,(lr_bufp)
+	ld (hl),b
+	inc hl
+	ld (lr_bufp),hl
+	ld hl,(lr_cn)
+	dec hl
+	ld (lr_cn),hl
+	ld bc,3
+	call lw_skip
+	jr la_entry
+la_done:
+	ld hl,(ls_tr_n)
+	xor a
+	ret
+la_bad:
+	call lr_bad
+la_stop:
+	push af
+	ld hl,(ls_tr_n)
+	ld de,(lr_cn)
+	or a
+	sbc hl,de
+	pop af
+	ret
+
 lib_tree:
 	ld (lr_bufp),de
 	ld (lr_cn),hl

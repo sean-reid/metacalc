@@ -105,6 +105,22 @@ impl Rig {
         (out.status(), out.hl, (out.bc >> 8) as u8)
     }
 
+    /// One call of lib_arities with a buffer of `size` bytes at `buf`: (status, the count it
+    /// says it wrote, the 512 bytes from `buf`, fewer at the top of memory).
+    pub fn arities(&mut self, buf: u16, size: u16) -> (u8, u16, Vec<u8>) {
+        let regs = Regs {
+            de: buf,
+            bc: size,
+            ..Regs::default()
+        };
+        let out = self.call("LIB_ARITIES", regs);
+        (
+            out.status(),
+            out.hl,
+            self.peek(buf, 512.min(0x1_0000 - usize::from(buf))),
+        )
+    }
+
     /// (status, offset, length).
     pub fn shapes(&mut self) -> (u8, u32, u16) {
         let out = self.call("LIB_SHAPES", Regs::default());

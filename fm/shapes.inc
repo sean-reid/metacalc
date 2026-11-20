@@ -1,5 +1,6 @@
-; fm_open's second half: copies the shapes section into FM_SECOND and checks the copy. A library
-; with neither trees nor shapes opens as it is; every statement of it is one node.
+; fm_open's second half: copies the shapes section into FM_SECOND and checks the copy, with the
+; syntax axioms' arities from one lib_arities call in FM_PILE. A library with neither trees nor
+; shapes opens as it is; every statement of it is one node.
 
 op_shapes:
 	call lib_syntax_count
@@ -62,6 +63,11 @@ os_got:
 os_start:
 	ld hl,0
 	ld (fv_si),hl
+	ld de,FM_PILE
+	ld bc,FM_PILE_SIZE
+	call lib_arities
+	ld (fv_left),hl
+	ld (fv_byte),a
 os_item:
 	ld hl,(fv_si)
 	ld de,(fv_ns)
@@ -106,11 +112,18 @@ os_inside:
 	jp z,op_bad
 	ld (fv_shn),a
 	ld hl,(fv_si)
-	call lib_syntax
-	jr z,os_arity
+	ld de,(fv_left)
+	or a
+	sbc hl,de
+	jr c,os_arity
+	ld a,(fv_byte)
 	call fm_reader_status
 	jp fm_fail
 os_arity:
+	ld hl,(fv_si)
+	ld de,FM_PILE
+	add hl,de
+	ld b,(hl)
 	ld a,b
 	ld (fv_ar),a
 	or a

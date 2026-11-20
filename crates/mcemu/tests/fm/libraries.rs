@@ -18,7 +18,7 @@ struct Ceilings {
 const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "prop",
-        open: 70222,
+        open: 67367,
         median: 23949,
         statement: 63260,
         rows: 7831,
@@ -26,7 +26,7 @@ const CEILINGS: [Ceilings; 3] = [
     },
     Ceilings {
         name: "pred",
-        open: 104095,
+        open: 96230,
         median: 23738,
         statement: 63260,
         rows: 7831,
@@ -34,7 +34,7 @@ const CEILINGS: [Ceilings; 3] = [
     },
     Ceilings {
         name: "ring",
-        open: 580891,
+        open: 508100,
         median: 23093,
         statement: 100016,
         rows: 15307,
