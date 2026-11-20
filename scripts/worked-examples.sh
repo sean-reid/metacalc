@@ -14,7 +14,7 @@
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-page=$root/docs/src/guide/worked-examples.md
+page=$root/docs/src/guide/examples.md
 command=${1:?usage: worked-examples.sh check|write database | images dir}
 target=${2:?usage: worked-examples.sh check|write database | images dir}
 

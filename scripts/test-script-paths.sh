@@ -45,7 +45,7 @@ $}
 DB
 sed "s/^sha256 = .*/sha256 = \"$(shasum -a 256 "$tmp/tiny.mm" | cut -d' ' -f1)\"/" "$root/libraries/source.toml" >"$fake/libraries/source.toml"
 printf 'name = "tiny"\ntitle = "Tiny"\ndescription = "One theorem."\norder = 1\nroots = ["th-g"]\n' >"$fake/libraries/tiny.toml"
-cat >"$fake/docs/src/guide/worked-examples.md" <<'PAGE'
+cat >"$fake/docs/src/guide/examples.md" <<'PAGE'
 # Page
 
 <!-- symbols -->
@@ -89,7 +89,7 @@ sh "$fake/scripts/build-libraries.sh" "$tmp/tiny.mm" "$tmp/libs" "$tmp/pages" >"
 echo "ok build-libraries"
 
 sh "$fake/scripts/worked-examples.sh" write "$tmp/tiny.mm" 2>"$tmp/err" || { cat "$tmp/err" >&2; fail worked-examples-write; }
-grep -qF '⊢ ( 𝜓 → ∀ 𝑦 𝜓 )</span> <a class="lb" href="../libraries/tiny.md#ax-g">ax-g</a>' "$fake/docs/src/guide/worked-examples.md" || fail "worked-examples write left the old block"
+grep -qF '⊢ ( 𝜓 → ∀ 𝑦 𝜓 )</span> <a class="lb" href="../libraries/tiny.md#ax-g">ax-g</a>' "$fake/docs/src/guide/examples.md" || fail "worked-examples write left the old block"
 sh "$fake/scripts/worked-examples.sh" check "$tmp/tiny.mm" 2>"$tmp/err" || { cat "$tmp/err" >&2; fail worked-examples-check; }
 echo "ok worked-examples-check"
 sh "$fake/scripts/worked-examples.sh" images "$tmp/images" 2>"$tmp/err" || { cat "$tmp/err" >&2; fail worked-examples-images; }
