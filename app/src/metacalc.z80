@@ -11,6 +11,12 @@
 ;                 once both have returned 0, and a refused call leaves everything under the title
 ;                 out and shows its status as two hex digits on row 7 in place of the hint
 ;   without       row 0 the title, row 3 the hint
+; Exit. CLEAR and 2nd+QUIT leave through app_exit; 2nd+OFF is the OS's. Every way out runs
+; app_putaway, which fills SCR_STACK with spaces and SCR_VARS with zeros, the state the home screen
+; draws as blank, clears appRunning and appLaunched in iy+28h and onInterrupt, and sets graphDraw.
+; start installs a context with _AppInit for that: the OS calls cxPPutAway and cxPutAway at 2nd+OFF
+; and at _JForceCmdNoChar, cxPPutAway alone when an OS call raises an error, and cxErrorEP when the
+; user picks Goto on that error screen. An auto power down calls none of them.
 ; RAM: the canvas's, fm's and the kernel's blocks in ram_map.inc, libPage (the flash page of
 ; library chunk 0) and appStatus after it, and APP_BUF, which holds the reader's scratch and the
 ; strings in glyph codes. The strings the canvas reads from the draw page are in strings.inc.
@@ -41,6 +47,8 @@ FORMULA_X = 3
 FORMULA_WIDTH = 92
 
 app_start:
+	ld hl, app_vectors
+	bcall(_AppInit)
 	call far_init
 	ld hl, ui_font
 	call far_ui_set_font
@@ -80,9 +88,32 @@ app_screen:
 	jr app_screen
 app_exit:
 	di
+	call app_putaway
+	bjump(_JForceCmdNoChar)
+
+; Puts the home screen's RAM back as the header says. The OS calls it with iy at the flags.
+app_putaway:
+	ld hl, SCR_STACK
+	ld de, SCR_STACK + 1
+	ld bc, SCR_STACK_SIZE - 1
+	ld (hl), ' '
+	ldir
+	ld hl, SCR_VARS
+	ld de, SCR_VARS + 1
+	ld bc, SCR_VARS_SIZE - 1
+	ld (hl), 0
+	ldir
+	res appRunning, (iy + APIFlg)
+	res appLaunched, (iy + APIFlg)
 	res onInterrupt, (iy + onFlags)
 	set graphDraw, (iy + graphFlags)
-	bjump(_JForceCmdNoChar)
+	ret
+
+; The context the OS keeps for the app: cxMain, cxPPutAway, cxPutAway, cxRedisp, cxErrorEP,
+; cxSizeWind and the flag byte.
+app_vectors:
+	.dw app_exit, app_putaway, app_putaway, app_exit, app_exit, app_exit
+	.db 0
 
 #ifdef LIBRARY
 ; Draws rows 1 to 7 of the library screen.

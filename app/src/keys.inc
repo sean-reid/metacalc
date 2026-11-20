@@ -31,8 +31,10 @@
 ;
 ; The OS copies the screen's pixels over UI_VARS when auto power down fires inside _GetKey, and
 ; the font pointer, two bytes, is the one thing in it that holds state between calls; app_key sets the canvas font
-; after every wait, power down or not. 2nd+OFF never returns: the OS leaves the app, and the app
-; is not entered again when the calculator is turned back on.
+; after every wait, power down or not. 2nd+OFF never returns: the OS calls cxPPutAway and
+; cxPutAway of the context the app installed with _AppInit (app_putaway in metacalc.z80), powers
+; off, and does not enter the app when the calculator is turned back on. An auto power down calls
+; neither, and the wait goes on after ON.
 
 KEY_NONE         .equ 0
 KEY_UP           .equ 1
