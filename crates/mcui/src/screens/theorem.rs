@@ -41,6 +41,24 @@ pub struct Theorem {
 
 impl Theorem {
     pub fn open(ctx: &Ctx, library: usize, index: usize) -> Screen {
+        Screen::Theorem(Theorem::fitted(ctx, library, index))
+    }
+
+    /// Fits the folds afresh after the screen above closed; the cursor and the scroll stay,
+    /// cut back to what the new layout holds.
+    pub(super) fn refit(&mut self, ctx: &Ctx) {
+        let (cursor, scroll) = (self.cursor, self.scroll);
+        *self = Theorem::fitted(ctx, self.library, self.index);
+        if self.too_large {
+            return;
+        }
+        let s = cursor.0.min(self.layouts.len() - 1);
+        let node = cursor.1.min(self.statement.at(s).len() - 1);
+        self.cursor = (s, node);
+        self.scroll = scroll.min(self.rows.saturating_sub(CONTENT_ROWS));
+    }
+
+    fn fitted(ctx: &Ctx, library: usize, index: usize) -> Theorem {
         let statement = ctx.libs[library].statement(index);
         let hyp_indent = if statement.hyps.is_empty() {
             0
@@ -61,7 +79,7 @@ impl Theorem {
             statement,
         };
         if screen.too_large {
-            return Screen::Theorem(screen);
+            return screen;
         }
         let exprs = screen.statement.all();
         let items: Vec<Fit> = exprs
@@ -80,7 +98,7 @@ impl Theorem {
         screen.layouts = (0..items.len()).map(|s| screen.laid_out(s)).collect();
         screen.place();
         screen.follow();
-        Screen::Theorem(screen)
+        screen
     }
 
     fn is_conclusion(&self, statement: usize) -> bool {
