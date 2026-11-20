@@ -1,0 +1,63 @@
+#include "equates.inc"
+#define APP_NAME "statechk"
+#include "header.inc"
+
+; The probe's image with the script AppVars made first: MAKE_ON and MAKE_OFF create ONSCRPT and
+; OFFSCRPT with SCRIPT_LEN bytes of code, ARCHIVE_SCRIPTS archives them. The scripts write
+; 5Ah and 0A5h to MARK and MARK + 1.
+SCRIPT_LEN = 64
+MARK = 0A800h
+
+	ei
+#ifdef MAKE_ON
+	ld hl, script_on_name
+	ld de, script_on
+	call make_script
+#endif
+#ifdef MAKE_OFF
+	ld hl, script_off_name
+	ld de, script_off
+	call make_script
+#endif
+	jp probe_start
+
+; Creates the AppVar named at HL with the SCRIPT_LEN bytes at DE, archived with ARCHIVE_SCRIPTS.
+make_script:
+	push hl
+	push de
+	ld de, OP1
+	ld bc, 9
+	ldir
+	ld hl, SCRIPT_LEN
+	bcall(_CreateAppVar)
+	inc de
+	inc de
+	pop hl
+	ld bc, SCRIPT_LEN
+	ldir
+	pop hl
+#ifdef ARCHIVE_SCRIPTS
+	ld de, OP1
+	ld bc, 9
+	ldir
+	bcall(_Arc_Unarc)
+#endif
+	ret
+
+script_on_name:
+	.db appVarObj, "ONSCRPT", 0
+script_off_name:
+	.db appVarObj, "OFFSCRPT"
+
+script_on:
+	ld a, 5Ah
+	ld (MARK), a
+	ret
+	.fill script_on + SCRIPT_LEN - $, 0C9h
+script_off:
+	ld a, 0A5h
+	ld (MARK + 1), a
+	ret
+	.fill script_off + SCRIPT_LEN - $, 0C9h
+
+#include "statecheck.inc"
