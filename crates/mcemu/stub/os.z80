@@ -16,6 +16,7 @@ _Arc_Unarc        .equ $4FD8
 _CreateRList      .equ $4315
 _LoadDEIndPaged   .equ $501A
 _GetBaseVer       .equ $4C6F
+_AppInit          .equ $404B
 
 OP1               .equ $8478
 E_MEMORY          .equ $8E
@@ -23,6 +24,8 @@ E_BAD_CALL        .equ $FF
 
 kbdScanCode       .equ $843F
 kbdKey            .equ $8445
+cxMain            .equ $858D
+CX_VECTORS        .equ 12
 gkMods            .equ $8446
 plotSScreen       .equ $9340
 
@@ -253,6 +256,7 @@ bcall_table:
 	.dw _CreateRList, create_r_list
 	.dw _LoadDEIndPaged, load_de_ind_paged
 	.dw _GetBaseVer, get_base_ver
+	.dw _AppInit, app_init
 	.dw 0
 
 bjump_table:
@@ -377,6 +381,13 @@ key_alpha:
 	.db $CA,$CC,$AF,$AA,$A5,$A0,$35,0,$C6,$B3,$AE,$A9,$A4,$9F,$9C,$31
 	.db $99,$B2,$AD,$A8,$A3,$9E,$9B,$B4,0,$B1,$AC,$A7,$A2,$9D,$9A,0
 	.db $44,$5A,$2E,$48,$49,0,$45,$0A
+
+; In: HL = the six context vectors. Loads them into cxMain to cxSizeWind and nothing else.
+app_init:
+	ld de,cxMain
+	ld bc,CX_VECTORS
+	ldir
+	ret
 
 ; Draws one character's worth of nothing. Destroys every register but IX, IY and SP and
 ; returns with interrupts off.
