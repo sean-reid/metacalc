@@ -73,8 +73,9 @@
 ; of an app closes fm.
 ;
 ; The test image (crates/mcemu/tests/routines/reader_test.z80) starts at $2000, in page 0, because
-; the kernel, the reader, the canvas and fm together are longer than one 16 KB page. That is the
-; test's layout and not the app's.
+; the kernel, the reader, the canvas and fm together are longer than one 16 KB page. The app
+; (app/src/pages.inc) puts fm on the canvas's page and the reader on another, so fm's calls to the
+; reader are far calls through far_lib_* stubs that destroy IX; fm holds nothing in IX across one.
 ;
 ; Calling. Status comes back in A, 0 meaning ok, with the zero flag set exactly when A is 0. Every
 ; routine destroys all registers but IY and keeps the reader's rule for ports 5 and 7 and for the

@@ -2,12 +2,18 @@
 #define APP_NAME "waitonly"
 #include "header.inc"
 
-; The shell's wait for CLEAR and exit with none of its drawing.
+; The shell's wait for CLEAR through _GetKey and exit with none of its drawing. It writes
+; EXIT_MARK just before it leaves, so a test can tell that CLEAR reached it.
+#ifndef EXIT_MARK
+ .error "EXIT_MARK is the address the test reads, given on the command line"
+#endif
 start:
 wait_for_clear:
 	ei
-	halt
-	bcall(_GetCSC)
-	cp skClear
+	bcall(_GetKey)
+	cp kClear
 	jr nz, wait_for_clear
+	di
+	ld a, 0A5h
+	ld (EXIT_MARK), a
 	bjump(_JForceCmdNoChar)

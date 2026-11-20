@@ -727,9 +727,81 @@ fn assemble_ui(out: &Path) {
         }
     }
     for (defines, want) in [
-        (&["UI_VARS=$9326", "FM_SCRATCH=$A000"][..], None),
+        (
+            &["UI_VARS=$9326", "FM_SCRATCH=$A000", "APP_BUF=$8806"][..],
+            None,
+        ),
         (&["UI_VARS=$9640", "FM_SCRATCH=$A000"][..], None),
         (&["UI_FRAME=$9572", "SCR_STACK=$9000"][..], None),
+        (&["APP_BUF=$8000"][..], None),
+        (&["APP_BUF=$7FFF"][..], Some("APP_BUF runs past bank B")),
+        (&["APP_BUF=$BF00"][..], None),
+        (&["APP_BUF=$BF01"][..], Some("APP_BUF runs past bank B")),
+        (&["APP_BUF=$85EC"][..], None),
+        (&["APP_BUF=$85ED"][..], Some("APP_BUF and UI_VARS overlap")),
+        (&["APP_BUF=$8806"][..], None),
+        (
+            &["APP_BUF=$8805"][..],
+            Some("APP_BUF and FM_SCRATCH overlap"),
+        ),
+        (&["APP_BUF=$9240"][..], None),
+        (&["APP_BUF=$9241"][..], Some("APP_BUF and UI_FRAME overlap")),
+        (&["APP_BUF=$9640", "SCR_STACK=$A000"][..], None),
+        (
+            &["APP_BUF=$963F", "SCR_STACK=$A000"][..],
+            Some("APP_BUF and UI_FRAME overlap"),
+        ),
+        (&["SCR_VARS=$A000", "APP_BUF=$9F00"][..], None),
+        (
+            &["SCR_VARS=$A000", "APP_BUF=$9F01"][..],
+            Some("APP_BUF and SCR_VARS overlap"),
+        ),
+        (&["SCR_VARS=$A000", "APP_BUF=$A06C"][..], None),
+        (
+            &["SCR_VARS=$A000", "APP_BUF=$A06B"][..],
+            Some("APP_BUF and SCR_VARS overlap"),
+        ),
+        (&["SCR_STACK=$A000", "APP_BUF=$9F00"][..], None),
+        (
+            &["SCR_STACK=$A000", "APP_BUF=$9F01"][..],
+            Some("APP_BUF and SCR_STACK overlap"),
+        ),
+        (&["SCR_STACK=$A000", "APP_BUF=$A080"][..], None),
+        (
+            &["SCR_STACK=$A000", "APP_BUF=$A07F"][..],
+            Some("APP_BUF and SCR_STACK overlap"),
+        ),
+        (&["APP_BUF=$9772"][..], None),
+        (
+            &["APP_BUF=$9773"][..],
+            Some("APP_BUF and KD_SCRATCH overlap"),
+        ),
+        (&["KD_SCRATCH=$A000", "APP_BUF=$9796"][..], None),
+        (
+            &["KD_SCRATCH=$A000", "APP_BUF=$9797"][..],
+            Some("APP_BUF and FAR_VARS overlap"),
+        ),
+        (
+            &["LIB_STATE=$A400", "KD_SCRATCH=$A000", "APP_BUF=$989A"][..],
+            None,
+        ),
+        (
+            &["LIB_STATE=$A400", "KD_SCRATCH=$A000", "APP_BUF=$9899"][..],
+            Some("APP_BUF and FAR_VARS overlap"),
+        ),
+        (
+            &["KD_SCRATCH=$A000", "FAR_VARS=$A400", "APP_BUF=$979C"][..],
+            None,
+        ),
+        (
+            &["KD_SCRATCH=$A000", "FAR_VARS=$A400", "APP_BUF=$979D"][..],
+            Some("APP_BUF and LIB_STATE overlap"),
+        ),
+        (&["APP_BUF=$9B71"][..], None),
+        (
+            &["APP_BUF=$9B70"][..],
+            Some("APP_BUF and LIB_STATE overlap"),
+        ),
         (&["UI_FRAME=$9B71"][..], None),
         (&["KD_SCRATCH=$9640"][..], None),
         (&["LIB_STATE=$9896", "FAR_VARS=$9C00"][..], None),
