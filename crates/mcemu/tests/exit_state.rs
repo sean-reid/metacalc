@@ -8,7 +8,6 @@ mod realos;
 use mcemu::{Machine, STUB_ROM, Stop};
 use realos::*;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 const STUB_BASE: u8 = 0x30;
 const RAM_BASE: u16 = 0x8000;
@@ -32,15 +31,12 @@ struct App {
     labels: PathBuf,
 }
 
-fn shell() -> &'static App {
-    static APP: OnceLock<App> = OnceLock::new();
-    APP.get_or_init(|| {
-        let build = make_app("app", "exit-app", &[]);
-        App {
-            file: std::fs::read(build.join("metacalc.8xk")).unwrap(),
-            labels: build.join("metacalc.lab"),
-        }
-    })
+fn shell() -> App {
+    let build = make_app("app", "exit-app", &[]);
+    App {
+        file: std::fs::read(build.join("metacalc.8xk")).unwrap(),
+        labels: build.join("metacalc.lab"),
+    }
 }
 
 fn dirt() -> [(u16, Vec<u8>); 2] {
@@ -203,7 +199,7 @@ fn dirty_regions_are_the_only_thing_that_changes_the_ram_after_2nd_off() {
         os.m.ram_page(1).to_vec()
     };
     let (with, without) = (run(true), run(false));
-    let regions = declared(app);
+    let regions = declared(&app);
     let strays: Vec<u16> = (0..with.len())
         .filter(|&i| with[i] != without[i])
         .map(|i| RAM_BASE + i as u16)
