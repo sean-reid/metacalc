@@ -29,8 +29,8 @@ ssc_kept:
 	ld (S_SSC_NOW), a
 	jr copy_sum_to_ssc
 
-; Sets S_SAVE_NOW to 1 when the copies of the four regions no longer sum to what they did at
-; the start.
+; Sets S_SAVE_NOW to 1 when the sum of the copies of the four regions differs from the sum taken
+; at the start.
 save_check:
 	call sum_saves
 	ld hl, S_SAVE_SUM

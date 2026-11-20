@@ -80,6 +80,7 @@ fn the_constants_are_what_the_os_holds_at_an_entry_from_a_cleared_home_screen() 
     let build = assemble(PROBE, &[]);
     let mut os = RealOs::boot(&build.app);
     os.tap(KEY_CLEAR, 150, 500);
+    assert_eq!(read(&mut os, SCR_STACK, 128), [0; 128], "cmdShadow at rest");
     os.tap(KEY_APPS, 150, 600);
     os.tap(KEY_2, 150, 300);
     os.run_ms(1500);

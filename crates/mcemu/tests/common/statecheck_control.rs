@@ -53,6 +53,12 @@ impl Rig {
             poke_all(&mut os.m, &self.before);
             let home = os.m.ram_page(1).to_vec();
             launch_entry_2(&mut os);
+            let vars = usize::from(self.label("SCR_VARS")) - RAM_BASE;
+            assert_eq!(
+                os.m.ram_page(1)[vars..vars + 108],
+                home[vars..vars + 108],
+                "the control image fills nothing"
+            );
             self.control = Some(Box::new(Control {
                 os,
                 home,

@@ -249,6 +249,10 @@ impl Rig {
     /// No byte outside the allowed runs differs from before the app started.
     pub fn assert_confined(&mut self, when: &str) {
         if std::env::var_os("STATECHECK_LEARN").is_some() {
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "STATECHECK_LEARN checks nothing"
+            );
             let values: Vec<String> = self
                 .stray_values()
                 .iter()

@@ -5,7 +5,7 @@
 ; saveSScreen, and only reads statVars, through a checksum. The patterns are the ones in
 ; crates/mcemu/tests/screen_state.rs: byte i of a region is seed + STEP * i.
 ; Scratch is S_BASE, outside every region above; the stack is the OS's. It holds a copy of
-; textShadow, SCR_STACK, SCR_VARS and appData as found, one after the other, and their checksum.
+; SCR_VARS, SCR_STACK, appData and textShadow as found, one after the other, and their checksum.
 ; Start screen: title, OS version bytes (A and B from _GetBaseVer), the flag byte at iy+33h,
 ; ONSCRPT and OFFSCRPT as none, ram or arc, the fill check with "stale" after it when a region
 ; is stale, a note that 2nd+QUIT is counted as a key, the way out.
@@ -18,7 +18,7 @@
 ; replaced by what the OS holds at an entry from a cleared home screen: spaces in textShadow and
 ; SCR_STACK, zeros in SCR_VARS and appData.
 ; CLEAR puts each of the four regions back from its copy and leaves for the home screen; when
-; the copies no longer sum to what they did at the start it writes those four constants into the
+; the copies' sum differs from the one taken at the start it writes those four constants into the
 ; regions instead. The scratch and the tail of saveSScreen are left changed.
 
 VERSION      = 1
