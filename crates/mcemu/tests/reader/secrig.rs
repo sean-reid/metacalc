@@ -150,56 +150,6 @@ impl Rig {
         }
     }
 
-    /// One call of lib_node on the bytes, which are placed at `at`: (status, kind, value, the
-    /// pointer after, the count left).
-    pub fn node(&mut self, bytes: &[u8], at: u16) -> (u8, u8, u16, u16, u8) {
-        self.poke(at, bytes);
-        let regs = Regs {
-            hl: at,
-            bc: bytes.len() as u16,
-            ..Regs::default()
-        };
-        let out = self.call("LIB_NODE", regs);
-        (
-            out.status(),
-            (out.bc >> 8) as u8,
-            out.de,
-            out.hl,
-            out.bc as u8,
-        )
-    }
-
-    /// Walks the whole tree in `bytes` through the iterator, refilling the 255 byte buffer as a
-    /// caller would. Returns the nodes as (kind, value) and the status that ended the walk.
-    pub fn walk(&mut self, bytes: &[u8]) -> (u8, Vec<(u8, u16)>) {
-        let mut nodes = Vec::new();
-        let mut at = 0;
-        while at < bytes.len() {
-            let chunk = &bytes[at..bytes.len().min(at + 255)];
-            self.poke(BUF, chunk);
-            let regs = Regs {
-                hl: BUF,
-                bc: chunk.len() as u16,
-                ..Regs::default()
-            };
-            let out = self.call("CALL_WALK", regs);
-            let count = usize::from(self.peek(self.label("NODE_COUNT"), 1)[0]);
-            let list = self.peek(self.label("NODES"), 3 * count);
-            nodes.extend(
-                list.chunks(3)
-                    .map(|n| (n[0], u16::from_le_bytes([n[1], n[2]]))),
-            );
-            let used = usize::from(out.hl - BUF);
-            at += used;
-            match out.status() {
-                ST_OK => {}
-                ST_RANGE if used > 0 && at < bytes.len() => {}
-                status => return (status, nodes),
-            }
-        }
-        (ST_OK, nodes)
-    }
-
     /// The ls_ fields: (have, [(offset, length, first item); 4], title count, fingerprint,
     /// syntax count).
     pub fn section_state(&mut self) -> SectionState {

@@ -58,27 +58,6 @@ fn tree_bytes(rig: &mut Rig, offset: u32, len: u16) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// Every node of `bytes` through lib_node, refilling as a caller would: the first status that
-/// is not 0, else 0.
-fn walk(rig: &mut Rig, bytes: &[u8]) -> u8 {
-    let mut at = 0;
-    while at < bytes.len() {
-        let chunk = &bytes[at..bytes.len().min(at + 255)];
-        let mut used = 0;
-        while used < chunk.len() {
-            let (status, _, _, _, left) = rig.node(&chunk[used..], 0xA200);
-            documented("node", status, &[ST_OK, ST_RANGE, ST_BAD]);
-            match status {
-                ST_OK => used = chunk.len() - usize::from(left),
-                ST_RANGE if at + chunk.len() < bytes.len() => break,
-                status => return status,
-            }
-        }
-        at += used;
-    }
-    ST_OK
-}
-
 /// Runs every accessor over every index of the open library and checks each status is one the
 /// header documents. Returns what each call said.
 fn everything(rig: &mut Rig) -> Vec<Verdict> {
@@ -129,10 +108,7 @@ fn everything(rig: &mut Rig) -> Vec<Verdict> {
             documented("tree", tree.status, &[ST_OK, ST_BAD, ST_INDEX, ST_NONE]);
             let mut refused = tree.status == ST_BAD;
             if tree.status == ST_OK {
-                match tree_bytes(rig, tree.offset, tree.len.min(2000)) {
-                    Some(bytes) => refused |= walk(rig, &bytes) != ST_OK,
-                    None => refused = true,
-                }
+                refused |= tree_bytes(rig, tree.offset, tree.len.min(2000)).is_none();
             }
             said.push((TREES, usize::from(n), refused));
         }
@@ -210,12 +186,6 @@ fn a_changed_byte_anywhere_inside_a_section_stays_inside_the_reader_and_is_refus
                     host_ok += 1;
                     let usable = rig.glyph_map().0 == ST_OK;
                     check_sections_with(&mut rig, &bytes, &what, &ascending, usable);
-                    for (addr, len) in [(rig.label("NODE_COUNT"), 4), (rig.label("NODES"), 0x400)] {
-                        let pristine: Vec<u8> = (0..len)
-                            .map(|i| pattern(APP_PAGE, usize::from(addr - 0x8000) + i))
-                            .collect();
-                        rig.poke(addr, &pristine);
-                    }
                     continue;
                 }
                 host_refused += 1;

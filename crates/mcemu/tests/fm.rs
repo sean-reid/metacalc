@@ -31,5 +31,10 @@ mod support;
 #[path = "fm/swap.rs"]
 mod swap;
 #[allow(dead_code)]
+#[path = "reader/treelibs.rs"]
+mod treelibs;
+#[path = "fm/treenode.rs"]
+mod treenode;
+#[allow(dead_code)]
 #[path = "ui/support.rs"]
 mod ui_support;

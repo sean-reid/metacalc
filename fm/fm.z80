@@ -49,7 +49,7 @@
 ; the old port 5 and SP in it, switches to FM_STACK and works there, and on every exit restores SP,
 ; port 5 and the interrupt state. Interrupts stay off for the whole session; the longest one
 ; measured is fm_open on the ring library, 575,592 T-states (96 ms at 6 MHz), then fm_nodes of its
-; largest statement, 379,323, fm_assertion of its largest assertion, 187,195, and fm_draw of a full
+; largest statement, 356,229, fm_assertion of its largest assertion, 187,195, and fm_draw of a full
 ; window, at most 177,967. The reader and the
 ; canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
@@ -145,7 +145,7 @@
 ;                      over every token, depth 0, as is every statement of a library with no
 ;                      trees; the host model, unlike fm, parses the grammar itself for a library
 ;                      that exports its database and stores no trees. A variable's symbol id in
-;                      a tree is one byte, because lib_node refuses a larger one. The table is
+;                      a tree is one byte, because fm_tree_node refuses a larger one. The table is
 ;                      built once and stays valid across fm_select, until the next fm_assertion,
 ;                      fm_statement or fm_open; a second call returns at once. A refused call
 ;                      leaves it not built, the statement selected and the other tables as they

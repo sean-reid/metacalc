@@ -40,22 +40,6 @@ fn every(watch: &mut Watch, rig: &mut Rig, tag: &str, buf: u16, want: Option<u8>
         ("LIB_TREE", at(0, 0x7000)),
         ("LIB_SHAPES", Regs::default()),
         ("LIB_SHAPE", at(index, 0)),
-        (
-            "LIB_NODE",
-            Regs {
-                hl: BUF,
-                bc: 0,
-                ..Regs::default()
-            },
-        ),
-        (
-            "LIB_NODE",
-            Regs {
-                hl: BUF,
-                bc: 1,
-                ..Regs::default()
-            },
-        ),
     ] {
         let status = watch.call(rig, &format!("{tag}: {target}"), target, regs);
         if let Some(want) = want {
@@ -86,23 +70,6 @@ fn every_status_of_every_section_routine_comes_with_matching_flags() {
     every(&mut watch, &mut rig, "past the end", BUF, None, 60000);
     every(&mut watch, &mut rig, "valid", BUF, None, 0);
     assert_eq!(rig.tree(0, 0xFF).status, ST_OK);
-    let cut = Regs {
-        hl: BUF,
-        bc: 1,
-        ..Regs::default()
-    };
-    rig.poke(BUF, &[0x7F, 1]);
-    assert_eq!(
-        watch.call(&mut rig, "cut escape", "LIB_NODE", cut),
-        ST_RANGE
-    );
-    rig.poke(BUF, &[0x7F, 200, 0]);
-    let bad = Regs {
-        hl: BUF,
-        bc: 3,
-        ..Regs::default()
-    };
-    assert_eq!(watch.call(&mut rig, "bad index", "LIB_NODE", bad), ST_BAD);
     let read = Regs {
         bc: 0,
         de: BUF,

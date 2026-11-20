@@ -38,8 +38,6 @@ fn workout(rig: &mut Rig, bytes: &[u8]) {
         }
     }
     assert_eq!(rig.tree(assertions, 0).status, ST_INDEX);
-    assert_eq!(rig.node(&[0x01, 0x80, 0xFF], 0xA200).0, ST_OK);
-    assert_eq!(rig.node(&[0x7F], 0xA200).0, ST_RANGE);
 }
 
 fn library() -> Vec<u8> {

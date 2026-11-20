@@ -146,13 +146,6 @@
 ;                          the library, the first 255 bytes or all of them copied to the buffer;
 ;                          read the rest with lib_read at the offset. 9 for a statement the
 ;                          grammar read nothing from, and for a library without trees.
-;   lib_node          in:  HL = the next node byte, C = bytes left from HL, 1 to 255
-;                     out: B = 0 for a syntax index, 1 for a variable; DE = the index or the
-;                          variable's symbol id; HL past the node, C = bytes left. Status 1, with
-;                          HL and C as they came in, when an escape byte has no second byte among
-;                          the C bytes: a caller walking a longer tree refills the buffer from
-;                          HL. Status 3 for an index past the syntax table or a variable past the
-;                          symbols. It reads no library byte, but the reader must be open.
 ;   lib_shapes        out: A = status, 9 without the section; E:HL = the section's offset in the
 ;                          library, BC = its length, to copy with lib_read
 ;   lib_shape         in:  HL = syntax index; DE = buffer of 255 bytes
