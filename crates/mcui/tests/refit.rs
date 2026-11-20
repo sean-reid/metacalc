@@ -63,7 +63,7 @@ fn folds_made_by_hand_stay_while_the_screen_is_on_top() {
 }
 
 #[test]
-fn a_theorem_closed_over_a_notice_is_fitted_again() {
+fn a_theorem_closed_over_trys_proving_screen_is_fitted_again() {
     let mut ui = ui();
     open(&mut ui, "a2i");
     press(&mut ui, &[Down, Right, Enter]);
@@ -135,4 +135,36 @@ fn the_theorem_under_a_full_stack_is_fitted_again() {
     ui.press(Clear);
     assert_eq!(ui.depth(), mcui::MAX_DEPTH - 1);
     assert_eq!(at(&ui).3, 0);
+}
+#[test]
+fn a_theorem_closed_over_a_notice_is_fitted_again() {
+    let mut ui = support::rejected_ui();
+    open(&mut ui, "a1i");
+    ui.press(Enter);
+    assert_eq!(at(&ui).3, 1);
+    ui.press(F3);
+    assert!(matches!(ui.state(), State::Notice { .. }));
+    ui.press(Clear);
+    let mut fresh = support::rejected_ui();
+    open(&mut fresh, "a1i");
+    assert_eq!(ui.state(), fresh.state());
+    assert!(ui.frame() == fresh.frame());
+}
+
+#[test]
+fn the_cursor_is_in_view_after_a_refit_that_shortens_the_layout() {
+    let mut ui = long();
+    press(&mut ui, &[Left; 7]);
+    for _ in 0..7 {
+        press(&mut ui, &[Down, Right, Down, Right, Down, Right, Enter]);
+        while at(&ui).1 != 0 {
+            ui.press(Up);
+        }
+        ui.press(Right);
+    }
+    press(&mut ui, &[Left, Left, Left, Left, F2, Clear]);
+    let (statement, _, scroll, _, _) = at(&ui);
+    assert_eq!(statement, 3);
+    // every hypothesis takes one row after the refit, so statement 3 is on row 3
+    assert!((scroll..scroll + 6).contains(&statement), "scroll {scroll}");
 }

@@ -44,8 +44,8 @@ impl Theorem {
         Screen::Theorem(Theorem::fitted(ctx, library, index))
     }
 
-    /// Fits the folds afresh after the screen above closed; the cursor and the scroll stay,
-    /// cut back to what the new layout holds.
+    /// Fits the folds afresh after the screen above closed; the cursor stays, and the scroll
+    /// stays as far as the new layout holds it and then follows the cursor.
     pub(super) fn refit(&mut self, ctx: &Ctx) {
         let (cursor, scroll) = (self.cursor, self.scroll);
         *self = Theorem::fitted(ctx, self.library, self.index);
@@ -56,6 +56,7 @@ impl Theorem {
         let node = cursor.1.min(self.statement.at(s).len() - 1);
         self.cursor = (s, node);
         self.scroll = scroll.min(self.rows.saturating_sub(CONTENT_ROWS));
+        self.follow();
     }
 
     fn fitted(ctx: &Ctx, library: usize, index: usize) -> Theorem {
