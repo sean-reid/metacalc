@@ -67,9 +67,9 @@
 ; fm_cursor alone takes 975. fm_rows and fm_draw first run the pass that applies folds when the
 ; statement is stale, so the call after an fm_fold costs its figure plus the pass, up to 128,000 on
 ; the fixture and 50,000 on ring. The six-row frame of the ring statement takes 266,746 T-states
-; and with the cursor on node 0 or on its largest child 292,619, within the 50 ms budget of 300,000:
-; the cursor adds one ui_invert for each line, 3,427 for a line as wide as the window. The reader and the
-; canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
+; and with the cursor on node 0 or on its largest child 292,830, within the 50 ms budget of 300,000:
+; the cursor adds one ui_invert for each line, 3,427 for a line as wide as the window. The reader
+; and the canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
 ; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
 ; Port 7 changes only inside lib_read, which puts it back.
