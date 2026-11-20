@@ -31,6 +31,22 @@ appBackUpScreen  = 9872h
 #if (appBackUpScreen < KD_SCRATCH) || (appBackUpScreen > KD_SCRATCH)
  .error "KD_SCRATCH in ram_map.inc must be appBackUpScreen"
 #endif
+smallEditRAM     = 90D3h
+XFact            = 913Fh
+cmdShadow        = 966Eh
+cmdShadCur       = 96EEh
+#if (smallEditRAM < SCR_VARS) || (smallEditRAM > SCR_VARS)
+ .error "SCR_VARS in ram_map.inc must be smallEditRAM"
+#endif
+#if (XFact < (SCR_VARS + SCR_VARS_SIZE)) || (XFact > (SCR_VARS + SCR_VARS_SIZE))
+ .error "SCR_VARS in ram_map.inc must end where XFact starts"
+#endif
+#if (cmdShadow < SCR_STACK) || (cmdShadow > SCR_STACK)
+ .error "SCR_STACK in ram_map.inc must be cmdShadow"
+#endif
+#if (cmdShadCur < (SCR_STACK + SCR_STACK_SIZE)) || (cmdShadCur > (SCR_STACK + SCR_STACK_SIZE))
+ .error "SCR_STACK in ram_map.inc must end where cmdShadCur starts"
+#endif
 libPage          = KD_SCRATCH
 appStatus        = KD_SCRATCH + 1
 #if (libPage >= (KD_SCRATCH + KD_SCRATCH_SIZE)) || (appStatus >= (KD_SCRATCH + KD_SCRATCH_SIZE))

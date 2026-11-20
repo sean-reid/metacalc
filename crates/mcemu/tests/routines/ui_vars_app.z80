@@ -41,6 +41,8 @@ fill:
 	ld b, 4
 	call check
 	bcall(_NewLine)
+	ld a, 'A'
+	bcall(_PutC)
 	ld b, 5
 	call check
 	bcall(_GetKey)
