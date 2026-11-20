@@ -1,9 +1,12 @@
 //! app_key (app/src/keys.inc) against the stub OS and the reference OS: the key it returns for
 //! each physical key, and what it restores after the wait.
 
+#[path = "common/keytables.rs"]
+mod keytables;
 #[path = "common/realos.rs"]
 mod realos;
 
+use keytables::{ALPHA, PLAIN, SECOND};
 use mcemu::{LCD_HEIGHT, LCD_WIDTH, Machine, STUB_ROM, Stop};
 use mcglyph::z80::Table;
 use mcui::Key;
@@ -37,27 +40,6 @@ const SCAN_LAST: u8 = 0x38;
 /// Scancodes with no key behind them, and the two modifiers.
 const NO_KEY: [u8; 7] = [5, 6, 7, 8, 0x10, 0x18, 0x29];
 
-/// `_GetKey`'s code for each scancode from 1, as measured on the reference OS: with no
-/// modifier, after 2nd and after ALPHA. 0 is a key that returns nothing. The stub's tables are
-/// compared with these by a stub test, and the reference OS by an ignored one.
-const PLAIN: [u8; 56] = [
-    0x04, 0x02, 0x01, 0x03, 0, 0, 0, 0, 0x05, 0x80, 0x81, 0x82, 0x83, 0x84, 0x09, 0, 0x8C, 0x91,
-    0x94, 0x97, 0x86, 0xBB, 0x35, 0, 0x8D, 0x90, 0x93, 0x96, 0x85, 0xB9, 0x2D, 0x31, 0x8E, 0x8F,
-    0x92, 0x95, 0x8B, 0xB7, 0x2C, 0xB4, 0, 0x8A, 0xBF, 0xC1, 0xBD, 0xB6, 0x32, 0, 0x44, 0x5A, 0x2E,
-    0x48, 0x49, 0, 0x45, 0x0A,
-];
-const SECOND: [u8; 56] = [
-    0, 0x0E, 0x0F, 0, 0, 0, 0, 0, 0x0D, 0x36, 0x88, 0x87, 0xEF, 0xB5, 0x09, 0, 0xC5, 0xF5, 0xF8,
-    0xFB, 0xED, 0xBC, 0x38, 0, 0xEE, 0xF4, 0xF7, 0xFA, 0xEC, 0xBA, 0x2F, 0x3A, 0x3E, 0xF3, 0xF6,
-    0xF9, 0x98, 0xB8, 0x39, 0x41, 0, 0x0C, 0xC0, 0xC2, 0xBE, 0x37, 0x33, 0, 0x4A, 0x3B, 0x57, 0x4B,
-    0x30, 0, 0x40, 0x0B,
-];
-const ALPHA: [u8; 56] = [
-    0x04, 0x02, 0x01, 0x03, 0, 0, 0, 0, 0x05, 0xCB, 0xB0, 0xAB, 0xA6, 0xA1, 0x09, 0, 0xCA, 0xCC,
-    0xAF, 0xAA, 0xA5, 0xA0, 0x35, 0, 0xC6, 0xB3, 0xAE, 0xA9, 0xA4, 0x9F, 0x9C, 0x31, 0x99, 0xB2,
-    0xAD, 0xA8, 0xA3, 0x9E, 0x9B, 0xB4, 0, 0xB1, 0xAC, 0xA7, 0xA2, 0x9D, 0x9A, 0, 0x44, 0x5A, 0x2E,
-    0x48, 0x49, 0, 0x45, 0x0A,
-];
 /// The first and last capital letter codes `_GetKey` returns after ALPHA.
 const CAP_A: u8 = 0x9A;
 const CAP_Z: u8 = 0xB3;
@@ -384,16 +366,16 @@ fn same_screen(what: &str, got: &[bool], want: &[bool]) {
 }
 
 #[test]
-fn text_drawn_after_the_wait_is_right_when_the_variables_were_zeroed_during_it() {
+fn text_drawn_after_the_wait_is_right_when_the_variables_were_overwritten_during_it() {
     let mut rig = Rig::stub(KEYS_APP);
     message(&mut rig, "Key 12 x");
     assert_eq!(rig.count(), 0, "the app is waiting");
-    rig.poke(UI_VARS, &[0; SAVE_SCREEN_SIZE]);
+    rig.poke(UI_VARS, &[0xA5; SAVE_SCREEN_SIZE]);
     rig.tap(0x04);
     assert_eq!(rig.count(), 1);
     assert_eq!(rig.ram(LOG, 1), [code(Key::Up)]);
     let got = rig.screen();
-    same_screen("after the zeroed wait", &got, &drawn("Key 12 x"));
+    same_screen("after the overwritten wait", &got, &drawn("Key 12 x"));
     assert!(got.iter().any(|&p| p), "something is drawn");
 }
 
@@ -499,7 +481,7 @@ fn on_the_reference_os_alpha_lock_gives_the_face_characters_and_leaves_the_model
     );
 }
 
-/// Runs the real OS until its auto power down has fired, which zeroes saveSScreen, and returns
+/// Runs the real OS until its auto power down has fired, which overwrites saveSScreen with the screen's pixels, and returns
 /// the emulated seconds that took.
 fn power_down(rig: &mut Rig) {
     let mut seconds = 0;

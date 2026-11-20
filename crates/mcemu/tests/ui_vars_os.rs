@@ -59,11 +59,14 @@ fn the_calls_an_app_makes_leave_the_ui_variables_in_save_screen_alone() {
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn auto_power_down_in_get_key_zeroes_save_screen() {
+fn auto_power_down_in_get_key_copies_the_screen_into_save_screen() {
     let app = assemble_routine("ui_vars_app.z80");
     let mut os = RealOs::boot(&app);
     start(&mut os);
     assert_eq!(os.ram(RESULT, 1), [5], "the app is waiting in _GetKey");
+    let screen = os.packed_screen();
+    assert!(screen.iter().any(|&b| b != 0), "the screen shows text");
+    assert_eq!(screen.len(), SAVE_SCREEN_SIZE);
     let fill = pattern(SAVE_SCREEN_SIZE);
     os.m.ram_page(1)[VARS..VARS + SAVE_SCREEN_SIZE].copy_from_slice(&fill);
     let powered_down = |os: &mut RealOs| os.m.in_port(3) & POWER_DOWN != 0;
@@ -76,18 +79,26 @@ fn auto_power_down_in_get_key_zeroes_save_screen() {
         );
         assert!(!powered_down(&mut os), "port 3 reports a power down early");
     }
-    let mut zeroed = false;
+    let mut copied = false;
     for _ in 0..HUNT_MS / 1_000 {
         os.run_ms(1_000);
-        let gone = os.ram(VARS, SAVE_SCREEN_SIZE).iter().all(|&b| b == 0);
+        let changed = os.ram(VARS, SAVE_SCREEN_SIZE) != fill;
         let down = powered_down(&mut os);
-        if gone || down {
-            assert!(gone && down, "zeroed {gone}, port 3 powered down {down}");
-            zeroed = true;
+        if changed || down {
+            assert!(
+                changed && down,
+                "changed {changed}, port 3 powered down {down}"
+            );
+            assert_eq!(
+                os.ram(VARS, SAVE_SCREEN_SIZE),
+                screen,
+                "saveSScreen holds the screen's pixels"
+            );
+            copied = true;
             break;
         }
     }
-    assert!(zeroed, "auto power down never zeroed saveSScreen");
+    assert!(copied, "auto power down never changed saveSScreen");
     assert_eq!(os.ram(RESULT, 1), [5], "_GetKey has not returned");
 }
 

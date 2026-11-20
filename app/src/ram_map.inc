@@ -4,10 +4,23 @@
 ; The file that owns a region lays out the bytes inside it. Assembling any image that includes
 ; this file fails when two regions overlap or a region leaves its bank.
 ;
+; SCR_VARS and SCR_STACK hold state that must outlive a wait in _GetKey. The figures here are
+; measured under OS 2.43 in the emulator; no calculator was tried. Both regions kept every byte
+; through the events crates/mcemu/tests/screen_state.rs drives: keys, 2nd, ALPHA, alpha lock, the
+; contrast keys, ON, an auto power down with ON to wake, an ONSCRPT that runs, the OS calls that
+; test makes, and leaving the app. appData did not: with an ONSCRPT AppVar in RAM and bit 0 of
+; the flag byte at iy+33h set, the OS copied a zero and the script's first 63 bytes over 8000h
+; when it woke, so the state is not there; an OFFSCRPT in RAM with bit 1 set is copied the same way
+; at 2nd+OFF. At an auto power down the OS copied the screen's pixels into saveSScreen.
+;
 ;   name              bank  where
-;   UI_VARS           B     the UI's variables, in saveSScreen; the OS zeroes it when auto power
-;                           down fires in _GetKey
+;   UI_VARS           B     the UI's variables, in saveSScreen; the OS overwrites it with the
+;                           screen's pixels when auto power down fires in _GetKey
+;   SCR_VARS          B     the framework's variables, 108 bytes: smallEditRAM, 90D3h to 913Eh,
+;                           XFact follows
 ;   UI_FRAME          B     the UI's 96 by 64 frame, plotSScreen
+;   SCR_STACK         B     the stack of open screens, 128 bytes: cmdShadow, 966Eh to 96EDh,
+;                           cmdShadCur follows
 ;   KD_SCRATCH        B     the kernel driver's scratch, from libPage, in appBackUpScreen
 ;   FAR_VARS          B     the cross-page call's scratch (app/src/farcall.inc), in the gap
 ;                           between KD_SCRATCH and LIB_STATE
@@ -32,6 +45,18 @@ UI_VARS             .equ $86EC
 #endif
 #ifndef UI_VARS_SIZE
 UI_VARS_SIZE        .equ $1A
+#endif
+#ifndef SCR_VARS
+SCR_VARS            .equ $90D3
+#endif
+#ifndef SCR_VARS_SIZE
+SCR_VARS_SIZE       .equ 108
+#endif
+#ifndef SCR_STACK
+SCR_STACK           .equ $966E
+#endif
+#ifndef SCR_STACK_SIZE
+SCR_STACK_SIZE      .equ 128
 #endif
 #ifndef UI_FRAME
 UI_FRAME            .equ $9340
@@ -113,6 +138,8 @@ name .equ base + offset
 #endif
 #endmacro
 
+RAM_WITHIN(SCR_VARS, SCR_VARS_SIZE, $8000, $C000, "SCR_VARS runs past bank B")
+RAM_WITHIN(SCR_STACK, SCR_STACK_SIZE, $8000, $C000, "SCR_STACK runs past bank B")
 RAM_WITHIN(UI_VARS, UI_VARS_SIZE, $8000, $C000, "UI_VARS runs past bank B")
 RAM_WITHIN(UI_FRAME, UI_FRAME_SIZE, $8000, $C000, "UI_FRAME runs past bank B")
 RAM_WITHIN(KD_SCRATCH, KD_SCRATCH_SIZE, $8000, $C000, "KD_SCRATCH runs past bank B")
@@ -131,6 +158,17 @@ RAM_DISJOINT(FAR_VARS, FAR_VARS_SIZE, UI_VARS, UI_VARS_SIZE, "FAR_VARS and UI_VA
 RAM_DISJOINT(FAR_VARS, FAR_VARS_SIZE, UI_FRAME, UI_FRAME_SIZE, "FAR_VARS and UI_FRAME overlap")
 RAM_DISJOINT(FAR_VARS, FAR_VARS_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "FAR_VARS and KD_SCRATCH overlap")
 RAM_DISJOINT(FAR_VARS, FAR_VARS_SIZE, LIB_STATE, LIB_STATE_SIZE, "FAR_VARS and LIB_STATE overlap")
+RAM_DISJOINT(SCR_VARS, SCR_VARS_SIZE, SCR_STACK, SCR_STACK_SIZE, "SCR_VARS and SCR_STACK overlap")
+RAM_DISJOINT(SCR_VARS, SCR_VARS_SIZE, UI_VARS, UI_VARS_SIZE, "SCR_VARS and UI_VARS overlap")
+RAM_DISJOINT(SCR_VARS, SCR_VARS_SIZE, UI_FRAME, UI_FRAME_SIZE, "SCR_VARS and UI_FRAME overlap")
+RAM_DISJOINT(SCR_VARS, SCR_VARS_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "SCR_VARS and KD_SCRATCH overlap")
+RAM_DISJOINT(SCR_VARS, SCR_VARS_SIZE, FAR_VARS, FAR_VARS_SIZE, "SCR_VARS and FAR_VARS overlap")
+RAM_DISJOINT(SCR_VARS, SCR_VARS_SIZE, LIB_STATE, LIB_STATE_SIZE, "SCR_VARS and LIB_STATE overlap")
+RAM_DISJOINT(SCR_STACK, SCR_STACK_SIZE, UI_VARS, UI_VARS_SIZE, "SCR_STACK and UI_VARS overlap")
+RAM_DISJOINT(SCR_STACK, SCR_STACK_SIZE, UI_FRAME, UI_FRAME_SIZE, "SCR_STACK and UI_FRAME overlap")
+RAM_DISJOINT(SCR_STACK, SCR_STACK_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "SCR_STACK and KD_SCRATCH overlap")
+RAM_DISJOINT(SCR_STACK, SCR_STACK_SIZE, FAR_VARS, FAR_VARS_SIZE, "SCR_STACK and FAR_VARS overlap")
+RAM_DISJOINT(SCR_STACK, SCR_STACK_SIZE, LIB_STATE, LIB_STATE_SIZE, "SCR_STACK and LIB_STATE overlap")
 RAM_DISJOINT(KERNEL_RAM_LOW, LOW_SIZE, KERNEL_RAM_HIGH, HIGH_SIZE, "KERNEL_RAM_LOW and KERNEL_RAM_HIGH overlap")
 
 RAM_WITHIN(FM_SCRATCH, FM_SCRATCH_SIZE, $8000, $C000, "FM_SCRATCH runs past bank B")
@@ -139,6 +177,8 @@ RAM_WITHIN(FM_RAM, FM_RAM_SIZE, KERNEL_RAM_HIGH, KERNEL_RAM_HIGH + HIGH_SIZE, "F
  .error "FM_LOW must not start below KERNEL_RAM_LOW + $100, the page of the kernel's parameters"
 #endif
 RAM_WITHIN(FM_LOW, FM_LOW_SIZE, KERNEL_RAM_LOW, KERNEL_RAM_LOW + LOW_SIZE, "FM_LOW runs outside the kernel's low region")
+RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, SCR_VARS, SCR_VARS_SIZE, "FM_SCRATCH and SCR_VARS overlap")
+RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, SCR_STACK, SCR_STACK_SIZE, "FM_SCRATCH and SCR_STACK overlap")
 RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, UI_VARS, UI_VARS_SIZE, "FM_SCRATCH and UI_VARS overlap")
 RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, UI_FRAME, UI_FRAME_SIZE, "FM_SCRATCH and UI_FRAME overlap")
 RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "FM_SCRATCH and KD_SCRATCH overlap")

@@ -109,7 +109,8 @@ pub enum Op {
     Iff,
     SetFont(Vec<u8>),
     BuiltinFont,
-    /// Zeroes the whole variable block, as the OS does to saveSScreen when auto power down fires.
+    /// Zeroes the whole variable block, standing in for the OS overwriting saveSScreen when auto
+    /// power down fires.
     ClearVars,
     /// Pixels only the host draws, ORed into the frame between two Z80 calls.
     Ink(Bitmap),

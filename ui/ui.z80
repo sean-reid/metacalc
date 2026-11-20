@@ -11,14 +11,14 @@
 ; frame, 768 bytes at UI_FRAME, default $9340 (plotSScreen), row-major, 12 bytes a row, the most
 ; significant bit leftmost; and UI_VARS_SIZE ($1A, 26) bytes of variables at UI_VARS, default
 ; $86EC (saveSScreen), laid out in ram.inc. The blocks must not overlap another region of the
-; map. Only ui_fontp holds anything between calls, and the OS zeroes saveSScreen when auto power
-; down fires in _GetKey, so call ui_set_font again after any key wait that can power the
-; calculator down. Call ui_set_font and ui_clear before the first draw. Registers not listed as
-; destroyed are preserved, and IX, IY and the shadow registers are never touched. Counting
-; the caller's return address, the stack needs 14 bytes for ui_list_row, 12 for ui_title and
-; ui_soft_keys, 10 for the text-right and centred routines, 8 for ui_bar, 18 for ui_truncate,
-; 12 for ui_tail and 30 for ui_wrap (FIT_STACK_* in fit.inc); an interrupt adds the handler's
-; pushes.
+; map. Only ui_fontp holds anything between calls, and the OS copies the screen's pixels into
+; saveSScreen when auto power down fires in _GetKey, so call ui_set_font again after any key
+; wait that can power the calculator down. Call ui_set_font and ui_clear before the first draw.
+; Registers not listed as destroyed are preserved, and IX, IY and the shadow registers are never
+; touched. Counting the caller's return address, the stack needs 14 bytes for ui_list_row,
+; 12 for ui_title and ui_soft_keys, 10 for the text-right and centred routines, 8 for ui_bar,
+; 18 for ui_truncate, 12 for ui_tail and 30 for ui_wrap (FIT_STACK_* in fit.inc); an interrupt
+; adds the handler's pushes.
 ;
 ; Fonts: every routine that draws or measures text reads the table given to ui_set_font. A
 ; table is what mcglyph z80 writes: a slot of 8 bytes per glyph, the width then seven row
