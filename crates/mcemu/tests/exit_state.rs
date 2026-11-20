@@ -30,6 +30,8 @@ const SCAN_MODE: u8 = 0x37;
 const SCAN_5: u8 = 0x1B;
 const KEY_1: u8 = 0x22;
 const ERROR_CALL: u16 = 0xA800;
+const STACK_BELOW: u16 = 0x100;
+const APP_STACK_TOP: u16 = 0xFFE4;
 const SCAN_DOWN: u8 = 0x01;
 const POWER_DOWN: u8 = 0x10;
 const KEY_GRAPH: u8 = 0x31;
@@ -173,18 +175,60 @@ fn lit_rows(os: &mut RealOs, rows: std::ops::Range<usize>) -> bool {
         .any(|&p| p)
 }
 
+/// The error screen draws its title and 1:Quit and nothing below row 2.
+fn assert_error_screen(os: &mut RealOs, name: &str) {
+    assert!(
+        lit_rows(os, 0..2),
+        "{name}: the error screen's title and 1:Quit"
+    );
+    assert!(
+        !lit_rows(os, 3..8),
+        "{name}: nothing below the error screen's choices"
+    );
+}
+
 /// The error screen's 1:Quit.
 fn error_quit(os: &mut RealOs) {
     raise_error(os);
-    assert!(lit_rows(os, 1..2), "the error screen offers 1:Quit");
+    assert_error_screen(os, "1:Quit");
     os.tap(KEY_1, 150, 1500);
 }
 
 /// The error screen's 2:Goto, which only an app with a context of its own gets.
 fn error_goto(os: &mut RealOs) {
     raise_error(os);
-    assert!(lit_rows(os, 2..3), "the error screen offers 2:Goto");
+    assert_error_screen(os, "2:Goto");
+    assert!(lit_rows(os, 2..3), "2:Goto is drawn");
     os.tap(KEY_2, 150, 1500);
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn the_error_screen_offers_goto_to_the_app_and_only_quit_to_a_plain_app() {
+    let (mut plain, ..) = launched(&assemble_routine("wait_app.z80"), None);
+    raise_error(&mut plain);
+    assert_error_screen(&mut plain, "plain app");
+    assert!(
+        !lit_rows(&mut plain, 2..3),
+        "a plain app's error screen has no 2:Goto"
+    );
+    for (kind, app) in [
+        ("no library", shell()),
+        ("library", with_library()),
+        ("refused library", refused()),
+    ] {
+        let (mut os, ..) = launched(&app.file, Some(&app.start));
+        raise_error(&mut os);
+        assert!(
+            os.screen() != app.start,
+            "{kind}: the error screen replaced the app's"
+        );
+        assert_error_screen(&mut os, kind);
+        assert!(
+            lit_rows(&mut os, 2..3),
+            "{kind}: the app's error screen has 2:Goto"
+        );
+    }
 }
 
 type Exit = fn(&mut RealOs);
@@ -284,6 +328,102 @@ fn dirty_regions_are_the_only_thing_that_changes_the_ram_after_2nd_off() {
     );
 }
 
+/// Bytes of banks B and C that differ between the app and a plain waiting app that left the same
+/// way, which the OS does and the app does not: the base, the end and why.
+#[rustfmt::skip]
+const OS_OWN: &[(u16, u16, &str)] = &[
+    (0x838D, 0x8390, "OS bookkeeping of the launched app: the same in identical runs, not timing"),
+    (0x83E8, 0x83E9, "OS bookkeeping of the launched app, as 838Dh"),
+    (0x8445, 0x8446, "kbdKey: MODE after 2nd for the app's 2nd+QUIT, CLEAR for the plain app"),
+    (0x8448, 0x8449, "OS bookkeeping of the launched app, as 838Dh"),
+    (0x846E, 0x8476, "the OS's key bookkeeping after 2nd+MODE, as 8445h"),
+    (0x8478, 0x84C7, "the launched app's name, which the OS copies into OP1 to OP6"),
+    (0x859B, 0x85AA, "cxPrev, the OS's copy of the context it left"),
+    (0x85E8, 0x85F0, "the launched app's name in the OS's name buffer"),
+    (0x89F3, 0x89F4, "graphFlags: the app sets graphDraw on purpose"),
+    (0x9868, 0x9869, "an OS byte at 2nd+OFF, 66h for the app and 68h for the plain app; unattributed, no region declares it"),
+    (0x8A0F, 0x8A10, "a flag the OS sets for 2nd+MODE, as 8445h"),
+];
+
+/// Every region the app declares in ram_map.inc, in either bank, from the build's label file, and
+/// the kernel's and fm's blocks, whose sizes carry other names.
+fn declared(app: &Build) -> Vec<(u16, u16)> {
+    let labels = std::fs::read_to_string(&app.labels).unwrap();
+    let value = |name: &str| {
+        labels.lines().find_map(|line| {
+            let (key, v) = line.split_once(" = ")?;
+            (key == name).then(|| u16::from_str_radix(&v[1..], 16).unwrap())
+        })
+    };
+    let mut regions: Vec<(u16, u16)> = labels
+        .lines()
+        .filter_map(|line| line.split_once(" = ")?.0.strip_suffix("_SIZE"))
+        .filter_map(|name| Some((value(name)?, value(name)? + value(&format!("{name}_SIZE"))?)))
+        .collect();
+    for (base, size) in [
+        ("KERNEL_RAM_LOW", "LOW_SIZE"),
+        ("KERNEL_RAM_HIGH", "HIGH_SIZE"),
+    ] {
+        regions.push((
+            value(base).unwrap(),
+            value(base).unwrap() + value(size).unwrap(),
+        ));
+    }
+    assert!(
+        regions.len() >= 10,
+        "ram_map.inc declares its regions: {regions:04X?}"
+    );
+    regions
+}
+
+/// Banks B and C as the OS has them mapped at its idle, 8000h to FFFFh.
+fn banks(os: &mut RealOs) -> Vec<u8> {
+    os.m.read_ram(0x8000, 0x8000)
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn the_app_leaves_banks_b_and_c_as_a_plain_waiting_app_does_but_for_what_it_declares() {
+    let app = shell();
+    let mut masks = declared(app);
+    let mut allowed_seen = std::collections::BTreeSet::new();
+    for (way, exit, plain_exit) in &EXITS[..3] {
+        let (mut os, ..) = launched(&app.file, Some(&app.start));
+        // the app's frames above the OS's SP at the wait and the stack the OS uses below it
+        let sp = os.m.regs().sp;
+        let ours = {
+            exit(&mut os);
+            banks(&mut os)
+        };
+        let (mut plain, ..) = launched(&assemble_routine("wait_app.z80"), None);
+        plain_exit(&mut plain);
+        let theirs = banks(&mut plain);
+        let stack = (sp.saturating_sub(STACK_BELOW), APP_STACK_TOP);
+        masks.push(stack);
+        let mut strays = vec![];
+        for i in 0..ours.len() {
+            let addr = 0x8000 + i as u16;
+            if ours[i] == theirs[i] || masks.iter().any(|&(b, e)| (b..e).contains(&addr)) {
+                continue;
+            }
+            match OS_OWN.iter().find(|&&(b, e, _)| (b..e).contains(&addr)) {
+                Some(&(b, _, why)) => {
+                    allowed_seen.insert((b, why));
+                }
+                None => strays.push(format!("{addr:04X}={:02X}/{:02X}", ours[i], theirs[i])),
+            }
+        }
+        masks.pop();
+        assert!(
+            strays.is_empty(),
+            "{way}: bytes outside the declared regions differ from a plain app (app/plain): {strays:?}"
+        );
+    }
+    for (base, why) in allowed_seen {
+        println!("allowed difference from {base:04X}: {why}");
+    }
+}
+
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn an_auto_power_down_is_not_a_way_out_and_the_state_survives_the_wake() {
@@ -304,7 +444,12 @@ fn an_auto_power_down_is_not_a_way_out_and_the_state_survives_the_wake() {
         if when == "key" {
             os.m.load_ram(UI_FRAME, &[0xAA; 768]);
             os.tap(SCAN_DOWN, 150, 400);
-            assert!(os.screen() == app.start, "the app answers a key");
+            assert!(os.screen() == app.start, "the start screen is up");
+            assert_ne!(
+                read(&mut os, UI_FRAME, 768),
+                [0xAA; 768],
+                "the app answered the key and drew its frame again"
+            );
         }
         for (addr, bytes) in dirt() {
             assert_eq!(
