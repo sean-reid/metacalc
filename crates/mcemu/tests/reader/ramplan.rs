@@ -9,6 +9,8 @@ fn at(name: &str) -> usize {
 /// Every region of app/src/ram_map.inc at its default base, as the assembler resolved it.
 fn regions() -> Vec<(&'static str, usize, usize)> {
     [
+        ("SCR_VARS", "SCR_VARS_SIZE"),
+        ("SCR_STACK", "SCR_STACK_SIZE"),
         ("UI_VARS", "UI_VARS_SIZE"),
         ("UI_FRAME", "UI_FRAME_SIZE"),
         ("KD_SCRATCH", "KD_SCRATCH_SIZE"),
@@ -79,4 +81,20 @@ fn fm_low_overlays_the_kernels_low_region_above_the_page_of_its_parameters() {
         low.0 + low.1,
         "it runs to the end of the region"
     );
+}
+
+/// The OS's areas and the first label after each, from ti83plus.inc: smallEditRAM runs to XFact
+/// and cmdShadow to cmdShadCur.
+#[test]
+fn the_screen_state_regions_are_the_whole_of_their_os_areas() {
+    for (name, area, next) in [("SCR_VARS", 0x90D3, 0x913F), ("SCR_STACK", 0x966E, 0x96EE)] {
+        let (base, size) = (at(name), at(&format!("{name}_SIZE")));
+        assert_eq!(base, area, "{name} starts the OS area");
+        assert_eq!(
+            base + size,
+            next,
+            "{name} ends where the next OS variable starts"
+        );
+    }
+    assert_eq!(at("SCR_STACK_SIZE"), 8 * 16, "eight frames of 16 bytes");
 }

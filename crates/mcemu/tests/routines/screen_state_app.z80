@@ -15,6 +15,7 @@
 ;   201h        0A5h when the OFFSCRPT script ran
 ;   202h, 203h  B from _ChkFindSym on ONSCRPT and on OFFSCRPT, 0 for in RAM
 ; MAKE_ON and MAKE_OFF create those AppVars before the fill; ARCHIVE_SCRIPTS archives them.
+_PutS = 450Ah
 RESULT  = 0A800h
 STEP    = 37
 KEY_LOG = RESULT + 8
@@ -95,6 +96,13 @@ wait:
 	ld hl, KEY_LOG
 	add hl, de
 	ld (hl), c
+#ifdef EXIT_ON_QUIT
+	ld a, c
+	cp 40h
+	jr nz, not_quit
+	bjump(_JForceCmdNoChar)
+not_quit:
+#endif
 	ld a, c
 	cp 5
 	jr nz, wait
@@ -186,7 +194,14 @@ skip_read:
 	bcall(_ChkFindSym)
 	bcall(_DelVarArc)
 	ld a, 13
+	call sync
+	ld hl, put_s_text
+	bcall(_PutS)
+	ld a, 14
 	jp sync
+
+put_s_text:
+	.db "Hi", 0
 
 name_op1:
 	ld hl, var_name
@@ -248,11 +263,11 @@ off_script:
 ; Address, length and first byte of the pattern of each region; the host holds the same table.
 regions:
 	.dw 8508h, 128 \ .db 11h
-	.dw 966Eh, 128 \ .db 22h
+	.dw SCR_STACK, SCR_STACK_SIZE \ .db 22h
 	.dw 8A3Ah, 531 \ .db 33h
 	.dw 8000h, 256 \ .db 44h
 	.dw 82A5h, 323 \ .db 55h
 	.dw 9198h, 283 \ .db 66h
-	.dw 90D3h, 108 \ .db 77h
+	.dw SCR_VARS, SCR_VARS_SIZE \ .db 77h
 	.dw 86ECh, 768 \ .db 88h
 regions_end:

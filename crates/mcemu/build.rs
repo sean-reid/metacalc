@@ -728,13 +728,93 @@ fn assemble_ui(out: &Path) {
     }
     for (defines, want) in [
         (&["UI_VARS=$9326", "FM_SCRATCH=$A000"][..], None),
-        (&["UI_VARS=$9640"][..], None),
-        (&["UI_FRAME=$9572"][..], None),
+        (&["UI_VARS=$9640", "FM_SCRATCH=$A000"][..], None),
+        (&["UI_FRAME=$9572", "SCR_STACK=$9000"][..], None),
         (&["UI_FRAME=$9B71"][..], None),
         (&["KD_SCRATCH=$9640"][..], None),
         (&["LIB_STATE=$9896", "FAR_VARS=$9C00"][..], None),
         (&["LIB_STATE=$989A"][..], None),
         (&["KERNEL_RAM_HIGH=$D700"][..], None),
+        (&["SCR_VARS=$9100"][..], None),
+        (&["SCR_STACK=$9700"][..], None),
+        (&["SCR_VARS_SIZE=$80", "SCR_STACK_SIZE=$100"][..], None),
+        (&["SCR_VARS=$BF94"][..], None),
+        (&["SCR_STACK=$BF80"][..], None),
+        (
+            &["SCR_VARS=$966E"][..],
+            Some("SCR_VARS and SCR_STACK overlap"),
+        ),
+        (
+            &["SCR_STACK=$90D4"][..],
+            Some("SCR_VARS and SCR_STACK overlap"),
+        ),
+        (
+            &["SCR_VARS=$86EB"][..],
+            Some("SCR_VARS and UI_VARS overlap"),
+        ),
+        (
+            &["SCR_VARS=$9300"][..],
+            Some("SCR_VARS and UI_FRAME overlap"),
+        ),
+        (
+            &["SCR_VARS=$9860"][..],
+            Some("SCR_VARS and KD_SCRATCH overlap"),
+        ),
+        (
+            &["SCR_VARS=$9890"][..],
+            Some("SCR_VARS and FAR_VARS overlap"),
+        ),
+        (
+            &["SCR_VARS=$9B00"][..],
+            Some("SCR_VARS and LIB_STATE overlap"),
+        ),
+        (
+            &["SCR_STACK=$86EB"][..],
+            Some("SCR_STACK and UI_VARS overlap"),
+        ),
+        (
+            &["SCR_STACK=$9300"][..],
+            Some("SCR_STACK and UI_FRAME overlap"),
+        ),
+        (
+            &["SCR_STACK=$9860"][..],
+            Some("SCR_STACK and KD_SCRATCH overlap"),
+        ),
+        (
+            &["SCR_STACK=$9890"][..],
+            Some("SCR_STACK and FAR_VARS overlap"),
+        ),
+        (
+            &["SCR_STACK=$9B00"][..],
+            Some("SCR_STACK and LIB_STATE overlap"),
+        ),
+        (
+            &["FM_SCRATCH=$9000"][..],
+            Some("FM_SCRATCH and SCR_VARS overlap"),
+        ),
+        (
+            &["FM_SCRATCH=$9600"][..],
+            Some("FM_SCRATCH and SCR_STACK overlap"),
+        ),
+        (&["SCR_VARS=$BF94"][..], None),
+        (&["SCR_VARS=$BF95"][..], Some("SCR_VARS runs past bank B")),
+        (&["SCR_VARS=$7FFF"][..], Some("SCR_VARS runs past bank B")),
+        (&["SCR_STACK=$BF81"][..], Some("SCR_STACK runs past bank B")),
+        (&["SCR_STACK=$7F00"][..], Some("SCR_STACK runs past bank B")),
+        (&["SCR_STACK=$9640"][..], None),
+        (
+            &["SCR_STACK=$963F"][..],
+            Some("SCR_STACK and UI_FRAME overlap"),
+        ),
+        (&["SCR_VARS=$92D4"][..], None),
+        (
+            &["SCR_VARS=$92D5"][..],
+            Some("SCR_VARS and UI_FRAME overlap"),
+        ),
+        (
+            &["FM_SCRATCH=$913E"][..],
+            Some("FM_SCRATCH and SCR_VARS overlap"),
+        ),
         (&["UI_VARS=$9340"][..], Some("UI_FRAME and UI_VARS overlap")),
         (
             &["UI_VARS=$9880"][..],
@@ -800,7 +880,7 @@ fn assemble_ui(out: &Path) {
             &["FM_LOW_SIZE=$1101"][..],
             Some("FM_LOW runs outside the kernel's low region"),
         ),
-        (&["FM_SCRATCH=$9100"][..], None),
+        (&["FM_SCRATCH=$913F"][..], None),
         (&["FM_SCRATCH=$8000"][..], None),
         (&["FM_SCRATCH=$9240"][..], None),
         (&["FM_SCRATCH=$BF00"][..], None),
