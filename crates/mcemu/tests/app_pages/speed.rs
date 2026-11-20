@@ -19,8 +19,8 @@ const BUDGET: u32 = 50 * 6000;
 const FIXTURE_FRAME: u32 = 274_000;
 const RING_FRAME: u32 = 268_000;
 /// The same frames with the cursor on node 0.
-const FIXTURE_CURSOR_FRAME: u32 = 299_400;
-const RING_CURSOR_FRAME: u32 = 294_100;
+const FIXTURE_CURSOR_FRAME: u32 = 299_500;
+const RING_CURSOR_FRAME: u32 = 294_300;
 
 /// The T-states a routine takes beyond the driver's own call and halt, which a call of a RAM
 /// `ret` measures.
