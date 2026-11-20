@@ -212,6 +212,93 @@ impl Fm {
     }
 }
 
+impl Rig {
+    /// Writes fm's three facts for decoding a tree, as fm_open leaves them: the syntax axiom
+    /// count, the constants and all the symbols.
+    pub fn set_tree_facts(&mut self, syntax: u16, constants: u8, symbols: u8) {
+        let at = |name: &str| usize::from(self.label(name) - SPARE_BASE);
+        let (ns, consts, nsyms) = (at("FV_NS"), at("FV_CONSTS"), at("FV_NSYMS"));
+        let page = self.m.ram_page(SPARE_PAGE);
+        page[ns..ns + 2].copy_from_slice(&syntax.to_le_bytes());
+        page[consts] = constants;
+        page[nsyms] = symbols;
+    }
+
+    /// `set_tree_facts` from what the host decoder says of `library`.
+    pub fn set_facts_of(&mut self, library: &Library) {
+        let constants = library.constants.len();
+        let syntax = library
+            .sections
+            .as_ref()
+            .and_then(|s| s.trees.as_ref())
+            .map_or(0, |t| t.syntax.len());
+        self.set_tree_facts(
+            syntax as u16,
+            constants as u8,
+            (constants + library.variables.len()) as u8,
+        );
+    }
+
+    /// One call of fm_tree_node on the bytes, which are placed at `at`, with fm's page mapped.
+    pub fn node_out(&mut self, bytes: &[u8], at: u16) -> Out {
+        self.poke(at, bytes);
+        let regs = Regs {
+            hl: at,
+            bc: bytes.len() as u16,
+            ..Regs::default()
+        };
+        self.m.out_port(5, SPARE_PAGE);
+        let out = self.call("FM_TREE_NODE", regs);
+        self.m.out_port(5, 0);
+        out
+    }
+
+    /// `node_out` as (status, kind, value, the pointer after, the count left).
+    pub fn node(&mut self, bytes: &[u8], at: u16) -> (u8, u8, u16, u16, u8) {
+        let out = self.node_out(bytes, at);
+        (
+            out.status(),
+            (out.bc >> 8) as u8,
+            out.de,
+            out.hl,
+            out.bc as u8,
+        )
+    }
+
+    /// Walks the whole tree in `bytes` through fm_tree_node, refilling the 255 byte buffer as
+    /// fm does, when fewer than 2 bytes are left and more of the tree follows. Returns the status
+    /// that ended the walk and the nodes as (kind, value).
+    pub fn walk(&mut self, bytes: &[u8]) -> (u8, Vec<(u8, u16)>) {
+        let mut nodes = Vec::new();
+        let mut at = 0;
+        while at < bytes.len() {
+            let chunk = &bytes[at..bytes.len().min(at + 255)];
+            self.poke(BUF, chunk);
+            let regs = Regs {
+                a: u8::from(at + chunk.len() < bytes.len()),
+                hl: BUF,
+                bc: chunk.len() as u16,
+                ..Regs::default()
+            };
+            self.m.out_port(5, SPARE_PAGE);
+            let out = self.call("CALL_WALK", regs);
+            self.m.out_port(5, 0);
+            let count = usize::from(self.peek(self.label("NODE_COUNT"), 1)[0]);
+            let list = self.peek(self.label("NODES"), 3 * count);
+            nodes.extend(
+                list.chunks(3)
+                    .map(|n| (n[0], u16::from_le_bytes([n[1], n[2]]))),
+            );
+            let used = usize::from(out.hl - BUF);
+            at += used;
+            if out.status() != 0 || used == 0 {
+                return (out.status().max(1), nodes);
+            }
+        }
+        (0, nodes)
+    }
+}
+
 pub fn count(out: Out) -> usize {
     usize::from((out.bc >> 8) as u8)
 }

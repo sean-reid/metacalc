@@ -105,6 +105,22 @@ impl Rig {
         (out.status(), out.hl, (out.bc >> 8) as u8)
     }
 
+    /// One call of lib_arities with a buffer of `size` bytes at `buf`: (status, the count it
+    /// says it wrote, the 512 bytes from `buf`, fewer at the top of memory).
+    pub fn arities(&mut self, buf: u16, size: u16) -> (u8, u16, Vec<u8>) {
+        let regs = Regs {
+            de: buf,
+            bc: size,
+            ..Regs::default()
+        };
+        let out = self.call("LIB_ARITIES", regs);
+        (
+            out.status(),
+            out.hl,
+            self.peek(buf, 512.min(0x1_0000 - usize::from(buf))),
+        )
+    }
+
     /// (status, offset, length).
     pub fn shapes(&mut self) -> (u8, u32, u16) {
         let out = self.call("LIB_SHAPES", Regs::default());
@@ -148,56 +164,6 @@ impl Rig {
             offset: (u32::from(out.de) << 16) | u32::from(out.hl),
             bytes,
         }
-    }
-
-    /// One call of lib_node on the bytes, which are placed at `at`: (status, kind, value, the
-    /// pointer after, the count left).
-    pub fn node(&mut self, bytes: &[u8], at: u16) -> (u8, u8, u16, u16, u8) {
-        self.poke(at, bytes);
-        let regs = Regs {
-            hl: at,
-            bc: bytes.len() as u16,
-            ..Regs::default()
-        };
-        let out = self.call("LIB_NODE", regs);
-        (
-            out.status(),
-            (out.bc >> 8) as u8,
-            out.de,
-            out.hl,
-            out.bc as u8,
-        )
-    }
-
-    /// Walks the whole tree in `bytes` through the iterator, refilling the 255 byte buffer as a
-    /// caller would. Returns the nodes as (kind, value) and the status that ended the walk.
-    pub fn walk(&mut self, bytes: &[u8]) -> (u8, Vec<(u8, u16)>) {
-        let mut nodes = Vec::new();
-        let mut at = 0;
-        while at < bytes.len() {
-            let chunk = &bytes[at..bytes.len().min(at + 255)];
-            self.poke(BUF, chunk);
-            let regs = Regs {
-                hl: BUF,
-                bc: chunk.len() as u16,
-                ..Regs::default()
-            };
-            let out = self.call("CALL_WALK", regs);
-            let count = usize::from(self.peek(self.label("NODE_COUNT"), 1)[0]);
-            let list = self.peek(self.label("NODES"), 3 * count);
-            nodes.extend(
-                list.chunks(3)
-                    .map(|n| (n[0], u16::from_le_bytes([n[1], n[2]]))),
-            );
-            let used = usize::from(out.hl - BUF);
-            at += used;
-            match out.status() {
-                ST_OK => {}
-                ST_RANGE if used > 0 && at < bytes.len() => {}
-                status => return (status, nodes),
-            }
-        }
-        (ST_OK, nodes)
     }
 
     /// The ls_ fields: (have, [(offset, length, first item); 4], title count, fingerprint,

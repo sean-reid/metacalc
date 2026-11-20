@@ -4,7 +4,8 @@ use crate::support::*;
 use crate::ui_support::same_frame;
 use mcui::canvas::{GUTTER, STATEMENT_WIDTH, TEXT_WIDTH};
 
-/// T-state ceilings per library, 5 percent above what each call took: fm_open; fm_statement,
+/// T-state ceilings per library, 5 percent above what each call took and 1 percent for fm_open:
+/// fm_open; fm_statement,
 /// the median and the largest; the largest fm_rows; the largest fm_draw.
 struct Ceilings {
     name: &'static str,
@@ -18,7 +19,7 @@ struct Ceilings {
 const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "prop",
-        open: 70222,
+        open: 64850,
         median: 23949,
         statement: 63260,
         rows: 7831,
@@ -26,7 +27,7 @@ const CEILINGS: [Ceilings; 3] = [
     },
     Ceilings {
         name: "pred",
-        open: 104095,
+        open: 92600,
         median: 23738,
         statement: 63260,
         rows: 7831,
@@ -34,7 +35,7 @@ const CEILINGS: [Ceilings; 3] = [
     },
     Ceilings {
         name: "ring",
-        open: 580891,
+        open: 489000,
         median: 23093,
         statement: 100016,
         rows: 15307,
@@ -137,18 +138,18 @@ struct NodeCeilings {
 const NODE_CEILINGS: [NodeCeilings; 3] = [
     NodeCeilings {
         name: "prop",
-        median: 39522,
-        largest: 125401,
+        median: 38340,
+        largest: 118570,
     },
     NodeCeilings {
         name: "pred",
-        median: 39984,
-        largest: 150055,
+        median: 38860,
+        largest: 141810,
     },
     NodeCeilings {
         name: "ring",
-        median: 43310,
-        largest: 398290,
+        median: 41970,
+        largest: 374040,
     },
 ];
 

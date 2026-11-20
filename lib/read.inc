@@ -202,6 +202,30 @@ lro_clear:
 	xor a
 	ret
 
+; in: DE = start, BC = length, with start + length not past $FFFF. out: Z, or NZ and A = LIB_ERR_ARG
+; when [DE, DE + BC) touches the bounce buffer. Destroys HL.
+lr_clear_of_bounce:
+	ld hl,LIB_BOUNCE+LIB_BOUNCE_SIZE-1
+	or a
+	sbc hl,de
+	jr c,lrb_clear
+	ld h,d
+	ld l,e
+	add hl,bc
+	push de
+	ld de,LIB_BOUNCE
+	or a
+	sbc hl,de
+	pop de
+	jr z,lrb_clear
+	jr c,lrb_clear
+	ld a,LIB_ERR_ARG
+	or a
+	ret
+lrb_clear:
+	xor a
+	ret
+
 ; in: DE = start, BC = length, 1 to 256. out: Z, or NZ and A = LIB_ERR_ARG when the buffer is not
 ; wholly in bank B or touches the state block. Destroys HL.
 lr_chkbuf:
