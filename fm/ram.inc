@@ -4,7 +4,7 @@
 #endif
 
 #ifndef FM_VARS_SIZE
-FM_VARS_SIZE        .equ $81
+FM_VARS_SIZE        .equ $82
 #endif
 #if FM_VARS_SIZE > $100
  .error "FM_VARS_SIZE must leave the stack at FM_RAM + $100 alone"
@@ -136,28 +136,29 @@ FM_VAR(fv_x, $61, 2)
 FM_VAR(fv_gap, $63, 1)
 FM_VAR(fv_id, $64, 1)
 FM_VAR(fv_ip, $65, 2)
-FM_VAR(fv_ew, $67, 1)
-FM_VAR(fv_ell, $68, 2)
-FM_VAR(fv_then, $6A, 2)
-FM_VAR(fv_fn, $6C, 1)
-FM_VAR(fv_fm, $6D, 1)
-FM_VAR(fv_tb, $6E, 2)
-FM_VAR(fv_tcnt, $70, 1)
-FM_VAR(fv_m, $71, 1)
-FM_VAR(fv_md, $72, 1)
-FM_VAR(fv_ni, $73, 1)
-FM_VAR(fv_fa, $74, 1)
-FM_VAR(fv_fb, $75, 1)
-FM_VAR(fv_ta, $76, 1)
-FM_VAR(fv_cf, $77, 1)
-FM_VAR(fv_cl, $78, 1)
-FM_VAR(fv_cptr, $79, 2)
-FM_VAR(fv_cs, $7B, 1)
-FM_VAR(fv_ce, $7C, 1)
-FM_VAR(fv_ca, $7D, 1)
-FM_VAR(fv_cb, $7E, 1)
-FM_VAR(fv_xs, $7F, 1)
-FM_VAR(fv_xe, $80, 1)
+FM_VAR(fv_consts, $67, 1)
+FM_VAR(fv_ew, $68, 1)
+FM_VAR(fv_ell, $69, 2)
+FM_VAR(fv_then, $6B, 2)
+FM_VAR(fv_fn, $6D, 1)
+FM_VAR(fv_fm, $6E, 1)
+FM_VAR(fv_tb, $6F, 2)
+FM_VAR(fv_tcnt, $71, 1)
+FM_VAR(fv_m, $72, 1)
+FM_VAR(fv_md, $73, 1)
+FM_VAR(fv_ni, $74, 1)
+FM_VAR(fv_fa, $75, 1)
+FM_VAR(fv_fb, $76, 1)
+FM_VAR(fv_ta, $77, 1)
+FM_VAR(fv_cf, $78, 1)
+FM_VAR(fv_cl, $79, 1)
+FM_VAR(fv_cptr, $7A, 2)
+FM_VAR(fv_cs, $7C, 1)
+FM_VAR(fv_ce, $7D, 1)
+FM_VAR(fv_ca, $7E, 1)
+FM_VAR(fv_cb, $7F, 1)
+FM_VAR(fv_xs, $80, 1)
+FM_VAR(fv_xe, $81, 1)
 
 FM_OPEN_MAGIC       .equ $464D
 FM_OWNED            .equ $4F46

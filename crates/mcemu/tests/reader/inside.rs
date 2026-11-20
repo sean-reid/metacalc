@@ -4,33 +4,12 @@ use crate::placements::layout;
 use crate::secrig::*;
 use crate::sections::*;
 use crate::support::*;
+use crate::treelibs::EDITS;
 use mcpack::library::{GLYPHS, TITLES, TREES, decode};
 use std::collections::BTreeMap;
 
 fn library() -> Vec<u8> {
     headed(6, 2, 0)
-}
-
-#[derive(Clone, Copy)]
-enum Edit {
-    Xor(u8),
-    Set(u8),
-}
-
-const EDITS: [Edit; 4] = [
-    Edit::Xor(0x01),
-    Edit::Xor(0x80),
-    Edit::Set(0xFF),
-    Edit::Set(0x00),
-];
-
-impl Edit {
-    fn apply(self, byte: u8) -> u8 {
-        match self {
-            Edit::Xor(m) => byte ^ m,
-            Edit::Set(v) => v,
-        }
-    }
 }
 
 /// What a call said about one item of one section: the section's id, the item and whether the
@@ -56,27 +35,6 @@ fn tree_bytes(rig: &mut Rig, offset: u32, len: u16) -> Option<Vec<u8>> {
         out.extend(bytes);
     }
     Some(out)
-}
-
-/// Every node of `bytes` through lib_node, refilling as a caller would: the first status that
-/// is not 0, else 0.
-fn walk(rig: &mut Rig, bytes: &[u8]) -> u8 {
-    let mut at = 0;
-    while at < bytes.len() {
-        let chunk = &bytes[at..bytes.len().min(at + 255)];
-        let mut used = 0;
-        while used < chunk.len() {
-            let (status, _, _, _, left) = rig.node(&chunk[used..], 0xA200);
-            documented("node", status, &[ST_OK, ST_RANGE, ST_BAD]);
-            match status {
-                ST_OK => used = chunk.len() - usize::from(left),
-                ST_RANGE if at + chunk.len() < bytes.len() => break,
-                status => return status,
-            }
-        }
-        at += used;
-    }
-    ST_OK
 }
 
 /// Runs every accessor over every index of the open library and checks each status is one the
@@ -123,16 +81,18 @@ fn everything(rig: &mut Rig) -> Vec<Verdict> {
         documented("syntax", status, &[ST_OK, ST_BAD, ST_INDEX, ST_NONE]);
         said.push((TREES, usize::from(i) | 0x1_0000, status == ST_BAD));
     }
+    let (status, written, _) = rig.arities(BUF, 0x200);
+    documented("arities", status, &[ST_OK, ST_BAD, ST_NONE]);
+    if status == ST_BAD {
+        said.push((TREES, usize::from(written) | 0x1_0000, true));
+    }
     for n in 0..assertions + 1 {
         for k in [0u8, 1, 2, 3, 4, 0xFF] {
             let tree = rig.tree(n, k);
             documented("tree", tree.status, &[ST_OK, ST_BAD, ST_INDEX, ST_NONE]);
             let mut refused = tree.status == ST_BAD;
             if tree.status == ST_OK {
-                match tree_bytes(rig, tree.offset, tree.len.min(2000)) {
-                    Some(bytes) => refused |= walk(rig, &bytes) != ST_OK,
-                    None => refused = true,
-                }
+                refused |= tree_bytes(rig, tree.offset, tree.len.min(2000)).is_none();
             }
             said.push((TREES, usize::from(n), refused));
         }
@@ -210,12 +170,6 @@ fn a_changed_byte_anywhere_inside_a_section_stays_inside_the_reader_and_is_refus
                     host_ok += 1;
                     let usable = rig.glyph_map().0 == ST_OK;
                     check_sections_with(&mut rig, &bytes, &what, &ascending, usable);
-                    for (addr, len) in [(rig.label("NODE_COUNT"), 4), (rig.label("NODES"), 0x400)] {
-                        let pristine: Vec<u8> = (0..len)
-                            .map(|i| pattern(APP_PAGE, usize::from(addr - 0x8000) + i))
-                            .collect();
-                        rig.poke(addr, &pristine);
-                    }
                     continue;
                 }
                 host_refused += 1;

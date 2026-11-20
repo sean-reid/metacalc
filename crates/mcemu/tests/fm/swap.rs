@@ -54,6 +54,8 @@ fn each_part_of_the_key_alone_is_enough_to_refuse() {
         ("shapes length high byte", "LS_SH", 4, 1),
         ("syntax count low byte", "LS_TR_N", 0, 1),
         ("syntax count high byte", "LS_TR_N", 1, 1),
+        ("constant count", "LR_CONSTS", 0, 1),
+        ("symbol count", "LR_NSYMS", 0, 1),
     ] {
         let mut fm = Fm::new(&a);
         assert_eq!(fm.statement(0, 0xFF).status(), 0);
@@ -163,4 +165,54 @@ fn a_font_set_after_fm_open_is_measured_from_the_next_fm_open_on() {
     assert_eq!(widths(&mut fm), keys);
     assert_eq!(fm.open().status(), 0);
     assert_eq!(widths(&mut fm), main);
+}
+
+/// A library and a copy of it whose third symbol, the constant `x`, is a variable of typecode
+/// `wff` instead: everything else in the file is the same, so the glyph section and the shapes and
+/// trees sections are at the same place, the same length and in the same flash page.
+fn split() -> (Vec<u8>, Vec<u8>) {
+    let a = pack_all(&parse(
+        "$c |- wff x $.\n$v a y $.\nwa $f wff a $.\nwy $f wff y $.\nax $a |- a x y $.\n",
+    ));
+    let mut b = a.clone();
+    let mut at = 20;
+    for _ in 0..2 {
+        at += 2 + usize::from(b[at + 1]);
+    }
+    assert_eq!(b[at], 0xFF, "the symbol is a constant");
+    b[at] = 1;
+    b[12] -= 1;
+    b[13] += 1;
+    (a, b)
+}
+
+#[test]
+fn a_library_that_differs_only_in_the_split_of_constants_and_variables_is_another_library() {
+    let (a, b) = split();
+    let mut fm = Fm::new(&a);
+    let key = |fm: &mut Fm| {
+        let glyphs = fm.rig.peek(fm.rig.label("LS_GL"), 6);
+        let syntax = fm.rig.peek(fm.rig.label("LS_TR_N"), 2);
+        (glyphs, syntax, fm.rig.counts())
+    };
+    let first = key(&mut fm);
+    assert_eq!(fm.statement(0, 0xFF).status(), 0);
+    fm.rig.load(&b);
+    fm.rig.open_ok();
+    let second = key(&mut fm);
+    assert_eq!(
+        (&first.0, &first.1),
+        (&second.0, &second.1),
+        "same place and counts"
+    );
+    assert_eq!(first.2.2, second.2.2 + 1, "one constant fewer");
+    assert_eq!(
+        first.2.2 + first.2.3,
+        second.2.2 + second.2.3,
+        "same symbols"
+    );
+    assert_eq!(fm.statement(0, 0xFF).status(), code(NOT_OPEN));
+    assert_eq!(fm.nodes().status(), code(NOT_OPEN));
+    assert_eq!(fm.open().status(), 0);
+    assert_eq!(fm.statement(0, 0xFF).status(), 0);
 }

@@ -242,7 +242,8 @@ const NODE_MEMORY: [(&str, &str); 8] = [
 /// Where a run of fm may write, listed by label: its variables, stack, glyph copy, token store and
 /// statement headers, the kernel's mark, and bank B's scratch, frame and variables, besides the
 /// reader's; the node tables, their scratch arrays and the explicit stack only when `nodes`, and
-/// the shapes copy only when `shapes`.
+/// the shapes copy and the arities table that checks it, which is in the explicit stack's
+/// memory, only when `shapes`.
 pub fn allowed_for(nodes: bool, shapes: bool) -> Allowed {
     let at = |name: &str| label_in(WITH_FM, name);
     let size = |name: &str| constant_of(WITH_FM.labels, name) as usize;
@@ -264,6 +265,7 @@ pub fn allowed_for(nodes: bool, shapes: bool) -> Allowed {
     ];
     if shapes {
         spare.push((at("FM_SECOND"), size("FM_SECOND_SIZE")));
+        spare.push((at("FM_PILE"), size("FM_PILE_SIZE")));
     }
     if nodes {
         spare.extend(NODE_MEMORY.iter().map(|&(name, len)| (at(name), size(len))));
@@ -306,6 +308,10 @@ fn each_routine_writes_the_node_arrays_and_the_shapes_copy_only_when_it_is_the_o
     assert!((0..0x40).any(|i| page[second + i] != pattern(SPARE_PAGE, second + i)));
     let copy = fm.memory("FM_SECOND", 0x800);
     reprime(&mut fm, "FM_SECOND", 0x800);
+    let pile = usize::from(fm.rig.label("FM_PILE") - SPARE_BASE);
+    let page = fm.rig.m.ram_page(SPARE_PAGE);
+    assert!((0..0x40).any(|i| page[pile + i] != pattern(SPARE_PAGE, pile + i)));
+    reprime(&mut fm, "FM_PILE", 0x200);
     for (what, call) in [
         ("fm_statement", fm.statement(n, k)),
         ("fm_rows", fm.rows(94)),

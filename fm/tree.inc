@@ -1,4 +1,4 @@
-; The tree reader and the shape lookups fm_nodes uses.
+; The tree reader, the node decoder and the shape lookups fm_nodes uses.
 
 ; out: Z with B = 0 for a syntax index and 1 for a variable, DE = the index or the variable's
 ; symbol id, for the next node of the tree; NZ with A = a status. Reads FM_SCRATCH again when it
@@ -21,7 +21,7 @@ tn_ready:
 	jr z,tn_bad
 	ld c,a
 	ld hl,(fv_tp)
-	call lib_node
+	call fm_tree_node
 	jr nz,tn_bad
 	ld (fv_tp),hl
 	push de
@@ -43,6 +43,79 @@ tn_ready:
 tn_bad:
 	ld a,FM_ERR_TREE
 	or a
+	ret
+
+; in: HL = the next node byte, C = bytes left from HL, 1 to 255. out: Z with B = 0 for a syntax
+; index and 1 for a variable, DE = the index or the variable's symbol id, HL past the node, C = bytes
+; left; NZ with A = FM_ERR_TREE for no byte left or an escape byte with no second byte, with HL and
+; C as they came in, and for an index past fv_ns or a symbol past fv_nsyms. A variable is the byte,
+; or the escape and its second byte, plus fv_consts.
+fm_tree_node:
+	ld a,c
+	or a
+	jr z,tn_bad
+	ld a,(hl)
+	cp $7F
+	jr z,tnd_escape
+	cp $FF
+	jr z,tnd_escape
+	inc hl
+	dec c
+	cp $80
+	jr nc,tnd_inline
+	ld e,a
+	ld d,0
+	jr tnd_axiom
+tnd_escape:
+	ld a,c
+	cp 2
+	jr c,tn_bad
+	ld b,(hl)
+	inc hl
+	ld a,(hl)
+	inc hl
+	dec c
+	dec c
+	add a,127
+	ld e,a
+	ld d,0
+	jr nc,tnd_wide
+	inc d
+tnd_wide:
+	ld a,b
+	cp $7F
+	jr z,tnd_axiom
+	ld a,d
+	or a
+	jr nz,tn_bad
+	ld a,e
+	jr tnd_symbol
+tnd_axiom:
+	push hl
+	ld hl,(fv_ns)
+	or a
+	sbc hl,de
+	pop hl
+	jr z,tn_bad
+	jr c,tn_bad
+	ld b,0
+	xor a
+	ret
+tnd_inline:
+	sub $80
+tnd_symbol:
+	ld e,a
+	ld a,(fv_consts)
+	add a,e
+	jr c,tn_bad
+	ld e,a
+	ld d,0
+	ld a,(fv_nsyms)
+	cp e
+	jr z,tn_bad
+	jr c,tn_bad
+	ld b,1
+	xor a
 	ret
 
 ; Reads the next 255 bytes of the tree, or what is left of it, into FM_SCRATCH.

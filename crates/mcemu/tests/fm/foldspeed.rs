@@ -21,14 +21,14 @@ pub const FIXTURE: Ceilings = Ceilings {
     cursor_child: 65_000,
     apply_one: 128_500,
     apply_all: 81_500,
-    fold: 2_900,
+    fold: 3_200,
 };
 pub const RING: Ceilings = Ceilings {
     cursor_root: 63_500,
     cursor_child: 62_000,
     apply_one: 51_000,
     apply_all: 32_500,
-    fold: 2_900,
+    fold: 3_200,
 };
 
 fn base(fm: &mut Fm) -> u32 {
