@@ -131,3 +131,40 @@ fn a_font_directory_without_font_inc_stops_the_build() {
     let text = String::from_utf8_lossy(&run.stderr);
     assert!(text.contains("font.inc is missing"), "{text}");
 }
+
+/// The reader's public routines are the ones its header lists, and each is in the far entries
+/// three times: a stub, an alias for fm's calls and its removal.
+#[test]
+fn the_far_entries_of_the_reader_are_the_routines_its_header_lists() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let header = std::fs::read_to_string(root.join("lib/lib.z80")).unwrap();
+    let mut listed: Vec<&str> = header
+        .lines()
+        .filter_map(|l| l.strip_prefix(";   lib_"))
+        .filter_map(|l| l.split_whitespace().next())
+        .collect();
+    listed.sort_unstable();
+    let far = std::fs::read_to_string(root.join("app/src/far_reader.inc")).unwrap();
+    for name in &listed {
+        let name = format!("lib_{name}");
+        for line in [
+            format!("FAR_DATA_ENTRY({name}, far_{name})"),
+            format!("#define {name} far_{name}"),
+            format!("#undef {name}"),
+        ] {
+            assert!(
+                far.lines().any(|l| l == line),
+                "far_reader.inc lacks `{line}`"
+            );
+        }
+    }
+    let entries = far
+        .lines()
+        .filter(|l| l.starts_with("FAR_DATA_ENTRY("))
+        .count();
+    assert_eq!(
+        entries,
+        listed.len(),
+        "an entry for a routine the header does not list"
+    );
+}

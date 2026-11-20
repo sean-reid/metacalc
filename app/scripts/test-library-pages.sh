@@ -37,7 +37,7 @@ done
 # Libraries whose apps hash to each signature trailer form (01 01 to 01 03, then 00), and to a
 # signature of 63 bytes, the signer's output being a function of the app's bytes alone. Length,
 # signature bytes, trailer.
-for entry in 85:63:01\ 03 18:64:01\ 01 21:64:01\ 02 19:64:01\ 03 16:64:00; do
+for entry in 187:63:01\ 02 17:64:01\ 01 14:64:01\ 02 19:64:01\ 03 16:64:00; do
 	len=${entry%%:*}
 	rest=${entry#*:}
 	want=${rest%%:*}
