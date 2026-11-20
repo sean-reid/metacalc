@@ -2,21 +2,53 @@
 #define APP_NAME "scrstate"
 #include "header.inc"
 
-; Fills the candidate regions in REGIONS with a pattern and waits in _GetKey, the way app_key
-; does. RESULT is the count of returns, RESULT + 1 the codes; after ENTER it runs the calls in
-; the battery below and, after each, sets RESULT + 2 to the call's number and waits until the
-; host writes the same number to RESULT + 3. RESULT + 4 is appFlags as the app found it.
+; Fills the candidate regions in `regions` with a pattern and waits in _GetKey, the way app_key
+; does. All of these are bytes from RESULT:
+;   0   word    the count of returns from _GetKey
+;   2   byte    the number of the call the battery has reached, after ENTER
+;   3   byte    the number the host writes to let the battery go on
+;   4   byte    appFlags as the app found it
+;   5   byte    B from _ChkFindSym on the battery's variable after it was archived
+;   6   byte    B after it was unarchived
+;   8   bytes   the codes _GetKey returned, the low byte of the count indexing them
+;   200h        5Ah when the ONSCRPT script ran
+;   201h        0A5h when the OFFSCRPT script ran
+;   202h, 203h  B from _ChkFindSym on ONSCRPT and on OFFSCRPT, 0 for in RAM
+; MAKE_ON and MAKE_OFF create those AppVars before the fill; ARCHIVE_SCRIPTS archives them.
 RESULT  = 0A800h
 STEP    = 37
 KEY_LOG = RESULT + 8
 APPFLAGS = 0Dh
+SCRIPT_LEN = 64
 
 start:
 	ei
-	xor a
-	ld (RESULT), a
-	ld (RESULT + 2), a
-	ld (RESULT + 3), a
+	ld hl, RESULT
+	ld de, RESULT + 1
+	ld bc, 20Fh
+	ld (hl), 0
+	ldir
+#ifdef MAKE_ON
+	ld hl, on_name
+	ld de, on_script
+	call make_script
+	ld hl, on_name
+	call find
+	ld a, b
+	ld (RESULT + 202h), a
+#endif
+#ifdef MAKE_OFF
+	ld hl, off_name
+	ld de, off_script
+	call make_script
+	ld hl, off_name
+	call find
+	ld a, b
+	ld (RESULT + 203h), a
+#endif
+#ifdef EXIT_TO_HOME
+	bjump(_JForceCmdNoChar)
+#endif
 	ld a, (iy + APPFLAGS)
 	ld (RESULT + 4), a
 #ifdef NO_SAVE_TEXT
@@ -24,13 +56,16 @@ start:
 #endif
 	ld ix, regions
 fill_region:
+	push ix
+	pop hl
+	ld de, regions_end
+	or a
+	sbc hl, de
+	jr z, wait
 	ld l, (ix + 0)
 	ld h, (ix + 1)
 	ld c, (ix + 2)
 	ld b, (ix + 3)
-	ld a, c
-	or b
-	jr z, wait
 	ld a, (ix + 4)
 fill:
 	ld (hl), a
@@ -52,10 +87,10 @@ wait:
 	bit onInterrupt, (iy + onFlags)
 	jr nz, on_key
 	ld c, a
-	ld a, (RESULT)
-	ld e, a
-	inc a
-	ld (RESULT), a
+	ld hl, (RESULT)
+	ld e, l
+	inc hl
+	ld (RESULT), hl
 	ld d, 0
 	ld hl, KEY_LOG
 	add hl, de
@@ -124,6 +159,8 @@ battery:
 	call sync
 	call name_op1
 	bcall(_ChkFindSym)
+	ld a, b
+	ld (RESULT + 5), a
 	push bc
 	push de
 	ld a, 10
@@ -139,6 +176,10 @@ skip_read:
 	call sync
 	call name_op1
 	bcall(_Arc_Unarc)
+	call name_op1
+	bcall(_ChkFindSym)
+	ld a, b
+	ld (RESULT + 6), a
 	ld a, 12
 	call sync
 	call name_op1
@@ -157,16 +198,61 @@ name_op1:
 var_name:
 	.db 15h, "scrst", 0, 0, 0
 
-; Address, length, first byte of each region; the host holds the same table. SCR_STATE and the
-; rest of appData are the two halves of appData.
+; ChkFindSym for the name at HL, an AppVar of 8 characters at most.
+find:
+	ld de, OP1
+	ld bc, 9
+	ldir
+	bcall(_ChkFindSym)
+	ret
+
+; Creates the AppVar named at HL with the SCRIPT_LEN bytes at DE, archived with ARCHIVE_SCRIPTS.
+make_script:
+	push hl
+	push de
+	ld de, OP1
+	ld bc, 9
+	ldir
+	ld hl, SCRIPT_LEN
+	bcall(_CreateAppVar)
+	inc de
+	inc de
+	pop hl
+	ld bc, SCRIPT_LEN
+	ldir
+	pop hl
+#ifdef ARCHIVE_SCRIPTS
+	ld de, OP1
+	ld bc, 9
+	ldir
+	bcall(_Arc_Unarc)
+#endif
+	ret
+
+on_name:
+	.db 15h, "ONSCRPT", 0
+off_name:
+	.db 15h, "OFFSCRPT"
+
+on_script:
+	ld a, 5Ah
+	ld (RESULT + 200h), a
+	ret
+	.fill on_script + SCRIPT_LEN - $, 0C9h
+off_script:
+	ld a, 0A5h
+	ld (RESULT + 201h), a
+	ret
+	.fill off_script + SCRIPT_LEN - $, 0C9h
+
+; Address, length and first byte of the pattern of each region; the host holds the same table.
 regions:
 	.dw 8508h, 128 \ .db 11h
 	.dw 966Eh, 128 \ .db 22h
 	.dw 8A3Ah, 531 \ .db 33h
-	.dw SCR_STATE, SCR_STATE_SIZE \ .db 44h
-	.dw SCR_STATE + SCR_STATE_SIZE, 256 - SCR_STATE_SIZE \ .db 45h
+	.dw 8000h, 256 \ .db 44h
 	.dw 82A5h, 323 \ .db 55h
 	.dw 9198h, 283 \ .db 66h
 	.dw 90D3h, 108 \ .db 77h
 	.dw 86ECh, 768 \ .db 88h
-	.dw 0, 0 \ .db 0
+regions_end:

@@ -2,15 +2,34 @@
 //! each candidate home for the app's screen state is filled with a pattern and compared after
 //! every kind of event.
 
+#[path = "common/keytables.rs"]
+mod keytables;
 #[path = "common/realos.rs"]
 mod realos;
 
+use keytables::{ALPHA, PLAIN, SECOND};
 use mcemu::Machine;
 use realos::*;
+use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::sync::Mutex;
 
 const RAM_BASE: usize = 0x8000;
 const RESULT: usize = 0xA800 - RAM_BASE;
+const STEP_AT: usize = RESULT + 2;
+const GO: usize = RESULT + 3;
+const FLAGS_AT_START: usize = RESULT + 4;
+const B_ARCHIVED: usize = RESULT + 5;
+const B_UNARCHIVED: usize = RESULT + 6;
+const MARK_ON: usize = RESULT + 0x200;
+const MARK_OFF: usize = RESULT + 0x201;
+/// The OS flag byte at iy+33h: it runs ONSCRPT when bit 0 is set and OFFSCRPT when bit 1 is.
+const SCRIPT_FLAGS: usize = 0x09F0 + 0x33;
+const B_ON: usize = RESULT + 0x202;
+const B_OFF: usize = RESULT + 0x203;
+/// What the ON script writes to MARK_ON.
+const SCRIPT_RAN_ON: u8 = 0x5A;
+const SAVE_SCREEN: (usize, usize) = (0x86EC, 768);
 const POWER_DOWN: u8 = 0x10;
 const STEP: u8 = 37;
 const SCAN_ALPHA: u8 = 0x30;
@@ -39,38 +58,22 @@ const BATTERY: [&str; 13] = [
 ];
 
 /// A region the app fills: its name, address, length and the first byte of its pattern. The
-/// table is the one at the end of routines/screen_state_app.z80; SCR_STATE and the rest of
-/// appData come from the labels the assembler wrote for the app.
+/// table is the one at the end of routines/screen_state_app.z80.
 type Region = (String, usize, usize, u8);
 
-fn regions(lab: &std::path::Path) -> Vec<Region> {
-    let state = usize::from(label_in(lab, "SCR_STATE"));
-    let size = usize::from(label_in(lab, "SCR_STATE_SIZE"));
-    assert!(
-        state >= 0x8000 && state + size <= 0x8100,
-        "SCR_STATE {state:#x}+{size:#x} is not inside appData"
-    );
-    let fixed = [
+fn regions() -> Vec<Region> {
+    [
         ("textShadow", 0x8508, 128, 0x11),
         ("cmdShadow", 0x966E, 128, 0x22),
         ("statVars", 0x8A3A, 531, 0x33),
+        ("appData", 0x8000, 256, 0x44),
         ("tempSwapArea", 0x82A5, 323, 0x55),
         ("prevData", 0x9198, 283, 0x66),
         ("smallEditRAM", 0x90D3, 108, 0x77),
-        ("saveSScreen", 0x86EC, 768, 0x88),
-    ];
-    let mut all: Vec<Region> = fixed
-        .iter()
-        .map(|&(name, addr, len, seed)| (name.to_string(), addr, len, seed))
-        .collect();
-    all.push(("SCR_STATE".to_string(), state, size, 0x44));
-    all.push((
-        "appData after SCR_STATE".to_string(),
-        state + size,
-        0x100 - size,
-        0x45,
-    ));
-    all
+        ("saveSScreen", SAVE_SCREEN.0, SAVE_SCREEN.1, 0x88),
+    ]
+    .map(|(name, addr, len, seed)| (name.to_string(), addr, len, seed))
+    .to_vec()
 }
 
 fn pattern(len: usize, seed: u8) -> Vec<u8> {
@@ -79,26 +82,35 @@ fn pattern(len: usize, seed: u8) -> Vec<u8> {
         .collect()
 }
 
-/// Assembles the app and returns it and the label file spasm wrote.
-fn assemble(name: &str, defines: &[&str]) -> (Vec<u8>, std::path::PathBuf) {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.8xk"));
-    let run = std::process::Command::new("sh")
-        .arg(root.join("../../scripts/spasm.sh"))
-        .args(defines.iter().map(|d| format!("-D{d}")))
-        .arg("-L")
-        .arg("-I")
-        .arg(root.join("../../app/src"))
-        .arg(root.join("tests/routines/screen_state_app.z80"))
-        .arg(&out)
-        .output()
-        .expect("the assembler runs");
-    assert!(
-        run.status.success(),
-        "spasm: {}",
-        String::from_utf8_lossy(&run.stdout)
-    );
-    (std::fs::read(&out).unwrap(), out.with_extension("lab"))
+/// Assembles the app with these defines once per set, whichever test asks first, into a file of
+/// its own.
+fn assemble(defines: &[&str]) -> Vec<u8> {
+    static BUILDS: Mutex<Option<HashMap<String, Vec<u8>>>> = Mutex::new(None);
+    let name = format!("screen_state{}", defines.concat());
+    let mut builds = BUILDS.lock().unwrap_or_else(|e| e.into_inner());
+    builds
+        .get_or_insert_with(HashMap::new)
+        .entry(name.clone())
+        .or_insert_with(|| {
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+            let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.8xk"));
+            let run = std::process::Command::new("sh")
+                .arg(root.join("../../scripts/spasm.sh"))
+                .args(defines.iter().map(|d| format!("-D{d}")))
+                .arg("-I")
+                .arg(root.join("../../app/src"))
+                .arg(root.join("tests/routines/screen_state_app.z80"))
+                .arg(&out)
+                .output()
+                .expect("the assembler runs");
+            assert!(
+                run.status.success(),
+                "spasm: {}",
+                String::from_utf8_lossy(&run.stdout)
+            );
+            std::fs::read(&out).unwrap()
+        })
+        .clone()
 }
 
 /// What an event changed: the region, and the runs of changed bytes as (offset, length).
@@ -111,12 +123,19 @@ struct Rig {
     regions: Vec<Region>,
     /// The report: one line per event.
     log: Vec<(String, Damage)>,
+    /// saveSScreen as the auto power down left it.
+    save_screen_after_apd: Vec<u8>,
+    /// The ONSCRPT and OFFSCRPT markers after the power down and after waking.
+    marks: Vec<(&'static str, (u8, u8))>,
+    /// B from _ChkFindSym on the battery's variable after archiving and after unarchiving.
+    found: (u8, u8),
+    contrast: (u8, u8, u8),
 }
 
 impl Rig {
     fn start(defines: &[&str]) -> Rig {
-        let (app, lab) = assemble(&format!("screen_state{}", defines.concat()), defines);
-        let regions = regions(&lab);
+        let app = assemble(defines);
+        let regions = regions();
         let mut os = RealOs::boot(&app);
         os.tap(KEY_APPS, 150, 600);
         os.tap(KEY_2, 150, 300);
@@ -127,8 +146,14 @@ impl Rig {
             flags_now: 0,
             regions,
             log: Vec::new(),
+            save_screen_after_apd: Vec::new(),
+            marks: Vec::new(),
+            found: (0xFF, 0xFF),
+            contrast: (0, 0, 0),
         };
         assert!(rig.damage().is_empty(), "the app filled the regions");
+        rig.flags_at_start = rig.ram(FLAGS_AT_START, 1)[0];
+        rig.flags_now = rig.os.m.ram_page(1)[APP_FLAGS];
         rig
     }
 
@@ -140,8 +165,9 @@ impl Rig {
         self.os.m.ram_page(1)[at..at + bytes.len()].copy_from_slice(bytes);
     }
 
-    fn count(&mut self) -> u8 {
-        self.ram(RESULT, 1)[0]
+    fn count(&mut self) -> u16 {
+        let word = self.ram(RESULT, 2);
+        u16::from_le_bytes([word[0], word[1]])
     }
 
     /// The runs of bytes that differ from the patterns, per region.
@@ -165,20 +191,22 @@ impl Rig {
     }
 
     /// Records what the event changed, then writes the patterns back for the next event.
-    fn record(&mut self, event: &str) -> Damage {
+    fn record(&mut self, event: &str) {
         let damage = self.damage();
         for (_, addr, len, seed) in self.regions.clone() {
             self.poke(addr - RAM_BASE, &pattern(len, seed));
         }
-        self.log.push((event.to_string(), damage.clone()));
-        damage
+        self.log.push((event.to_string(), damage));
     }
 
     fn tap(&mut self, key: u8) {
         self.os.tap(key, 150, 300);
     }
 
-    fn keys(&mut self, modifier: &[u8]) {
+    /// Taps every key after `modifier`, and returns how many returns of `_GetKey` that is: one for
+    /// each key the table gives a code.
+    fn keys(&mut self, modifier: &[u8], table: &[u8; 56]) -> u16 {
+        let mut returns = 0;
         for scan in 1..=SCAN_LAST {
             let modifier_key = [SCAN_2ND, SCAN_ALPHA].contains(&scan);
             if NO_KEY.contains(&scan) || modifier_key || scan == SCAN_ENTER {
@@ -188,7 +216,26 @@ impl Rig {
                 self.tap(m);
             }
             self.tap(scan);
+            returns += u16::from(table[usize::from(scan) - 1] != 0);
         }
+        returns
+    }
+
+    /// Taps `what`, the app's count must have grown by `returns`, and records the event.
+    fn sweep(&mut self, event: &str, modifier: &[u8], table: &[u8; 56]) {
+        let before = self.count();
+        let returns = self.keys(modifier, table);
+        assert!(returns > 20, "{event}: the table has {returns} keys");
+        assert_eq!(
+            self.count() - before,
+            returns,
+            "{event}: returns of _GetKey"
+        );
+        self.record(event);
+    }
+
+    fn marks(&mut self) -> (u8, u8) {
+        (self.ram(MARK_ON, 1)[0], self.ram(MARK_OFF, 1)[0])
     }
 
     fn report(&self) -> String {
@@ -213,28 +260,62 @@ impl Rig {
                 .unwrap();
             }
         }
+        for (when, (on, off)) in &self.marks {
+            writeln!(
+                text,
+                "{when}: ONSCRPT mark {on:#04x}, OFFSCRPT mark {off:#04x}"
+            )
+            .unwrap();
+        }
         text
     }
+
+    /// Runs the OS until auto power down fires inside `_GetKey`, wakes it with ON and presses a
+    /// key, recording what each changed.
+    fn power_cycle(&mut self) {
+        let mut seconds = 0;
+        while self.os.m.in_port(3) & POWER_DOWN == 0 {
+            assert!(seconds < 600, "no auto power down in 600 s");
+            self.os.run_ms(5_000);
+            seconds += 5;
+        }
+        self.save_screen_after_apd = self.ram(SAVE_SCREEN.0 - RAM_BASE, SAVE_SCREEN.1);
+        let marks = self.marks();
+        self.marks.push(("after the power down", marks));
+        self.record(&format!("{APD}, at {seconds} s"));
+        self.tap(Machine::KEY_ON);
+        self.os.run_ms(3000);
+        let marks = self.marks();
+        self.marks.push(("after ON, 3 s later", marks));
+        self.record("ON after the power down, 3 s later");
+        let before = self.count();
+        self.tap(0x1B);
+        assert_eq!(self.count(), before + 1, "a key after waking returns once");
+        self.record("a key after waking");
+    }
+}
+
+/// The app waits in `_GetKey` and the OS wakes and sleeps.
+fn measure_power(defines: &[&str], script_flags: u8) -> Rig {
+    let mut rig = Rig::start(defines);
+    rig.os.m.ram_page(1)[SCRIPT_FLAGS] |= script_flags;
+    rig.power_cycle();
+    rig
 }
 
 fn measure(defines: &[&str]) -> Rig {
     let mut rig = Rig::start(defines);
-    rig.flags_at_start = rig.ram(RESULT + 4, 1)[0];
-    rig.flags_now = rig.os.m.ram_page(1)[APP_FLAGS];
-
+    let before = rig.count();
     rig.tap(0x1B);
+    assert_eq!(rig.count(), before + 1, "a plain key returns once");
     rig.record("a plain key (5)");
-    rig.keys(&[]);
-    rig.record("every key plain");
-    rig.keys(&[SCAN_2ND]);
-    rig.record("every key after 2nd");
-    rig.keys(&[SCAN_ALPHA]);
-    rig.record("every key after ALPHA");
+    rig.sweep("every key plain", &[], &PLAIN);
+    rig.sweep("every key after 2nd", &[SCAN_2ND], &SECOND);
+    rig.sweep("every key after ALPHA", &[SCAN_ALPHA], &ALPHA);
     rig.tap(SCAN_2ND);
     rig.tap(SCAN_ALPHA);
-    rig.keys(&[]);
+    rig.sweep("every key under alpha lock", &[], &ALPHA);
     rig.tap(SCAN_ALPHA);
-    rig.record("every key under alpha lock");
 
     let contrast = rig.ram(CONTRAST, 1)[0];
     for _ in 0..4 {
@@ -247,9 +328,15 @@ fn measure(defines: &[&str]) -> Rig {
         rig.tap(SCAN_DOWN);
     }
     let down = rig.ram(CONTRAST, 1)[0];
-    println!("contrast {contrast} after 2nd+up x4 {up}, after 2nd+down x4 {down}");
+    rig.contrast = (contrast, up, down);
+    assert!(
+        up > contrast,
+        "2nd+up raised the contrast {contrast} to {up}"
+    );
+    assert_eq!(down, contrast, "2nd+down brought it back");
     rig.record("2nd+up four times and 2nd+down four times");
 
+    let before = rig.count();
     rig.tap(Machine::KEY_ON);
     rig.os.run_ms(500);
     rig.record("an ON tap");
@@ -257,16 +344,18 @@ fn measure(defines: &[&str]) -> Rig {
     rig.os.run_ms(1500);
     rig.os.m.release_key(Machine::KEY_ON);
     rig.os.run_ms(500);
+    assert_eq!(rig.count(), before, "ON returns nothing");
     rig.record("an ON hold of 1.5 s");
     rig.os.run_ms(10_000);
     rig.record("10 s of the OS interrupt in _GetKey");
 
     let keys = rig.count();
     rig.tap(SCAN_ENTER);
+    assert_eq!(rig.count(), keys + 1, "ENTER returned");
     for (n, call) in BATTERY.iter().enumerate() {
         let step = n as u8 + 1;
         let mut waited = 0;
-        while rig.ram(RESULT + 2, 1)[0] != step {
+        while rig.ram(STEP_AT, 1)[0] != step {
             assert!(waited < 100, "the app did not reach {call}");
             rig.os.run_ms(100);
             waited += 1;
@@ -276,23 +365,13 @@ fn measure(defines: &[&str]) -> Rig {
             rig.record("5 s of the OS interrupt with the app halted outside _GetKey");
         }
         rig.record(call);
-        rig.poke(RESULT + 3, &[step]);
+        rig.poke(GO, &[step]);
     }
     rig.os.run_ms(1000);
     assert_eq!(rig.count(), keys + 1, "the battery returned to the wait");
+    rig.found = (rig.ram(B_ARCHIVED, 1)[0], rig.ram(B_UNARCHIVED, 1)[0]);
 
-    let mut seconds = 0;
-    while rig.os.m.in_port(3) & POWER_DOWN == 0 {
-        assert!(seconds < 600, "no auto power down in 600 s");
-        rig.os.run_ms(5_000);
-        seconds += 5;
-    }
-    rig.record(&format!("auto power down inside _GetKey, at {seconds} s"));
-    rig.tap(Machine::KEY_ON);
-    rig.os.run_ms(3000);
-    rig.record("ON after the power down, 3 s later");
-    rig.tap(0x1B);
-    rig.record("a key after waking");
+    rig.power_cycle();
     rig
 }
 
@@ -309,6 +388,10 @@ impl Rig {
 
     /// Every event that changed `region`, with the runs.
     fn changes_to(&self, region: &str) -> Vec<(&str, &Vec<(usize, usize)>)> {
+        assert!(
+            self.regions.iter().any(|r| r.0 == region),
+            "no region {region}"
+        );
         self.log
             .iter()
             .flat_map(|(event, damage)| {
@@ -323,19 +406,17 @@ impl Rig {
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn screen_state_and_the_rest_of_app_data_keep_their_bytes_through_every_event() {
+fn app_data_and_the_other_survivors_keep_their_bytes_through_every_event() {
     for defines in [&[][..], &["NO_SAVE_TEXT"][..]] {
         let rig = measure(defines);
         println!("{defines:?}\n{}", rig.report());
         for region in [
-            "SCR_STATE",
-            "appData after SCR_STATE",
+            "appData",
             "statVars",
             "cmdShadow",
-        ]
-        .into_iter()
-        .chain(["prevData", "smallEditRAM"])
-        {
+            "prevData",
+            "smallEditRAM",
+        ] {
             assert_eq!(rig.changes_to(region), [], "{region} with {defines:?}");
         }
     }
@@ -348,11 +429,7 @@ fn auto_power_down_zeroes_save_screen_and_nothing_else_in_the_candidates() {
     let hit = rig.event(APD);
     assert_eq!(hit.len(), 1, "{hit:?}");
     assert_eq!(hit[0].0, "saveSScreen");
-    let zeroed: usize = hit[0].1.iter().map(|r| r.1).sum();
-    assert!(
-        zeroed >= 760,
-        "{zeroed} of 768 bytes differ from the pattern"
-    );
+    assert_eq!(rig.save_screen_after_apd, vec![0; SAVE_SCREEN.1], "zeroed");
     let others: Vec<_> = rig
         .changes_to("saveSScreen")
         .into_iter()
@@ -381,8 +458,10 @@ fn put_c_writes_text_shadow_while_app_text_save_is_set_and_leaves_it_when_clear(
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn archiving_a_variable_writes_temp_swap_area_and_nothing_else_does() {
+fn archiving_a_variable_writes_temp_swap_area_and_unarchiving_does_not() {
     let rig = measure(&[]);
+    assert_ne!(rig.found.0, 0, "the variable was archived after step 9");
+    assert_eq!(rig.found.1, 0, "and in RAM after step 12");
     assert_eq!(
         rig.changes_to("tempSwapArea"),
         [(
@@ -390,4 +469,75 @@ fn archiving_a_variable_writes_temp_swap_area_and_nothing_else_does() {
             &vec![(0, 2), (0xE8, 1), (0xEA, 2), (0xFA, 4)]
         )]
     );
+}
+
+const WAKE: &str = "ON after the power down, 3 s later";
+
+/// The AppVar's `B` from `_ChkFindSym` once the app made it: 0 for in RAM.
+fn found(rig: &mut Rig) -> (u8, u8) {
+    (rig.ram(B_ON, 1)[0], rig.ram(B_OFF, 1)[0])
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn an_on_script_whose_flag_is_set_runs_on_waking_and_is_copied_over_the_start_of_app_data() {
+    for defines in [&["MAKE_ON"][..], &["MAKE_ON", "MAKE_OFF"][..]] {
+        let mut rig = measure_power(defines, 1);
+        println!("{defines:?}\n{}", rig.report());
+        assert_eq!(found(&mut rig).0, 0, "ONSCRPT is in RAM");
+        assert_eq!(
+            rig.marks,
+            [
+                ("after the power down", (0, 0)),
+                ("after ON, 3 s later", (SCRIPT_RAN_ON, 0))
+            ],
+            "the script ran when the OS woke, and the OFF script did not at the power down"
+        );
+        assert_eq!(
+            rig.changes_to("appData"),
+            [(WAKE, &vec![(0, 64)])],
+            "the OS copies the script's size word and code to 8000h"
+        );
+    }
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn the_scripts_do_not_run_without_their_flags_or_when_archived_or_off_at_auto_power_down() {
+    let cases: [(&[&str], u8); 6] = [
+        (&[], 3),
+        (&["MAKE_ON"], 0),
+        (&["MAKE_ON", "MAKE_OFF"], 0),
+        (&["MAKE_OFF"], 3),
+        (&["MAKE_ON", "MAKE_OFF", "ARCHIVE_SCRIPTS"], 3),
+        (&["MAKE_ON", "ARCHIVE_SCRIPTS"], 1),
+    ];
+    for (defines, flags) in cases {
+        let mut rig = measure_power(defines, flags);
+        let (on, off) = found(&mut rig);
+        let archived = defines.contains(&"ARCHIVE_SCRIPTS");
+        assert_eq!(
+            on != 0,
+            archived && defines.contains(&"MAKE_ON"),
+            "ONSCRPT's B {on}"
+        );
+        assert_eq!(
+            off != 0,
+            archived && defines.contains(&"MAKE_OFF"),
+            "OFFSCRPT's B {off}"
+        );
+        assert_eq!(
+            rig.marks,
+            [
+                ("after the power down", (0, 0)),
+                ("after ON, 3 s later", (0, 0))
+            ],
+            "{defines:?} with flags {flags}: no script ran"
+        );
+        assert_eq!(
+            rig.changes_to("appData"),
+            [],
+            "{defines:?} with flags {flags}"
+        );
+    }
 }
