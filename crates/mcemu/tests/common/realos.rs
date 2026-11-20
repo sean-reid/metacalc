@@ -89,6 +89,15 @@ impl RealOs {
         self.m.ram_page(1)[ON_FLAGS]
     }
 
+    /// The screen's pixels packed 8 to a byte, row by row, the leftmost in bit 7: the 768 bytes the
+    /// OS copies into saveSScreen at an auto power down.
+    pub fn packed_screen(&mut self) -> Vec<u8> {
+        self.screen()
+            .chunks(8)
+            .map(|px| px.iter().fold(0u8, |b, &lit| (b << 1) | u8::from(lit)))
+            .collect()
+    }
+
     /// The lit pixels of the screen, row by row.
     pub fn screen(&mut self) -> Vec<bool> {
         let lcd = self.m.lcd();

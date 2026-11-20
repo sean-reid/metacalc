@@ -728,13 +728,166 @@ fn assemble_ui(out: &Path) {
     }
     for (defines, want) in [
         (&["UI_VARS=$9326", "FM_SCRATCH=$A000"][..], None),
-        (&["UI_VARS=$9640"][..], None),
-        (&["UI_FRAME=$9572"][..], None),
+        (&["UI_VARS=$9640", "FM_SCRATCH=$A000"][..], None),
+        (&["UI_FRAME=$9572", "SCR_STACK=$9000"][..], None),
         (&["UI_FRAME=$9B71"][..], None),
         (&["KD_SCRATCH=$9640"][..], None),
         (&["LIB_STATE=$9896", "FAR_VARS=$9C00"][..], None),
         (&["LIB_STATE=$989A"][..], None),
         (&["KERNEL_RAM_HIGH=$D700"][..], None),
+        (&["SCR_VARS=$9100"][..], None),
+        (&["SCR_STACK=$9700"][..], None),
+        (&["SCR_VARS_SIZE=$80", "SCR_STACK_SIZE=$100"][..], None),
+        (&["SCR_VARS=$8000"][..], None),
+        (&["SCR_VARS=$7FFF"][..], Some("SCR_VARS runs past bank B")),
+        (&["SCR_VARS=$BF94"][..], None),
+        (&["SCR_VARS=$BF95"][..], Some("SCR_VARS runs past bank B")),
+        (&["SCR_VARS=$8680"][..], None),
+        (
+            &["SCR_VARS=$8681"][..],
+            Some("SCR_VARS and UI_VARS overlap"),
+        ),
+        (&["SCR_VARS=$8706", "FM_SCRATCH=$A000"][..], None),
+        (
+            &["SCR_VARS=$8705", "FM_SCRATCH=$A000"][..],
+            Some("SCR_VARS and UI_VARS overlap"),
+        ),
+        (&["SCR_VARS=$92D4"][..], None),
+        (
+            &["SCR_VARS=$92D5"][..],
+            Some("SCR_VARS and UI_FRAME overlap"),
+        ),
+        (&["SCR_VARS=$9640", "SCR_STACK=$A000"][..], None),
+        (
+            &["SCR_VARS=$963F", "SCR_STACK=$A000"][..],
+            Some("SCR_VARS and UI_FRAME overlap"),
+        ),
+        (&["SCR_VARS=$9806"][..], None),
+        (
+            &["SCR_VARS=$9807"][..],
+            Some("SCR_VARS and KD_SCRATCH overlap"),
+        ),
+        (
+            &["SCR_VARS=$9896", "FAR_VARS=$A000", "LIB_STATE=$A400"][..],
+            None,
+        ),
+        (
+            &["SCR_VARS=$9895", "FAR_VARS=$A000", "LIB_STATE=$A400"][..],
+            Some("SCR_VARS and KD_SCRATCH overlap"),
+        ),
+        (&["SCR_VARS=$982A", "KD_SCRATCH=$A000"][..], None),
+        (
+            &["SCR_VARS=$982B", "KD_SCRATCH=$A000"][..],
+            Some("SCR_VARS and FAR_VARS overlap"),
+        ),
+        (&["SCR_VARS=$989A", "LIB_STATE=$A000"][..], None),
+        (
+            &["SCR_VARS=$9899", "LIB_STATE=$A000"][..],
+            Some("SCR_VARS and FAR_VARS overlap"),
+        ),
+        (
+            &["SCR_VARS=$9830", "KD_SCRATCH=$A000", "FAR_VARS=$A400"][..],
+            None,
+        ),
+        (
+            &["SCR_VARS=$9831", "KD_SCRATCH=$A000", "FAR_VARS=$A400"][..],
+            Some("SCR_VARS and LIB_STATE overlap"),
+        ),
+        (&["SCR_VARS=$9B71"][..], None),
+        (
+            &["SCR_VARS=$9B70"][..],
+            Some("SCR_VARS and LIB_STATE overlap"),
+        ),
+        (&["SCR_STACK=$8000"][..], None),
+        (&["SCR_STACK=$7FFF"][..], Some("SCR_STACK runs past bank B")),
+        (&["SCR_STACK=$BF80"][..], None),
+        (&["SCR_STACK=$BF81"][..], Some("SCR_STACK runs past bank B")),
+        (&["SCR_STACK=$866C"][..], None),
+        (
+            &["SCR_STACK=$866D"][..],
+            Some("SCR_STACK and UI_VARS overlap"),
+        ),
+        (&["SCR_STACK=$8706", "FM_SCRATCH=$A000"][..], None),
+        (
+            &["SCR_STACK=$8705", "FM_SCRATCH=$A000"][..],
+            Some("SCR_STACK and UI_VARS overlap"),
+        ),
+        (&["SCR_STACK=$92C0"][..], None),
+        (
+            &["SCR_STACK=$92C1"][..],
+            Some("SCR_STACK and UI_FRAME overlap"),
+        ),
+        (&["SCR_STACK=$9640"][..], None),
+        (
+            &["SCR_STACK=$963F"][..],
+            Some("SCR_STACK and UI_FRAME overlap"),
+        ),
+        (&["SCR_STACK=$97F2"][..], None),
+        (
+            &["SCR_STACK=$97F3"][..],
+            Some("SCR_STACK and KD_SCRATCH overlap"),
+        ),
+        (
+            &["SCR_STACK=$9896", "FAR_VARS=$A000", "LIB_STATE=$A400"][..],
+            None,
+        ),
+        (
+            &["SCR_STACK=$9895", "FAR_VARS=$A000", "LIB_STATE=$A400"][..],
+            Some("SCR_STACK and KD_SCRATCH overlap"),
+        ),
+        (&["SCR_STACK=$9816", "KD_SCRATCH=$A000"][..], None),
+        (
+            &["SCR_STACK=$9817", "KD_SCRATCH=$A000"][..],
+            Some("SCR_STACK and FAR_VARS overlap"),
+        ),
+        (&["SCR_STACK=$989A", "LIB_STATE=$A000"][..], None),
+        (
+            &["SCR_STACK=$9899", "LIB_STATE=$A000"][..],
+            Some("SCR_STACK and FAR_VARS overlap"),
+        ),
+        (
+            &["SCR_STACK=$981C", "KD_SCRATCH=$A000", "FAR_VARS=$A400"][..],
+            None,
+        ),
+        (
+            &["SCR_STACK=$981D", "KD_SCRATCH=$A000", "FAR_VARS=$A400"][..],
+            Some("SCR_STACK and LIB_STATE overlap"),
+        ),
+        (&["SCR_STACK=$9B71"][..], None),
+        (
+            &["SCR_STACK=$9B70"][..],
+            Some("SCR_STACK and LIB_STATE overlap"),
+        ),
+        (&["SCR_VARS=$9602", "UI_FRAME=$A000"][..], None),
+        (
+            &["SCR_VARS=$9603", "UI_FRAME=$A000"][..],
+            Some("SCR_VARS and SCR_STACK overlap"),
+        ),
+        (&["SCR_STACK=$913F"][..], None),
+        (
+            &["SCR_STACK=$913E"][..],
+            Some("SCR_VARS and SCR_STACK overlap"),
+        ),
+        (&["FM_SCRATCH=$913F"][..], None),
+        (&["FM_SCRATCH=$8FD3"][..], None),
+        (
+            &["FM_SCRATCH=$8FD4"][..],
+            Some("FM_SCRATCH and SCR_VARS overlap"),
+        ),
+        (
+            &["FM_SCRATCH=$913E"][..],
+            Some("FM_SCRATCH and SCR_VARS overlap"),
+        ),
+        (&["FM_SCRATCH=$956E", "UI_FRAME=$A000"][..], None),
+        (
+            &["FM_SCRATCH=$956F", "UI_FRAME=$A000"][..],
+            Some("FM_SCRATCH and SCR_STACK overlap"),
+        ),
+        (&["FM_SCRATCH=$96EE"][..], None),
+        (
+            &["FM_SCRATCH=$96ED"][..],
+            Some("FM_SCRATCH and SCR_STACK overlap"),
+        ),
         (&["UI_VARS=$9340"][..], Some("UI_FRAME and UI_VARS overlap")),
         (
             &["UI_VARS=$9880"][..],
@@ -800,7 +953,6 @@ fn assemble_ui(out: &Path) {
             &["FM_LOW_SIZE=$1101"][..],
             Some("FM_LOW runs outside the kernel's low region"),
         ),
-        (&["FM_SCRATCH=$9100"][..], None),
         (&["FM_SCRATCH=$8000"][..], None),
         (&["FM_SCRATCH=$9240"][..], None),
         (&["FM_SCRATCH=$BF00"][..], None),
@@ -1280,6 +1432,22 @@ fn assemble_layout_probes(out: &Path) {
         (
             &["KD_SCRATCH=$9880"][..],
             "KD_SCRATCH in ram_map.inc must be appBackUpScreen",
+        ),
+        (
+            &["SCR_VARS=$90D4"][..],
+            "SCR_VARS in ram_map.inc must be smallEditRAM",
+        ),
+        (
+            &["SCR_VARS_SIZE=109"][..],
+            "SCR_VARS in ram_map.inc must end where XFact starts",
+        ),
+        (
+            &["SCR_STACK=$966F"][..],
+            "SCR_STACK in ram_map.inc must be cmdShadow",
+        ),
+        (
+            &["SCR_STACK_SIZE=129"][..],
+            "SCR_STACK in ram_map.inc must end where cmdShadCur starts",
         ),
     ] {
         expect(
