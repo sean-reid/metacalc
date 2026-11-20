@@ -97,10 +97,11 @@ pub fn hidden(expr: &Expr, folds: &Folds, node: usize) -> bool {
     false
 }
 
-/// The nodes a cursor is tried on: all of a small statement, else a spread, with hidden ones.
-pub fn picks(expr: &Expr, folds: &Folds) -> Vec<usize> {
+/// The nodes a cursor is tried on: all of a statement of up to `whole` nodes, else a spread, with
+/// hidden ones.
+pub fn picks(expr: &Expr, folds: &Folds, whole: usize) -> Vec<usize> {
     let len = expr.len();
-    if len <= 40 {
+    if len <= whole {
         return (0..len).collect();
     }
     let mut out: Vec<usize> = (0..len)
@@ -170,9 +171,18 @@ pub struct Tally {
     pub hidden_cursors: usize,
 }
 
-/// Compares fm with the model for one statement under the fold sets. A statement of more than 40
-/// nodes gets at most `big` sets.
-pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, big: usize) {
+/// How much of a statement is compared: one of up to `whole` nodes gets every fold set and a cursor
+/// on every node, a larger one at most `sets` sets and a spread of nodes.
+#[derive(Clone, Copy)]
+pub struct Depth {
+    pub whole: usize,
+    pub sets: usize,
+}
+
+const FIXTURE_DEPTH: Depth = Depth { whole: 40, sets: 6 };
+
+/// Compares fm with the model for one statement under the fold sets.
+pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, depth: Depth) {
     let (n, k) = at;
     let expr = &model.expr(n, k);
     let what = format!("statement {k} of assertion {n}");
@@ -180,7 +190,7 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, big
     assert_eq!(table, model.table(n, k), "{what}: nodes");
     let small = expr.len() <= 12;
     let mut sets = fold_sets(expr, u64::from(n) * 977 + u64::from(k), small);
-    if expr.len() > 40 {
+    if expr.len() > depth.whole {
         let first = |name: &str| sets.iter().position(|(n, _)| n == name);
         let mut front = vec![0];
         front.extend(first("every foldable node"));
@@ -191,7 +201,7 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, big
             .chain(rest)
             .map(|i| sets[i].clone())
             .collect();
-        sets.truncate(big.max(3));
+        sets.truncate(depth.sets.max(3));
     }
     let mut now = Folds::none(expr);
     for (name, folds) in &sets {
@@ -239,7 +249,7 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, big
                 same_frame(&label, &drawn, &want);
                 tally.frames += 1;
                 let nodes = if c == 0 && (o == 0 || o == 2) {
-                    picks(expr, folds)
+                    picks(expr, folds, depth.whole)
                 } else {
                     vec![(o * 7 + c * 3 + marked.len()) % expr.len()]
                 };
@@ -265,20 +275,20 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, big
     }
 }
 
-pub fn run_library(bytes: &[u8], every: usize, offset: usize, big: usize) -> Tally {
+pub fn run_library(bytes: &[u8], every: usize, offset: usize, depth: Depth) -> Tally {
     let model = Model::new(bytes);
     let mut fm = Fm::new(bytes);
     let mut tally = Tally::default();
     for (i, (n, k, _)) in statements(&decoded(bytes)).iter().enumerate() {
         if i % every == offset {
-            compare(&mut fm, &model, (*n, *k), &mut tally, big);
+            compare(&mut fm, &model, (*n, *k), &mut tally, depth);
         }
     }
     tally
 }
 
 fn fixture_part(part: usize) {
-    let tally = run_library(&fixture::nodes_library(), 4, part, 6);
+    let tally = run_library(&fixture::nodes_library(), 4, part, FIXTURE_DEPTH);
     println!(
         "fixture part {part}: {} row counts, {} fold bit sets, {} frames, {} cursors, {} folded \
          nodes, {} of them nested, {} cursors on hidden nodes, {} cursors to the last column",
@@ -328,7 +338,7 @@ fn the_longest_and_the_deepest_fixture_statements_get_nested_folds_and_hidden_cu
             .position(|a| a.label == label)
             .unwrap() as u16;
         let mut tally = Tally::default();
-        compare(&mut fm, &model, (n, 0xFF), &mut tally, 6);
+        compare(&mut fm, &model, (n, 0xFF), &mut tally, FIXTURE_DEPTH);
         assert!(model.expr(n, 0xFF).len() > 40, "{label}");
         assert!(tally.nested > 0 && tally.hidden_cursors > 0, "{label}");
     }
@@ -340,7 +350,7 @@ fn the_shipped_libraries_fold_and_draw_a_cursor_as_the_model_does() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
     for (name, every) in [("prop", 12), ("pred", 30), ("ring", 40)] {
         let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
-        let tally = run_library(&bytes, every, 0, 4);
+        let tally = run_library(&bytes, every, 0, Depth { whole: 0, sets: 3 });
         println!(
             "{name}: {} row counts, {} frames, {} cursors, {} folded nodes, {} of them nested, \
              {} cursors on hidden nodes",

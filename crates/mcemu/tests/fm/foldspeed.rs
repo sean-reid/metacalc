@@ -111,6 +111,7 @@ pub fn apply_costs(name: &str, bytes: &[u8], ceilings: &Ceilings) {
     for node in (0..expr.len()).filter(|&i| expr.depth(i) == widest && expr.foldable(i)) {
         level.toggle(&expr, node);
     }
+    assert!(level.count() > 1, "{name}: several folds of one depth");
     let mut spent = Vec::new();
     for folds in [&one, &every, &level] {
         put(&mut fm, &expr, &none, folds);

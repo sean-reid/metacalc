@@ -1,6 +1,6 @@
 ; The session every public routine runs in. The stub of a routine loads IX with its body and
-; jumps to fm_enter; a body ends with A = status and B = its result at fm_leave, or at fm_fail
-; for a status with no result.
+; jumps to fm_enter, fm_cursor's after the same entry of its own; a body ends with A = status and
+; B = its result at fm_leave, or at fm_fail for a status with no result.
 
 fm_open:
 	ld ix,open_body
