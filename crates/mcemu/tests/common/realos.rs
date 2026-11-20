@@ -6,8 +6,10 @@
 #![allow(dead_code)]
 
 use mcemu::{Machine, Stop};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
 
 /// The flash page the app is installed on, as the real OS enters it.
 pub const BASE: u8 = 0x69;
@@ -170,9 +172,20 @@ pub fn start_pixels(library: Option<&[u8]>, status: u8) -> Vec<bool> {
         .collect()
 }
 
-/// Builds `make -C <dir> <args>` for an app with the assembler the environment names, into a fresh
-/// directory under the target tree, and returns the directory.
+/// Builds `make -C <dir> <args>` for an app with the assembler the environment names, into a
+/// directory under the target tree, and returns the directory. A build runs once per process for
+/// each directory name, so parallel tests never write one build directory at the same time.
 pub fn make_app(dir: &str, name: &str, args: &[String]) -> PathBuf {
+    static BUILT: Mutex<Option<HashMap<String, PathBuf>>> = Mutex::new(None);
+    let mut built = BUILT.lock().unwrap_or_else(|e| e.into_inner());
+    built
+        .get_or_insert_with(HashMap::new)
+        .entry(name.to_string())
+        .or_insert_with(|| build_app(dir, name, args))
+        .clone()
+}
+
+fn build_app(dir: &str, name: &str, args: &[String]) -> PathBuf {
     let source = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(dir);
@@ -196,8 +209,19 @@ pub fn make_app(dir: &str, name: &str, args: &[String]) -> PathBuf {
     build
 }
 
-/// Assembles a test routine that is an app, `tests/routines/<file>`, and returns the app file.
+/// Assembles a test routine that is an app, `tests/routines/<file>`, and returns the app file. The
+/// assembler runs once per process for each file.
 pub fn assemble_routine(file: &str) -> Vec<u8> {
+    static BUILT: Mutex<Option<HashMap<String, Vec<u8>>>> = Mutex::new(None);
+    let mut built = BUILT.lock().unwrap_or_else(|e| e.into_inner());
+    built
+        .get_or_insert_with(HashMap::new)
+        .entry(file.to_string())
+        .or_insert_with(|| assemble(file))
+        .clone()
+}
+
+fn assemble(file: &str) -> Vec<u8> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{file}.8xk"));
     let wrapper = root.join("../../scripts/spasm.sh");
