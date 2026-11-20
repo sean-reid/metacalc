@@ -47,6 +47,94 @@ lib_syntax:
 	xor a
 	ret
 
+lib_arities:
+	ld (lr_bufp),de
+	ld (lr_cn),bc
+	call lr_need
+	jr nz,la_refused
+	ld a,(ls_have)
+	and LS_TREES
+	jr nz,la_have
+	call lsx_nothing
+	jr la_refused
+la_have:
+	ld hl,(ls_tr_n)
+	ld de,(lr_cn)
+	ex de,hl
+	or a
+	sbc hl,de
+	jr c,la_arg
+	ex de,hl
+	ld a,h
+	or l
+	jr z,la_walk
+	ld b,h
+	ld c,l
+	ld de,(lr_bufp)
+	add hl,de
+	jr c,la_arg
+	call lr_overlap
+	jr nz,la_refused
+	call lr_clear_of_bounce
+	jr z,la_walk
+la_refused:
+	ld hl,0
+	ret
+la_arg:
+	call lr_bad_arg
+	jr la_refused
+la_walk:
+	ld hl,2
+	xor a
+	ld de,ls_tr
+	call lsx_add3
+	call lw_seek
+	ld hl,(ls_tr_n)
+	ld (lr_cn),hl
+la_entry:
+	ld hl,(lr_cn)
+	ld a,h
+	or l
+	jr z,la_done
+	ld a,3
+	call lw_need
+	jr nz,la_stop
+	call lw_ptr
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	ld b,(hl)
+	ld hl,(lr_count)
+	ex de,hl
+	or a
+	sbc hl,de
+	jr nc,la_bad
+	ld hl,(lr_bufp)
+	ld (hl),b
+	inc hl
+	ld (lr_bufp),hl
+	ld hl,(lr_cn)
+	dec hl
+	ld (lr_cn),hl
+	ld bc,3
+	call lw_skip
+	jr la_entry
+la_done:
+	ld hl,(ls_tr_n)
+	xor a
+	ret
+la_bad:
+	call lr_bad
+la_stop:
+	push af
+	ld hl,(ls_tr_n)
+	ld de,(lr_cn)
+	or a
+	sbc hl,de
+	pop af
+	ret
+
 lib_tree:
 	ld (lr_bufp),de
 	ld (lr_cn),hl
@@ -257,76 +345,6 @@ ltr_empty:
 	ld (lr_hdr+2),a
 ltr_header:
 	call lw_skip
-	xor a
-	ret
-
-lib_node:
-	call lr_need
-	ret nz
-	ld a,c
-	or a
-	jp z,lr_bad_range
-	ld a,(hl)
-	cp $7F
-	jr z,lnd_escape
-	cp $FF
-	jr z,lnd_escape
-	inc hl
-	dec c
-	cp $80
-	jr nc,lnd_inline
-	ld e,a
-	ld d,0
-	jr lnd_axiom
-lnd_escape:
-	ld a,c
-	cp 2
-	jp c,lr_bad_range
-	ld b,(hl)
-	inc hl
-	ld a,(hl)
-	inc hl
-	dec c
-	dec c
-	add a,127
-	ld e,a
-	ld d,0
-	jr nc,lnd_wide
-	inc d
-lnd_wide:
-	ld a,b
-	cp $7F
-	jr z,lnd_axiom
-	ld a,d
-	or a
-	jp nz,lr_bad
-	ld a,e
-	jr lnd_symbol
-lnd_axiom:
-	push hl
-	ld hl,(ls_tr_n)
-	or a
-	sbc hl,de
-	pop hl
-	jp z,lr_bad
-	jp c,lr_bad
-	ld b,0
-	xor a
-	ret
-lnd_inline:
-	sub $80
-lnd_symbol:
-	ld e,a
-	ld a,(lr_consts)
-	add a,e
-	jp c,lr_bad
-	ld e,a
-	ld d,0
-	ld a,(lr_nsyms)
-	cp e
-	jp z,lr_bad
-	jp c,lr_bad
-	ld b,1
 	xor a
 	ret
 

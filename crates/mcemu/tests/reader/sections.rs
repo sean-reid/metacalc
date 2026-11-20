@@ -1,7 +1,8 @@
 use crate::secrig::*;
 use crate::support::*;
-use mcpack::library::{GLYPHS, Library, Node, Sections, decode, pack_kernel};
-use mcpack::mm::{self, Database, StmtId};
+pub use crate::treelibs::pack_with_sections;
+use mcpack::library::{GLYPHS, Library, Sections, decode, pack_kernel};
+use mcpack::mm::{Database, StmtId};
 
 /// A grammar with a few rules over the variables p q r s.
 pub const GRAMMAR: &str = "$c wff |- ( ) -> & -. $.\n$v p q r s $.\n\
@@ -73,11 +74,6 @@ pub fn nested(count: usize, top: &[usize], plan: &[(usize, &[usize])]) -> Vec<u8
 
 pub fn everything(db: &Database) -> Vec<StmtId> {
     (0..db.stmts.len() as StmtId).collect()
-}
-
-pub fn pack_with_sections(src: &str) -> Vec<u8> {
-    let db = mm::parse(src.as_bytes().to_vec()).expect("it parses");
-    pack_all(&db)
 }
 
 fn mask_of(sections: &Sections) -> u8 {
@@ -261,30 +257,16 @@ fn check_trees(
             let last = k + 1 == item.len();
             let asked = if last && n % 2 == 0 { 0xFF } else { k as u8 };
             let got = rig.tree(n as u16, asked);
-            let Some(tree) = stored else {
+            if stored.is_none() {
                 assert_eq!(got.status, ST_NONE, "{what}: tree {k} of {n}");
                 continue;
-            };
+            }
             assert_eq!(got.status, ST_OK, "{what}: tree {k} of {n}");
             let file = &bytes_of(rig, got.offset, got.len);
             assert_eq!(
                 &got.bytes[..],
                 &file[..file.len().min(255)],
                 "{what}: tree {k} of {n}"
-            );
-            let (status, nodes) = rig.walk(file);
-            let want: Vec<(u8, u16)> = tree
-                .nodes
-                .iter()
-                .map(|node| match *node {
-                    Node::Axiom(i) => (0, i as u16),
-                    Node::Variable(id) => (1, id as u16),
-                })
-                .collect();
-            assert_eq!(
-                (status, nodes),
-                (ST_OK, want),
-                "{what}: nodes of {k} of {n}"
             );
         }
         let past = item.len() as u8;

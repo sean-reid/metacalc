@@ -139,6 +139,20 @@
 ;                          as stored: the host decoder also refuses entries out of rising
 ;                          assertion order and an arity that is not the assertion's hypothesis
 ;                          count, and this does not check either.
+;   lib_arities       in:  DE = buffer, BC = its size in bytes, which must be at least the syntax
+;                          axiom count; the buffer may lie anywhere, bank C included, clear of
+;                          the state block and of the bounce buffer, and short of $FFFF: a buffer
+;                          whose last byte is $FFFF is refused
+;                     out: A = status; HL = how many arities were written, the axiom count when the
+;                          status is 0. Writes one byte for each axiom in syntax order, its arity as
+;                          stored in the trees entry. An entry whose assertion number is not an
+;                          assertion of the library stops the call with status 3: HL is the index
+;                          of that entry, the arities before it are in the buffer and nothing past
+;                          them is written; lib_syntax refuses the same entry. Status 9 without a
+;                          trees section, then 2 for a buffer too small for the count, touching
+;                          the state block or the bounce buffer, or ending at $FFFF, with nothing
+;                          written. The table fits the section, which
+;                          lib_open checks. Every library byte comes through the window.
 ;   lib_tree          in:  HL = assertion number; B = statement, the essential hypotheses in record
 ;                          order from 0, then the conclusion, which is also FFh; DE = buffer of
 ;                          255 bytes
@@ -146,13 +160,6 @@
 ;                          the library, the first 255 bytes or all of them copied to the buffer;
 ;                          read the rest with lib_read at the offset. 9 for a statement the
 ;                          grammar read nothing from, and for a library without trees.
-;   lib_node          in:  HL = the next node byte, C = bytes left from HL, 1 to 255
-;                     out: B = 0 for a syntax index, 1 for a variable; DE = the index or the
-;                          variable's symbol id; HL past the node, C = bytes left. Status 1, with
-;                          HL and C as they came in, when an escape byte has no second byte among
-;                          the C bytes: a caller walking a longer tree refills the buffer from
-;                          HL. Status 3 for an index past the syntax table or a variable past the
-;                          symbols. It reads no library byte, but the reader must be open.
 ;   lib_shapes        out: A = status, 9 without the section; E:HL = the section's offset in the
 ;                          library, BC = its length, to copy with lib_read
 ;   lib_shape         in:  HL = syntax index; DE = buffer of 255 bytes
