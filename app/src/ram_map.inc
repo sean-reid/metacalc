@@ -8,10 +8,12 @@
 ; measured under OS 2.43 in the emulator; no calculator was tried. Both regions kept every byte
 ; through the events crates/mcemu/tests/screen_state.rs drives: keys, 2nd, ALPHA, alpha lock, the
 ; contrast keys, ON, an auto power down with ON to wake, an ONSCRPT that runs, the OS calls that
-; test makes, and leaving the app. appData did not: with an ONSCRPT AppVar in RAM and bit 0 of
-; the flag byte at iy+33h set, the OS copied a zero and the script's first 63 bytes over 8000h
-; when it woke, so the state is not there; an OFFSCRPT in RAM with bit 1 set is copied the same way
-; at 2nd+OFF. At an auto power down the OS copied the screen's pixels into saveSScreen.
+; test makes, and an app that leaves without touching them. The shell's exit, app_putaway, fills
+; SCR_STACK with spaces and SCR_VARS with zeros on every way out. appData did not keep its
+; bytes: with an ONSCRPT AppVar in RAM and bit 0 of the flag byte at iy+33h set, the OS copied a
+; zero and the script's first 63 bytes over 8000h when it woke, so the state is not there; an
+; OFFSCRPT in RAM with bit 1 set is copied the same way at 2nd+OFF. At an auto
+; power down the OS copied the screen's pixels into saveSScreen.
 ;
 ;   name              bank  where
 ;   UI_VARS           B     the UI's variables, in saveSScreen; the OS overwrites it with the

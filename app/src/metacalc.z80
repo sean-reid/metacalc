@@ -15,8 +15,9 @@
 ; app_putaway, which fills SCR_STACK with spaces and SCR_VARS with zeros, the state the home screen
 ; draws as blank, clears appRunning and appLaunched in iy+28h and onInterrupt, and sets graphDraw.
 ; start installs a context with _AppInit for that: the OS calls cxPPutAway and cxPutAway at 2nd+OFF
-; and at _JForceCmdNoChar, cxPPutAway alone when an OS call raises an error, and cxErrorEP when the
-; user picks Goto on that error screen. An auto power down calls none of them.
+; and at _JForceCmdNoChar, and cxPPutAway alone when an OS call raises an error. On that error
+; screen 1:Quit returns to the home screen through the OS and 2:Goto through cxErrorEP, which
+; leaves by app_exit. An auto power down calls none of them.
 ; RAM: the canvas's, fm's and the kernel's blocks in ram_map.inc, libPage (the flash page of
 ; library chunk 0) and appStatus after it, and APP_BUF, which holds the reader's scratch and the
 ; strings in glyph codes. The strings the canvas reads from the draw page are in strings.inc.
@@ -110,10 +111,14 @@ app_putaway:
 	ret
 
 ; The context the OS keeps for the app: cxMain, cxPPutAway, cxPutAway, cxRedisp, cxErrorEP,
-; cxSizeWind and the flag byte.
+; cxSizeWind and the flag byte. cxRedisp and cxSizeWind return to the OS at once. cxErrorEP leaves
+; through app_exit: with a bare ret the error screen's 2:Goto leaves the OS idle in this context.
 app_vectors:
-	.dw app_exit, app_putaway, app_putaway, app_exit, app_exit, app_exit
+	.dw app_exit, app_putaway, app_putaway, app_ret, app_exit, app_ret
 	.db 0
+
+app_ret:
+	ret
 
 #ifdef LIBRARY
 ; Draws rows 1 to 7 of the library screen.
