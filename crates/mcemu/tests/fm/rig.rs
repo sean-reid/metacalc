@@ -173,6 +173,37 @@ impl Fm {
         self.rig.call("FM_NODES", Regs::default())
     }
 
+    /// Sets (1), clears (0) or toggles (2) the fold of `node` of the selected statement; the
+    /// flag changing is `bc >> 8`.
+    pub fn fold(&mut self, node: usize, mode: u8) -> Out {
+        let regs = Regs {
+            de: (u16::from(mode) << 8) | node as u16,
+            ..Regs::default()
+        };
+        self.rig.call("FM_FOLD", regs)
+    }
+
+    /// The fold bits of `node`: bit 0 its flag, bit 1 foldable, bit 2 hidden, in `bc >> 8`.
+    pub fn folded(&mut self, node: usize) -> Out {
+        let regs = Regs {
+            de: node as u16,
+            ..Regs::default()
+        };
+        self.rig.call("FM_FOLDED", regs)
+    }
+
+    /// Inverts the runs of `node`, drawn with the arguments of `draw`.
+    pub fn cursor(&mut self, node: usize, x: usize, row: i16, width: usize, window: (u8, u8)) -> Out {
+        let regs = Regs {
+            a: node as u8,
+            hl: row as u16,
+            de: ((width as u16) << 8) | x as u16,
+            bc: (u16::from(window.0) << 8) | u16::from(window.1),
+            ..Regs::default()
+        };
+        self.rig.call("FM_CURSOR", regs)
+    }
+
     /// `len` bytes of fm's memory from the label `name`, which is in the kernel's spare page.
     pub fn memory(&mut self, name: &str, len: usize) -> Vec<u8> {
         let at = usize::from(self.rig.label(name) - SPARE_BASE);

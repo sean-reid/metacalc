@@ -26,6 +26,19 @@ fm_nodes:
 	ld ix,nodes_body
 	jr fm_enter
 
+fm_fold:
+	ld ix,fold_body
+	jr fm_enter
+
+fm_folded:
+	ld ix,folded_body
+	jr fm_enter
+
+fm_cursor:
+	ex af,af'
+	ld ix,cursor_body
+	jr fm_enter
+
 fm_draw:
 	ld ix,draw_body
 

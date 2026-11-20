@@ -75,6 +75,7 @@ fn structure() -> String {
     src += "wun $a wff ~ ph $.\n";
     src += "nest-root $a |- x $.\nnest-below $a |- ( ph -> x ) $.\n";
     src += "onec $a |- ( F3 -> ph ) $.\n";
+    src += "wjx $a wff , ph ps , $.\njx1 $a |- , ( ph -> ps ) ch , $.\njx2 $a |- , ph ( ps -> ch ) , $.\n";
     src += "wrapc $a |- ( ( ch -> { x | ps } ) -> th ) $.\n";
     let fillers = names("F", FILLERS);
     let wide: Vec<&str> = (0..250).map(|i| fillers[i % FILLERS].as_str()).collect();

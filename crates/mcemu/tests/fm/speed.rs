@@ -19,12 +19,12 @@ struct Ceilings {
 }
 
 const FIXTURE: Ceilings = Ceilings {
-    frame: 270_000,
-    draw: 150_000,
+    frame: 272_500,
+    draw: 152_600,
 };
 const RING: Ceilings = Ceilings {
-    frame: 265_000,
-    draw: 145_000,
+    frame: 267_000,
+    draw: 147_000,
 };
 const STRINGS: u16 = 0xB000;
 
@@ -169,7 +169,7 @@ fn report(name: &str, best: &Frame) {
 
 /// The statement whose first six lines cost the most to draw, found by drawing every statement
 /// of six lines or more, and what a whole frame of it costs.
-fn heaviest_frame(name: &str, bytes: &[u8]) -> Frame {
+fn heaviest_frame(name: &str, bytes: &[u8], folds: &crate::foldspeed::Ceilings) -> Frame {
     let all = statements(&decoded(bytes));
     let mut fm = Fm::new(bytes);
     let base = fm.rig.call("CALL_NOP", Regs::default()).tstates;
@@ -195,12 +195,13 @@ fn heaviest_frame(name: &str, bytes: &[u8]) -> Frame {
     let (ones, threes) = joins(&mut fm, &all[worst.4].2);
     println!("{name}: in its six lines {ones} joins one column apart and {threes} three apart");
     report(name, &best);
+    crate::foldspeed::cursor_costs(name, bytes, (worst.1, worst.2), best.total(), folds);
     best
 }
 
 #[test]
 fn a_frame_of_six_full_rows_redraws_within_50_ms_at_6_mhz() {
-    let best = heaviest_frame("fixture", &fixture::library());
+    let best = heaviest_frame("fixture", &fixture::library(), &crate::foldspeed::FIXTURE);
     assert!(best.total() < BUDGET, "{} T-states", best.total());
     assert!(best.total() <= FIXTURE.frame, "{} T-states", best.total());
     assert!(best.draw <= FIXTURE.draw, "fm_draw took {}", best.draw);
@@ -211,8 +212,22 @@ fn a_frame_of_six_full_rows_redraws_within_50_ms_at_6_mhz() {
 fn the_heaviest_six_row_frame_in_ring_redraws_within_50_ms_at_6_mhz() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
     let bytes = std::fs::read(format!("{dir}/ring.mclib")).expect("library reads");
-    let best = heaviest_frame("ring", &bytes);
+    let best = heaviest_frame("ring", &bytes, &crate::foldspeed::RING);
     assert!(best.total() < BUDGET, "{} T-states", best.total());
     assert!(best.total() <= RING.frame, "{} T-states", best.total());
     assert!(best.draw <= RING.draw, "fm_draw took {}", best.draw);
+}
+
+#[test]
+fn applying_folds_and_fm_fold_stay_within_their_ceilings_on_the_fixture() {
+    let bytes = fixture::nodes_library();
+    crate::foldspeed::apply_costs("fixture", &bytes, &crate::foldspeed::FIXTURE);
+}
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding ring.mclib>"]
+fn applying_folds_and_fm_fold_stay_within_their_ceilings_on_ring() {
+    let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    let bytes = std::fs::read(format!("{dir}/ring.mclib")).expect("library reads");
+    crate::foldspeed::apply_costs("ring", &bytes, &crate::foldspeed::RING);
 }

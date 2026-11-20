@@ -938,11 +938,11 @@ fn assemble_reader(out: &Path) {
         (&["FM_RUN_MAX=0"][..], Some("FM_RUN_MAX must be 1 to 128")),
         (&["FM_RUN_MAX=129"][..], Some("FM_RUN_MAX must be 1 to 128")),
         (
-            &["FM_LOW=$C700", "FM_LOW_SIZE=$D00", "FM_LOW_FREE=0"][..],
+            &["FM_LOW=$C700", "FM_LOW_SIZE=$E00", "FM_LOW_FREE=0"][..],
             None,
         ),
         (
-            &["FM_LOW=$C800", "FM_LOW_SIZE=$D00", "FM_LOW_FREE=0"][..],
+            &["FM_LOW=$C800", "FM_LOW_SIZE=$E00", "FM_LOW_FREE=0"][..],
             Some("the statement headers must stay off the kernel's stack page"),
         ),
         (&["FM_RAM_SIZE=$1E00"][..], None),
@@ -952,7 +952,7 @@ fn assemble_reader(out: &Path) {
         (&["FM_LOW_SIZE=$1080"][..], None),
         (
             &["FM_LOW_SIZE=$107F"][..],
-            Some("fm must leave $400 bytes of FM_LOW unused"),
+            Some("fm must leave $280 bytes of FM_LOW unused"),
         ),
         (
             &["FM_LOW=$C800", "FM_LOW_SIZE=$F00"][..],
@@ -1328,8 +1328,8 @@ fn assemble_layout_probes(out: &Path) {
             "FM",
             "#include \"fm/ram.inc\"\n".to_string(),
             &ui_args[..],
-            "FM_VARS_SIZE=$6A",
-            0x67,
+            "FM_VARS_SIZE=$84",
+            0x81,
             "the fm variables overlap, leave a gap, or run past FM_VARS_SIZE",
         ),
         (

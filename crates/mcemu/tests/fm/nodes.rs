@@ -31,14 +31,18 @@ impl Model {
         mcui::caps::within(&self.lib.statement(usize::from(n)).all())
     }
 
+    /// The model's `Expr` of statement `k` of assertion `n`.
+    pub fn expr(&self, n: u16, k: u8) -> Expr {
+        let statement = self.lib.statement(usize::from(n));
+        match k {
+            0xFF => statement.conclusion.clone(),
+            _ => statement.hyps[usize::from(k)].clone(),
+        }
+    }
+
     /// The nodes of statement `k` of assertion `n`, from the model's `Expr`.
     pub fn table(&self, n: u16, k: u8) -> Table {
-        let statement = self.lib.statement(usize::from(n));
-        let expr = match k {
-            0xFF => &statement.conclusion,
-            _ => &statement.hyps[usize::from(k)],
-        };
-        spans(expr)
+        spans(&self.expr(n, k))
     }
 }
 

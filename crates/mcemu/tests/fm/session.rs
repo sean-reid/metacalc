@@ -32,6 +32,11 @@ fn calls(n: u16, k: u8) -> Vec<(&'static str, Regs, u8)> {
         ("FM_NODES", regs(0, 0, 0), ok),
         ("FM_NODES", regs(0, 0, 0), ok),
         ("FM_ROWS", regs(0, 94 << 8, 0), ok),
+        ("FM_FOLD", regs(0, 1 << 8, 0), ok),
+        ("FM_FOLDED", regs(0, 0, 0), ok),
+        ("FM_FOLD", regs(0, 0xFF, 0), code("FM_ERR_INDEX")),
+        ("FM_CURSOR", Regs { a: 0, ..regs(0, (94 << 8) | 1, 8) }, ok),
+        ("FM_CURSOR", Regs { a: 0xFF, ..regs(0, (94 << 8) | 1, 8) }, code("FM_ERR_INDEX")),
         ("FM_DRAW", regs(0xFFFF, (94 << 8) | 1, 8), ok),
         ("FM_DRAW", regs(2, (20 << 8) | 3, (3 << 8) | 5), ok),
         ("FM_DRAW", regs(0, 94 << 8, (6 << 8) | 2), ok),
@@ -81,6 +86,9 @@ fn a_routine_on_a_closed_fm_returns_not_open_and_hands_the_state_back_too() {
             ("FM_SELECT", Regs::default()),
             ("FM_NODES", Regs::default()),
             ("FM_ROWS", Regs::default()),
+            ("FM_FOLD", Regs::default()),
+            ("FM_FOLDED", Regs::default()),
+            ("FM_CURSOR", Regs::default()),
             ("FM_DRAW", Regs::default()),
         ] {
             let out = fm.rig.call(target, Regs { iy: IY, ..regs });
@@ -220,10 +228,11 @@ const BANK_B_EXTRA: [(&str, &str); 3] = [
 ];
 
 /// The node table and what fm_nodes builds it from: label and size.
-const NODE_MEMORY: [(&str, &str); 7] = [
+const NODE_MEMORY: [(&str, &str); 8] = [
     ("FM_FIRST", "FM_PLANE"),
     ("FM_LAST", "FM_PLANE"),
     ("FM_DEPTH", "FM_PLANE"),
+    ("FM_FOLDS", "FM_PLANE"),
     ("FM_TLEN", "FM_TREE_SIZE"),
     ("FM_TCNT", "FM_TREE_SIZE"),
     ("FM_TSIZE", "FM_TREE_SIZE"),
@@ -422,6 +431,11 @@ fn a_session_reaches_a_stack_depth_the_header_states() {
                 assert_eq!(fm.rows(20).status(), 0);
                 assert_eq!(fm.draw(1, -2, 94, (0, 8)).status(), 0);
                 assert_eq!(fm.draw(1, 0, 20, (0, 8)).status(), 0);
+                assert_eq!(fm.fold(0, 1).status(), 0);
+                assert_eq!(fm.folded(0).status(), 0);
+                assert_eq!(fm.draw(1, -2, 94, (0, 8)).status(), 0);
+                assert_eq!(fm.cursor(0, 1, -2, 94, (0, 8)).status(), 0);
+                assert_eq!(fm.cursor(0, 0, 0, 20, (0, 8)).status(), 0);
             }
             let page = fm.rig.m.ram_page(SPARE_PAGE);
             let unused = page[low..low + size].iter().take_while(|&&b| b == mark);

@@ -10,6 +10,9 @@
 ; its own: the child takes its place.
 
 nodes_body:
+	ld hl,fm_leave
+	ld (fv_then),hl
+nodes_main:
 	call fm_need
 	jp nz,fm_fail
 	call fm_same_library
@@ -27,7 +30,7 @@ nodes_body:
 	jr z,nb_build
 	ld b,a
 	xor a
-	jp fm_leave
+	jp nb_exit
 nb_build:
 	ld hl,(fv_hdr)
 	ld de,6
@@ -379,6 +382,23 @@ na_fit:
 
 ; in: A = the node count of the table just built at fv_np. Marks the statement built.
 nb_done:
+	push af
+	ld c,a
+	ld b,0
+	ld hl,(fv_nused)
+	ld de,FM_FOLDS
+	add hl,de
+	ld d,h
+	ld e,l
+	inc de
+	ld (hl),0
+	dec bc
+	ld a,b
+	or c
+	jr z,nd_one
+	ldir
+nd_one:
+	pop af
 	ld hl,(fv_hdr)
 	inc hl
 	inc hl
@@ -396,4 +416,8 @@ nb_done:
 	ld (fv_nused),hl
 	ld b,a
 	xor a
-	jp fm_leave
+	jp nb_exit
+
+nb_exit:
+	ld hl,(fv_then)
+	jp (hl)

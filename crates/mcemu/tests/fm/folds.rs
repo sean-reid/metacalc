@@ -1,0 +1,272 @@
+use crate::fixture;
+use crate::nodes::Model;
+use crate::rig::*;
+use crate::support::*;
+use crate::ui_support::{pack, same_frame};
+use mcglyph::Font;
+use mcui::canvas::{Canvas, GUTTER, STATEMENT_WIDTH, TEXT_WIDTH};
+use mcui::expr::Expr;
+use mcui::fold::{Folds, layout};
+
+/// The widths a screen asks for, and one narrower than the ellipsis.
+pub fn widths() -> [usize; 4] {
+    let ellipsis = Font::builtin().glyph("ellipsis").unwrap().width();
+    [94, 60, 30, ellipsis - 1]
+}
+
+pub fn next(seed: &mut u64) -> u64 {
+    *seed ^= *seed << 13;
+    *seed ^= *seed >> 7;
+    *seed ^= *seed << 17;
+    *seed
+}
+
+/// The fold sets tried on a statement: none, each foldable node alone when there are few nodes,
+/// every foldable node of each depth, everything foldable, and seeded random ones, which nest.
+pub fn fold_sets(expr: &Expr, seed: u64, singles: bool) -> Vec<(String, Folds)> {
+    let mut out = vec![("none".to_string(), Folds::none(expr))];
+    let foldable: Vec<usize> = (0..expr.len()).filter(|&n| expr.foldable(n)).collect();
+    if singles {
+        for &n in &foldable {
+            let mut f = Folds::none(expr);
+            f.toggle(expr, n);
+            out.push((format!("node {n}"), f));
+        }
+    }
+    let deepest = (0..expr.len()).map(|n| expr.depth(n)).max().unwrap_or(0);
+    for depth in 0..=deepest {
+        let mut f = Folds::none(expr);
+        for &n in foldable.iter().filter(|&&n| expr.depth(n) == depth) {
+            f.toggle(expr, n);
+        }
+        if f.count() > 0 {
+            out.push((format!("depth {depth}"), f));
+        }
+    }
+    let mut all = Folds::none(expr);
+    for &n in &foldable {
+        all.toggle(expr, n);
+    }
+    if all.count() > 1 {
+        out.push(("every foldable node".to_string(), all));
+    }
+    let mut state = seed | 1;
+    for round in 0..3 {
+        let mut f = Folds::none(expr);
+        for &n in &foldable {
+            if next(&mut state) % 3 == 0 {
+                f.toggle(expr, n);
+            }
+        }
+        if f.count() > 0 {
+            out.push((format!("random {round}"), f));
+        }
+    }
+    out
+}
+
+/// Takes fm from the folds `from` to `to` with fm_fold, setting, clearing and toggling, and checks
+/// what it says of each change.
+pub fn put(fm: &mut Fm, expr: &Expr, from: &Folds, to: &Folds) {
+    for node in 0..expr.len() {
+        let (had, want) = (from.is_folded(node), to.is_folded(node));
+        let mode = if had != want && node % 2 == 0 {
+            2
+        } else {
+            u8::from(want)
+        };
+        let out = fm.fold(node, mode);
+        assert_eq!(out.status(), 0, "fold {node}");
+        assert_eq!(count(out), usize::from(had != want), "fold {node} to {want}");
+    }
+}
+
+/// Whether the model hides `node`: some node above it is folded.
+pub fn hidden(expr: &Expr, folds: &Folds, node: usize) -> bool {
+    let mut at = expr.parent(node);
+    while let Some(parent) = at {
+        if folds.is_folded(parent) {
+            return true;
+        }
+        at = expr.parent(parent);
+    }
+    false
+}
+
+/// The nodes a cursor is tried on: all of a small statement, else a spread, with hidden ones.
+pub fn picks(expr: &Expr, folds: &Folds) -> Vec<usize> {
+    let len = expr.len();
+    if len <= 10 {
+        return (0..len).collect();
+    }
+    let mut out: Vec<usize> = (0..len)
+        .filter(|n| n % 5 == 0 || *n < 3 || *n + 2 > len)
+        .collect();
+    out.extend((0..len).filter(|&n| hidden(expr, folds, n)).take(4));
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// The windows and first rows a screen can ask for: a statement that starts below the top, one
+/// scrolled up with its first lines above the window, and a window that cuts it at both ends.
+pub fn cases(rows: usize) -> Vec<(i16, (u8, u8))> {
+    let rows = rows as i16;
+    vec![
+        (0, (0, 8)),
+        (1, (1, 7)),
+        (-(rows / 2), (0, 8)),
+        (2, (3, 5)),
+        (-2, (2, 4)),
+    ]
+}
+
+/// The origins tried with their widths: the screens', one that starts on column 0, and one
+/// narrower than the ellipsis, where every token and the ellipsis sit alone on a line.
+pub const ORIGINS: [(usize, usize); 4] =
+    [(GUTTER, STATEMENT_WIDTH), (1, TEXT_WIDTH), (0, 96), (1, 4)];
+
+type Place = (usize, i16, (u8, u8));
+
+/// The model's frame for a folded statement, with the cursor on `node` when there is one.
+pub fn model_frame_of(
+    expr: &Expr,
+    folds: &Folds,
+    width: usize,
+    (x, row, window): Place,
+    node: Option<usize>,
+) -> Vec<u8> {
+    let laid = layout(expr, folds, width);
+    let window = isize::from(window.0)..isize::from(window.1);
+    let mut canvas = Canvas::default();
+    canvas.layout(&laid, x, isize::from(row), window.clone());
+    if let Some(node) = node {
+        let rects = laid.cursor(expr, node);
+        canvas.cursor(&rects, x, isize::from(row), window);
+    }
+    pack(&canvas.into_bitmap())
+}
+
+/// What a pass over statements found, so that a test cannot pass with nothing compared.
+#[derive(Default)]
+pub struct Tally {
+    pub rows: usize,
+    pub frames: usize,
+    pub cursors: usize,
+    pub bits: usize,
+    pub folded: usize,
+    pub nested: usize,
+    pub to_edge: usize,
+}
+
+/// Compares fm with the model for one statement under the fold sets. A statement of more than 40
+/// nodes gets at most `big` sets.
+pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, big: usize) {
+    let (n, k) = at;
+    let expr = &model.expr(n, k);
+    let what = format!("statement {k} of assertion {n}");
+    let table = fm.built(n, k);
+    assert_eq!(table.len(), expr.len(), "{what}: nodes");
+    let small = expr.len() <= 12;
+    let mut sets = fold_sets(expr, u64::from(n) * 977 + u64::from(k), small);
+    if expr.len() > 40 {
+        sets.truncate(big.max(1));
+    }
+    let mut now = Folds::none(expr);
+    for (name, folds) in &sets {
+        put(fm, expr, &now, folds);
+        now = folds.clone();
+        let what = format!("{what}, folds {name}");
+        let marked: Vec<usize> = (0..expr.len()).filter(|&n| folds.is_folded(n)).collect();
+        tally.folded += marked.len();
+        tally.nested += marked.iter().filter(|&&n| hidden(expr, folds, n)).count();
+        for width in widths() {
+            let out = fm.rows(width);
+            assert_eq!(out.status(), 0, "{what}: rows");
+            let rows = layout(expr, folds, width).rows();
+            assert_eq!(count(out), rows, "{what}: rows at {width}");
+            tally.rows += 1;
+        }
+        for node in 0..expr.len() {
+            let bits = u8::from(folds.is_folded(node))
+                | u8::from(expr.foldable(node)) << 1
+                | u8::from(hidden(expr, folds, node)) << 2;
+            let out = fm.folded(node);
+            assert_eq!((out.status(), count(out)), (0, usize::from(bits)), "{what}: {node}");
+            tally.bits += 1;
+        }
+        let several = if expr.len() > 40 { 3 } else { 5 };
+        for (o, (x, width)) in ORIGINS.into_iter().enumerate() {
+            let laid = layout(expr, folds, width);
+            let used = if o == 0 { several } else { 2 };
+            for (c, (row, window)) in cases(laid.rows()).into_iter().take(used).enumerate() {
+                let place = (x, row, window);
+                fm.clear();
+                let out = fm.draw(x, row, width, window);
+                assert_eq!(out.status(), 0, "{what}: draw");
+                let want = model_frame_of(expr, folds, width, place, None);
+                let label = format!("{what}, width {width}, x {x}, row {row}, window {window:?}");
+                let drawn = fm.frame();
+                same_frame(&label, &drawn, &want);
+                tally.frames += 1;
+                let nodes = if c == 0 && o == 0 {
+                    picks(expr, folds)
+                } else {
+                    vec![(o * 7 + c * 3 + marked.len()) % expr.len()]
+                };
+                for node in nodes {
+                    let out = fm.cursor(node, x, row, width, window);
+                    assert_eq!((out.status(), count(out)), (0, 0), "{label}: cursor {node}");
+                    let marked = fm.frame();
+                    let mask = model_frame_of(expr, folds, width, place, Some(node));
+                    same_frame(&format!("{label}, cursor on {node}"), &marked, &mask);
+                    tally.cursors += 1;
+                    let rects = laid.cursor(expr, node);
+                    tally.to_edge += usize::from(rects.iter().any(|r| x + r.x + r.width >= 95));
+                    fm.cursor(node, x, row, width, window);
+                    same_frame(&format!("{label}, cursor on {node} twice"), &fm.frame(), &drawn);
+                }
+            }
+        }
+    }
+}
+
+pub fn run_library(bytes: &[u8], every: usize, big: usize) -> Tally {
+    let model = Model::new(bytes);
+    let mut fm = Fm::new(bytes);
+    let mut tally = Tally::default();
+    for (i, (n, k, _)) in statements(&decoded(bytes)).iter().enumerate() {
+        if i % every == 0 {
+            compare(&mut fm, &model, (*n, *k), &mut tally, big);
+        }
+    }
+    tally
+}
+
+#[test]
+fn rows_frames_cursors_and_fold_bits_are_the_models_for_the_fixture_under_every_kind_of_fold() {
+    let tally = run_library(&fixture::nodes_library(), 1, 6);
+    println!(
+        "fixture: {} row counts, {} fold bit sets, {} frames, {} cursors, {} folded nodes, {} \
+         of them nested, {} cursors to the last column",
+        tally.rows, tally.bits, tally.frames, tally.cursors, tally.folded, tally.nested,
+        tally.to_edge
+    );
+    assert!(tally.rows > 2000 && tally.frames > 1000 && tally.cursors > 2500);
+    assert!(tally.nested > 20 && tally.to_edge > 10);
+}
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn the_shipped_libraries_fold_and_draw_a_cursor_as_the_model_does() {
+    let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    for (name, every) in [("prop", 12), ("pred", 30), ("ring", 40)] {
+        let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
+        let tally = run_library(&bytes, every, 4);
+        println!(
+            "{name}: {} row counts, {} frames, {} cursors, {} folded nodes, {} of them nested",
+            tally.rows, tally.frames, tally.cursors, tally.folded, tally.nested
+        );
+        assert!(tally.frames > 100 && tally.cursors > 100, "{name}");
+    }
+}

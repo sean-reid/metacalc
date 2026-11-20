@@ -6,6 +6,12 @@ mod errors;
 mod fixture;
 #[path = "common/guard.rs"]
 mod guard;
+#[path = "fm/folds.rs"]
+mod folds;
+#[path = "fm/foldspeed.rs"]
+mod foldspeed;
+#[path = "fm/foldstate.rs"]
+mod foldstate;
 #[path = "fm/kernel.rs"]
 mod kernel;
 #[path = "fm/layout.rs"]
