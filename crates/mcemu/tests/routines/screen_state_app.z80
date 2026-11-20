@@ -1,0 +1,172 @@
+#include "equates.inc"
+#define APP_NAME "scrstate"
+#include "header.inc"
+
+; Fills the candidate regions in REGIONS with a pattern and waits in _GetKey, the way app_key
+; does. RESULT is the count of returns, RESULT + 1 the codes; after ENTER it runs the calls in
+; the battery below and, after each, sets RESULT + 2 to the call's number and waits until the
+; host writes the same number to RESULT + 3. RESULT + 4 is appFlags as the app found it.
+RESULT  = 0A800h
+STEP    = 37
+KEY_LOG = RESULT + 8
+APPFLAGS = 0Dh
+
+start:
+	ei
+	xor a
+	ld (RESULT), a
+	ld (RESULT + 2), a
+	ld (RESULT + 3), a
+	ld a, (iy + APPFLAGS)
+	ld (RESULT + 4), a
+#ifdef NO_SAVE_TEXT
+	res 1, (iy + APPFLAGS)
+#endif
+	ld ix, regions
+fill_region:
+	ld l, (ix + 0)
+	ld h, (ix + 1)
+	ld c, (ix + 2)
+	ld b, (ix + 3)
+	ld a, c
+	or b
+	jr z, wait
+	ld a, (ix + 4)
+fill:
+	ld (hl), a
+	inc hl
+	add a, STEP
+	dec bc
+	ld d, a
+	ld a, b
+	or c
+	ld a, d
+	jr nz, fill
+	ld de, 5
+	add ix, de
+	jr fill_region
+
+wait:
+	ei
+	bcall(_GetKey)
+	bit onInterrupt, (iy + onFlags)
+	jr nz, on_key
+	ld c, a
+	ld a, (RESULT)
+	ld e, a
+	inc a
+	ld (RESULT), a
+	ld d, 0
+	ld hl, KEY_LOG
+	add hl, de
+	ld (hl), c
+	ld a, c
+	cp 5
+	jr nz, wait
+	call battery
+	jr wait
+
+on_key:
+	ei
+	halt
+	di
+	in a, (4)
+	bit 3, a
+	jr z, on_key
+	res onInterrupt, (iy + onFlags)
+	jr wait
+
+; Sets the call number and waits for the host to acknowledge it.
+sync:
+	ld (RESULT + 2), a
+sync_wait:
+	ei
+	halt
+	ld a, (RESULT + 3)
+	ld hl, RESULT + 2
+	cp (hl)
+	jr nz, sync_wait
+	ret
+
+battery:
+	bcall(_GetCSC)
+	ld a, 1
+	call sync
+	ld a, 'A'
+	bcall(_PutC)
+	ld a, 2
+	call sync
+	bcall(_ClrLCDFull)
+	ld a, 3
+	call sync
+	bcall(_GrBufCpy)
+	ld a, 4
+	call sync
+	bcall(_NewLine)
+	ld a, 5
+	call sync
+	call name_op1
+	ld hl, 40
+	bcall(_CreateAppVar)
+	ld a, 6
+	call sync
+	call name_op1
+	bcall(_ChkFindSym)
+	ld a, 7
+	call sync
+	ld hl, 300
+	bcall(_EnoughMem)
+	ld a, 8
+	call sync
+	call name_op1
+	bcall(_Arc_Unarc)
+	ld a, 9
+	call sync
+	call name_op1
+	bcall(_ChkFindSym)
+	push bc
+	push de
+	ld a, 10
+	call sync
+	pop hl
+	pop bc
+	ld a, b
+	or a
+	jr z, skip_read
+	bcall(_LoadDEIndPaged)
+skip_read:
+	ld a, 11
+	call sync
+	call name_op1
+	bcall(_Arc_Unarc)
+	ld a, 12
+	call sync
+	call name_op1
+	bcall(_ChkFindSym)
+	bcall(_DelVarArc)
+	ld a, 13
+	jp sync
+
+name_op1:
+	ld hl, var_name
+	ld de, OP1
+	ld bc, 9
+	ldir
+	ret
+
+var_name:
+	.db 15h, "scrst", 0, 0, 0
+
+; Address, length, first byte of each region; the host holds the same table. SCR_STATE and the
+; rest of appData are the two halves of appData.
+regions:
+	.dw 8508h, 128 \ .db 11h
+	.dw 966Eh, 128 \ .db 22h
+	.dw 8A3Ah, 531 \ .db 33h
+	.dw SCR_STATE, SCR_STATE_SIZE \ .db 44h
+	.dw SCR_STATE + SCR_STATE_SIZE, 256 - SCR_STATE_SIZE \ .db 45h
+	.dw 82A5h, 323 \ .db 55h
+	.dw 9198h, 283 \ .db 66h
+	.dw 90D3h, 108 \ .db 77h
+	.dw 86ECh, 768 \ .db 88h
+	.dw 0, 0 \ .db 0
