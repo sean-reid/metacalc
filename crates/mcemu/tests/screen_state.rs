@@ -29,6 +29,10 @@ const B_ON: usize = RESULT + 0x202;
 const B_OFF: usize = RESULT + 0x203;
 /// What the ON script writes to MARK_ON.
 const SCRIPT_RAN_ON: u8 = 0x5A;
+/// What the OFF script writes to MARK_OFF.
+const SCRIPT_RAN_OFF: u8 = 0xA5;
+/// The length of the script AppVars, SCRIPT_LEN in the app.
+const SCRIPT_LEN: usize = 64;
 const SAVE_SCREEN: (usize, usize) = (0x86EC, 768);
 const POWER_DOWN: u8 = 0x10;
 const STEP: u8 = 37;
@@ -136,6 +140,8 @@ struct Rig {
     flags_at_start: u8,
     flags_now: u8,
     regions: Vec<Region>,
+    /// appData as each event left it.
+    app_data: Vec<(String, Vec<u8>)>,
     /// The report: one line per event.
     log: Vec<(String, Damage)>,
     /// saveSScreen as the auto power down left it, and the LCD's pixels packed 8 to a byte, the
@@ -162,6 +168,7 @@ impl Rig {
             flags_at_start: 0,
             flags_now: 0,
             regions,
+            app_data: Vec::new(),
             log: Vec::new(),
             save_screen_after_apd: Vec::new(),
             lcd_at_apd: Vec::new(),
@@ -208,9 +215,12 @@ impl Rig {
         out
     }
 
-    /// Records what the event changed, then writes the patterns back for the next event.
+    /// Records what the event changed and the 256 bytes of appData as it left them, then writes
+    /// the patterns back for the next event.
     fn record(&mut self, event: &str) {
         let damage = self.damage();
+        let app_data = self.ram(0x8000 - RAM_BASE, 0x100);
+        self.app_data.push((event.to_string(), app_data));
         for (_, addr, len, seed) in self.regions.clone() {
             self.poke(addr - RAM_BASE, &pattern(len, seed));
         }
@@ -397,6 +407,12 @@ fn measure(defines: &[&str]) -> Rig {
 const APD: &str = "auto power down inside _GetKey";
 
 impl Rig {
+    /// appData as the event named `event` left it.
+    fn app_data_after(&self, event: &str) -> &[u8] {
+        let hit = self.app_data.iter().find(|(name, _)| name == event);
+        &hit.unwrap_or_else(|| panic!("no event {event}")).1
+    }
+
     /// What the one event whose name starts with `prefix` changed.
     fn event(&self, prefix: &str) -> &Damage {
         let mut hits = self.log.iter().filter(|(name, _)| name.starts_with(prefix));
@@ -499,11 +515,29 @@ fn found(rig: &mut Rig) -> (u8, u8) {
     (rig.ram(B_ON, 1)[0], rig.ram(B_OFF, 1)[0])
 }
 
+/// The script AppVars the app makes: code, then 0C9h to SCRIPT_LEN bytes.
+fn script(mark_at: u8, mark: u8) -> Vec<u8> {
+    let mut code = vec![0x3E, mark, 0x32, mark_at, 0xAA, 0xC9];
+    code.resize(SCRIPT_LEN, 0xC9);
+    code
+}
+
+/// What the OS leaves at 8000h when it runs `script` from RAM: the high byte of the size word,
+/// then the script's first SCRIPT_LEN - 1 bytes, which is SCRIPT_LEN bytes in all; the rest of
+/// appData is as the test filled it.
+fn app_data_after_copy(script: &[u8]) -> Vec<u8> {
+    let mut want = pattern(0x100, 0x44);
+    want[0] = 0;
+    want[1..SCRIPT_LEN].copy_from_slice(&script[..SCRIPT_LEN - 1]);
+    want
+}
+
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn an_on_script_whose_flag_is_set_runs_on_waking_and_is_copied_over_the_start_of_app_data() {
-    for defines in [&["MAKE_ON"][..], &["MAKE_ON", "MAKE_OFF"][..]] {
-        let mut rig = measure_power(defines, 1);
+fn an_on_script_in_ram_with_bit_0_set_runs_on_waking_after_auto_power_down_and_is_copied_to_8000h()
+{
+    for (defines, flags) in [(&["MAKE_ON"][..], 1), (&["MAKE_ON", "MAKE_OFF"][..], 3)] {
+        let mut rig = measure_power(defines, flags);
         println!("{defines:?}\n{}", rig.report());
         assert_eq!(found(&mut rig).0, 0, "ONSCRPT is in RAM");
         assert_eq!(
@@ -512,13 +546,14 @@ fn an_on_script_whose_flag_is_set_runs_on_waking_and_is_copied_over_the_start_of
                 ("after the power down", (0, 0)),
                 ("after ON, 3 s later", (SCRIPT_RAN_ON, 0))
             ],
-            "the script ran when the OS woke, and the OFF script did not at the power down"
+            "{defines:?}: the ON script ran at the wake and not before"
         );
         assert_eq!(
-            rig.changes_to("appData"),
-            [(WAKE, &vec![(0, 64)])],
-            "the OS copies the script's size word and code to 8000h"
+            rig.app_data_after(WAKE),
+            app_data_after_copy(&script(0x00, SCRIPT_RAN_ON)),
+            "SCRIPT_LEN bytes from the size word's high byte: a zero, then the script less its last byte"
         );
+        assert_eq!(rig.changes_to("appData"), [(WAKE, &vec![(0, SCRIPT_LEN)])]);
         for region in ["SCR_STACK", "SCR_VARS"] {
             assert_eq!(rig.changes_to(region), [], "{region} with the script run");
         }
@@ -527,12 +562,61 @@ fn an_on_script_whose_flag_is_set_runs_on_waking_and_is_copied_over_the_start_of
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn the_scripts_do_not_run_without_their_flags_or_when_archived_or_off_at_auto_power_down() {
-    let cases: [(&[&str], u8); 6] = [
+fn an_off_script_in_ram_with_bit_1_set_runs_at_2nd_off_and_never_at_an_auto_power_down() {
+    let off_script = script(0x01, SCRIPT_RAN_OFF);
+    for flags in [2, 3] {
+        let mut rig = Rig::start(&["MAKE_OFF"]);
+        rig.os.m.ram_page(1)[SCRIPT_FLAGS] |= flags;
+        rig.user_power_off();
+        assert_eq!(found(&mut rig).1, 0, "OFFSCRPT is in RAM");
+        assert_eq!(
+            rig.marks,
+            [
+                ("after 2nd+OFF", (0, SCRIPT_RAN_OFF)),
+                ("after ON, 3 s later", (0, SCRIPT_RAN_OFF))
+            ],
+            "flags {flags}: the OFF script ran at 2nd+OFF"
+        );
+        assert_eq!(
+            rig.app_data_after("2nd+OFF"),
+            app_data_after_copy(&off_script),
+            "flags {flags}: the same copy as the ON script's"
+        );
+        assert_eq!(
+            rig.changes_to("appData"),
+            [("2nd+OFF", &vec![(0, SCRIPT_LEN)])]
+        );
+        let apd = measure_power(&["MAKE_OFF"], flags);
+        assert_eq!(
+            apd.marks,
+            [
+                ("after the power down", (0, 0)),
+                ("after ON, 3 s later", (0, 0))
+            ],
+            "flags {flags}: the same script and flags at an auto power down"
+        );
+        assert_eq!(apd.changes_to("appData"), [], "flags {flags}");
+    }
+    for flags in [0, 1] {
+        let mut rig = Rig::start(&["MAKE_OFF"]);
+        rig.os.m.ram_page(1)[SCRIPT_FLAGS] |= flags;
+        rig.user_power_off();
+        assert_eq!(
+            rig.marks,
+            [("after 2nd+OFF", (0, 0)), ("after ON, 3 s later", (0, 0))],
+            "flags {flags} leave bit 1 clear"
+        );
+        assert_eq!(rig.changes_to("appData"), [], "flags {flags}");
+    }
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn the_scripts_do_not_run_without_their_flags_or_when_archived() {
+    let cases: [(&[&str], u8); 5] = [
         (&[], 3),
         (&["MAKE_ON"], 0),
         (&["MAKE_ON", "MAKE_OFF"], 0),
-        (&["MAKE_OFF"], 3),
         (&["MAKE_ON", "MAKE_OFF", "ARCHIVE_SCRIPTS"], 3),
         (&["MAKE_ON", "ARCHIVE_SCRIPTS"], 1),
     ];
@@ -597,5 +681,25 @@ fn leaving_the_app_redraws_the_home_screen_in_text_shadow_and_leaves_the_screen_
     );
     for region in ["SCR_STACK", "SCR_VARS"] {
         assert_eq!(rig.changes_to(region), [], "{region} on leaving");
+    }
+}
+
+impl Rig {
+    /// Presses 2nd+OFF, waits for the OS to power down, and wakes it with ON.
+    fn user_power_off(&mut self) {
+        self.tap(SCAN_2ND);
+        self.os.m.press_key(Machine::KEY_ON);
+        self.os.run_ms(300);
+        self.os.m.release_key(Machine::KEY_ON);
+        self.os.run_ms(2000);
+        assert_ne!(self.os.m.in_port(3) & POWER_DOWN, 0, "2nd+OFF powered down");
+        let marks = self.marks();
+        self.marks.push(("after 2nd+OFF", marks));
+        self.record("2nd+OFF");
+        self.tap(Machine::KEY_ON);
+        self.os.run_ms(3000);
+        let marks = self.marks();
+        self.marks.push(("after ON, 3 s later", marks));
+        self.record(WAKE);
     }
 }

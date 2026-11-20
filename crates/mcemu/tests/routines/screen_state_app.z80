@@ -10,11 +10,15 @@
 ;   4   byte    appFlags as the app found it
 ;   5   byte    B from _ChkFindSym on the battery's variable after it was archived
 ;   6   byte    B after it was unarchived
-;   8   bytes   the codes _GetKey returned, the low byte of the count indexing them
+;   8   100h    the codes _GetKey returned, the low byte of the count indexing them
 ;   200h        5Ah when the ONSCRPT script ran
 ;   201h        0A5h when the OFFSCRPT script ran
 ;   202h, 203h  B from _ChkFindSym on ONSCRPT and on OFFSCRPT, 0 for in RAM
-; MAKE_ON and MAKE_OFF create those AppVars before the fill; ARCHIVE_SCRIPTS archives them.
+; The defines the app takes:
+;   MAKE_ON, MAKE_OFF  create the ONSCRPT or OFFSCRPT AppVar, SCRIPT_LEN bytes, before the fill
+;   ARCHIVE_SCRIPTS    archive the AppVars the two above made
+;   NO_SAVE_TEXT       clear appTextSave in appFlags before the fill
+;   EXIT_ON_QUIT       leave for the home screen when _GetKey returns QUIT, 2nd+MODE
 _PutS = 450Ah
 RESULT  = 0A800h
 STEP    = 37
@@ -46,9 +50,6 @@ start:
 	call find
 	ld a, b
 	ld (RESULT + 203h), a
-#endif
-#ifdef EXIT_TO_HOME
-	bjump(_JForceCmdNoChar)
 #endif
 	ld a, (iy + APPFLAGS)
 	ld (RESULT + 4), a

@@ -4,11 +4,14 @@
 ; The file that owns a region lays out the bytes inside it. Assembling any image that includes
 ; this file fails when two regions overlap or a region leaves its bank.
 ;
-; SCR_VARS and SCR_STACK hold state that must outlive a wait in _GetKey. Measured under OS 2.43
-; in the emulator, both keep every byte through keys, 2nd, ALPHA, alpha lock, ON, auto power down
-; with ON to wake, and the OS calls the app makes. appData does not: the OS copies an ONSCRPT
-; script over its start when it wakes, so the state is not there. auto power down copies the
-; screen's pixels into saveSScreen.
+; SCR_VARS and SCR_STACK hold state that must outlive a wait in _GetKey. The figures here are
+; measured under OS 2.43 in the emulator; no calculator was tried. Both regions kept every byte
+; through the events crates/mcemu/tests/screen_state.rs drives: keys, 2nd, ALPHA, alpha lock, the
+; contrast keys, ON, an auto power down with ON to wake, an ONSCRPT that runs, the OS calls that
+; test makes, and leaving the app. appData did not: with an ONSCRPT AppVar in RAM and bit 0 of
+; the flag byte at iy+33h set, the OS copied a zero and the script's first 63 bytes over 8000h
+; when it woke, so the state is not there. At an auto power down the OS copied the screen's
+; pixels into saveSScreen.
 ;
 ;   name              bank  where
 ;   UI_VARS           B     the UI's variables, in saveSScreen; the OS overwrites it with the

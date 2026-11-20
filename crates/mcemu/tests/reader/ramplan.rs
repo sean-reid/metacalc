@@ -83,16 +83,19 @@ fn fm_low_overlays_the_kernels_low_region_above_the_page_of_its_parameters() {
     );
 }
 
-/// The OS's areas and the first label after each, from ti83plus.inc: smallEditRAM runs to XFact
-/// and cmdShadow to cmdShadCur.
+/// The OS's areas and the first variable after each, as app/src/equates.inc names them:
+/// smallEditRAM runs to XFact and cmdShadow to cmdShadCur.
 #[test]
 fn the_screen_state_regions_are_the_whole_of_their_os_areas() {
-    for (name, area, next) in [("SCR_VARS", 0x90D3, 0x913F), ("SCR_STACK", 0x966E, 0x96EE)] {
+    for (name, area, next) in [
+        ("SCR_VARS", "SMALLEDITRAM", "XFACT"),
+        ("SCR_STACK", "CMDSHADOW", "CMDSHADCUR"),
+    ] {
         let (base, size) = (at(name), at(&format!("{name}_SIZE")));
-        assert_eq!(base, area, "{name} starts the OS area");
+        assert_eq!(base, at(area), "{name} starts the OS area");
         assert_eq!(
             base + size,
-            next,
+            at(next),
             "{name} ends where the next OS variable starts"
         );
     }
