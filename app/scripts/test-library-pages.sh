@@ -75,7 +75,7 @@ sh "$app/scripts/check-8xk.sh" -p 3 -l "$dir/with space/my library.mclib" "$dir/
 echo "test-library-pages: paths with spaces"
 
 # Both scripts refuse a code page count that is not a positive number, and say how to call them.
-for bad in 0 x 1x ''; do
+for bad in 0 00 08 09 x 1x ''; do
 	for script in check-8xk.sh test-check-8xk.sh; do
 		if out=$(sh "$app/scripts/$script" -p "$bad" "$dir/build/metacalc.8xk" 2>&1); then
 			echo "test-library-pages: $script accepted -p '$bad'" >&2

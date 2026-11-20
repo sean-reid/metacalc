@@ -17,7 +17,7 @@ while :; do
 	esac
 done
 case $code in
-	'' | *[!0-9]* | 0) echo "$usage" >&2; exit 2 ;;
+	'' | *[!0-9]* | 0*) echo "$usage" >&2; exit 2 ;;
 esac
 f=${1:?$usage}
 want=${2:-metacalc}

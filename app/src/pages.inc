@@ -56,7 +56,9 @@ stub .equ $
 #define FAR_DRAW_ENTRY(real, stub) FAR_LABEL_TO_DRAW(real, stub)
 #define FAR_DATA_ENTRY(real, stub) FAR_LABEL_TO_DATA(real, stub)
 
-; Every page after the entry page starts with no header, so farcall.inc pads it up to FAR_CALL.
+; farcall.inc pads a page up to FAR_CALL: every page after the entry page starts with no header
+; and needs it, and on the entry page, where the header and jump already reach FAR_CALL, it is no
+; bytes.
 #define FAR_PAD
 
 #define PAGE_NEXT 1

@@ -20,6 +20,10 @@ pub const OS_FLAGS: usize = 0x09F0;
 pub const ON_FLAGS: usize = OS_FLAGS + 9;
 pub const ON_INTERRUPT: u8 = 0x10;
 /// The OS flag byte holding `graphDraw`, bit 0, which the app sets as its last mark before it leaves.
+/// The byte the control app writes just before it hands the machine back: the first byte of the app's
+/// APP_BUF in ram_map.inc, which the OS leaves alone while it idles at the home screen. The one
+/// definition: `assemble_routine` gives it to the assembler.
+pub const EXIT_MARK: u16 = 0x8806;
 pub const GRAPH_FLAGS: usize = OS_FLAGS + 3;
 
 fn rom() -> Option<Vec<u8>> {
@@ -125,6 +129,14 @@ pub fn start_model(library: Option<&[u8]>, status: u8) -> mcglyph::Bitmap {
     canvas.title("metacalc", "");
     match (library, status) {
         (_, 1..) => canvas.text(1, 7, &format!("{status:02X}")),
+        (Some(bytes), 0)
+            if mcpack::library::decode(bytes)
+                .expect("the library decodes")
+                .assertions
+                .is_empty() =>
+        {
+            panic!("a library with no assertion draws only a status: pass it")
+        }
         (None, 0) => canvas.text(1, 3, "CLEAR to quit"),
         (Some(bytes), 0) => {
             let library = mcpack::library::decode(bytes).expect("the library decodes");
@@ -182,6 +194,7 @@ pub fn assemble_routine(file: &str) -> Vec<u8> {
     let wrapper = root.join("../../scripts/spasm.sh");
     let run = Command::new("sh")
         .arg(wrapper)
+        .arg(format!("-DEXIT_MARK=${EXIT_MARK:04X}"))
         .arg("-I")
         .arg(root.join("../../app/src"))
         .arg(root.join("tests/routines").join(file))

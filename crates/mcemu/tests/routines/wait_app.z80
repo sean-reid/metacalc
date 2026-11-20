@@ -4,7 +4,9 @@
 
 ; The shell's wait for CLEAR through _GetKey and exit with none of its drawing. It writes
 ; EXIT_MARK just before it leaves, so a test can tell that CLEAR reached it.
-EXIT_MARK = 8806h
+#ifndef EXIT_MARK
+ .error "EXIT_MARK is the address the test reads, given on the command line"
+#endif
 start:
 wait_for_clear:
 	ei

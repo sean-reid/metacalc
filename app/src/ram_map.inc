@@ -8,7 +8,10 @@
 ;   UI_VARS           B     the UI's variables, in saveSScreen; the OS zeroes it when auto power
 ;                           down fires in _GetKey
 ;   UI_FRAME          B     the UI's 96 by 64 frame, plotSScreen
-;   KD_SCRATCH        B     the kernel driver's scratch, from libPage, in appBackUpScreen
+;   KD_SCRATCH        B     the kernel driver's scratch, from libPage, in appBackUpScreen. The app's own
+;                           two bytes are libPage (offset 0) and appStatus (offset 1), checked in
+;                           equates.inc; probe/kerndriver.inc lays out its own variables over the same
+;                           bytes in its own image, where offset 1 is not appStatus
 ;   FAR_VARS          B     the cross-page call's scratch (app/src/farcall.inc), in the gap
 ;                           between KD_SCRATCH and LIB_STATE
 ;   LIB_STATE         B     the reader's state, after the driver's scratch
@@ -18,7 +21,8 @@
 ;   FM_SCRATCH        B     fm's 256 byte buffer for the reader's accessors, in saveSScreen after
 ;                           UI_VARS; it holds nothing across calls
 ;   APP_BUF           B     the shell's 256 byte buffer for the reader's scratch and the strings it draws, in
-;                           saveSScreen after FM_SCRATCH; it holds nothing across a key wait
+;                           saveSScreen after FM_SCRATCH; it holds nothing across a key wait, since the
+;                           OS writes the screen's pixels into saveSScreen at an auto power down
 ;   FM_RAM            C     fm's working memory, an overlay on the kernel's high region from its
 ;                           start; the kernel uses that region only inside a kernel call, so fm
 ;                           and the kernel share it through the ready mark (fm/fm.z80)

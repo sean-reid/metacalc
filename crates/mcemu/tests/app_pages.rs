@@ -25,6 +25,8 @@ mod room;
 mod screen;
 #[path = "app_pages/speed.rs"]
 mod speed;
+#[path = "app_pages/stubs.rs"]
+mod stubs;
 
 #[allow(dead_code)]
 #[path = "fm/rig.rs"]

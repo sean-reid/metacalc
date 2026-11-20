@@ -141,6 +141,15 @@ pub fn started_on_real_os(built: &'static Built) -> Machine {
     os.m
 }
 
+/// Sends the entry page's far entry `stub` to the RAM routine at `hook` before it goes on: the
+/// stub's last three bytes, its `jp far_pageN`, become `jp hook`. The hook ends with a jump to the
+/// far routine itself.
+pub fn hook_stub(m: &mut Machine, built: &Built, stub: &str, hook: u16) {
+    let at = built.label(stub);
+    let [lo, hi] = hook.to_le_bytes();
+    m.load_flash(BASE, usize::from(at - 0x4000) + 4, &[0xC3, lo, hi]);
+}
+
 /// What a routine is called with.
 #[derive(Clone, Copy, Default)]
 pub struct In {
@@ -171,9 +180,16 @@ pub struct App {
 impl App {
     /// The app installed, launched and run until it waits for a key, on the stub OS.
     pub fn boot(built: &'static Built) -> App {
+        App::boot_with(built, |_| {})
+    }
+
+    /// `boot` with `setup` run on the launched machine before the app's first instruction: it may
+    /// fill RAM or patch the installed pages.
+    pub fn boot_with(built: &'static Built, setup: impl FnOnce(&mut Machine)) -> App {
         let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
         m.install_app(&built.file, BASE).expect("the app installs");
         m.launch(BASE).expect("the app launches");
+        setup(&mut m);
         assert_eq!(m.run_app(BOOT).stop, Stop::Limit, "the app waits for a key");
         App { m, built }
     }

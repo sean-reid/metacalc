@@ -52,8 +52,6 @@ fn flags(os: &mut RealOs) -> Vec<u8> {
     os.ram(OS_FLAGS, FLAGS_END - OS_FLAGS)
 }
 
-/// Where the control app writes `EXIT_MARK` just before it hands the machine back.
-const EXIT_MARK: usize = 0x8806 - 0x8000;
 const EXIT_MARK_VALUE: u8 = 0xA5;
 
 /// Runs the app to its CLEAR exit, with ON held for `hold_on` ms inside it, and settles at the
@@ -139,7 +137,7 @@ fn visit_from_a_graph(app: &[u8], hold_on: u32, start: Option<&[bool]>) -> (Home
     let before = at_home(&mut os, pc);
     visit(&mut os, hold_on, start);
     let after = at_home(&mut os, pc);
-    let mark = os.ram(EXIT_MARK, 1)[0];
+    let mark = os.ram(usize::from(EXIT_MARK) - 0x8000, 1)[0];
     (before, after, mark)
 }
 
@@ -182,7 +180,7 @@ fn the_os_is_in_the_state_it_was_in_before_the_shell_ran() {
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn an_on_press_is_taken_by_the_app_and_a_break_set_before_clear_is_gone_when_it_leaves() {
+fn an_on_press_is_taken_by_the_app_and_none_is_left_when_it_leaves() {
     let app = shell();
     let mut os = RealOs::boot(&app);
     os.tap(KEY_GRAPH, 150, 2500);
@@ -199,7 +197,8 @@ fn an_on_press_is_taken_by_the_app_and_a_break_set_before_clear_is_gone_when_it_
         "the app is still running and showing its screen"
     );
     assert_eq!(os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW, 0, "not left yet");
-    // A break the OS flags just before CLEAR must not outlive the app.
+    // A break flagged before CLEAR is taken by app_key's own branch, not by the exit's `res`; the
+    // exit's is shown by the stub test `a_break_flagged_as_the_app_reads_clear_is_cleared_by_its_exit`.
     os.m.ram_page(1)[ON_FLAGS] |= ON_INTERRUPT;
     os.run_ms(100);
     assert_eq!(os.on_flags() & ON_INTERRUPT, 0, "app_key took the break");

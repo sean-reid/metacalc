@@ -33,8 +33,12 @@ fn a_one_page_app_reads_as_check_8xk_sees_it() {
     assert!(image.windows(3).any(|w| w == [0x02, 0x2D, 0x40]));
 }
 
-/// The data length is what the type 00 records add up to, and every page after the first starts
-/// with the same cross-page call at 4083h as the first.
+/// The fixture is `make -C app BUILD=$TMP && cp $TMP/metacalc.8xk
+/// crates/mcsend/tests/fixtures/metacalc-three-pages.8xk`, an app with no library. Only its
+/// structure is read here, so the signature in it need not match the source it was built from and
+/// the fixture need not be rebuilt when the app changes. The data length is what the type 00
+/// records add up to, and the far call at 4083h is the same 63 bytes on all three pages; 63 is
+/// farcall.inc's length, which crates/mcemu/tests/app_pages/room.rs checks against the label file.
 #[test]
 fn the_three_page_app_the_repo_builds_reads_as_check_8xk_sees_it() {
     let app = App::parse(THREE_PAGES).unwrap();

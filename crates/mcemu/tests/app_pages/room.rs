@@ -94,6 +94,8 @@ fn app_buf_refuses_every_region_it_could_overlap_and_the_end_of_bank_b() {
         ("$8800", "APP_BUF and FM_SCRATCH overlap"),
         ("$9250", "APP_BUF and UI_FRAME overlap"),
         ("$9780", "APP_BUF and KD_SCRATCH overlap"),
+        ("$9897", "APP_BUF and FAR_VARS overlap"),
+        ("$9AC0", "APP_BUF and LIB_STATE overlap"),
         ("$BF80", "APP_BUF runs past bank B"),
     ] {
         let why = go(&format!("buf-{}", &at[1..]), at).expect_err(want);
@@ -167,4 +169,27 @@ fn the_far_entries_of_the_reader_are_the_routines_its_header_lists() {
         listed.len(),
         "an entry for a routine the header does not list"
     );
+}
+
+#[test]
+fn libpage_and_appstatus_must_lie_inside_kd_scratch() {
+    let go = |name: &str, size: &str| {
+        assemble_with(
+            name,
+            "equates.inc",
+            "",
+            &[&format!("KD_SCRATCH_SIZE={size}")],
+        )
+    };
+    go("kd-2", "2").expect("libPage and appStatus fit in two bytes");
+    let why = go("kd-1", "1").expect_err("appStatus is the second byte");
+    assert!(why.contains("must lie inside KD_SCRATCH"), "{why}");
+}
+
+/// The far call's code is 63 bytes from FAR_CALL, the length crates/mcsend/tests/tifile.rs compares
+/// on the pages of its fixture.
+#[test]
+fn the_far_call_is_63_bytes_long() {
+    let built = plain();
+    assert_eq!(built.label("far_end") - built.label("far_jump"), 63);
 }

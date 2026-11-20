@@ -2,13 +2,14 @@
 ; them. This file is the entry page: the header, the shell and every call into the OS. Everything
 ; it needs from the canvas, fm, the kernel and the reader it reaches through a far entry.
 ;
-; Start. far_init, then with LIBRARY: app_find_library, kernel_reset, lib_open on the library's chunk
-; 0 and fm_open; the first status that is not 0 is kept in appStatus. The canvas font is set once.
+; Start. far_init, the canvas font (fm_open needs it), then with LIBRARY: app_find_library,
+; kernel_reset, lib_open on the library's chunk 0 and fm_open; the first status that is not 0 is kept
+; in appStatus.
 ; Screen, drawn again after every key but CLEAR and QUIT, which leave:
 ;   with LIBRARY  row 0 the title, row 1 the label of the library's first assertion, rows 2 to 6 its
-;                 conclusion from fm_assertion and fm_draw, row 7 the hint; a refused call leaves
-;                 the formula out and shows its status as two hex digits on row 7 in place of the
-;                 hint
+;                 conclusion from fm_assertion and fm_draw, row 7 the hint; the label is drawn
+;                 once both have returned 0, and a refused call leaves everything under the title
+;                 out and shows its status as two hex digits on row 7 in place of the hint
 ;   without       row 0 the title, row 3 the hint
 ; RAM: the canvas's, fm's and the kernel's blocks in ram_map.inc, libPage (the flash page of
 ; library chunk 0) and appStatus after it, and APP_BUF, which holds the reader's scratch and the
@@ -41,6 +42,8 @@ FORMULA_WIDTH = 92
 
 app_start:
 	call far_init
+	ld hl, ui_font
+	call far_ui_set_font
 	xor a
 	ld (appStatus), a
 #ifdef LIBRARY
@@ -51,13 +54,10 @@ app_start:
 	call far_lib_open
 	ld (appStatus), a
 	or a
-	jr nz, app_font
+	jr nz, app_screen
 	call far_fm_open
 	ld (appStatus), a
 #endif
-app_font:
-	ld hl, ui_font
-	call far_ui_set_font
 app_screen:
 	call far_ui_clear
 	ld hl, str_title
@@ -97,10 +97,6 @@ app_library_rows:
 	jr nz, app_kept
 	ld hl, APP_BUF
 	call app_codes
-	ld hl, APP_BUF
-	ld de, HINT_COL
-	ld b, LABEL_ROW
-	call far_ui_text
 	ld hl, 0
 	call far_fm_assertion
 	or a
@@ -113,6 +109,10 @@ app_library_rows:
 	call far_fm_draw
 	or a
 	jr nz, app_kept
+	ld hl, APP_BUF
+	ld de, HINT_COL
+	ld b, LABEL_ROW
+	call far_ui_text
 	ld hl, str_hint
 	ld de, HINT_COL
 	ld b, LIBRARY_HINT_ROW
