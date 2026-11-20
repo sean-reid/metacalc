@@ -55,6 +55,7 @@ expect reader "$z80" lib/lib.z80
 expect drawing "$z80" ui/blit.inc
 expect formulas "$z80" fm/layout.inc
 expect formula-header "$z80" fm/fm.z80
+expect screen-framework "$z80" scr/scr.z80
 expect formula-prefix-only "$every" fmx/file
 expect shell "$z80" app/src/metacalc.z80
 expect check-app "$z80" probe/kerndriver.inc
