@@ -264,11 +264,11 @@ fn only_the_whole_word_fm_owned_keeps_fm_open() {
 /// What a kernel run on the loaded library says: the init status, the verdict of every proof, the
 /// CRC run's begin status, each chunk's status and the CRC the last chunk returns.
 #[derive(Debug, PartialEq)]
-struct KernelRun {
-    init: u8,
+pub(crate) struct KernelRun {
+    pub(crate) init: u8,
     /// The typecode table and the part of the check cache kernel_init clears, read back after it.
     tables: Vec<u8>,
-    verdicts: Vec<u8>,
+    pub(crate) verdicts: Vec<u8>,
     begin: u8,
     chunks: Vec<u8>,
     crc: u32,
@@ -285,7 +285,7 @@ fn init_tables(rig: &mut Rig, assertions: usize) -> Vec<u8> {
     out
 }
 
-fn kernel_run(rig: &mut Rig, assertions: usize) -> KernelRun {
+pub(crate) fn kernel_run(rig: &mut Rig, assertions: usize) -> KernelRun {
     let init = rig.kernel_init();
     let tables = init_tables(rig, assertions);
     let verdicts = (0..assertions).map(|id| rig.kernel_verify(id)).collect();
@@ -308,7 +308,7 @@ fn kernel_run(rig: &mut Rig, assertions: usize) -> KernelRun {
     }
 }
 
-fn clean_run(bytes: &[u8]) -> KernelRun {
+pub(crate) fn clean_run(bytes: &[u8]) -> KernelRun {
     let mut rig = Rig::with_image(WITH_FM);
     rig.load(bytes);
     rig.open_ok();
@@ -319,7 +319,7 @@ fn clean_run(bytes: &[u8]) -> KernelRun {
 }
 
 /// The assertion with the most tokens in all, which fills the most of fm's memory.
-fn fullest(bytes: &[u8]) -> u16 {
+pub(crate) fn fullest(bytes: &[u8]) -> u16 {
     let mut total = std::collections::BTreeMap::new();
     for (n, _, tokens) in statements(&decoded(bytes)) {
         *total.entry(n).or_insert(0) += tokens.len();
@@ -327,7 +327,7 @@ fn fullest(bytes: &[u8]) -> u16 {
     total.into_iter().max_by_key(|&(_, t)| t).unwrap().0
 }
 
-fn scribble(fm: &mut Fm, region: &str, size: &str, byte: impl Fn(usize) -> u8) {
+pub(crate) fn scribble(fm: &mut Fm, region: &str, size: &str, byte: impl Fn(usize) -> u8) {
     let at = usize::from(fm.rig.label(region) - SPARE_BASE);
     let len = usize::from(fm.rig.label(size));
     let page = fm.rig.m.ram_page(SPARE_PAGE);
