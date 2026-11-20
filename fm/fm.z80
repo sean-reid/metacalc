@@ -63,8 +63,12 @@
 ; port 5 and the interrupt state. Interrupts stay off for the whole session; the longest one
 ; measured is fm_open on the ring library, 484,449 T-states (81 ms at 6 MHz), then fm_nodes of its
 ; largest statement, 358,365, fm_assertion of its largest assertion, 187,619, and fm_draw of a full
-; window, at most 180,804; fm_fold repeats fm_nodes with 3,200 more when the table is not built,
-; fm_cursor alone takes up to 65,000 and the pass that applies folds up to 128,000. The reader and the
+; window, at most 180,804; fm_fold repeats fm_nodes with 3,300 more when the table is not built,
+; fm_cursor alone takes up to 65,000. fm_rows, fm_draw and fm_cursor first run the pass that applies
+; folds when the statement is stale, so the call after an fm_fold costs its figure plus the pass,
+; up to 128,000 on the fixture and 50,000 on ring. The six-row frame of the ring statement with the
+; cursor on node 0 takes 329,512 T-states today, over the 50 ms budget of 300,000: one ui_invert
+; for each line is most of the cursor. The reader and the
 ; canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
 ; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
@@ -123,7 +127,7 @@
 ;   fm_select     in:  E = statement, numbered as fm_statement numbers them: the hypotheses from
 ;                      0, FFh the conclusion
 ;                 out: A = status, B = its token count. Makes the statement the one fm_rows,
-;                      fm_draw and fm_nodes work on. Reads no flash and copies no token or node:
+;                      fm_draw, fm_nodes, fm_fold, fm_folded and fm_cursor work on. Reads no flash and copies no token or node:
 ;                      the stored statement is used where it is. FM_ERR_INDEX: the loaded
 ;                      assertion has no such statement, or nothing is loaded; the selection is
 ;                      kept. The statement of a store fm_statement loaded is number 0, or FFh
@@ -172,12 +176,15 @@
 ;                      its table nodes, the depth and the stack at 255, or more than 384 nodes in
 ;                      the tables of the loaded statements together.
 ;   fm_fold       in:  E = node of the selected statement, D = 0 clear, 1 set, 2 toggle
-;                 out: A = status, B = 1 when the flag changed, else 0. Builds the node table
-;                      first when it is not built, with fm_nodes' statuses. A node that is not
+;                 out: A = status, B = 1 when the flag changed, else 0. Checks D, then builds
+;                      the node table when it is not built, with fm_nodes' statuses. A flag is
+;                      cleared when its statement's table is built, kept across fm_select, and
+;                      gone with the tables on fm_assertion, fm_statement and fm_open. A node that is not
 ;                      foldable, with no node after it in its table that is deeper, keeps its
 ;                      flag at 0 and returns status 0 and B = 0. The records are rewritten by
 ;                      the next fm_rows, fm_draw or fm_cursor, once for any number of changes.
-;                      FM_ERR_INDEX: no node E in the table. FM_ERR_BAD: D above 2.
+;                      FM_ERR_BAD: D above 2, checked before anything is built.
+;                      FM_ERR_INDEX: no node E in the table.
 ;   fm_folded     in:  E = node of the selected statement
 ;                 out: A = status, B = bit 0 its flag, bit 1 set when it is foldable, bit 2 set
 ;                      when it is hidden inside a folded node. FM_ERR_INDEX: the table is not
@@ -190,6 +197,7 @@
 ;                      rows inside the window and clipped to the screen. Call it after fm_draw
 ;                      with the same arguments. FM_ERR_INDEX: the table is not built or has no
 ;                      node A.
+;                      The node waits on the caller's stack through the entry's interrupt reads.
 ; Other statuses: FM_ERR_NOT_OPEN, from every routine but fm_open.
 
 #ifndef FM_EMBEDDED
@@ -204,5 +212,6 @@
 #include "fm/store.inc"
 #include "fm/layout.inc"
 #include "fm/fold.inc"
+#include "fm/cursor.inc"
 #include "fm/nodes.inc"
 #include "fm/tree.inc"

@@ -380,7 +380,8 @@ na_fit:
 	xor a
 	ret
 
-; in: A = the node count of the table just built at fv_np. Marks the statement built.
+; in: A = the node count of the table just built at fv_np. Marks the statement built and clears the
+; fold flags of its rows.
 nb_done:
 	push af
 	ld c,a

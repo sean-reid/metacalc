@@ -19,8 +19,8 @@ struct Ceilings {
 }
 
 const FIXTURE: Ceilings = Ceilings {
-    frame: 272_500,
-    draw: 152_600,
+    frame: 273_400,
+    draw: 153_500,
 };
 const RING: Ceilings = Ceilings {
     frame: 267_000,

@@ -34,10 +34,28 @@ fm_folded:
 	ld ix,folded_body
 	jr fm_enter
 
+; fm_cursor takes the node in A, which fm_enter's interrupt reads destroy and which no register
+; keeps while interrupts are on: the stub pushes AF on the caller's stack, makes the same two reads
+; and the di, and only then pops it into AF', where no interrupt can reach it.
 fm_cursor:
+	push af
+	ld a,i
+	jp pe,fc_on
+	ld a,i
+	jp pe,fc_on
+	di
+	exx
+	ld b,0
+	jr fc_go
+fc_on:
+	di
+	exx
+	ld b,1
+fc_go:
+	pop af
 	ex af,af'
 	ld ix,cursor_body
-	jr fm_enter
+	jr fe_save
 
 fm_draw:
 	ld ix,draw_body

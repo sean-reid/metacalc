@@ -13,6 +13,7 @@ pub struct Ceilings {
     pub cursor_child: u32,
     pub apply_one: u32,
     pub apply_all: u32,
+    pub apply_depth: u32,
     pub fold: u32,
 }
 
@@ -21,14 +22,16 @@ pub const FIXTURE: Ceilings = Ceilings {
     cursor_child: 65_000,
     apply_one: 128_500,
     apply_all: 81_500,
-    fold: 3_200,
+    apply_depth: 128_500,
+    fold: 3_300,
 };
 pub const RING: Ceilings = Ceilings {
     cursor_root: 63_500,
     cursor_child: 62_000,
     apply_one: 51_000,
     apply_all: 32_500,
-    fold: 3_200,
+    apply_depth: 50_500,
+    fold: 3_300,
 };
 
 fn base(fm: &mut Fm) -> u32 {
@@ -62,8 +65,16 @@ pub fn cursor_costs(name: &str, bytes: &[u8], at: (u16, u8), frame: u32, ceiling
         frame + costs[0],
         frame + costs[1]
     );
-    assert!(costs[0] <= ceilings.cursor_root, "cursor on node 0 took {}", costs[0]);
-    assert!(costs[1] <= ceilings.cursor_child, "cursor on the child took {}", costs[1]);
+    assert!(
+        costs[0] <= ceilings.cursor_root,
+        "cursor on node 0 took {}",
+        costs[0]
+    );
+    assert!(
+        costs[1] <= ceilings.cursor_child,
+        "cursor on the child took {}",
+        costs[1]
+    );
 }
 
 /// The pass that applies folds, on the statement with the most tokens: the rows call after one
@@ -86,8 +97,22 @@ pub fn apply_costs(name: &str, bytes: &[u8], ceilings: &Ceilings) {
         every.toggle(&expr, node);
     }
     let none = Folds::none(&expr);
+    let widest = (0..expr.len())
+        .map(|d| {
+            (0..expr.len())
+                .filter(|&i| expr.depth(i) == d && expr.foldable(i))
+                .count()
+        })
+        .enumerate()
+        .max_by_key(|&(_, c)| c)
+        .unwrap()
+        .0;
+    let mut level = Folds::none(&expr);
+    for node in (0..expr.len()).filter(|&i| expr.depth(i) == widest && expr.foldable(i)) {
+        level.toggle(&expr, node);
+    }
     let mut spent = Vec::new();
-    for folds in [&one, &every] {
+    for folds in [&one, &every, &level] {
         put(&mut fm, &expr, &none, folds);
         let out = fm.rows(94);
         assert_eq!(out.status(), 0);
@@ -96,6 +121,11 @@ pub fn apply_costs(name: &str, bytes: &[u8], ceilings: &Ceilings) {
         fm.rows(94);
     }
     let fold = fm.fold(0, 2).tstates - zero;
+    println!(
+        "{name}: {} disjoint folds of depth {widest}: {}",
+        level.count(),
+        spent[2]
+    );
     println!(
         "{name}: the statement of {} tokens and {} nodes: apply pass with one fold {}, with {} nodes folded {}; fm_fold alone {fold}",
         expr.tokens().len(),
@@ -106,5 +136,10 @@ pub fn apply_costs(name: &str, bytes: &[u8], ceilings: &Ceilings) {
     );
     assert!(spent[0] <= ceilings.apply_one, "one fold: {}", spent[0]);
     assert!(spent[1] <= ceilings.apply_all, "every fold: {}", spent[1]);
+    assert!(
+        spent[2] <= ceilings.apply_depth,
+        "one depth folded: {}",
+        spent[2]
+    );
     assert!(fold <= ceilings.fold, "fm_fold: {fold}");
 }

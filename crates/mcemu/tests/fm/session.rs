@@ -35,8 +35,22 @@ fn calls(n: u16, k: u8) -> Vec<(&'static str, Regs, u8)> {
         ("FM_FOLD", regs(0, 1 << 8, 0), ok),
         ("FM_FOLDED", regs(0, 0, 0), ok),
         ("FM_FOLD", regs(0, 0xFF, 0), code("FM_ERR_INDEX")),
-        ("FM_CURSOR", Regs { a: 0, ..regs(0, (94 << 8) | 1, 8) }, ok),
-        ("FM_CURSOR", Regs { a: 0xFF, ..regs(0, (94 << 8) | 1, 8) }, code("FM_ERR_INDEX")),
+        (
+            "FM_CURSOR",
+            Regs {
+                a: 0,
+                ..regs(0, (94 << 8) | 1, 8)
+            },
+            ok,
+        ),
+        (
+            "FM_CURSOR",
+            Regs {
+                a: 0xFF,
+                ..regs(0, (94 << 8) | 1, 8)
+            },
+            code("FM_ERR_INDEX"),
+        ),
         ("FM_DRAW", regs(0xFFFF, (94 << 8) | 1, 8), ok),
         ("FM_DRAW", regs(2, (20 << 8) | 3, (3 << 8) | 5), ok),
         ("FM_DRAW", regs(0, 94 << 8, (6 << 8) | 2), ok),
@@ -129,7 +143,10 @@ fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8, cached: bool) -> usiz
     fm.rig.ei = true;
     let (n, k, _) = longest(&fixture::library());
     let clear = |fm: &mut Fm| match target {
-        "FM_DRAW" => fm.clear(),
+        "FM_DRAW" | "FM_CURSOR" => fm.clear(),
+        "FM_FOLD" => {
+            assert_eq!(fm.fold(3, 0).status(), 0);
+        }
         "FM_NODES" if !cached => {
             assert_eq!(fm.statement(n, k).status(), 0);
         }
@@ -211,6 +228,20 @@ fn an_interrupt_in_the_entry_or_the_exit_of_a_session_changes_nothing() {
             ..Regs::default()
         };
         assert!(sweep(&mut fm, "FM_DRAW", draw, port7, false) > 800);
+        assert_eq!(fm.nodes().status(), 0);
+        let cursor = Regs {
+            a: 3,
+            de: (94 << 8) | 1,
+            bc: 8,
+            ..Regs::default()
+        };
+        assert!(sweep(&mut fm, "FM_CURSOR", cursor, port7, false) > 800);
+        let fold = Regs {
+            de: (1 << 8) | 3,
+            ..Regs::default()
+        };
+        assert!(sweep(&mut fm, "FM_FOLD", fold, port7, false) > 800);
+        assert_eq!(fm.fold(3, 0).status(), 0);
         fm.clear();
         fm.draw(1, 0, 94, (0, 8));
         crate::ui_support::same_frame(

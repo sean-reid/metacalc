@@ -193,7 +193,14 @@ impl Fm {
     }
 
     /// Inverts the runs of `node`, drawn with the arguments of `draw`.
-    pub fn cursor(&mut self, node: usize, x: usize, row: i16, width: usize, window: (u8, u8)) -> Out {
+    pub fn cursor(
+        &mut self,
+        node: usize,
+        x: usize,
+        row: i16,
+        width: usize,
+        window: (u8, u8),
+    ) -> Out {
         let regs = Regs {
             a: node as u8,
             hl: row as u16,

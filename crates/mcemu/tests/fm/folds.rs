@@ -54,7 +54,7 @@ pub fn fold_sets(expr: &Expr, seed: u64, singles: bool) -> Vec<(String, Folds)> 
     for round in 0..3 {
         let mut f = Folds::none(expr);
         for &n in &foldable {
-            if next(&mut state) % 3 == 0 {
+            if next(&mut state).is_multiple_of(3) {
                 f.toggle(expr, n);
             }
         }
@@ -77,7 +77,11 @@ pub fn put(fm: &mut Fm, expr: &Expr, from: &Folds, to: &Folds) {
         };
         let out = fm.fold(node, mode);
         assert_eq!(out.status(), 0, "fold {node}");
-        assert_eq!(count(out), usize::from(had != want), "fold {node} to {want}");
+        assert_eq!(
+            count(out),
+            usize::from(had != want),
+            "fold {node} to {want}"
+        );
     }
 }
 
@@ -96,13 +100,13 @@ pub fn hidden(expr: &Expr, folds: &Folds, node: usize) -> bool {
 /// The nodes a cursor is tried on: all of a small statement, else a spread, with hidden ones.
 pub fn picks(expr: &Expr, folds: &Folds) -> Vec<usize> {
     let len = expr.len();
-    if len <= 10 {
+    if len <= 40 {
         return (0..len).collect();
     }
     let mut out: Vec<usize> = (0..len)
         .filter(|n| n % 5 == 0 || *n < 3 || *n + 2 > len)
         .collect();
-    out.extend((0..len).filter(|&n| hidden(expr, folds, n)).take(4));
+    out.extend((0..len).filter(|&n| hidden(expr, folds, n)).take(6));
     out.sort_unstable();
     out.dedup();
     out
@@ -121,10 +125,16 @@ pub fn cases(rows: usize) -> Vec<(i16, (u8, u8))> {
     ]
 }
 
-/// The origins tried with their widths: the screens', one that starts on column 0, and one
-/// narrower than the ellipsis, where every token and the ellipsis sit alone on a line.
-pub const ORIGINS: [(usize, usize); 4] =
-    [(GUTTER, STATEMENT_WIDTH), (1, TEXT_WIDTH), (0, 96), (1, 4)];
+/// The origins tried with their widths: the screens', one that starts on column 0, one narrower
+/// than the ellipsis, where every token and the ellipsis sit alone on a line, and two more widths.
+pub const ORIGINS: [(usize, usize); 6] = [
+    (GUTTER, STATEMENT_WIDTH),
+    (1, TEXT_WIDTH),
+    (0, 96),
+    (1, 4),
+    (1, 60),
+    (1, 30),
+];
 
 type Place = (usize, i16, (u8, u8));
 
@@ -157,6 +167,7 @@ pub struct Tally {
     pub folded: usize,
     pub nested: usize,
     pub to_edge: usize,
+    pub hidden_cursors: usize,
 }
 
 /// Compares fm with the model for one statement under the fold sets. A statement of more than 40
@@ -166,11 +177,21 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, big
     let expr = &model.expr(n, k);
     let what = format!("statement {k} of assertion {n}");
     let table = fm.built(n, k);
-    assert_eq!(table.len(), expr.len(), "{what}: nodes");
+    assert_eq!(table, model.table(n, k), "{what}: nodes");
     let small = expr.len() <= 12;
     let mut sets = fold_sets(expr, u64::from(n) * 977 + u64::from(k), small);
     if expr.len() > 40 {
-        sets.truncate(big.max(1));
+        let first = |name: &str| sets.iter().position(|(n, _)| n == name);
+        let mut front = vec![0];
+        front.extend(first("every foldable node"));
+        front.extend(first("random 0"));
+        let rest: Vec<usize> = (0..sets.len()).filter(|i| !front.contains(i)).collect();
+        sets = front
+            .into_iter()
+            .chain(rest)
+            .map(|i| sets[i].clone())
+            .collect();
+        sets.truncate(big.max(3));
     }
     let mut now = Folds::none(expr);
     for (name, folds) in &sets {
@@ -192,13 +213,21 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, big
                 | u8::from(expr.foldable(node)) << 1
                 | u8::from(hidden(expr, folds, node)) << 2;
             let out = fm.folded(node);
-            assert_eq!((out.status(), count(out)), (0, usize::from(bits)), "{what}: {node}");
+            assert_eq!(
+                (out.status(), count(out)),
+                (0, usize::from(bits)),
+                "{what}: {node}"
+            );
             tally.bits += 1;
         }
-        let several = if expr.len() > 40 { 3 } else { 5 };
+        let several = if expr.len() > 40 { 4 } else { 5 };
         for (o, (x, width)) in ORIGINS.into_iter().enumerate() {
             let laid = layout(expr, folds, width);
-            let used = if o == 0 { several } else { 2 };
+            let used = match o {
+                0 => several,
+                1 | 2 => 2,
+                _ => 1,
+            };
             for (c, (row, window)) in cases(laid.rows()).into_iter().take(used).enumerate() {
                 let place = (x, row, window);
                 fm.clear();
@@ -209,7 +238,7 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, big
                 let drawn = fm.frame();
                 same_frame(&label, &drawn, &want);
                 tally.frames += 1;
-                let nodes = if c == 0 && o == 0 {
+                let nodes = if c == 0 && (o == 0 || o == 2) {
                     picks(expr, folds)
                 } else {
                     vec![(o * 7 + c * 3 + marked.len()) % expr.len()]
@@ -221,39 +250,88 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, big
                     let mask = model_frame_of(expr, folds, width, place, Some(node));
                     same_frame(&format!("{label}, cursor on {node}"), &marked, &mask);
                     tally.cursors += 1;
+                    tally.hidden_cursors += usize::from(hidden(expr, folds, node));
                     let rects = laid.cursor(expr, node);
                     tally.to_edge += usize::from(rects.iter().any(|r| x + r.x + r.width >= 95));
                     fm.cursor(node, x, row, width, window);
-                    same_frame(&format!("{label}, cursor on {node} twice"), &fm.frame(), &drawn);
+                    same_frame(
+                        &format!("{label}, cursor on {node} twice"),
+                        &fm.frame(),
+                        &drawn,
+                    );
                 }
             }
         }
     }
 }
 
-pub fn run_library(bytes: &[u8], every: usize, big: usize) -> Tally {
+pub fn run_library(bytes: &[u8], every: usize, offset: usize, big: usize) -> Tally {
     let model = Model::new(bytes);
     let mut fm = Fm::new(bytes);
     let mut tally = Tally::default();
     for (i, (n, k, _)) in statements(&decoded(bytes)).iter().enumerate() {
-        if i % every == 0 {
+        if i % every == offset {
             compare(&mut fm, &model, (*n, *k), &mut tally, big);
         }
     }
     tally
 }
 
-#[test]
-fn rows_frames_cursors_and_fold_bits_are_the_models_for_the_fixture_under_every_kind_of_fold() {
-    let tally = run_library(&fixture::nodes_library(), 1, 6);
+fn fixture_part(part: usize) {
+    let tally = run_library(&fixture::nodes_library(), 4, part, 6);
     println!(
-        "fixture: {} row counts, {} fold bit sets, {} frames, {} cursors, {} folded nodes, {} \
-         of them nested, {} cursors to the last column",
-        tally.rows, tally.bits, tally.frames, tally.cursors, tally.folded, tally.nested,
+        "fixture part {part}: {} row counts, {} fold bit sets, {} frames, {} cursors, {} folded \
+         nodes, {} of them nested, {} cursors on hidden nodes, {} cursors to the last column",
+        tally.rows,
+        tally.bits,
+        tally.frames,
+        tally.cursors,
+        tally.folded,
+        tally.nested,
+        tally.hidden_cursors,
         tally.to_edge
     );
-    assert!(tally.rows > 2000 && tally.frames > 1000 && tally.cursors > 2500);
-    assert!(tally.nested > 20 && tally.to_edge > 10);
+    assert!(tally.rows > 400 && tally.frames > 200 && tally.cursors > 500);
+    assert!(tally.nested > 5 && tally.hidden_cursors > 5 && tally.to_edge > 2);
+}
+
+#[test]
+fn fixture_folds_match_the_model_in_part_0_of_4() {
+    fixture_part(0);
+}
+
+#[test]
+fn fixture_folds_match_the_model_in_part_1_of_4() {
+    fixture_part(1);
+}
+
+#[test]
+fn fixture_folds_match_the_model_in_part_2_of_4() {
+    fixture_part(2);
+}
+
+#[test]
+fn fixture_folds_match_the_model_in_part_3_of_4() {
+    fixture_part(3);
+}
+
+#[test]
+fn the_longest_and_the_deepest_fixture_statements_get_nested_folds_and_hidden_cursors() {
+    let bytes = fixture::nodes_library();
+    let model = Model::new(&bytes);
+    let library = decoded(&bytes);
+    let mut fm = Fm::new(&bytes);
+    for label in ["longest", "deep", "t255"] {
+        let n = library
+            .assertions
+            .iter()
+            .position(|a| a.label == label)
+            .unwrap() as u16;
+        let mut tally = Tally::default();
+        compare(&mut fm, &model, (n, 0xFF), &mut tally, 6);
+        assert!(model.expr(n, 0xFF).len() > 40, "{label}");
+        assert!(tally.nested > 0 && tally.hidden_cursors > 0, "{label}");
+    }
 }
 
 #[test]
@@ -262,11 +340,18 @@ fn the_shipped_libraries_fold_and_draw_a_cursor_as_the_model_does() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
     for (name, every) in [("prop", 12), ("pred", 30), ("ring", 40)] {
         let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
-        let tally = run_library(&bytes, every, 4);
+        let tally = run_library(&bytes, every, 0, 4);
         println!(
-            "{name}: {} row counts, {} frames, {} cursors, {} folded nodes, {} of them nested",
-            tally.rows, tally.frames, tally.cursors, tally.folded, tally.nested
+            "{name}: {} row counts, {} frames, {} cursors, {} folded nodes, {} of them nested, \
+             {} cursors on hidden nodes",
+            tally.rows,
+            tally.frames,
+            tally.cursors,
+            tally.folded,
+            tally.nested,
+            tally.hidden_cursors
         );
         assert!(tally.frames > 100 && tally.cursors > 100, "{name}");
+        assert!(tally.nested > 0 && tally.hidden_cursors > 0, "{name}");
     }
 }
