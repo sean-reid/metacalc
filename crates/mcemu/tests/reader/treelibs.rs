@@ -66,7 +66,8 @@ pub const LONG: [usize; 6] = [100, 126, 127, 128, 200, 253];
 
 /// 130 syntax axioms, so that the axiom for negation has an escaped index and costs two bytes a
 /// node, and statements of `LONG` negations, whose trees run from 201 to 507 bytes. A second
-/// negation declared first costs one byte a node, which makes a tree of 254 bytes, an even length.
+/// negation declared first costs one byte a node, which makes a tree of 254 bytes, an even length,
+/// and one more negation makes 256, whose first 255 bytes end between two nodes.
 pub fn long_trees() -> Vec<u8> {
     let mut src = String::from("$c |- wff a b -. -.. $.\n$v p $.\nwp $f wff p $.\n");
     src += "wm $a wff -.. p $.\n";
@@ -78,6 +79,7 @@ pub fn long_trees() -> Vec<u8> {
         src += &format!("ax-long-{n} $a |- {}p $.\n", "-. ".repeat(n));
     }
     src += &format!("ax-mixed $a |- -.. {}p $.\n", "-. ".repeat(126));
+    src += &format!("ax-shift $a |- -.. {}p $.\n", "-. ".repeat(127));
     src += "${\nh $e |- -. -. -. p $.\nax-with $a |- p $.\n$}\n";
     pack_with_sections(&src)
 }
@@ -88,4 +90,26 @@ pub fn number(bytes: &[u8], label: &str) -> u16 {
         .iter()
         .position(|a| a.label == label)
         .expect("the label exists") as u16
+}
+
+#[derive(Clone, Copy)]
+pub enum Edit {
+    Xor(u8),
+    Set(u8),
+}
+
+pub const EDITS: [Edit; 4] = [
+    Edit::Xor(0x01),
+    Edit::Xor(0x80),
+    Edit::Set(0xFF),
+    Edit::Set(0x00),
+];
+
+impl Edit {
+    pub fn apply(self, byte: u8) -> u8 {
+        match self {
+            Edit::Xor(m) => byte ^ m,
+            Edit::Set(v) => v,
+        }
+    }
 }

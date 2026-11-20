@@ -4,33 +4,12 @@ use crate::placements::layout;
 use crate::secrig::*;
 use crate::sections::*;
 use crate::support::*;
+use crate::treelibs::EDITS;
 use mcpack::library::{GLYPHS, TITLES, TREES, decode};
 use std::collections::BTreeMap;
 
 fn library() -> Vec<u8> {
     headed(6, 2, 0)
-}
-
-#[derive(Clone, Copy)]
-enum Edit {
-    Xor(u8),
-    Set(u8),
-}
-
-const EDITS: [Edit; 4] = [
-    Edit::Xor(0x01),
-    Edit::Xor(0x80),
-    Edit::Set(0xFF),
-    Edit::Set(0x00),
-];
-
-impl Edit {
-    fn apply(self, byte: u8) -> u8 {
-        match self {
-            Edit::Xor(m) => byte ^ m,
-            Edit::Set(v) => v,
-        }
-    }
 }
 
 /// What a call said about one item of one section: the section's id, the item and whether the

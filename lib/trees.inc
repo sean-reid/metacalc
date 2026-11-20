@@ -74,6 +74,8 @@ la_have:
 	add hl,de
 	jr c,la_arg
 	call lr_overlap
+	jr nz,la_refused
+	call lr_clear_of_bounce
 	jr z,la_walk
 la_refused:
 	ld hl,0

@@ -85,6 +85,7 @@ fn trees_of_every_length_to_507_bytes_copy_255_and_give_the_offset_of_the_rest()
         ("ax-long-126", 253),
         ("ax-mixed", 254),
         ("ax-long-127", 255),
+        ("ax-shift", 256),
         ("ax-long-128", 257),
         ("ax-long-200", 401),
         ("ax-long-253", 507),

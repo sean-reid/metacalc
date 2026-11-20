@@ -3,7 +3,7 @@ use crate::isolation::{Allowed, pattern, prime, stray};
 use crate::secrig::ST_NONE;
 use crate::sections::*;
 use crate::support::*;
-use crate::treelibs::axioms;
+use crate::treelibs::{axioms, pack_with_sections, strings};
 use mcpack::library::{TREES, decode};
 
 /// The syntax table's entries as (assertion number, arity), and where the first one sits.
@@ -142,49 +142,236 @@ fn the_arities_of_the_shipped_libraries_come_in_one_call_as_the_decoder_reads_th
     check_arities(&libraries);
 }
 
+/// One call of lib_arities with `size` bytes at `at` and the memory from 16 bytes before it to 16
+/// after the table primed, the state block excepted. Returns (status, written) and the bytes of
+/// that stretch before and after the call, the state's two scratch words masked.
+fn around(rig: &mut Rig, at: u16, size: u16, whole: bool) -> ((u8, u16), Vec<u8>, Vec<u8>) {
+    rig.sp = 0x9000;
+    let state = usize::from(rig.label("LIB_STATE"));
+    let length = usize::from(rig.label("LIB_STATE_SIZE"));
+    let lo = usize::from(at).saturating_sub(16);
+    let hi = (usize::from(at) + usize::from(size.max(1)) + 16).min(0x1_0000);
+    for addr in (lo..hi).filter(|a| !(state..state + length).contains(a)) {
+        rig.poke(addr as u16, &[FILL]);
+    }
+    let masked: Vec<usize> = if whole {
+        (state..state + length).collect()
+    } else {
+        [0x40, 0x41, 0xA4, 0xA5].iter().map(|o| state + o).collect()
+    };
+    let seen = |rig: &mut Rig| {
+        let mut bytes = rig.peek(lo as u16, hi - lo);
+        for addr in masked.iter().filter(|a| (lo..hi).contains(a)) {
+            bytes[addr - lo] = 0;
+        }
+        bytes
+    };
+    let before = seen(rig);
+    let (status, written, _) = rig.arities(at, size);
+    ((status, written), before, seen(rig))
+}
+
+fn refused(rig: &mut Rig, at: u16, size: u16, what: &str) {
+    let (said, before, after) = around(rig, at, size, false);
+    assert_eq!(said, (ST_ARG, 0), "{what}");
+    assert_eq!(
+        before, after,
+        "{what}: nothing is written to the buffer or beside it"
+    );
+}
+
+fn accepted(rig: &mut Rig, at: u16, want: &[u8], what: &str) {
+    let (said, before, after) = around(rig, at, want.len() as u16, true);
+    assert_eq!(said, (ST_OK, want.len() as u16), "{what}");
+    let lo = usize::from(at).saturating_sub(16);
+    let start = usize::from(at) - lo;
+    assert_eq!(after[start..start + want.len()], *want, "{what}");
+    assert_eq!(
+        before[..start],
+        after[..start],
+        "{what}: nothing before the buffer"
+    );
+    assert_eq!(
+        before[start + want.len()..],
+        after[start + want.len()..],
+        "{what}: nothing after the buffer"
+    );
+}
+
 #[test]
 fn a_buffer_smaller_than_the_table_is_refused_with_nothing_written() {
     let bytes = axioms(383);
     let mut rig = opened(&bytes);
     for size in [0, 1, 200, 382] {
-        rig.poke(BUF, &[FILL; SIZE as usize]);
-        let (status, written, buffer) = rig.arities(BUF, size);
-        assert_eq!((status, written), (ST_ARG, 0), "size {size}");
-        assert!(buffer.iter().all(|&b| b == FILL), "size {size}");
+        refused(&mut rig, BUF, size, &format!("size {size}"));
     }
     assert_eq!(rig.arities(BUF, 383).0, ST_OK);
 }
 
 #[test]
-fn a_buffer_that_touches_the_state_block_or_wraps_is_refused_with_nothing_written() {
+fn a_buffer_that_touches_the_state_block_is_refused_and_one_beside_it_is_filled() {
     let bytes = axioms(383);
+    let want = host_arities(&bytes);
     let mut rig = opened(&bytes);
     let state = rig.label("LIB_STATE");
-    let size = rig.label("LIB_STATE_SIZE");
-    let kept = |rig: &mut Rig| {
-        let mut block = rig.peek(state, usize::from(size));
-        for scratch in [0x40..0x42, 0xA4..0xA6] {
-            block[scratch].fill(0);
-        }
-        block
-    };
-    let before = kept(&mut rig);
+    let length = rig.label("LIB_STATE_SIZE");
+    let n = 383;
     for (what, at) in [
         ("inside the state", state + 0x40),
-        ("ending in the state", state - 100),
-        ("starting in the state", state + size - 1),
-        ("past the top of memory", 0xFF00),
+        ("last byte on the first byte of the state", state - (n - 1)),
+        (
+            "last byte on the last byte of the state",
+            state + length - n,
+        ),
+        (
+            "first byte on the last byte of the state",
+            state + length - 1,
+        ),
+        ("first byte on the first byte of the state", state),
     ] {
-        let (status, written, _) = rig.arities(at, 383);
-        assert_eq!((status, written), (ST_ARG, 0), "{what}");
-        assert_eq!(kept(&mut rig), before, "{what}");
+        refused(&mut rig, at, n, what);
     }
-    let (status, written, _) = rig.arities(state + size, 383);
-    assert_eq!(
-        (status, written),
-        (ST_OK, 383),
-        "a buffer right after the state"
+    accepted(
+        &mut rig,
+        state - n,
+        &want,
+        "last byte right before the state",
     );
+    accepted(
+        &mut rig,
+        state + length,
+        &want,
+        "first byte right after the state",
+    );
+}
+
+#[test]
+fn a_buffer_in_bank_c_is_filled_and_one_on_the_bounce_buffer_is_refused() {
+    let bytes = axioms(383);
+    let want = host_arities(&bytes);
+    let mut rig = opened(&bytes);
+    let bounce = rig.label("LIB_BOUNCE");
+    let n = 383;
+    accepted(&mut rig, 0xC100, &want, "bank C");
+    accepted(
+        &mut rig,
+        bounce - n,
+        &want,
+        "last byte right before the bounce buffer",
+    );
+    rig.m.out_port(5, SPARE_PAGE);
+    refused(
+        &mut rig,
+        bounce,
+        n,
+        "on the bounce buffer with the spare page mapped",
+    );
+    refused(
+        &mut rig,
+        bounce - n + 1,
+        n,
+        "last byte on the first byte of the bounce buffer",
+    );
+    rig.m.out_port(5, 0);
+    for (what, at) in [("past the top", (0xFFFF - n + 1)), ("from $FF00", 0xFF00)] {
+        refused(&mut rig, at, n, what);
+    }
+}
+
+#[test]
+fn a_buffer_ends_at_the_top_of_memory_short_of_the_last_byte_and_not_on_it() {
+    let bytes = axioms(383);
+    let want = host_arities(&bytes);
+    let mut rig = Rig::with_image(MOVED);
+    rig.load(&bytes);
+    rig.m.out_port(5, 0);
+    rig.open_ok();
+    let bounce = rig.label("LIB_BOUNCE");
+    assert!(
+        bounce + 256 + 383 < 0xFFFE,
+        "the moved bounce buffer is well below the top"
+    );
+    let n = 383;
+    refused(&mut rig, (0xFFFF - n + 1), n, "last byte $FFFF");
+    accepted(&mut rig, 0xFFFF - n, &want, "last byte $FFFE");
+    refused(
+        &mut rig,
+        bounce + 255,
+        n,
+        "first byte on the last byte of the bounce buffer",
+    );
+    accepted(
+        &mut rig,
+        bounce + 256,
+        &want,
+        "first byte right after the bounce buffer",
+    );
+    accepted(
+        &mut rig,
+        bounce - n,
+        &want,
+        "last byte right before the bounce buffer",
+    );
+    refused(
+        &mut rig,
+        bounce - n + 1,
+        n,
+        "last byte on the first byte of the bounce buffer",
+    );
+}
+
+/// A library of 40 syntax axioms whose syntax table has a boundary of the flash inside it, found
+/// by padding the records before it with statements the grammar does not read.
+fn table_across(boundary: usize) -> Vec<u8> {
+    let build = |pad: usize| {
+        let mut src = String::from("$c |- wff a b $.\n");
+        for (i, body) in strings(40).iter().enumerate() {
+            src += &format!("w{i} $a wff {body} $.\nax-{i} $a |- {body} $.\n");
+        }
+        for i in 0..pad {
+            src += &format!("pad-{i:06} $a |- a $.\n");
+        }
+        pack_with_sections(&src)
+    };
+    let start = |bytes: &[u8]| offset_of(bytes, TREES) as usize + 2;
+    let (low, high) = (start(&build(0)), start(&build(200)));
+    let per = ((high - low) / 200).max(1);
+    let (mut pad, mut bytes) = (boundary.saturating_sub(60 + low) / per, Vec::new());
+    for _ in 0..20 {
+        bytes = build(pad);
+        let at = start(&bytes);
+        if at < boundary && boundary < at + 3 * 40 {
+            return bytes;
+        }
+        let aim = boundary - 60;
+        pad = if at < aim {
+            pad + (aim - at).div_ceil(per)
+        } else {
+            pad - (at - aim).div_ceil(per)
+        };
+    }
+    panic!(
+        "no padding puts the table across {boundary}, last at {}",
+        start(&bytes)
+    );
+}
+
+#[test]
+fn a_syntax_table_across_a_chunk_or_past_64_kb_is_read_as_the_decoder_reads_it() {
+    for boundary in [CHUNK, 2 * CHUNK, 1 << 16, 3 << 16] {
+        let bytes = table_across(boundary);
+        let want = host_arities(&bytes);
+        assert_eq!(want.len(), 40);
+        let mut rig = opened(&bytes);
+        accepted(&mut rig, BUF, &want, &format!("table across {boundary:#x}"));
+        for (i, arity) in want.iter().enumerate() {
+            assert_eq!(
+                rig.syntax(i as u16).2,
+                *arity,
+                "{boundary:#x}: lib_syntax {i}"
+            );
+        }
+    }
 }
 
 #[test]
