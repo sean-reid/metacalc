@@ -133,7 +133,7 @@ Hypotheses:
 Prose.
 PAGE
 
-page=$fake/docs/src/guide/worked-examples.md
+page=$fake/docs/src/guide/examples.md
 run() { sh "$fake/scripts/worked-examples.sh" "$1" "$tmp/tiny.mm" 2>"$tmp/err"; }
 
 cp "$good" "$page"

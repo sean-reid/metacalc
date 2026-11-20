@@ -5,7 +5,7 @@
 # User guide
 
 - [Installing](guide/install.md)
-- [Examples](guide/worked-examples.md)
+- [Examples](guide/examples.md)
 
 # Libraries
 
