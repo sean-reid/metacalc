@@ -22,6 +22,8 @@ mod limits;
 mod names;
 #[path = "../../mcpack/tests/cases/raw.rs"]
 mod raw;
+#[path = "common/realos.rs"]
+mod realos;
 #[path = "kernel/recheck.rs"]
 mod recheck;
 #[path = "kernel/records.rs"]

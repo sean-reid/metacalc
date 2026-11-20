@@ -2,8 +2,9 @@
 ; again, and returns the model's key (crates/mcui/src/key.rs). Every call into the OS that waits
 ; for a key is here.
 ;
-; Needs equates.inc before it, and ui_set_font and ui_font from ui.z80 in the same flash page,
-; because it loads ui_font and calls ui_set_font directly.
+; Needs equates.inc before it. It loads the address ui_font and calls KEYS_SET_FONT, which is
+; ui_set_font unless the including file defines another routine first: the one that reaches
+; ui_set_font from another page, with ui_font on the page ui_set_font runs on.
 ;
 ; app_key   out: A = the key, one of the KEY_ codes below; KEY_NONE for a key the app ignores
 ;                B = for KEY_LETTER, the character as ASCII, uppercase for a letter; else 0
@@ -51,6 +52,10 @@ KEY_QUIT         .equ 13
 KEY_PAIRS        .equ 12
 KEY_CHARS        .equ 41
 
+#ifndef KEYS_SET_FONT
+#define KEYS_SET_FONT ui_set_font
+#endif
+
 app_key:
 ak_wait:
 	ei
@@ -59,7 +64,7 @@ ak_wait:
 	jr nz,ak_on
 	ld c,a
 	ld hl,ui_font
-	call ui_set_font
+	call KEYS_SET_FONT
 	ld b,0
 	ld a,c
 	ld hl,ak_pairs
@@ -107,7 +112,7 @@ ak_pairs:
 	.db $02,KEY_LEFT
 	.db $01,KEY_RIGHT
 	.db $05,KEY_ENTER
-	.db $09,KEY_CLEAR
+	.db kClear,KEY_CLEAR
 	.db $49,KEY_F1
 	.db $48,KEY_F2
 	.db $2E,KEY_F3

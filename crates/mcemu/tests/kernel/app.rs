@@ -10,6 +10,8 @@ const BASE: u8 = 0x30;
 const GLUE: u16 = 0x9000;
 const GLUE_RESULT: u16 = 0x9100;
 const APP_ENTRY: u16 = 0x4000;
+/// The app's code pages: entry, draw and data. The library follows them.
+const CODE_PAGES: u8 = 3;
 const PORT_BANK_A: u8 = 6;
 
 fn app_dir() -> PathBuf {
@@ -34,9 +36,13 @@ pub fn build(name: &str, library: Option<&[u8]>) -> App {
         .arg("-C")
         .arg(app_dir())
         .arg(format!("SPASM={}", spasm.to_string_lossy()))
-        .arg(format!("BUILD={}", dir.display()));
+        .arg(format!("BUILD={}", dir.display()))
+        .arg(format!("FONT={}/ui_font", env!("OUT_DIR")));
     let mut check = Command::new("sh");
-    check.arg(app_dir().join("scripts/check-8xk.sh"));
+    check
+        .arg(app_dir().join("scripts/check-8xk.sh"))
+        .arg("-p")
+        .arg(CODE_PAGES.to_string());
     if let Some(library) = library {
         std::fs::write(&library_path, library).unwrap();
         make.arg(format!("LIBRARY={}", library_path.display()));
@@ -64,7 +70,7 @@ pub fn build(name: &str, library: Option<&[u8]>) -> App {
 }
 
 /// Page 0 of the app runs in bank A, as it does when TI-OS enters the app, and its accessor
-/// returns the kernel's library page for the app's base page.
+/// returns the kernel's library page for the app's base page: the page below its last code page.
 fn lib_page_from_app(device: &mut Device, app: &App) -> u8 {
     let accessor = label_of(&app.labels, "APP_LIB_PAGE");
     assert!((APP_ENTRY..APP_ENTRY + 0x4000).contains(&accessor));
@@ -101,9 +107,9 @@ fn the_kernel_checks_a_library_stored_in_the_pages_of_a_built_app() {
     // Library, its length after padding, and the app's page count. The last chunk leaves 96 free
     // bytes, then 95, then all but 400.
     for (name, base, len, want_pages) in [
-        ("free96", &small, 3 * PAGE - 96, 4),
-        ("free95", &anatomy, 3 * PAGE - 95, 5),
-        ("short", &unifier, 2 * PAGE + 400, 4),
+        ("free96", &small, 3 * PAGE - 96, 6),
+        ("free95", &anatomy, 3 * PAGE - 95, 7),
+        ("short", &unifier, 2 * PAGE + 400, 6),
     ] {
         assert!(
             base.len() <= len,
@@ -114,7 +120,11 @@ fn the_kernel_checks_a_library_stored_in_the_pages_of_a_built_app() {
         let app = build(name, Some(&bytes));
         assert_eq!(app.pages.len(), want_pages, "{name}: pages");
         for (c, chunk) in bytes.chunks(PAGE).enumerate() {
-            assert_eq!(&app.pages[1 + c][..chunk.len()], chunk, "{name}: chunk {c}");
+            assert_eq!(
+                &app.pages[usize::from(CODE_PAGES) + c][..chunk.len()],
+                chunk,
+                "{name}: chunk {c}"
+            );
         }
 
         let mut device = Device::new();
@@ -123,7 +133,7 @@ fn the_kernel_checks_a_library_stored_in_the_pages_of_a_built_app() {
             .install_app(&app.file, BASE)
             .expect("the app installs");
         device.lib_page = lib_page_from_app(&mut device, &app);
-        assert_eq!(device.lib_page, BASE - 1, "{name}: the accessor");
+        assert_eq!(device.lib_page, BASE - CODE_PAGES, "{name}: the accessor");
 
         let (want_init, want) = model_statuses(&bytes, ASKED_UNBOUNDED);
         assert_eq!(want_init, 0, "{name}: the model accepts the library");
@@ -143,7 +153,7 @@ fn the_kernel_checks_a_library_stored_in_the_pages_of_a_built_app() {
 
 type Decoded = Result<Vec<Vec<u8>>, mcemu::AppError>;
 
-/// The broken files test-check-8xk.sh feeds the checker, for the one-page app and for the app
+/// The broken files test-check-8xk.sh feeds the checker, for the app without a library and for the app
 /// with a library, as (file name, decoded).
 fn fixtures(name: &str, library: Option<&[u8]>) -> Vec<(String, Decoded)> {
     build(name, library);
@@ -153,6 +163,8 @@ fn fixtures(name: &str, library: Option<&[u8]>) -> Vec<(String, Decoded)> {
     let mut script = Command::new("sh");
     script
         .arg(app_dir().join("scripts/test-check-8xk.sh"))
+        .arg("-p")
+        .arg(CODE_PAGES.to_string())
         .env("KEEP_FIXTURES", &fixtures);
     if library.is_some() {
         script.arg("-l").arg(dir.join("library.mclib"));

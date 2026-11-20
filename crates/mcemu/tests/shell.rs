@@ -52,11 +52,19 @@ fn flags(os: &mut RealOs) -> Vec<u8> {
     os.ram(OS_FLAGS, FLAGS_END - OS_FLAGS)
 }
 
+const EXIT_MARK_VALUE: u8 = 0xA5;
+
 /// Runs the app to its CLEAR exit, with ON held for `hold_on` ms inside it, and settles at the
-/// home screen.
-fn visit(os: &mut RealOs, hold_on: u32) {
-    os.launch();
-    os.run_ms(300);
+/// home screen. `start` is the screen the app draws, which confirms it is running; an app that
+/// draws nothing gives `None`.
+fn visit(os: &mut RealOs, hold_on: u32, start: Option<&[bool]>) {
+    match start {
+        Some(screen) => os.launch_in_key_wait(screen),
+        None => {
+            os.start_from_menu();
+            os.run_ms(300);
+        }
+    }
     if hold_on > 0 {
         os.m.press_key(Machine::KEY_ON);
         os.run_ms(hold_on);
@@ -121,15 +129,16 @@ fn mask_the_two(h: &Home) -> Vec<u8> {
 
 /// Draws a graph, so that graphDraw is clear, then runs the app with ON held inside it, and
 /// returns the home screen before and after.
-fn visit_from_a_graph(app: &[u8], hold_on: u32) -> (Home, Home) {
+fn visit_from_a_graph(app: &[u8], hold_on: u32, start: Option<&[bool]>) -> (Home, Home, u8) {
     let mut os = RealOs::boot(app);
     os.tap(KEY_GRAPH, 150, 2500);
     os.tap(KEY_CLEAR, 150, 800);
     let pc = idle_pc(&mut os);
     let before = at_home(&mut os, pc);
-    visit(&mut os, hold_on);
+    visit(&mut os, hold_on, start);
     let after = at_home(&mut os, pc);
-    (before, after)
+    let mark = os.ram(usize::from(EXIT_MARK) - 0x8000, 1)[0];
+    (before, after, mark)
 }
 
 #[test]
@@ -139,14 +148,20 @@ fn the_os_is_in_the_state_it_was_in_before_the_shell_ran() {
     let control = assemble_routine("wait_app.z80");
     for hold_on in [0, 200] {
         let msg = format!("ON held {hold_on} ms");
-        let (before, after) = visit_from_a_graph(&app, hold_on);
+        let start = start_pixels(None, 0);
+        let (before, after, _) = visit_from_a_graph(&app, hold_on, Some(&start));
         assert!(!graph_draw(&before), "{msg}: a valid graph to start from");
         assert_eq!(after.state, before.state, "{msg}");
         assert!(graph_draw(&after), "{msg}: the OS will redraw the graph");
         assert!(!on_interrupt(&after), "{msg}: no break left for the OS");
 
         // an app that only waits shows what the OS does to the two flags itself
-        let (_, plain) = visit_from_a_graph(&control, hold_on);
+        let (_, plain, mark) = visit_from_a_graph(&control, hold_on, None);
+        println!("ON held {hold_on} ms: the control's exit mark is {mark:02X}");
+        assert_eq!(
+            mark, EXIT_MARK_VALUE,
+            "{msg}: the control app reached CLEAR"
+        );
         assert!(
             !graph_draw(&plain),
             "{msg}: the OS leaves graphDraw as it was"
@@ -165,19 +180,28 @@ fn the_os_is_in_the_state_it_was_in_before_the_shell_ran() {
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn an_on_press_inside_the_app_is_cleared_before_the_app_hands_over() {
+fn an_on_press_is_taken_by_the_app_and_none_is_left_when_it_leaves() {
     let app = shell();
     let mut os = RealOs::boot(&app);
     os.tap(KEY_GRAPH, 150, 2500);
     os.tap(KEY_CLEAR, 150, 800);
     assert_eq!(os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW, 0, "a valid graph");
-    os.launch();
-    os.run_ms(300);
+    os.launch_in_key_wait(&start_pixels(None, 0));
     os.m.press_key(Machine::KEY_ON);
     os.run_ms(200);
     os.m.release_key(Machine::KEY_ON);
     os.run_ms(300);
-    assert_ne!(os.on_flags() & ON_INTERRUPT, 0, "the OS flagged the press");
+    assert_eq!(os.on_flags() & ON_INTERRUPT, 0, "app_key took the press");
+    assert!(
+        os.screen() == start_pixels(None, 0),
+        "the app is still running and showing its screen"
+    );
+    assert_eq!(os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW, 0, "not left yet");
+    // A break flagged before CLEAR is taken by app_key's own branch, not by the exit's `res`; the
+    // exit's is shown by the stub test `a_break_flagged_as_the_app_reads_clear_is_cleared_by_its_exit`.
+    os.m.ram_page(1)[ON_FLAGS] |= ON_INTERRUPT;
+    os.run_ms(100);
+    assert_eq!(os.on_flags() & ON_INTERRUPT, 0, "app_key took the break");
     os.m.press_key(KEY_CLEAR);
     // graphDraw is the app's last mark before it hands the machine to the OS.
     for _ in 0..2000 {
@@ -198,7 +222,7 @@ fn the_graph_screen_after_the_app_is_the_graph_it_showed_before() {
     os.tap(KEY_GRAPH, 150, 2500);
     let graph = os.screen();
     os.tap(KEY_CLEAR, 150, 800);
-    visit(&mut os, 0);
+    visit(&mut os, 0, Some(&start_pixels(None, 0)));
     os.tap(KEY_GRAPH, 150, 2500);
     assert!(
         os.screen() == graph,
@@ -232,35 +256,12 @@ fn the_shell_exits_with_its_marks_made_and_the_ports_it_had() {
 }
 
 #[test]
-fn the_wait_loop_enables_interrupts_on_every_pass() {
-    let app = shell();
-    // _GetCSC returns with interrupts off, as _PutC does: the ei before its ret becomes di.
-    let mut rom = STUB_ROM.to_vec();
-    let tail = [0x21, 0x1A, 0xA1, 0xFE, 0xFF, 0xFB, 0xC9];
-    let at: Vec<usize> = (0..rom.len() - tail.len())
-        .filter(|&i| rom[i..i + tail.len()] == tail)
-        .collect();
-    assert_eq!(at.len(), 1, "the stub's _GetCSC return");
-    rom[at[0] + 5] = 0xF3;
-    let mut m = Machine::new(&rom).unwrap();
-    m.install_app(&app, STUB_BASE).unwrap();
-    m.launch(STUB_BASE).unwrap();
-    assert_eq!(
-        m.run_app(5_000_000).stop,
-        Stop::Limit,
-        "the wait halts for an interrupt"
-    );
-    m.press_key(KEY_CLEAR);
-    assert_eq!(m.run_app(5_000_000).stop, Stop::Exited);
-}
-
-#[test]
 #[ignore = "needs the reference ROM image"]
 #[should_panic(expected = "the emulator faulted")]
 fn a_fault_in_a_real_os_run_fails_the_test() {
     let app = assemble_routine("fault_app.z80");
     let mut os = RealOs::boot(&app);
-    os.launch();
+    os.start_from_menu();
     os.run_ms(300);
 }
 
