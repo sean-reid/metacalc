@@ -49,7 +49,6 @@ pub fn draw(app: &mut App, x: usize, row: i16, width: usize, window: (u8, u8)) -
 pub fn frames_on_the_draw_page(app: &mut App, every: usize) -> usize {
     let bytes = fixture::library();
     let all = statements(&decoded(&bytes));
-    let app = app;
     let open = on_draw_page(app, "fm_open", In::default());
     assert_eq!(open.status(), 0, "fm_open");
     assert_eq!(open.page, DRAW_PAGE, "fm_open leaves the draw page mapped");
