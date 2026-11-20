@@ -71,12 +71,16 @@ impl Ui {
             Nav::Pop => {
                 if self.stack.len() > 1 {
                     self.stack.pop();
+                    if let Some(below) = self.stack.last_mut() {
+                        below.uncovered(&ctx);
+                    }
                 }
             }
             Nav::Jump(assertion) => {
                 if self.stack.len() > 1 {
                     self.stack.pop();
                     if let Some(below) = self.stack.last_mut() {
+                        below.uncovered(&ctx);
                         below.land(&ctx, assertion);
                     }
                 }

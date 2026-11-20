@@ -148,6 +148,13 @@ impl Screen {
         }
     }
 
+    /// Rebuilds what a screen derives from its position, when the screen above it closed.
+    pub(crate) fn uncovered(&mut self, ctx: &Ctx) {
+        if let Screen::Theorem(theorem) = self {
+            theorem.refit(ctx);
+        }
+    }
+
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
         match self {
             Screen::Libraries(s) => s.press(ctx, key),
