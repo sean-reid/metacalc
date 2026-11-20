@@ -44,19 +44,25 @@ impl Theorem {
         Screen::Theorem(Theorem::fitted(ctx, library, index))
     }
 
-    /// Fits the folds afresh after the screen above closed; the cursor stays, and the scroll
-    /// stays as far as the new layout holds it and then follows the cursor.
+    /// Fits the folds afresh after the screen above closed; the cursor stays. The scroll stays
+    /// as far as the new layout holds it, and follows the cursor unless the user had scrolled
+    /// the cursor out of view.
     pub(super) fn refit(&mut self, ctx: &Ctx) {
-        let (cursor, scroll) = (self.cursor, self.scroll);
-        *self = Theorem::fitted(ctx, self.library, self.index);
         if self.too_large {
             return;
         }
+        let (cursor, scroll) = (self.cursor, self.scroll);
+        let following = self.followed() == scroll;
+        *self = Theorem::fitted(ctx, self.library, self.index);
         let s = cursor.0.min(self.layouts.len() - 1);
         let node = cursor.1.min(self.statement.at(s).len() - 1);
         self.cursor = (s, node);
-        self.scroll = scroll.min(self.rows.saturating_sub(CONTENT_ROWS));
-        self.follow();
+        self.scroll = scroll;
+        if following {
+            self.follow();
+        } else {
+            self.scroll = self.scroll.min(self.rows.saturating_sub(CONTENT_ROWS));
+        }
     }
 
     fn fitted(ctx: &Ctx, library: usize, index: usize) -> Theorem {
@@ -143,16 +149,23 @@ impl Theorem {
 
     /// Moves the view to the cursor.
     fn follow(&mut self) {
+        self.scroll = self.followed();
+    }
+
+    /// The scroll that shows the cursor, moving the view as little as possible.
+    fn followed(&self) -> usize {
         let (s, node) = self.cursor;
         let rects = self.layouts[s].cursor(self.statement.at(s), node);
         let top = self.starts[s] + rects.first().map_or(0, |r| r.row);
         let bottom = self.starts[s] + rects.last().map_or(0, |r| r.row) + 1;
-        if top < self.scroll {
-            self.scroll = top;
+        let scroll = if top < self.scroll {
+            top
         } else if bottom > self.scroll + CONTENT_ROWS {
-            self.scroll = (bottom - CONTENT_ROWS).min(top);
-        }
-        self.scroll = self.scroll.min(self.rows.saturating_sub(CONTENT_ROWS));
+            (bottom - CONTENT_ROWS).min(top)
+        } else {
+            self.scroll
+        };
+        scroll.min(self.rows.saturating_sub(CONTENT_ROWS))
     }
 
     fn proof(&self, ctx: &Ctx) -> Nav {

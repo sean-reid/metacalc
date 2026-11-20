@@ -85,12 +85,14 @@ fn long_unfolded() -> Ui {
 fn a_cursor_inside_a_fold_the_refit_makes_keeps_its_node() {
     let mut ui = long_unfolded();
     ui.press(Down);
-    let (statement, node, _, _, hidden) = at(&ui);
-    assert_eq!((statement, node, hidden), (0, 7, false));
-    let before = ui.frame();
+    assert_eq!(at(&ui), (0, 7, 0, 41, false));
     press(&mut ui, &[F2, Clear]);
     assert_eq!(at(&ui), (0, 7, 0, 42, false));
-    assert!(ui.frame() != before);
+    let mut fresh = long();
+    press(&mut fresh, &[Left; 7]);
+    press(&mut fresh, &[Down, Right, Down, Right, Down, Right]);
+    assert_eq!(at(&fresh), (0, 6, 0, 42, true));
+    assert!(ui.frame() == fresh.frame(), "drawn on the folded ancestor");
 }
 
 #[test]
@@ -121,7 +123,7 @@ fn a_scroll_inside_the_refit_layout_is_kept() {
 }
 
 #[test]
-fn the_theorem_under_a_full_stack_is_fitted_again() {
+fn a_pop_at_full_depth_fits_the_top_theorem_again() {
     let mut ui = support::ui_over(support::hops_bytes(), &[], &[]);
     open(&mut ui, "t12");
     for _ in 0..11 {
@@ -136,6 +138,7 @@ fn the_theorem_under_a_full_stack_is_fitted_again() {
     assert_eq!(ui.depth(), mcui::MAX_DEPTH - 1);
     assert_eq!(at(&ui).3, 0);
 }
+
 #[test]
 fn a_theorem_closed_over_a_notice_is_fitted_again() {
     let mut ui = support::rejected_ui();
@@ -162,9 +165,24 @@ fn the_cursor_is_in_view_after_a_refit_that_shortens_the_layout() {
         }
         ui.press(Right);
     }
-    press(&mut ui, &[Left, Left, Left, Left, F2, Clear]);
-    let (statement, _, scroll, _, _) = at(&ui);
-    assert_eq!(statement, 3);
-    // every hypothesis takes one row after the refit, so statement 3 is on row 3
-    assert!((scroll..scroll + 6).contains(&statement), "scroll {scroll}");
+    press(&mut ui, &[Left; 4]);
+    assert_eq!(at(&ui).2, 6);
+    press(&mut ui, &[F2, Clear]);
+    let mut fresh = long();
+    press(&mut fresh, &[Left; 4]);
+    assert_eq!(at(&fresh).2, 3);
+    assert_eq!(ui.state(), fresh.state());
+    assert!(ui.frame() == fresh.frame());
+}
+
+#[test]
+fn a_scroll_the_user_made_on_a_flat_statement_survives() {
+    let mut ui = support::ui_over(support::flat_bytes(40), &[], &[]);
+    open(&mut ui, "axflat");
+    press(&mut ui, &[Down; 3]);
+    assert_eq!(at(&ui).2, 3);
+    let (state, frame) = (ui.state(), ui.frame());
+    press(&mut ui, &[F2, Clear]);
+    assert_eq!(ui.state(), state);
+    assert!(ui.frame() == frame);
 }
