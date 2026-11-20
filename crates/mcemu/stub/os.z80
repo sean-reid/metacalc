@@ -15,6 +15,7 @@ _DelVarArc        .equ $4FC6
 _Arc_Unarc        .equ $4FD8
 _CreateRList      .equ $4315
 _LoadDEIndPaged   .equ $501A
+_GetBaseVer       .equ $4C6F
 
 OP1               .equ $8478
 E_MEMORY          .equ $8E
@@ -251,11 +252,18 @@ bcall_table:
 	.dw _Arc_Unarc, arc_unarc
 	.dw _CreateRList, create_r_list
 	.dw _LoadDEIndPaged, load_de_ind_paged
+	.dw _GetBaseVer, get_base_ver
 	.dw 0
 
 bjump_table:
 	.dw _JForceCmdNoChar, force_cmd_no_char
 	.dw 0
+
+; A and B are the OS version bytes of the reference image, 2 and 2Bh, and the other registers are kept.
+get_base_ver:
+	ld a,2
+	ld b,$2B
+	ret
 
 ; The app has left. The machine stops here.
 force_cmd_no_char:

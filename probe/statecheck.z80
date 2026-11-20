@@ -1,0 +1,4 @@
+#include "equates.inc"
+#define APP_NAME "statechk"
+#include "header.inc"
+#include "statecheck.inc"
