@@ -113,6 +113,32 @@ pub enum Op {
     ClearVars,
     /// Pixels only the host draws, ORed into the frame between two Z80 calls.
     Ink(Bitmap),
+    /// Loads IX, IY and the shadow registers with `SHADOWS`; `Op::CheckShadows` keeps what they
+    /// hold, as six words after every other result.
+    Shadows,
+    CheckShadows,
+    /// `lines` calls of a fitting routine, `ui_truncate`, `ui_tail` or `ui_wrap`, each into its
+    /// own buffer of `cap` bytes between `FIT_GUARD` bytes of `MARK` on each side; every call
+    /// after the first starts where the one before it left HL.
+    Fit {
+        routine: &'static str,
+        text: Vec<u8>,
+        cap: u8,
+        limit: u8,
+        lines: usize,
+    },
+}
+
+/// IX, IY, BC', DE', HL' and AF' as `Op::Shadows` loads them.
+pub const SHADOWS: [u16; 6] = [0x1234, 0x5678, 0x9ABC, 0xDEF0, 0x1357, 0x2468];
+
+/// Bytes of `MARK` before and after each buffer of an `Op::Fit`.
+pub const FIT_GUARD: usize = 4;
+
+/// Where an `Op::Fit` put its text and its buffers, guard bytes included.
+pub struct Placed {
+    pub text: u16,
+    pub buffers: Vec<u16>,
 }
 
 /// `value` as a byte; a model value that does not fit is a bug in the test.
@@ -189,6 +215,7 @@ struct Script {
     image: Image,
     results: u16,
     inks: Vec<(u16, Bitmap)>,
+    placed: Vec<Placed>,
 }
 
 impl Script {
@@ -332,6 +359,44 @@ impl Script {
                 self.word(&[0x21], label(self.image, "ui_font"));
                 self.run("ui_set_font", &[], call);
             }
+            Op::Shadows if call => self.code.extend_from_slice(&[
+                0xDD, 0x21, 0x34, 0x12, 0xFD, 0x21, 0x78, 0x56, 0x01, 0xBC, 0x9A, 0x11, 0xF0, 0xDE,
+                0x21, 0x57, 0x13, 0xD9, 0x01, 0x68, 0x24, 0xC5, 0xF1, 0x08,
+            ]),
+            Op::CheckShadows if call => {
+                self.keep(&[0xDD, 0x22]);
+                self.keep(&[0xFD, 0x22]);
+                self.code.push(0xD9);
+                self.keep(&[0xED, 0x43]);
+                self.keep(&[0xED, 0x53]);
+                self.keep(&[0x22]);
+                self.code.extend_from_slice(&[0xD9, 0x08, 0xF5, 0xC1]);
+                self.keep(&[0xED, 0x43]);
+                self.code.push(0x08);
+            }
+            Op::Shadows | Op::CheckShadows => {}
+            Op::Fit {
+                routine,
+                text,
+                cap,
+                limit,
+                lines,
+            } => {
+                let text = self.put(text);
+                let region = vec![MARK; usize::from(*cap) + 2 * FIT_GUARD];
+                let buffers: Vec<u16> = (0..*lines).map(|_| self.put(&region)).collect();
+                self.word(&[0x21], text);
+                for &buffer in &buffers {
+                    self.word(&[0x11], buffer + FIT_GUARD as u16);
+                    self.word(&[0x01], u16::from_be_bytes([*cap, *limit]));
+                    self.run(routine, &[], call);
+                    if call {
+                        self.keep_a();
+                        self.keep(&[0x22]);
+                    }
+                }
+                self.placed.push(Placed { text, buffers });
+            }
         }
     }
 
@@ -355,6 +420,17 @@ pub struct Outcome {
     pub pc: u16,
     /// Bytes of stack the run reached below its starting point, calls from the script included.
     pub stack: usize,
+    /// The data the script's strings and buffers were put in, from `DATA`.
+    pub data: Vec<u8>,
+    pub placed: Vec<Placed>,
+}
+
+impl Outcome {
+    /// `len` bytes of the script's data at `at`.
+    pub fn bytes(&self, at: u16, len: usize) -> &[u8] {
+        let from = usize::from(at - DATA);
+        &self.data[from..from + len]
+    }
 }
 
 pub const MARK: u8 = 0xA5;
@@ -441,6 +517,7 @@ fn run_marked(
         image,
         results: 0,
         inks: vec![],
+        placed: vec![],
     };
     script.word(&[0x31], STACK);
     script.word(&[0x21], label(image, "ui_font"));
@@ -493,6 +570,7 @@ fn run_marked(
     }
     assert_eq!(ENTRY, 0x4000);
     let frame = m.read_ram(image.frame, FRAME_BYTES);
+    let data = m.read_ram(DATA, script.data.len());
     let raw = m.read_ram(RESULTS, usize::from(script.results));
     let results = raw
         .chunks(2)
@@ -533,6 +611,8 @@ fn run_marked(
         lcd,
         pc,
         stack,
+        data,
+        placed: script.placed,
     }
 }
 
