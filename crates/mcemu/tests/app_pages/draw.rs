@@ -1,4 +1,6 @@
 //! fm on the draw page, calling the reader on the data page, drawing the frames the model draws.
+//! The routines are called by a RAM driver standing on the draw page (see `App::call`), after the
+//! app itself has reached its key wait with the library and fm open.
 
 use crate::app::*;
 use crate::fixture;
@@ -10,22 +12,9 @@ use mcui::canvas::{GUTTER, STATEMENT_WIDTH, TEXT_WIDTH};
 
 const NARROW: usize = 20;
 
-/// A machine with the reader open on the fixture library and the canvas font set, which is the
-/// state fm_open wants: opened from the entry page, the way the app will.
-pub fn opened() -> App {
-    opened_on(with_library())
-}
-
+/// A machine whose app has opened the library and fm itself on the way to its start screen.
 pub fn opened_on(built: &'static Built) -> App {
-    let mut app = App::start(built);
-    assert_eq!(app.far("far_kernel_reset", In::default()).status(), 0);
-    let open = In {
-        a: LIBRARY_PAGE,
-        de: SCRATCH,
-        ..In::default()
-    };
-    assert_eq!(app.far("far_lib_open", open).status(), 0);
-    app
+    App::start(built)
 }
 
 /// Calls the draw page's own routine `name` with port 6 on the draw page, as a far call from the
@@ -54,7 +43,7 @@ pub fn draw(app: &mut App, x: usize, row: i16, width: usize, window: (u8, u8)) -
     on_draw_page(app, "fm_draw", input)
 }
 
-/// fm_open, fm_assertion, fm_statement, fm_rows, fm_draw and fm_nodes called on the draw page of
+/// fm_open, fm_assertion, fm_statement, fm_rows, fm_draw and fm_nodes called by a RAM driver on the draw page of
 /// `app`, which is opened on the fixture library, for every `every`th assertion; returns the
 /// number of frames compared with the model's.
 pub fn frames_on_the_draw_page(app: &mut App, every: usize) -> usize {
@@ -129,38 +118,8 @@ pub fn frames_on_the_draw_page(app: &mut App, every: usize) -> usize {
 }
 
 #[test]
-fn fm_open_assertion_and_draw_on_the_draw_page_leave_the_frame_the_model_draws() {
+fn fm_called_by_a_ram_driver_on_the_draw_page_leaves_the_frame_the_model_draws() {
     let count = decoded(&fixture::library()).assertions.len();
-    let drawn = frames_on_the_draw_page(&mut opened(), (count / 14).max(1));
+    let drawn = frames_on_the_draw_page(&mut opened_on(with_library()), (count / 14).max(1));
     assert!(drawn > 100, "{drawn} frames compared");
-}
-
-#[test]
-fn fm_called_from_the_entry_page_through_its_far_entries_draws_the_same_frame() {
-    let bytes = fixture::library();
-    let all = statements(&decoded(&bytes));
-    let mut app = opened();
-    assert_eq!(app.far("far_fm_open", In::default()).status(), 0);
-    let (n, k, tokens) = all
-        .iter()
-        .max_by_key(|(_, _, t)| model_rows(t, STATEMENT_WIDTH))
-        .unwrap();
-    let input = In {
-        hl: *n,
-        de: u16::from(*k),
-        ..In::default()
-    };
-    let loaded = app.far("far_fm_statement", input);
-    assert_eq!(loaded.status(), 0);
-    assert_eq!(loaded.page, BASE);
-    app.far("far_ui_clear", In::default());
-    let input = In {
-        hl: 1,
-        de: ((STATEMENT_WIDTH as u16) << 8) | GUTTER as u16,
-        bc: (1 << 8) | 7,
-        ..In::default()
-    };
-    assert_eq!(app.far("far_fm_draw", input).status(), 0);
-    let want = model_frame(tokens, STATEMENT_WIDTH, GUTTER, 1, 1..7);
-    same_frame("a statement drawn from the entry page", &app.frame(), &want);
 }

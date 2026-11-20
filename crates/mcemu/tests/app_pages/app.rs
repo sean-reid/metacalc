@@ -1,6 +1,7 @@
 //! Building the app and standing on one of its pages.
 
-use crate::realos::{BASE, KEY_2, KEY_APPS, RealOs};
+use crate::realos::{BASE, KEY_2, KEY_APPS, RealOs, start_model};
+use crate::ui_support::{pack, same_frame};
 use mcemu::{Machine, Regs, STUB_ROM, Stop};
 use std::path::Path;
 use std::process::Command;
@@ -14,6 +15,17 @@ const FLAGS: u16 = 0x89F0;
 pub const UI_FRAME: u16 = 0x9340;
 pub const UI_VARS: u16 = 0x86EC;
 pub const FRAME_LEN: usize = 768;
+/// The ranges a driver run writes: the driver, a callee's buffers, the parameter block, the
+/// scratch, a stack and the strings of the frame test.
+pub const DRIVER_RAM: [(u16, u16); 7] = [
+    (0xA000, 0xA010),
+    (0xA100, 0xA200),
+    (0xA400, 0xA410),
+    (0xA600, 0xA620),
+    (0xA800, 0xA900),
+    (0xAE00, 0xAF00),
+    (0xB000, 0xB100),
+];
 const LIMIT: u32 = 100_000_000;
 const BOOT: u32 = 3_000_000;
 
@@ -28,6 +40,8 @@ pub struct Built {
     pub labels: String,
     /// What the build printed for each code page: the bytes it uses.
     pub used: Vec<u32>,
+    /// The library after the code pages, if any.
+    pub library: Option<Vec<u8>>,
 }
 
 impl Built {
@@ -77,6 +91,7 @@ fn build(name: &str, library: Option<&[u8]>) -> Built {
         file: std::fs::read(build.join("metacalc.8xk")).unwrap(),
         labels: std::fs::read_to_string(build.join("metacalc.lab")).unwrap(),
         used,
+        library: library.map(<[u8]>::to_vec),
     }
 }
 
@@ -92,16 +107,28 @@ pub fn with_library() -> &'static Built {
     BUILT.get_or_init(|| build("pages-library", Some(&crate::fixture::library())))
 }
 
-/// The app with a shipped library, named in `MC_LIBRARIES`, after its code pages.
-pub fn with_shipped(name: &'static str) -> (&'static Built, Vec<u8>) {
-    static RING: OnceLock<Built> = OnceLock::new();
+/// The app with a shipped library from `MC_LIBRARIES`, after its code pages.
+pub fn shipped(name: &str) -> &'static Built {
+    static BUILT: std::sync::Mutex<Vec<(String, &'static Built)>> =
+        std::sync::Mutex::new(Vec::new());
+    let mut all = BUILT.lock().unwrap();
+    if let Some((_, built)) = all.iter().find(|(n, _)| n == name) {
+        return built;
+    }
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
     let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
-    assert_eq!(name, "ring", "one shipped library is built");
-    (
-        RING.get_or_init(|| build("pages-ring", Some(&bytes))),
-        bytes,
-    )
+    let built: &'static Built = Box::leak(Box::new(build(&format!("pages-{name}"), Some(&bytes))));
+    all.push((name.to_string(), built));
+    built
+}
+
+/// The app with `bytes` as its library under a name of its own, for a library the reader or fm
+/// refuses.
+pub fn refused(name: &str, bytes: &[u8]) -> &'static Built {
+    Box::leak(Box::new(build(
+        &format!("pages-refused-{name}"),
+        Some(bytes),
+    )))
 }
 
 /// The reference OS with the app started from the APPS menu, waiting in the OS's `_GetKey`, where
@@ -142,13 +169,22 @@ pub struct App {
 }
 
 impl App {
-    /// The app installed, launched and left at the key wait of its start screen.
-    pub fn start(built: &'static Built) -> App {
+    /// The app installed, launched and run until it waits for a key, on the stub OS.
+    pub fn boot(built: &'static Built) -> App {
         let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
         m.install_app(&built.file, BASE).expect("the app installs");
         m.launch(BASE).expect("the app launches");
         assert_eq!(m.run_app(BOOT).stop, Stop::Limit, "the app waits for a key");
         App { m, built }
+    }
+
+    /// `boot`, and the app has drawn the start screen the model draws for its library: the frame it
+    /// left is the model's, so it reached its key wait by its own path.
+    pub fn start(built: &'static Built) -> App {
+        let mut app = App::boot(built);
+        let want = pack(&start_model(built.library.as_deref(), 0));
+        same_frame("the start screen", &app.frame(), &want);
+        app
     }
 
     /// The app installed on the reference OS and started from the APPS menu, left at its key wait.
@@ -170,6 +206,7 @@ impl App {
     /// Calls `target` from the page numbered `page`, as port 6 reads there, by a driver in RAM that
     /// calls it and halts, with interrupts off, and puts port 6 back on the entry page.
     pub fn call(&mut self, page: u8, target: u16, input: In) -> Done {
+        self.assert_scratch_is_free();
         let [lo, hi] = target.to_le_bytes();
         self.m.load_ram(DRIVER, &[0xCD, lo, hi, 0x76, 0x18, 0xFD]);
         self.m.out_port(0x06, page);
@@ -210,6 +247,28 @@ impl App {
         };
         self.m.out_port(0x06, BASE);
         done
+    }
+
+    /// The RAM a driver run writes, `DRIVER_RAM`, lies clear of every region of the app's RAM map.
+    fn assert_scratch_is_free(&self) {
+        let regions = [
+            ("UI_VARS", "UI_VARS_SIZE"),
+            ("UI_FRAME", "UI_FRAME_SIZE"),
+            ("KD_SCRATCH", "KD_SCRATCH_SIZE"),
+            ("FAR_VARS", "FAR_VARS_SIZE"),
+            ("LIB_STATE", "LIB_STATE_SIZE"),
+            ("APP_BUF", "APP_BUF_SIZE"),
+            ("FM_SCRATCH", "FM_SCRATCH_SIZE"),
+        ];
+        for (base, size) in regions {
+            let (low, len) = (self.label(base), self.label(size));
+            for (from, to) in DRIVER_RAM {
+                assert!(
+                    to <= low || low + len <= from,
+                    "the driver's RAM {from:04X} to {to:04X} overlaps {base} at {low:04X}"
+                );
+            }
+        }
     }
 
     /// The entry page's far entry named `name`, called from the entry page.

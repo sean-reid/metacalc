@@ -19,6 +19,8 @@ pub const KEY_CLEAR: u8 = 0x0F;
 pub const OS_FLAGS: usize = 0x09F0;
 pub const ON_FLAGS: usize = OS_FLAGS + 9;
 pub const ON_INTERRUPT: u8 = 0x10;
+/// The OS flag byte holding `graphDraw`, bit 0, which the app sets as its last mark before it leaves.
+pub const GRAPH_FLAGS: usize = OS_FLAGS + 3;
 
 fn rom() -> Option<Vec<u8>> {
     let path = Path::new(&std::env::var_os("HOME")?).join("ti84-rom/84PSE_v243.rom");
@@ -73,12 +75,18 @@ impl RealOs {
         );
     }
 
-    /// `launch` for an app that waits in the OS's `_GetKey`, where port 6 reads the OS's page.
-    pub fn launch_in_key_wait(&mut self) {
+    /// `launch` for an app that waits in the OS's `_GetKey`, where port 6 reads the OS's page: the
+    /// app is running when the screen is `start_screen`, the pixels it draws before it waits.
+    pub fn launch_in_key_wait(&mut self, start_screen: &[bool]) {
         self.start_from_menu();
+        self.run_ms(300);
+        assert!(
+            self.screen() == start_screen,
+            "the app did not draw its start screen"
+        );
     }
 
-    fn start_from_menu(&mut self) {
+    pub fn start_from_menu(&mut self) {
         self.tap(KEY_APPS, 150, 600);
         let menu = self.screen();
         let lit =
@@ -103,6 +111,42 @@ impl RealOs {
         let lcd = self.m.lcd();
         (0..64).flat_map(|y| lcd.row(y).to_vec()).collect()
     }
+}
+
+/// What the model's canvas draws for the app's start screen: with no library the title bar and the
+/// hint on row 3; with one the title bar, the label of its first assertion on row 1, that
+/// assertion's conclusion on rows 2 to 6 and the hint on row 7. A status other than 0 is what the
+/// screen shows as two hex digits on row 7 in place of everything under the title bar.
+pub fn start_model(library: Option<&[u8]>, status: u8) -> mcglyph::Bitmap {
+    use mcui::canvas::{Canvas, GUTTER, STATEMENT_WIDTH};
+    use mcui::expr::Expr;
+    use mcui::fold::{Folds, layout};
+    let mut canvas = Canvas::default();
+    canvas.title("metacalc", "");
+    match (library, status) {
+        (_, 1..) => canvas.text(1, 7, &format!("{status:02X}")),
+        (None, 0) => canvas.text(1, 3, "CLEAR to quit"),
+        (Some(bytes), 0) => {
+            let library = mcpack::library::decode(bytes).expect("the library decodes");
+            let first = &library.assertions[0];
+            canvas.text(1, 1, &first.label);
+            let tokens = &first.conclusion;
+            let expr = Expr::flat(vec![tokens[0].clone()], &tokens[1..]);
+            let laid = layout(&expr, &Folds::none(&expr), STATEMENT_WIDTH);
+            canvas.layout(&laid, GUTTER, 2, 2..7);
+            canvas.text(1, 7, "CLEAR to quit")
+        }
+    };
+    canvas.into_bitmap()
+}
+
+/// `start_model` as lit pixels, row by row, as `RealOs::screen` gives them.
+pub fn start_pixels(library: Option<&[u8]>, status: u8) -> Vec<bool> {
+    let bitmap = start_model(library, status);
+    (0..64)
+        .flat_map(|y| (0..96).map(move |x| (x, y)))
+        .map(|(x, y)| bitmap.get(x, y))
+        .collect()
 }
 
 /// Builds `make -C <dir> <args>` for an app with the assembler the environment names, into a fresh

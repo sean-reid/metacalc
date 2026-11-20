@@ -1,7 +1,8 @@
 //! What crossing pages costs. The reader's routines are called from fm through a far entry, so
 //! fm_open, fm_assertion and fm_nodes cost more than on the one-image test build, where they call
 //! the reader directly; the frame costs five far calls from the entry page. Every figure is
-//! printed on a passing run.
+//! printed on a passing run. Every call here is made by a RAM driver standing on the page it names
+//! (see `App::call`), after the app has reached its key wait with the library and fm open.
 
 use crate::app::*;
 use crate::draw::{on_draw_page, opened_on, statement};
@@ -49,6 +50,65 @@ fn widest(all: &[(u16, u8, Vec<String>)]) -> (u16, u8, &Vec<String>) {
     (*n, *k, tokens)
 }
 
+/// An app at its key wait whose reader is opened afresh by a RAM driver, as the one-image rig has it:
+/// what the shell's own draw leaves in the reader's caches changes what the next call costs, by as
+/// much as 5,000 T-states in fm_assertion.
+fn fresh(built: &'static Built) -> App {
+    let mut app = App::start(built);
+    assert_eq!(app.far("far_kernel_reset", In::default()).status(), 0);
+    let open = In {
+        a: LIBRARY_PAGE,
+        de: SCRATCH,
+        ..In::default()
+    };
+    assert_eq!(app.far("far_lib_open", open).status(), 0);
+    app
+}
+
+/// How many far calls to the reader each op makes: the stubs on the draw page are patched to count
+/// their entries in RAM before they go on to the data page, and the ops run on that machine. Returns
+/// the counts of fm_open, fm_assertion of assertion `n` and fm_nodes of its statement `k`.
+fn counted(built: &'static Built, n: u16, k: u8) -> [u32; 3] {
+    const TRAMP: u16 = 0xA600;
+    const COUNT: u16 = 0xA610;
+    let mut app = fresh(built);
+    let (start, end) = (app.label("far_table"), app.label("far_table_end"));
+    let far = app.label("far_page2").to_le_bytes();
+    let tramp = [
+        0xE5, 0x2A, 0x10, 0xA6, 0x23, 0x22, 0x10, 0xA6, 0xE1, 0xC3, far[0], far[1],
+    ];
+    app.m.load_ram(TRAMP, &tramp);
+    let jump = TRAMP.to_le_bytes();
+    let mut at = start;
+    while at < end {
+        // ld ix,nn is 4 bytes, then the jp to far_page2.
+        app.m.load_flash(
+            DRAW_PAGE,
+            usize::from(at - 0x4000) + 4,
+            &[0xC3, jump[0], jump[1]],
+        );
+        at += 7;
+    }
+    let count = |app: &mut App| {
+        let b = app.m.read_ram(COUNT, 2);
+        app.m.load_ram(COUNT, &[0, 0]);
+        u32::from(u16::from_le_bytes([b[0], b[1]]))
+    };
+    app.m.load_ram(COUNT, &[0, 0]);
+    on_draw_page(&mut app, "fm_open", In::default());
+    let open = count(&mut app);
+    let input = In {
+        hl: n,
+        ..In::default()
+    };
+    on_draw_page(&mut app, "fm_assertion", input);
+    let assertion = count(&mut app);
+    assert_eq!(statement(&mut app, n, k).status(), 0);
+    count(&mut app);
+    on_draw_page(&mut app, "fm_nodes", In::default());
+    [open, assertion, count(&mut app)]
+}
+
 fn overheads(name: &str, built: &'static Built, bytes: &[u8]) {
     let all = statements(&decoded(bytes));
     let (n, k, _) = widest(&all);
@@ -57,7 +117,8 @@ fn overheads(name: &str, built: &'static Built, bytes: &[u8]) {
     let base = fm.rig.call("CALL_NOP", Regs::default()).tstates;
     let (open1, assertion1, nodes1) = single(&mut fm, base, bytes);
 
-    let mut app = opened_on(built);
+    let counts = counted(built, n, k);
+    let mut app = fresh(built);
     let driver = driver_cost(&mut app);
     let cross = crossing(&mut app);
     let cost = |done: Done| done.tstates - driver;
@@ -71,35 +132,39 @@ fn overheads(name: &str, built: &'static Built, bytes: &[u8]) {
     let nodes2 = cost(on_draw_page(&mut app, "fm_nodes", In::default()));
 
     println!("{name}: one far call costs {cross} T-states over a plain call");
-    for (what, one, pages) in [
+    for ((what, one, pages), calls) in [
         ("fm_open", open1, open2),
         ("fm_assertion", assertion1, assertion2),
         ("fm_nodes", nodes1, nodes2),
-    ] {
+    ]
+    .into_iter()
+    .zip(counts)
+    {
         let added = pages - one;
-        let calls = (f64::from(added) / f64::from(cross)).round() as u32;
         println!(
             "{name}, {what}: {one} on one image, {pages} on three pages, {added} more: {calls} far \
-             calls, {:.1} percent",
+             calls counted, {:.1} percent",
             100.0 * f64::from(added) / f64::from(one)
         );
+        // The two runs differ by a few T-states a call in how the tables they walk are laid out.
         assert!(
-            added.abs_diff(calls * cross) <= calls,
-            "{name}, {what}: {added} is not {calls} far calls of {cross}"
+            added.abs_diff(calls * cross) <= 2 * calls,
+            "{name}, {what}: {added} more T-states is not the {calls} far calls the stubs counted, \
+             {cross} each"
         );
     }
 }
 
 #[test]
-fn what_the_far_calls_add_to_fm_open_fm_assertion_and_fm_nodes() {
+fn what_the_far_calls_add_to_fm_open_fm_assertion_and_fm_nodes_measured_by_a_ram_driver() {
     overheads("fixture", with_library(), &fixture::library());
 }
 
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding ring.mclib>"]
-fn what_the_far_calls_add_to_fm_open_fm_assertion_and_fm_nodes_on_ring() {
-    let (built, bytes) = with_shipped("ring");
-    overheads("ring", built, &bytes);
+fn what_the_far_calls_add_to_fm_open_fm_assertion_and_fm_nodes_on_ring_by_a_ram_driver() {
+    let built = shipped("ring");
+    overheads("ring", built, built.library.as_ref().unwrap());
 }
 
 /// The statement of six or more lines whose fm_draw costs most on the single image, which is what
@@ -198,7 +263,7 @@ fn frame(name: &str, built: &'static Built, bytes: &[u8], ceiling: u32) {
 }
 
 #[test]
-fn a_frame_of_six_rows_drawn_from_the_entry_page_fits_the_budget() {
+fn a_frame_of_six_rows_drawn_from_the_entry_page_by_a_ram_driver_fits_the_budget() {
     frame(
         "fixture",
         with_library(),
@@ -209,7 +274,7 @@ fn a_frame_of_six_rows_drawn_from_the_entry_page_fits_the_budget() {
 
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding ring.mclib>"]
-fn the_heaviest_ring_frame_drawn_from_the_entry_page_fits_the_budget() {
-    let (built, bytes) = with_shipped("ring");
-    frame("ring", built, &bytes, RING_FRAME);
+fn the_heaviest_ring_frame_drawn_from_the_entry_page_by_a_ram_driver_fits_the_budget() {
+    let built = shipped("ring");
+    frame("ring", built, built.library.as_ref().unwrap(), RING_FRAME);
 }

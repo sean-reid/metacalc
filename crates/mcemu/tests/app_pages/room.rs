@@ -20,14 +20,21 @@ fn every_code_page_fits_and_the_build_says_how_much_it_uses() {
 
 /// Assembles pages.inc with `lines` after it, as the app's own include path does.
 fn assemble(name: &str, lines: &str) -> Result<(), String> {
+    assemble_with(name, "pages.inc", lines, &[])
+}
+
+/// Assembles the include `first` with `lines` after it and the `-D` defines, as the app's own
+/// include path does.
+fn assemble_with(name: &str, first: &str, lines: &str, defines: &[&str]) -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("pages-room-{name}"));
     std::fs::create_dir_all(&dir).unwrap();
     let source = dir.join("room.z80");
-    std::fs::write(&source, format!("#include \"pages.inc\"\n{lines}\n")).unwrap();
+    std::fs::write(&source, format!("#include \"{first}\"\n{lines}\n")).unwrap();
     let spasm = std::env::var_os("SPASM").unwrap_or_else(|| "spasm".into());
     let run = Command::new("sh")
         .arg(root.join("scripts/spasm.sh"))
+        .args(defines.iter().map(|d| format!("-D{d}")))
         .arg("-I")
         .arg(root.join("app/src"))
         .arg(&source)
@@ -65,4 +72,62 @@ fn the_pages_are_refused_out_of_order() {
     assert!(late.contains("not assembled in order"), "{late}");
     let twice = assemble("twice", "APP_PAGE(1)\nAPP_PAGE(1)").expect_err("page 1 twice");
     assert!(twice.contains("not assembled in order"), "{twice}");
+}
+
+#[test]
+fn the_last_page_must_leave_96_bytes_for_the_signature() {
+    assemble("last-ok", ".org 4000h\n.fill 3FA0h, 0\nAPP_PAGE_LAST(2)").expect("16288 bytes fit");
+    let over = assemble("last-over", ".org 4000h\n.fill 3FA1h, 0\nAPP_PAGE_LAST(2)")
+        .expect_err("16289 bytes spill the signature to a fourth page");
+    assert!(over.contains("leaves no room for the signature"), "{over}");
+    // With a library after it the last page may run to its end.
+    assemble("end-full", ".org 4000h\n.fill 4000h, 0\nAPP_PAGE_END(2)").expect("full page");
+}
+
+#[test]
+fn app_buf_refuses_every_region_it_could_overlap_and_the_end_of_bank_b() {
+    let go =
+        |name: &str, at: &str| assemble_with(name, "ram_map.inc", "", &[&format!("APP_BUF={at}")]);
+    go("buf-default", "$8806").expect("the default place");
+    for (at, want) in [
+        ("$85F0", "APP_BUF and UI_VARS overlap"),
+        ("$8800", "APP_BUF and FM_SCRATCH overlap"),
+        ("$9250", "APP_BUF and UI_FRAME overlap"),
+        ("$9780", "APP_BUF and KD_SCRATCH overlap"),
+        ("$BF80", "APP_BUF runs past bank B"),
+    ] {
+        let why = go(&format!("buf-{}", &at[1..]), at).expect_err(want);
+        assert!(why.contains(want), "{at}: {why}");
+    }
+}
+
+#[test]
+fn the_far_entries_are_the_same_bytes_on_the_entry_page_and_the_draw_page() {
+    for built in [plain(), with_library()] {
+        let pages = mcemu::decode_app(&built.file).unwrap();
+        let (start, end) = (built.label("far_table"), built.label("far_table_end"));
+        let at = usize::from(start - 0x4000)..usize::from(end - 0x4000);
+        assert!(end > start, "a table of stubs");
+        assert_eq!(pages[0][at.clone()], pages[1][at], "the reader's stubs");
+    }
+}
+
+#[test]
+fn a_font_directory_without_font_inc_stops_the_build() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("pages-no-font");
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app");
+    let spasm = std::env::var_os("SPASM").unwrap_or_else(|| "spasm".into());
+    let run = Command::new("make")
+        .arg("-C")
+        .arg(&source)
+        .arg(format!("SPASM={}", spasm.to_string_lossy()))
+        .arg(format!("BUILD={}/build", dir.display()))
+        .arg(format!("FONT={}", dir.display()))
+        .arg("app")
+        .output()
+        .expect("make runs");
+    assert!(!run.status.success(), "the build went on");
+    let text = String::from_utf8_lossy(&run.stderr);
+    assert!(text.contains("font.inc is missing"), "{text}");
 }

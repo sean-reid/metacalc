@@ -7,6 +7,8 @@ use common::{PAGE, Signature, build_8xk, expected_image, record, sample_pages, w
 use mcsend::tifile::App;
 
 const FIXTURE: &[u8] = include_bytes!("fixtures/metacalc.8xk");
+/// `make -C app` output with no library: three code pages, entry, draw and data.
+const THREE_PAGES: &[u8] = include_bytes!("fixtures/metacalc-three-pages.8xk");
 /// The code pages of the app `make -C app` builds: entry, draw and data.
 const CODE_PAGES: usize = 3;
 
@@ -29,6 +31,28 @@ fn a_one_page_app_reads_as_check_8xk_sees_it() {
     assert_eq!(&image[..6], [0x80, 0x0F, 0x00, 0x00, 0x00, 0xF2]);
     assert!(image[344..].iter().all(|&b| b == 0));
     assert!(image.windows(3).any(|w| w == [0x02, 0x2D, 0x40]));
+}
+
+/// The data length is what the type 00 records add up to, and every page after the first starts
+/// with the same cross-page call at 4083h as the first.
+#[test]
+fn the_three_page_app_the_repo_builds_reads_as_check_8xk_sees_it() {
+    let app = App::parse(THREE_PAGES).unwrap();
+    assert_eq!(app.name, "metacalc");
+    assert_eq!(app.page_count(), CODE_PAGES);
+    let text = String::from_utf8_lossy(THREE_PAGES);
+    let records: usize = text
+        .lines()
+        .filter(|l| l.starts_with(':') && &l[7..9] == "00")
+        .map(|l| usize::from_str_radix(&l[1..3], 16).unwrap())
+        .sum();
+    assert_eq!(app.data_len(), records);
+    let image = app.image();
+    assert_eq!(image.len(), CODE_PAGES * PAGE);
+    assert_eq!(&image[..2], [0x80, 0x0F], "the header's length field");
+    let call = 0x83..0x83 + 63;
+    assert_eq!(image[call.clone()], image[PAGE..][call.clone()]);
+    assert_eq!(image[call.clone()], image[2 * PAGE..][call]);
 }
 
 #[test]

@@ -1,19 +1,15 @@
 use crate::app::build;
+use crate::realos::start_model;
 use crate::support::*;
 use mcemu::{LCD_HEIGHT, LCD_WIDTH, Lcd, Machine, STUB_ROM, Stop};
-use mcui::canvas::Canvas;
 
 const SLICE: u32 = 600_000;
 const CLEAR: u8 = 0x0F;
 const LIB_PAGE_ADDR: u16 = 0x9872;
 
-/// Whether the screen is what the model's canvas draws for the start screen: the title bar and
-/// the line of text on row 3.
-fn shows_the_start_screen(lcd: &Lcd) -> bool {
-    let mut canvas = Canvas::default();
-    canvas.title("metacalc", "");
-    canvas.text(1, 3, "CLEAR to quit");
-    let want = canvas.into_bitmap();
+/// Whether the screen is what the model's canvas draws for the app's start screen with `library`.
+fn shows_the_start_screen(lcd: &Lcd, library: Option<&[u8]>) -> bool {
+    let want = start_model(library, 0);
     (0..LCD_HEIGHT).all(|y| (0..LCD_WIDTH).all(|x| lcd.pixel(x, y) == want.get(x, y)))
 }
 
@@ -24,10 +20,13 @@ fn launched(file: &[u8], base: u8) -> Machine {
     m
 }
 
-fn assert_waits_for_clear_then_exits(m: &mut Machine) {
+/// Every key but CLEAR redraws the same screen, so the unchanged screen after one shows only that a
+/// redraw leaves the screen whole; that each key is read and redraws is shown by the app_pages
+/// tests, which fill the frame with a pattern first.
+fn assert_waits_for_clear_then_exits(m: &mut Machine, library: Option<&[u8]>) {
     assert_eq!(m.run_app(SLICE).stop, Stop::Limit);
     assert!(
-        shows_the_start_screen(&m.lcd()),
+        shows_the_start_screen(&m.lcd(), library),
         "the start screen is on screen"
     );
     let ink = m.lcd().lit();
@@ -38,7 +37,7 @@ fn assert_waits_for_clear_then_exits(m: &mut Machine) {
         m.release_key(key);
         assert_eq!(m.run_app(SLICE).stop, Stop::Limit, "{name} up");
         assert!(
-            shows_the_start_screen(&m.lcd()),
+            shows_the_start_screen(&m.lcd(), library),
             "{name}: the screen is unchanged"
         );
     }
@@ -51,7 +50,7 @@ fn the_app_without_a_library_draws_its_start_screen_waits_for_clear_and_exits() 
     let app = build("run-one-page", None);
     assert_eq!(app.pages.len(), 3);
     let mut m = launched(&app.file, 0x69);
-    assert_waits_for_clear_then_exits(&mut m);
+    assert_waits_for_clear_then_exits(&mut m, None);
 }
 
 #[test]
@@ -60,6 +59,6 @@ fn the_app_with_a_library_does_the_same_and_leaves_its_library_page_in_ram() {
     let app = build("run-multi-page", Some(&library));
     assert!(app.pages.len() > 3);
     let mut m = launched(&app.file, 0x30);
-    assert_waits_for_clear_then_exits(&mut m);
+    assert_waits_for_clear_then_exits(&mut m, Some(&library));
     assert_eq!(m.read_ram(LIB_PAGE_ADDR, 1), [0x30 - 3]);
 }

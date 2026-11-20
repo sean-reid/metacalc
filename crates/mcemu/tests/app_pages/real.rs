@@ -1,62 +1,73 @@
-//! The same app on the reference OS, entered from the APPS menu with port 23h as TI-OS sets it
-//! for three pages.
+//! The same app on the reference OS, entered from the APPS menu with port 23h as TI-OS sets it for
+//! three pages. The app's own path does the calls: no driver runs here.
 
 use crate::app::*;
-use crate::data::answers_from_the_entry_page;
-use crate::draw::frames_on_the_draw_page;
-use crate::realos::{KEY_CLEAR, RealOs};
-use crate::screen::{model, pixels};
+use crate::fixture;
+use crate::realos::{GRAPH_FLAGS, KEY_CLEAR, RealOs, start_pixels};
 use crate::ui_support::{pack, same_frame};
 
 const DOWN: u8 = 0x01;
+const GRAPH_DRAW: u8 = 0x01;
+const ST_BAD: u8 = 3;
 
-fn screen(os: &mut RealOs) -> Vec<bool> {
-    os.screen()
-}
-
-#[test]
-#[ignore = "needs the reference ROM image"]
-fn on_the_reference_os_the_start_screen_is_the_models_a_key_redraws_it_and_clear_leaves() {
-    let built = with_library();
+/// The start screen, a key with the font zeroed, and the exit, on the OS with `built`.
+fn start_key_and_exit(built: &'static Built) {
+    let library = built.library.as_deref();
     let mut os = RealOs {
         m: started_on_real_os(built),
     };
-    let want = model();
-    assert!(screen(&mut os) == pixels(&want), "the start screen");
+    let want = start_pixels(library, 0);
+    assert!(os.screen() == want, "the start screen");
+    same_frame(
+        "the frame",
+        &os.m.read_ram(UI_FRAME, FRAME_LEN),
+        &pack(&crate::realos::start_model(library, 0)),
+    );
 
     os.m.load_ram(UI_VARS, &[0; 0x1A]);
     os.m.load_ram(UI_FRAME, &[0xAA; FRAME_LEN]);
     os.tap(DOWN, 150, 400);
     let font = (built.label("ui_font") - 8).to_le_bytes();
     assert_eq!(os.m.read_ram(UI_VARS + 0x14, 2), font, "the font pointer");
-    same_frame(
-        "after a key",
-        &os.m.read_ram(UI_FRAME, FRAME_LEN),
-        &pack(&want),
-    );
-    assert!(screen(&mut os) == pixels(&want), "the screen after a key");
+    assert!(os.screen() == want, "the screen after a key");
 
     os.tap(KEY_CLEAR, 150, 1500);
-    assert!(screen(&mut os) != pixels(&want), "the app has left");
+    assert_ne!(
+        os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW,
+        0,
+        "the app left through its exit, which marks graphDraw"
+    );
+    assert!(os.screen() != want, "the OS has the screen back");
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn on_the_reference_os_the_entry_page_calls_the_data_page() {
-    answers_from_the_entry_page(&mut App::on_real_os(with_library()));
+fn on_the_reference_os_the_app_without_a_library_draws_its_screen_and_leaves() {
+    start_key_and_exit(plain());
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn on_the_reference_os_fm_on_the_draw_page_calls_the_reader_and_draws_the_models_frames() {
-    let mut app = App::on_real_os(with_library());
-    assert_eq!(app.far("far_kernel_reset", In::default()).status(), 0);
-    let open = In {
-        a: LIBRARY_PAGE,
-        de: SCRATCH,
-        ..In::default()
+fn on_the_reference_os_the_fixture_library_screen_is_the_models_and_a_key_redraws_it() {
+    start_key_and_exit(with_library());
+}
+
+#[test]
+#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib>"]
+fn on_the_reference_os_the_prop_library_screen_is_the_models_and_a_key_redraws_it() {
+    start_key_and_exit(shipped("prop"));
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn on_the_reference_os_a_refused_library_shows_its_status() {
+    let bad = fixture::with(&fixture::library(), |b| b[0] ^= 0xFF);
+    let built = refused("real-magic", &bad);
+    let mut os = RealOs {
+        m: started_on_real_os(built),
     };
-    assert_eq!(app.far("far_lib_open", open).status(), 0);
-    let drawn = frames_on_the_draw_page(&mut app, 6);
-    assert!(drawn > 20, "{drawn} frames compared");
+    assert!(
+        os.screen() == start_pixels(Some(&bad), ST_BAD),
+        "the status"
+    );
 }

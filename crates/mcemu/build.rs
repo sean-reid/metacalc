@@ -727,7 +727,10 @@ fn assemble_ui(out: &Path) {
         }
     }
     for (defines, want) in [
-        (&["UI_VARS=$9326", "FM_SCRATCH=$A000"][..], None),
+        (
+            &["UI_VARS=$9326", "FM_SCRATCH=$A000", "APP_BUF=$8806"][..],
+            None,
+        ),
         (&["UI_VARS=$9640"][..], None),
         (&["UI_FRAME=$9572"][..], None),
         (&["UI_FRAME=$9B71"][..], None),
