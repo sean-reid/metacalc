@@ -9,6 +9,7 @@ fn at(name: &str) -> usize {
 /// Every region of app/src/ram_map.inc at its default base, as the assembler resolved it.
 fn regions() -> Vec<(&'static str, usize, usize)> {
     [
+        ("SCR_STATE", "SCR_STATE_SIZE"),
         ("UI_VARS", "UI_VARS_SIZE"),
         ("UI_FRAME", "UI_FRAME_SIZE"),
         ("KD_SCRATCH", "KD_SCRATCH_SIZE"),
@@ -78,5 +79,15 @@ fn fm_low_overlays_the_kernels_low_region_above_the_page_of_its_parameters() {
         base + size,
         low.0 + low.1,
         "it runs to the end of the region"
+    );
+}
+
+#[test]
+fn the_screen_state_is_160_bytes_inside_appdata() {
+    let (base, size) = (at("SCR_STATE"), at("SCR_STATE_SIZE"));
+    assert_eq!(size, 160);
+    assert!(
+        base >= 0x8000 && base + size <= 0x8100,
+        "{base:#x}+{size:#x} is not inside appData, 8000h to 80FFh"
     );
 }

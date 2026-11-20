@@ -801,7 +801,40 @@ fn assemble_ui(out: &Path) {
             Some("FM_LOW runs outside the kernel's low region"),
         ),
         (&["FM_SCRATCH=$9100"][..], None),
-        (&["FM_SCRATCH=$8000"][..], None),
+        (&["FM_SCRATCH=$80A0"][..], None),
+        (
+            &["FM_SCRATCH=$8000"][..],
+            Some("FM_SCRATCH and SCR_STATE overlap"),
+        ),
+        (
+            &["FM_SCRATCH=$809F"][..],
+            Some("FM_SCRATCH and SCR_STATE overlap"),
+        ),
+        (&["SCR_STATE=$8100"][..], None),
+        (&["SCR_STATE=$8000", "SCR_STATE_SIZE=$100"][..], None),
+        (
+            &["SCR_STATE=$86EB"][..],
+            Some("SCR_STATE and UI_VARS overlap"),
+        ),
+        (
+            &["SCR_STATE=$9300"][..],
+            Some("SCR_STATE and UI_FRAME overlap"),
+        ),
+        (
+            &["SCR_STATE=$9860"][..],
+            Some("SCR_STATE and KD_SCRATCH overlap"),
+        ),
+        (
+            &["SCR_STATE=$9890"][..],
+            Some("SCR_STATE and FAR_VARS overlap"),
+        ),
+        (
+            &["SCR_STATE=$9B00"][..],
+            Some("SCR_STATE and LIB_STATE overlap"),
+        ),
+        (&["SCR_STATE=$BF80"][..], Some("SCR_STATE runs past bank B")),
+        (&["SCR_STATE=$7F00"][..], Some("SCR_STATE runs past bank B")),
+        (&["SCR_STATE=$BF60"][..], None),
         (&["FM_SCRATCH=$9240"][..], None),
         (&["FM_SCRATCH=$BF00"][..], None),
         (&["FM_RAM_SIZE=$1F00"][..], None),
