@@ -53,7 +53,7 @@ $(BUILD)/pagecheck.8xk: pagecheck.z80 ramcheck.inc printnum.inc ../app/src/farca
 check: check-pagecheck
 
 check-pagecheck: $(BUILD)/pagecheck.8xk
-	sh ../app/scripts/check-8xk.sh $(BUILD)/pagecheck.8xk pageschk
-	sh ../app/scripts/test-check-8xk.sh $(BUILD)/pagecheck.8xk pageschk
+	sh ../app/scripts/check-8xk.sh -p 3 $(BUILD)/pagecheck.8xk pageschk
+	sh ../app/scripts/test-check-8xk.sh -p 3 $(BUILD)/pagecheck.8xk pageschk
 
 .PHONY: check-pagecheck

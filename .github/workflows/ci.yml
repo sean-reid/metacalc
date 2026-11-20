@@ -160,7 +160,7 @@ jobs:
           for lib in "$RUNNER_TEMP"/libraries/*.mclib; do
             name=$(basename "$lib" .mclib)
             make -s -C app BUILD="$RUNNER_TEMP/apps/$name" LIBRARY="$lib"
-            sh app/scripts/check-8xk.sh -l "$lib" "$RUNNER_TEMP/apps/$name/metacalc.8xk"
+            sh app/scripts/check-8xk.sh -p 3 -l "$lib" "$RUNNER_TEMP/apps/$name/metacalc.8xk"
             make -s -C probe BUILD="$RUNNER_TEMP/probe/$name" LIBRARY="$lib" kernchk
             sh app/scripts/check-8xk.sh -l "$lib" "$RUNNER_TEMP/probe/$name/kernchk.8xk" kernchk
           done

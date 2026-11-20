@@ -17,9 +17,10 @@ while IFS= read -r path; do
 	LICENSE) installer=true ;;
 	docs/src/guide/*) docs=true libraries=true ;;
 	docs/*) docs=true site=true ;;
-	crates/mcsend/Cargo.toml) rust=true emu=true audit=true libraries=true installer=true ;;
-	crates/*/Cargo.toml) rust=true emu=true audit=true libraries=true ;;
-	crates/mcpack/* | crates/mcglyph/* | crates/mcedit/* | crates/mcui/* | crates/mcemu/*)
+	crates/mcsend/Cargo.toml) rust=true emu=true audit=true app=true libraries=true installer=true ;;
+	crates/*/Cargo.toml) rust=true emu=true audit=true app=true libraries=true ;;
+	crates/mcglyph/*) rust=true emu=true app=true libraries=true ;;
+	crates/mcpack/* | crates/mcedit/* | crates/mcui/* | crates/mcemu/*)
 		rust=true emu=true libraries=true
 		;;
 	crates/mcsend/*) rust=true audit=true app=true installer=true ;;

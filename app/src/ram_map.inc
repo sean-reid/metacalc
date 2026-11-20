@@ -21,7 +21,10 @@
 ;   UI_FRAME          B     the UI's 96 by 64 frame, plotSScreen
 ;   SCR_STACK         B     the stack of open screens, 128 bytes: cmdShadow, 966Eh to 96EDh,
 ;                           cmdShadCur follows
-;   KD_SCRATCH        B     the kernel driver's scratch, from libPage, in appBackUpScreen
+;   KD_SCRATCH        B     the kernel driver's scratch, from libPage, in appBackUpScreen. The app's own
+;                           two bytes are libPage (offset 0) and appStatus (offset 1), checked in
+;                           equates.inc; probe/kerndriver.inc lays out its own variables over the same
+;                           bytes in its own image, where offset 1 is not appStatus
 ;   FAR_VARS          B     the cross-page call's scratch (app/src/farcall.inc), in the gap
 ;                           between KD_SCRATCH and LIB_STATE
 ;   LIB_STATE         B     the reader's state, after the driver's scratch
@@ -30,6 +33,9 @@
 ;   LIB_BOUNCE        C     an overlay on the last 256 bytes of the kernel's high region
 ;   FM_SCRATCH        B     fm's 256 byte buffer for the reader's accessors, in saveSScreen after
 ;                           UI_VARS; it holds nothing across calls
+;   APP_BUF           B     the shell's 256 byte buffer for the reader's scratch and the strings it draws, in
+;                           saveSScreen after FM_SCRATCH; it holds nothing across a key wait, since the
+;                           OS writes the screen's pixels into saveSScreen at an auto power down
 ;   FM_RAM            C     fm's working memory, an overlay on the kernel's high region from its
 ;                           start; the kernel uses that region only inside a kernel call, so fm
 ;                           and the kernel share it through the ready mark (fm/fm.z80)
@@ -99,6 +105,10 @@ LIB_BOUNCE          .equ KERNEL_RAM_HIGH + HIGH_SIZE - LIB_BOUNCE_SIZE
 FM_SCRATCH          .equ UI_VARS + UI_VARS_SIZE
 #endif
 FM_SCRATCH_SIZE     .equ $100
+#ifndef APP_BUF
+APP_BUF             .equ UI_VARS + UI_VARS_SIZE + FM_SCRATCH_SIZE
+#endif
+APP_BUF_SIZE        .equ $100
 #ifndef FM_RAM
 FM_RAM              .equ KERNEL_RAM_HIGH
 #endif
@@ -172,6 +182,7 @@ RAM_DISJOINT(SCR_STACK, SCR_STACK_SIZE, LIB_STATE, LIB_STATE_SIZE, "SCR_STACK an
 RAM_DISJOINT(KERNEL_RAM_LOW, LOW_SIZE, KERNEL_RAM_HIGH, HIGH_SIZE, "KERNEL_RAM_LOW and KERNEL_RAM_HIGH overlap")
 
 RAM_WITHIN(FM_SCRATCH, FM_SCRATCH_SIZE, $8000, $C000, "FM_SCRATCH runs past bank B")
+RAM_WITHIN(APP_BUF, APP_BUF_SIZE, $8000, $C000, "APP_BUF runs past bank B")
 RAM_WITHIN(FM_RAM, FM_RAM_SIZE, KERNEL_RAM_HIGH, KERNEL_RAM_HIGH + HIGH_SIZE, "FM_RAM runs outside the kernel's high region")
 #if FM_LOW < (KERNEL_RAM_LOW + $100)
  .error "FM_LOW must not start below KERNEL_RAM_LOW + $100, the page of the kernel's parameters"
@@ -184,6 +195,14 @@ RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, UI_FRAME, UI_FRAME_SIZE, "FM_SCRATCH a
 RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "FM_SCRATCH and KD_SCRATCH overlap")
 RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, FAR_VARS, FAR_VARS_SIZE, "FM_SCRATCH and FAR_VARS overlap")
 RAM_DISJOINT(FM_SCRATCH, FM_SCRATCH_SIZE, LIB_STATE, LIB_STATE_SIZE, "FM_SCRATCH and LIB_STATE overlap")
+RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, UI_VARS, UI_VARS_SIZE, "APP_BUF and UI_VARS overlap")
+RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, UI_FRAME, UI_FRAME_SIZE, "APP_BUF and UI_FRAME overlap")
+RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, SCR_VARS, SCR_VARS_SIZE, "APP_BUF and SCR_VARS overlap")
+RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, SCR_STACK, SCR_STACK_SIZE, "APP_BUF and SCR_STACK overlap")
+RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "APP_BUF and KD_SCRATCH overlap")
+RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, FAR_VARS, FAR_VARS_SIZE, "APP_BUF and FAR_VARS overlap")
+RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, LIB_STATE, LIB_STATE_SIZE, "APP_BUF and LIB_STATE overlap")
+RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, FM_SCRATCH, FM_SCRATCH_SIZE, "APP_BUF and FM_SCRATCH overlap")
 RAM_DISJOINT(FM_RAM, FM_RAM_SIZE, LIB_BOUNCE, LIB_BOUNCE_SIZE, "FM_RAM and LIB_BOUNCE overlap")
 
 #endif

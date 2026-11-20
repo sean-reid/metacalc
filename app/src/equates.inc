@@ -48,7 +48,12 @@ cmdShadCur       = 96EEh
  .error "SCR_STACK in ram_map.inc must end where cmdShadCur starts"
 #endif
 libPage          = KD_SCRATCH
+appStatus        = KD_SCRATCH + 1
+#if (libPage >= (KD_SCRATCH + KD_SCRATCH_SIZE)) || (appStatus >= (KD_SCRATCH + KD_SCRATCH_SIZE))
+ .error "libPage and appStatus must lie inside KD_SCRATCH in ram_map.inc"
+#endif
 skClear          = 0Fh
+kClear           = 09h
 onFlags          = 9
 onInterrupt      = 4
 graphFlags       = 3
