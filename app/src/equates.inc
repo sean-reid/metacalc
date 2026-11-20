@@ -58,7 +58,6 @@ onFlags          = 9
 onInterrupt      = 4
 graphFlags       = 3
 graphDraw        = 0
-kClear           = 09h
 scriptFlags      = 33h
 _GetBaseVer      = 4C6Fh
 appData          = 8000h
