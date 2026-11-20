@@ -252,18 +252,30 @@ fn a_node_the_buffer_cuts_in_two_is_refused_and_one_that_fits_is_read() {
     let mut fm = opened_fm(&bytes);
     fm.rig.set_facts_of(&decoded(&bytes));
     let rig = &mut fm.rig;
-    assert_eq!(
-        rig.node(&[0x7F], AT).0,
-        TREE_ERR,
-        "an escape with no second byte"
-    );
+    for (what, bytes) in [
+        ("an escape with no second byte", &[0x7F][..]),
+        ("an escaped variable with no second byte", &[0xFF]),
+        ("no bytes left", &[]),
+    ] {
+        let out = rig.node_out(bytes, AT);
+        assert_eq!(out.status(), TREE_ERR, "{what}");
+        assert_eq!(out.af & 0x40, 0, "{what}: the zero flag is clear");
+        assert_eq!(out.hl, AT, "{what}: HL is as it came in");
+        assert_eq!(
+            usize::from(out.bc as u8),
+            bytes.len(),
+            "{what}: C is as it came in"
+        );
+    }
     assert_eq!(rig.node(&[0x7F, 0xFF, 0x05], AT), (0, 0, 382, AT + 2, 1));
-    assert_eq!(rig.node(&[], AT).0, TREE_ERR, "no bytes left");
     assert_eq!(rig.node(&[0x05, 0x7F], AT), (0, 0, 5, AT + 1, 1));
+    let good = rig.node_out(&[0x05], AT);
+    assert_eq!((good.status(), good.af & 0x40), (0, 0x40), "a node: Z set");
+    let bad = rig.node_out(&[0x80], AT);
     assert_eq!(
-        rig.node(&[0xFF], AT).0,
-        TREE_ERR,
-        "an escaped variable with no second byte"
+        (bad.status(), bad.af & 0x40),
+        (TREE_ERR, 0),
+        "a variable in a library with none: Z clear"
     );
 }
 
@@ -275,6 +287,22 @@ fn an_index_or_variable_past_the_counts_is_refused() {
     let rig = &mut fm.rig;
     assert_eq!(rig.node(&[0x7F, 2], AT).0, 0);
     assert_eq!(rig.node(&[0x7F, 3], AT).0, TREE_ERR, "index 130 of 130");
+    assert_eq!(rig.node(&[0x7F, 4], AT).0, TREE_ERR, "index 131 of 130");
+    assert_eq!(rig.node(&[0x7F, 255], AT).0, TREE_ERR, "index 382 of 130");
+    let bytes = axioms(10);
+    let mut small = opened_fm(&bytes);
+    small.rig.set_facts_of(&decoded(&bytes));
+    assert_eq!(small.rig.node(&[0x09], AT).0, 0, "index 9 of 10");
+    assert_eq!(small.rig.node(&[0x0A], AT).0, TREE_ERR, "index 10 of 10");
+    assert_eq!(small.rig.node(&[0x0B], AT).0, TREE_ERR, "index 11 of 10");
+    assert_eq!(small.rig.node(&[0x05], AT).0, 0, "index 5 of 10");
+    assert_eq!(small.rig.node(&[0x7E], AT).0, TREE_ERR, "index 126 of 10");
+    assert_eq!(
+        small.rig.node(&[0x7F, 4], AT).0,
+        TREE_ERR,
+        "index 131 of 10"
+    );
+    let rig = &mut fm.rig;
     assert_eq!(rig.node(&[0x7E], AT).0, 0);
     assert_eq!(
         rig.node(&[0x80], AT).0,
@@ -351,8 +379,7 @@ fn a_changed_byte_in_a_tree_walks_to_the_hosts_nodes_or_is_refused_by_fm_nodes()
     let consts = library.constants.len();
     let symbols = consts + library.variables.len();
     let mut fm = Fm::new(&good);
-    let allowed = [TREE_ERR, code("FM_ERR_READ"), code("FM_ERR_LIMIT")];
-    let (mut host_ok, mut host_refused, mut tree_refusals, mut slack) = (0, 0, 0, 0);
+    let (mut host_ok, mut host_refused, mut outcomes) = (0, 0, [0usize; 4]);
     for at in first..end {
         let item = starts.iter().rposition(|&s| s <= at).unwrap();
         for edit in EDITS {
@@ -372,8 +399,11 @@ fn a_changed_byte_in_a_tree_walks_to_the_hosts_nodes_or_is_refused_by_fm_nodes()
                 Err(_) => {
                     host_refused += 1;
                     for (n, k, _) in all.iter().filter(|(n, ..)| usize::from(*n) == item) {
-                        if let Some(tree) = full_tree(&mut fm.rig, *n, *k) {
-                            let (_, nodes) = fm.rig.walk(&tree);
+                        let tree = full_tree(&mut fm.rig, *n, *k);
+                        let mut walked = 0;
+                        if let Some(tree) = &tree {
+                            let (_, nodes) = fm.rig.walk(tree);
+                            walked = nodes.len();
                             for (kind, value) in nodes {
                                 let ok = match kind {
                                     0 => usize::from(value) < syntax,
@@ -384,20 +414,25 @@ fn a_changed_byte_in_a_tree_walks_to_the_hosts_nodes_or_is_refused_by_fm_nodes()
                         }
                         assert_eq!(fm.statement(*n, *k).status(), 0, "{what}");
                         let out = fm.nodes();
-                        if out.status() == 0 {
-                            slack += 1;
+                        let status = out.status();
+                        if status == 0 {
+                            outcomes[0] += 1;
                             assert_eq!(
                                 fm.table(count(out)),
                                 model.table(*n, *k),
                                 "{what}: fm builds what it built before"
                             );
+                        } else if status == TREE_ERR {
+                            outcomes[1] += 1;
+                            assert!(tree.is_some(), "{what}: the reader refuses this tree");
+                        } else if status == code("FM_ERR_READ") {
+                            outcomes[2] += 1;
+                            assert!(tree.is_none(), "{what}: the reader gives this tree");
+                        } else if status == code("FM_ERR_LIMIT") {
+                            outcomes[3] += 1;
+                            assert!(walked > 255, "{what}: only {walked} nodes");
                         } else {
-                            tree_refusals += usize::from(out.status() == TREE_ERR);
-                            assert!(
-                                allowed.contains(&out.status()),
-                                "{what}: status {}",
-                                out.status()
-                            );
+                            panic!("{what}: status {status}");
                         }
                     }
                 }
@@ -405,7 +440,9 @@ fn a_changed_byte_in_a_tree_walks_to_the_hosts_nodes_or_is_refused_by_fm_nodes()
         }
     }
     println!(
-        "{host_ok} mutants the host decodes, {host_refused} it refuses, fm_nodes refused {tree_refusals} with FM_ERR_TREE and built {slack} tables"
+        "{host_ok} mutants the host decodes, {host_refused} it refuses; fm_nodes built {} tables, refused {} with FM_ERR_TREE, {} with FM_ERR_READ, {} with FM_ERR_LIMIT",
+        outcomes[0], outcomes[1], outcomes[2], outcomes[3]
     );
-    assert!(host_ok > 5 && host_refused > 50 && tree_refusals > 5);
+    assert_eq!((host_ok, host_refused), (14, 107));
+    assert_eq!(outcomes, [28, 86, 27, 0]);
 }
