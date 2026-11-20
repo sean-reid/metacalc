@@ -30,6 +30,8 @@ mod store;
 mod support;
 #[path = "fm/swap.rs"]
 mod swap;
+#[path = "fm/tables.rs"]
+mod tables;
 #[allow(dead_code)]
 #[path = "ui/support.rs"]
 mod ui_support;
