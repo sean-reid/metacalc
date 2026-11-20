@@ -27,6 +27,8 @@ const MARK_OFF: usize = RESULT + 0x201;
 const SCRIPT_FLAGS: usize = 0x09F0 + 0x33;
 const B_ON: usize = RESULT + 0x202;
 const B_OFF: usize = RESULT + 0x203;
+const VAR_ON: usize = RESULT + 0x204;
+const VAR_OFF: usize = RESULT + 0x206;
 /// What the ON script writes to MARK_ON.
 const SCRIPT_RAN_ON: u8 = 0x5A;
 /// What the OFF script writes to MARK_OFF.
@@ -140,6 +142,8 @@ struct Rig {
     flags_at_start: u8,
     flags_now: u8,
     regions: Vec<Region>,
+    /// The RAM AppVars the app made, size word first, read before any event: ONSCRPT, OFFSCRPT.
+    script_vars: (Vec<u8>, Vec<u8>),
     /// appData as each event left it.
     app_data: Vec<(String, Vec<u8>)>,
     /// The report: one line per event.
@@ -168,6 +172,7 @@ impl Rig {
             flags_at_start: 0,
             flags_now: 0,
             regions,
+            script_vars: (Vec::new(), Vec::new()),
             app_data: Vec::new(),
             log: Vec::new(),
             save_screen_after_apd: Vec::new(),
@@ -177,6 +182,21 @@ impl Rig {
             contrast: (0, 0, 0),
         };
         assert!(rig.damage().is_empty(), "the app filled the regions");
+        let read_var = |rig: &mut Rig, made: &str, at: usize, b_at: usize| {
+            if !defines.contains(&made) || defines.contains(&"ARCHIVE_SCRIPTS") {
+                return Vec::new();
+            }
+            let word = rig.ram(at, 2);
+            let addr = usize::from(u16::from_le_bytes([word[0], word[1]])) - RAM_BASE;
+            assert_eq!(rig.ram(b_at, 1), [0], "{made}'s AppVar is in RAM");
+            let size = rig.ram(addr, 2);
+            let len = usize::from(u16::from_le_bytes([size[0], size[1]]));
+            rig.ram(addr, 2 + len)
+        };
+        rig.script_vars = (
+            read_var(&mut rig, "MAKE_ON", VAR_ON, B_ON),
+            read_var(&mut rig, "MAKE_OFF", VAR_OFF, B_OFF),
+        );
         rig.flags_at_start = rig.ram(FLAGS_AT_START, 1)[0];
         rig.flags_now = rig.os.m.ram_page(1)[APP_FLAGS];
         rig
@@ -515,20 +535,17 @@ fn found(rig: &mut Rig) -> (u8, u8) {
     (rig.ram(B_ON, 1)[0], rig.ram(B_OFF, 1)[0])
 }
 
-/// The script AppVars the app makes: code, then 0C9h to SCRIPT_LEN bytes.
-fn script(mark_at: u8, mark: u8) -> Vec<u8> {
-    let mut code = vec![0x3E, mark, 0x32, mark_at, 0xAA, 0xC9];
-    code.resize(SCRIPT_LEN, 0xC9);
-    code
-}
-
-/// What the OS leaves at 8000h when it runs `script` from RAM: the high byte of the size word,
-/// then the script's first SCRIPT_LEN - 1 bytes, which is SCRIPT_LEN bytes in all; the rest of
-/// appData is as the test filled it.
-fn app_data_after_copy(script: &[u8]) -> Vec<u8> {
+/// What the OS leaves at 8000h when it runs the RAM AppVar `var`, size word first: the AppVar's
+/// size word counts the bytes copied, from the word's high byte on, so a zero comes first and the
+/// code's last byte is cut. The rest of appData is as the test filled it. The AppVar is the app's
+/// script, SCRIPT_LEN bytes of code that start with `ld a,mark`.
+fn app_data_after_copy(var: &[u8], mark: u8) -> Vec<u8> {
+    let size = usize::from(u16::from_le_bytes([var[0], var[1]]));
+    assert_eq!(size, SCRIPT_LEN, "the AppVar holds the script");
+    assert_eq!(var.len(), 2 + size);
+    assert_eq!(var[2..4], [0x3E, mark], "the script starts with ld a,mark");
     let mut want = pattern(0x100, 0x44);
-    want[0] = 0;
-    want[1..SCRIPT_LEN].copy_from_slice(&script[..SCRIPT_LEN - 1]);
+    want[..size].copy_from_slice(&var[1..=size]);
     want
 }
 
@@ -550,7 +567,7 @@ fn an_on_script_in_ram_with_bit_0_set_runs_on_waking_after_auto_power_down_and_i
         );
         assert_eq!(
             rig.app_data_after(WAKE),
-            app_data_after_copy(&script(0x00, SCRIPT_RAN_ON)),
+            app_data_after_copy(&rig.script_vars.0, SCRIPT_RAN_ON),
             "SCRIPT_LEN bytes from the size word's high byte: a zero, then the script less its last byte"
         );
         assert_eq!(rig.changes_to("appData"), [(WAKE, &vec![(0, SCRIPT_LEN)])]);
@@ -563,7 +580,6 @@ fn an_on_script_in_ram_with_bit_0_set_runs_on_waking_after_auto_power_down_and_i
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn an_off_script_in_ram_with_bit_1_set_runs_at_2nd_off_and_never_at_an_auto_power_down() {
-    let off_script = script(0x01, SCRIPT_RAN_OFF);
     for flags in [2, 3] {
         let mut rig = Rig::start(&["MAKE_OFF"]);
         rig.os.m.ram_page(1)[SCRIPT_FLAGS] |= flags;
@@ -579,7 +595,7 @@ fn an_off_script_in_ram_with_bit_1_set_runs_at_2nd_off_and_never_at_an_auto_powe
         );
         assert_eq!(
             rig.app_data_after("2nd+OFF"),
-            app_data_after_copy(&off_script),
+            app_data_after_copy(&rig.script_vars.1, SCRIPT_RAN_OFF),
             "flags {flags}: the same copy as the ON script's"
         );
         assert_eq!(
@@ -701,5 +717,22 @@ impl Rig {
         let marks = self.marks();
         self.marks.push(("after ON, 3 s later", marks));
         self.record(WAKE);
+        assert_eq!(
+            self.os.m.in_port(3) & POWER_DOWN,
+            0,
+            "ON woke the calculator"
+        );
+        let (count, screen) = (self.count(), self.os.screen());
+        self.tap(0x1B);
+        assert_eq!(
+            self.count(),
+            count,
+            "the OS left the app, so no key reaches it"
+        );
+        assert_ne!(
+            self.os.screen(),
+            screen,
+            "the awake OS draws the key on the home screen"
+        );
     }
 }

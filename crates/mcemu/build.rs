@@ -869,6 +869,11 @@ fn assemble_ui(out: &Path) {
             Some("SCR_VARS and SCR_STACK overlap"),
         ),
         (&["FM_SCRATCH=$913F"][..], None),
+        (&["FM_SCRATCH=$8FD3"][..], None),
+        (
+            &["FM_SCRATCH=$8FD4"][..],
+            Some("FM_SCRATCH and SCR_VARS overlap"),
+        ),
         (
             &["FM_SCRATCH=$913E"][..],
             Some("FM_SCRATCH and SCR_VARS overlap"),
@@ -948,7 +953,6 @@ fn assemble_ui(out: &Path) {
             &["FM_LOW_SIZE=$1101"][..],
             Some("FM_LOW runs outside the kernel's low region"),
         ),
-        (&["FM_SCRATCH=$913F"][..], None),
         (&["FM_SCRATCH=$8000"][..], None),
         (&["FM_SCRATCH=$9240"][..], None),
         (&["FM_SCRATCH=$BF00"][..], None),
@@ -1428,6 +1432,22 @@ fn assemble_layout_probes(out: &Path) {
         (
             &["KD_SCRATCH=$9880"][..],
             "KD_SCRATCH in ram_map.inc must be appBackUpScreen",
+        ),
+        (
+            &["SCR_VARS=$90D4"][..],
+            "SCR_VARS in ram_map.inc must be smallEditRAM",
+        ),
+        (
+            &["SCR_VARS_SIZE=109"][..],
+            "SCR_VARS in ram_map.inc must end where XFact starts",
+        ),
+        (
+            &["SCR_STACK=$966F"][..],
+            "SCR_STACK in ram_map.inc must be cmdShadow",
+        ),
+        (
+            &["SCR_STACK_SIZE=129"][..],
+            "SCR_STACK in ram_map.inc must end where cmdShadCur starts",
         ),
     ] {
         expect(

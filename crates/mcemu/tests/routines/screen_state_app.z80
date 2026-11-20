@@ -14,6 +14,7 @@
 ;   200h        5Ah when the ONSCRPT script ran
 ;   201h        0A5h when the OFFSCRPT script ran
 ;   202h, 203h  B from _ChkFindSym on ONSCRPT and on OFFSCRPT, 0 for in RAM
+;   204h, 206h  words: DE from _ChkFindSym on ONSCRPT and on OFFSCRPT, the AppVar's size word
 ; The defines the app takes:
 ;   MAKE_ON, MAKE_OFF  create the ONSCRPT or OFFSCRPT AppVar, SCRIPT_LEN bytes, before the fill
 ;   ARCHIVE_SCRIPTS    archive the AppVars the two above made
@@ -41,6 +42,7 @@ start:
 	call find
 	ld a, b
 	ld (RESULT + 202h), a
+	ld (RESULT + 204h), de
 #endif
 #ifdef MAKE_OFF
 	ld hl, off_name
@@ -50,6 +52,7 @@ start:
 	call find
 	ld a, b
 	ld (RESULT + 203h), a
+	ld (RESULT + 206h), de
 #endif
 	ld a, (iy + APPFLAGS)
 	ld (RESULT + 4), a
