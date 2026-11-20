@@ -30,6 +30,12 @@ fn check(font: &Font) {
     let bytes = decode(&include);
     assert_eq!(bytes.len(), equate(&include, "UI_FONT_GLYPHS") * SLOT);
     assert_eq!(bytes.len(), table.slots().len() * SLOT);
+    assert_eq!(equate(&include, "UI_FONT_SPACE_WIDTH"), SPACE_WIDTH);
+    let widest = table
+        .glyphs()
+        .map(|(name, _)| font.glyph(name).unwrap().width())
+        .max();
+    assert_eq!(Some(equate(&include, "UI_FONT_MAX_WIDTH")), widest);
     assert_eq!(&bytes[..SLOT], [SPACE_WIDTH as u8, 0, 0, 0, 0, 0, 0, 0]);
     assert_eq!(bytes[0] & TALL, 0, "the space slot is never flagged");
     for (name, code) in table.glyphs() {

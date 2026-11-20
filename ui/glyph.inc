@@ -10,6 +10,22 @@ ui_set_font:
 	ld (ui_fontp),hl
 	ret
 
+; GLYPH_ADV   in:  A = a glyph code, not 0
+;             out: A = pixels the glyph advances: its width and the blank column after it
+;             destroys F BC HL; ui_text_width and ui/fit.inc expand it
+#macro GLYPH_ADV
+	ld l,a
+	ld h,ui_toff>>8
+	ld c,(hl)
+	inc h
+	ld b,(hl)
+	ld hl,(ui_fontp)
+	add hl,bc
+	ld a,(hl)
+	and $7F
+	inc a
+#endmacro
+
 ; ui_text_width   in:  HL = string
 ;                 out: HL = width in pixels
 ;                 destroys AF BC DE
@@ -21,17 +37,8 @@ tw_loop:
 	or a
 	jr z,tw_done
 	push hl
-	ld l,a
-	ld h,ui_toff>>8
-	ld c,(hl)
-	inc h
-	ld b,(hl)
-	ld hl,(ui_fontp)
-	add hl,bc
-	ld a,(hl)
+	GLYPH_ADV
 	pop hl
-	and $7F
-	inc a
 	add a,e
 	ld e,a
 	jr nc,tw_loop
