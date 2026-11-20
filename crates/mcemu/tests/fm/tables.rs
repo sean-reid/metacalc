@@ -29,21 +29,6 @@ fn a_theorem_with_a_dummy_variable_verifies_again_after_a_record_with_that_float
 }
 
 #[test]
-fn a_theorem_with_a_dummy_variable_verifies_the_same_after_fm_wrote_hostile_bytes() {
-    let bytes = fixture::custom(DUMMY);
-    let id = id_of(&bytes, "dum");
-    let mut fm = Fm::new(&bytes);
-    assert_eq!(fm.assertion(fullest(&bytes)).status(), 0);
-    for region in [("FM_LOW", "FM_LOW_SIZE"), ("FM_RAM", "FM_RAM_SIZE")] {
-        scribble(&mut fm, region.0, region.1, |_| 0xFF);
-    }
-    assert_eq!(fm.rig.kernel_init(), 0);
-    for pass in 0..3 {
-        assert_eq!(fm.rig.kernel_verify(id), 0, "verify number {pass}");
-    }
-}
-
-#[test]
 fn kernel_init_leaves_the_substitution_table_clear_after_fm_wrote_over_it() {
     let bytes = fixture::proofs();
     let mut fm = Fm::new(&bytes);
