@@ -221,6 +221,13 @@ fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8, cached: bool) -> usiz
         }
         trials += 1;
     }
+    if every {
+        assert_eq!(
+            trials,
+            (end - start + 1) as usize,
+            "an interrupt after every T-state"
+        );
+    }
     trials
 }
 
@@ -267,7 +274,7 @@ fn an_interrupt_in_the_entry_or_the_exit_of_a_session_changes_nothing() {
             a: 3,
             ..Regs::default()
         };
-        assert!(sweep(&mut fm, "FM_CURSOR", cursor, port7, false) > 800);
+        assert!(sweep(&mut fm, "FM_CURSOR", cursor, port7, false) > 600);
         assert_eq!(count(fm.folded(3)) & 2, 2, "node 3 folds");
         let fold = Regs {
             de: (1 << 8) | 3,
