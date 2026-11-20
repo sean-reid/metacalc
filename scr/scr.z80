@@ -1,0 +1,264 @@
+; metacalc screen framework: the stack of open screens and the navigation between them, as
+; Ui::press in crates/mcui/src/ui.rs does it. It draws nothing and makes no OS call or far call;
+; it is given the addresses of each kind's routines and calls them.
+;
+; Assembling this file alone places it at $4000, with -I at the repository root and at app/src
+; so that "scr/ram.inc" and ram_map.inc are found; an including file defines SCR_EMBEDDED first
+; and places the code itself.
+;
+; Frames. SCR_STACK holds up to SCR_MAX_DEPTH (8, the model's MAX_DEPTH) frames of SCR_FRAME (16)
+; bytes, the first the bottom screen. Byte 0 of a frame is its screen kind, 1 to 255; 0 is never
+; a kind. Bytes 1 to 15 are that screen's position and mean nothing to the framework. The frames
+; above the open ones hold stale bytes.
+;
+; Kinds. scr_init is given a table of 8 byte rows, one per kind, the row of kind k at table +
+; (k-1)*8, four little-endian addresses: enter, draw, key, land. Only the top screen has derived
+; state, so a screen that becomes the top is entered again from its frame. A kind that is not in
+; the table, or kind 0, is a wild jump. Every routine of a kind may destroy every register but
+; IY and gets the frame as HL, the frame's address in SCR_STACK, which holds only until the stack
+; changes:
+;   enter  in HL = frame. out A = 0, or a nonzero status when the screen cannot be built.
+;   draw   in HL = frame. Draws the whole frame into the canvas.
+;   key    in A = the key (a KEY_ code), B = its character for KEY_LETTER, HL = frame.
+;          out A = SCR_STAY, SCR_REDRAW, SCR_PUSH (the new frame's 16 bytes are in scr_new),
+;          SCR_POP, or SCR_JUMP (DE = the assertion to land on). Any other value is SCR_STAY.
+;   land   in HL = frame, DE = the assertion. Moves the screen to it, after its enter.
+;
+; Variables. SCR_USED (41) bytes of SCR_VARS, laid out in ram.inc; scr_new is the frame a key
+; routine writes before it returns SCR_PUSH. Nothing is kept in a register across a call of a
+; kind's routine. Only the stack, the variables and scr_new hold state, so all of it survives a
+; key wait and an auto power down, except the derived state of the top screen: scr_refresh builds
+; it again. The framework never touches IY, the shadow registers or IX, never changes the
+; interrupt state, and works with interrupts on.
+;
+; Stack: counting the caller's return address, at most 10 bytes inside scr_dispatch, and at most 4
+; at the entry of a kind's routine; the routines add their own.
+;
+; Routines:
+;   scr_init     in HL = the kind table, DE = the first frame, 16 bytes outside SCR_STACK. Clears
+;                the stack, pushes the frame, runs its enter. out A = the enter's status.
+;                destroys everything but IY. After a nonzero status one screen is open.
+;   scr_key      in A = the key, B = its character. Runs the top screen's key and applies the
+;                action as Ui::press does. out A = SCR_RES_IDLE (nothing to redraw),
+;                SCR_RES_REDRAW, SCR_RES_LEAVE (SCR_POP with one screen open: CLEAR on the first
+;                screen leaves the app, the stack untouched) or SCR_RES_FAILED with B = the status
+;                of the enter that failed. SCR_JUMP with one screen open does nothing and returns
+;                SCR_RES_IDLE.
+;                  PUSH on a full stack removes the frame at index 2 first and moves the frames
+;                above it down. When the new top's enter fails, the new frame is removed again,
+;                the evicted one is put back at index 2, and the old top is entered again: the
+;                stack is as it was before the push.
+;                  POP and JUMP remove the top frame, then enter the uncovered screen. JUMP runs
+;                its land with the assertion after that. When that enter fails the frame stays
+;                removed, land does not run, and the status comes back as SCR_RES_FAILED; the
+;                screen's frame is intact, and scr_refresh tries its enter again.
+;                destroys everything but IY.
+;   scr_draw     runs the top screen's draw. destroys everything but IY.
+;   scr_refresh  runs the top screen's enter and nothing else, for after the derived state is
+;                gone. out A = its status. destroys everything but IY.
+;   scr_top      out HL = the top frame. destroys nothing else.
+;   scr_depth    out A = the number of open screens, 1 to SCR_MAX_DEPTH. destroys nothing else.
+
+#ifndef SCR_EMBEDDED
+.org $4000
+#endif
+
+#include "scr/ram.inc"
+
+SCR_STAY                .equ 0
+SCR_REDRAW              .equ 1
+SCR_PUSH                .equ 2
+SCR_POP                 .equ 3
+SCR_JUMP                .equ 4
+
+SCR_RES_IDLE            .equ 0
+SCR_RES_REDRAW          .equ 1
+SCR_RES_LEAVE           .equ 2
+SCR_RES_FAILED          .equ 3
+
+SCR_AT_ENTER               .equ 0
+SCR_AT_DRAW                .equ 2
+SCR_AT_KEY                 .equ 4
+SCR_AT_LAND                .equ 6
+
+scr_init:
+	ld (scr_table),hl
+	push de
+	ld hl,SCR_STACK
+	ld de,SCR_STACK+1
+	ld bc,SCR_STACK_BYTES-1
+	ld (hl),0
+	ldir
+	pop hl
+	ld de,SCR_STACK
+	ld bc,SCR_FRAME
+	ldir
+	ld a,1
+	ld (scr_count),a
+	jr scr_refresh
+
+scr_depth:
+	ld a,(scr_count)
+	ret
+
+scr_draw:
+	ld c,SCR_AT_DRAW
+	jr scr_on_top
+
+scr_refresh:
+	ld c,SCR_AT_ENTER
+
+; in C = the routine's offset in the row, A, B and DE as that routine takes them
+scr_on_top:
+	call scr_top
+
+; in C = the routine's offset in the row, HL = a frame, A, B and DE as that routine takes them.
+; Jumps to the routine, which returns to the caller.
+scr_dispatch:
+	push af
+	push de
+	push hl
+	ld a,(hl)
+	dec a
+	ld l,a
+	ld h,0
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	ld a,c
+	ld de,(scr_table)
+	add hl,de
+	ld e,a
+	ld d,0
+	add hl,de
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	ld (scr_vec),de
+	pop hl
+	pop de
+	pop af
+	push hl
+	ld hl,(scr_vec)
+	ex (sp),hl
+	ret
+
+scr_top:
+	push af
+	ld a,(scr_count)
+	dec a
+	rlca
+	rlca
+	rlca
+	rlca
+	add a,SCR_STACK & $FF
+	ld l,a
+	ld a,SCR_STACK >> 8
+	adc a,0
+	ld h,a
+	pop af
+	ret
+
+scr_key:
+	ld c,SCR_AT_KEY
+	call scr_on_top
+	cp SCR_PUSH
+	jr z,sk_push
+	cp SCR_POP
+	jr z,sk_pop
+	cp SCR_JUMP
+	jr z,sk_jump
+	cp SCR_REDRAW
+	ld a,SCR_RES_IDLE
+	ret nz
+	ld a,SCR_RES_REDRAW
+	ret
+
+sk_pop:
+	ld a,(scr_count)
+	dec a
+	jr z,sk_leave
+	ld (scr_count),a
+	call scr_refresh
+	or a
+	jr nz,sk_failed
+sk_redraw:
+	ld a,SCR_RES_REDRAW
+	ret
+sk_leave:
+	ld a,SCR_RES_LEAVE
+	ret
+
+sk_jump:
+	ld (scr_de),de
+	ld a,(scr_count)
+	dec a
+	jr z,sk_idle
+	ld (scr_count),a
+	call scr_refresh
+	or a
+	jr nz,sk_failed
+	ld de,(scr_de)
+	ld c,SCR_AT_LAND
+	call scr_on_top
+	jr sk_redraw
+sk_idle:
+	ld a,SCR_RES_IDLE
+	ret
+
+sk_failed:
+	ld b,a
+	ld a,SCR_RES_FAILED
+	ret
+
+sk_push:
+	xor a
+	ld (scr_evicted),a
+	ld a,(scr_count)
+	cp SCR_MAX_DEPTH
+	jr nz,sk_add
+	ld hl,SCR_FRAME_2
+	ld de,scr_evict
+	ld bc,SCR_FRAME
+	ldir
+	ld hl,SCR_FRAME_3
+	ld de,SCR_FRAME_2
+	ld bc,SCR_SHIFT
+	ldir
+	ld a,SCR_MAX_DEPTH-1
+	ld (scr_count),a
+	ld a,1
+	ld (scr_evicted),a
+sk_add:
+	ld hl,scr_count
+	inc (hl)
+	call scr_top
+	ex de,hl
+	ld hl,scr_new
+	ld bc,SCR_FRAME
+	ldir
+	call scr_refresh
+	or a
+	jr z,sk_redraw
+	ld (scr_status),a
+	ld hl,scr_count
+	dec (hl)
+	ld a,(scr_evicted)
+	or a
+	jr z,sk_reenter
+	ld hl,SCR_LAST_OLD
+	ld de,SCR_LAST_NEW
+	ld bc,SCR_SHIFT
+	lddr
+	ld hl,scr_evict
+	ld de,SCR_FRAME_2
+	ld bc,SCR_FRAME
+	ldir
+	ld a,SCR_MAX_DEPTH
+	ld (scr_count),a
+sk_reenter:
+	call scr_refresh
+	or a
+	jr nz,sk_failed
+	ld a,(scr_status)
+	jr sk_failed
