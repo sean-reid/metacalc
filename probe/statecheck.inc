@@ -6,12 +6,15 @@
 ; crates/mcemu/tests/screen_state.rs: byte i of a region is seed + STEP * i.
 ; Scratch is S_BASE, outside every region above; the stack is the OS's.
 ; Start screen: title, OS version bytes (A and B from _GetBaseVer), the flag byte at iy+33h,
-; ONSCRPT and OFFSCRPT as none, ram or arc, the fill check, the instructions.
+; ONSCRPT and OFFSCRPT as none, ram or arc, the fill check with "stale" after it when a region
+; already held its pattern, a note that 2nd+QUIT is counted as a key, the way out.
 ; Key screen: key count and code, one line each for vars, stack and appd (ok, or @ the first
 ; changed offset in hex and x the count), stat for statVars, ssc for saveSScreen's tail
-; changed since the last key, the flag byte. ON is not a key. CLEAR puts textShadow and SCR_STACK
-; back as the probe found them, because the home screen draws its text from cmdShadow, and leaves
-; for the home screen; the other regions stay as the probe last wrote them.
+; changed since the last key, the flag byte. ON is not a key. CLEAR puts textShadow, SCR_STACK,
+; SCR_VARS and appData back as the probe found them and leaves for the home screen; the tail of
+; saveSScreen is OS scratch and stays. A region that already held its pattern at the start was
+; left by an earlier run the OS cut short, so CLEAR writes what the OS holds at a fresh entry
+; instead: spaces in textShadow and SCR_STACK, zeros in SCR_VARS and appData.
 
 VERSION      = 1
 STEP         = 37
@@ -41,9 +44,13 @@ S_RES        = S_BASE + 24
 P_TMP        = S_BASE + 33
 P_TMP2       = S_BASE + 35
 P_STR        = S_BASE + 36
-S_SAVE_TEXT  = S_BASE + 38
+S_STALE      = S_BASE + 38
+S_SAVE_TEXT  = S_BASE + 39
 S_SAVE_STACK = S_SAVE_TEXT + TEXT_SHADOW_SIZE
-S_SIZE       = 38 + TEXT_SHADOW_SIZE + SCR_STACK_SIZE
+S_SAVE_VARS  = S_SAVE_STACK + SCR_STACK_SIZE
+S_SAVE_DATA  = S_SAVE_VARS + SCR_VARS_SIZE
+S_SIZE       = 39 + TEXT_SHADOW_SIZE + SCR_STACK_SIZE + SCR_VARS_SIZE + APP_DATA_SIZE
+SAVE_COUNT   = 4
 
 RAM_WITHIN(S_BASE, S_SIZE, $8000, $C000, "statecheck's RAM runs past bank B")
 RAM_DISJOINT(S_BASE, S_SIZE, SCR_VARS, SCR_VARS_SIZE, "statecheck's RAM overlaps SCR_VARS")
@@ -52,6 +59,12 @@ RAM_DISJOINT(S_BASE, S_SIZE, appData, APP_DATA_SIZE, "statecheck's RAM overlaps 
 RAM_DISJOINT(S_BASE, S_SIZE, textShadow, TEXT_SHADOW_SIZE, "statecheck's RAM overlaps textShadow")
 RAM_DISJOINT(S_BASE, S_SIZE, SSC_TAIL, REPORT_TAIL, "statecheck's RAM overlaps saveSScreen's tail")
 RAM_DISJOINT(S_BASE, S_SIZE, statVars, STAT_VARS_SIZE, "statecheck's RAM overlaps statVars")
+RAM_DISJOINT(S_BASE, S_SIZE, prevData, PREV_DATA_SIZE, "statecheck's RAM overlaps prevData")
+RAM_DISJOINT(S_BASE, S_SIZE, XFact, 1, "statecheck's RAM overlaps XFact")
+RAM_DISJOINT(S_BASE, S_SIZE, cmdShadCur, 1, "statecheck's RAM overlaps cmdShadCur")
+RAM_DISJOINT(S_BASE, S_SIZE, appData + APP_DATA_SIZE, 1, "statecheck's RAM overlaps the byte after appData")
+RAM_DISJOINT(S_BASE, S_SIZE, textShadow + TEXT_SHADOW_SIZE, 1, "statecheck's RAM overlaps the byte after textShadow")
+RAM_DISJOINT(S_BASE, S_SIZE, saveSScreen + SAVE_SCREEN_SIZE, 1, "statecheck's RAM overlaps the byte after saveSScreen")
 
 ; Contract: entered with interrupts on. Everything below the OS calls keeps its state in scratch,
 ; because the OS may change every register.
@@ -74,14 +87,11 @@ probe_start:
 	ld hl, off_name
 	call find_var
 	ld (S_OFF), a
-	ld hl, textShadow
-	ld de, S_SAVE_TEXT
-	ld bc, TEXT_SHADOW_SIZE
-	ldir
-	ld hl, SCR_STACK
-	ld de, S_SAVE_STACK
-	ld bc, SCR_STACK_SIZE
-	ldir
+	call check_all
+	call find_stale
+	xor a
+	call copy_saves
+	call use_expected
 	call fill_all
 	ld hl, statVars
 	ld bc, STAT_VARS_SIZE
@@ -112,14 +122,8 @@ on_key:
 	jr wait
 
 leave:
-	ld hl, S_SAVE_TEXT
-	ld de, textShadow
-	ld bc, TEXT_SHADOW_SIZE
-	ldir
-	ld hl, S_SAVE_STACK
-	ld de, SCR_STACK
-	ld bc, SCR_STACK_SIZE
-	ldir
+	ld a, 1
+	call copy_saves
 	bjump(_JForceCmdNoChar)
 
 #include "onbreak.inc"
@@ -178,6 +182,10 @@ show_start:
 	ld hl, txt_bad
 fill_text:
 	call putstr
+	ld a, (S_STALE)
+	or a
+	ld hl, txt_stale
+	call nz, putstr
 	ld a, 6
 	call at_row
 	ld hl, txt_press
@@ -341,7 +349,9 @@ txt_off:
 txt_fill:
 	.db "fill ", 0
 txt_press:
-	.db "press keys", 0
+	.db "QUIT is a key", 0
+txt_stale:
+	.db " stale", 0
 txt_exit:
 	.db "CLEAR exits", 0
 txt_keys:

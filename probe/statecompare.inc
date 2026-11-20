@@ -195,3 +195,70 @@ regions:
 	.db 11h
 	.dw SSC_TAIL, REPORT_TAIL
 	.db 88h
+
+; Sets S_STALE when a compared region already holds exactly its pattern, which a run that left
+; the probe without CLEAR leaves behind. Contract: S_RES is from check_all.
+find_stale:
+	ld hl, S_RES
+	ld b, COMPARED
+stale_next:
+	ld a, (hl)
+	inc hl
+	or (hl)
+	inc hl
+	or (hl)
+	inc hl
+	jr nz, stale_not
+	ld a, 1
+	ld (S_STALE), a
+stale_not:
+	djnz stale_next
+	ret
+
+; Replaces the saves with what the OS holds at a fresh entry when S_STALE is set. Contract: the
+; saves of textShadow and SCR_STACK are adjacent, as are those of SCR_VARS and appData.
+use_expected:
+	ld a, (S_STALE)
+	or a
+	ret z
+	ld hl, S_SAVE_TEXT
+	ld de, S_SAVE_TEXT + 1
+	ld bc, TEXT_SHADOW_SIZE + SCR_STACK_SIZE - 1
+	ld (hl), 20h
+	ldir
+	ld hl, S_SAVE_VARS
+	ld de, S_SAVE_VARS + 1
+	ld bc, SCR_VARS_SIZE + APP_DATA_SIZE - 1
+	ld (hl), 0
+	ldir
+	ret
+
+; Contract: A is 0 to copy each saved region from RAM to its save, 1 to copy the saves back.
+copy_saves:
+	ld ix, saves
+	ld b, SAVE_COUNT
+copy_next:
+	push bc
+	ld l, (ix + 0)
+	ld h, (ix + 1)
+	ld e, (ix + 2)
+	ld d, (ix + 3)
+	ld c, (ix + 4)
+	ld b, (ix + 5)
+	or a
+	jr z, copy_go
+	ex de, hl
+copy_go:
+	ldir
+	ld de, 6
+	add ix, de
+	pop bc
+	djnz copy_next
+	ret
+
+; Region, save and length of each region the probe restores.
+saves:
+	.dw textShadow, S_SAVE_TEXT, TEXT_SHADOW_SIZE
+	.dw SCR_STACK, S_SAVE_STACK, SCR_STACK_SIZE
+	.dw SCR_VARS, S_SAVE_VARS, SCR_VARS_SIZE
+	.dw appData, S_SAVE_DATA, APP_DATA_SIZE

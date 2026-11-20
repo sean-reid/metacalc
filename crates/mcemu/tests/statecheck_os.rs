@@ -13,50 +13,11 @@ use mcemu::Machine;
 use realos::*;
 use statecheck::*;
 
-const SCAN_2ND: u8 = 0x36;
-const SCAN_ALPHA: u8 = 0x30;
 const SCAN_UP: u8 = 0x04;
 const SCAN_DOWN: u8 = 0x01;
-const SCAN_5: u8 = 0x1B;
 const SCAN_LAST: u8 = 0x38;
 const NO_KEY: [u8; 7] = [5, 6, 7, 8, 0x10, 0x18, 0x29];
-const POWER_DOWN: u8 = 0x10;
 const CONTRAST: u16 = 0x8447;
-const VER: &str = "02 2B";
-const CODE_5: u8 = PLAIN[SCAN_5 as usize - 1];
-const SAVE_SCREEN: u16 = 0x86EC;
-/// Bit 3 of iy+33h, which a tap of ON leaves set.
-const ON_SEEN: u8 = 0x08;
-
-fn probe() -> Rig {
-    Rig::real(&assemble(PROBE, &[]))
-}
-
-fn with_scripts(defines: &[&str]) -> Rig {
-    Rig::real(&assemble(WITH_SCRIPTS, defines))
-}
-
-fn flags(rig: &mut Rig) -> u8 {
-    rig.peek(SCRIPT_FLAGS as u16, 1)[0]
-}
-
-fn set_flags(rig: &mut Rig, bits: u8) {
-    let now = flags(rig);
-    rig.poke(SCRIPT_FLAGS as u16, &[now | bits]);
-}
-
-/// The key screen after `count` keys, the last with `code`, and `report`.
-fn assert_keys(rig: &mut Rig, name: &str, count: u16, code: u8, report: &Report) {
-    // Bit 3 of iy+33h is set while the OS waits in _GetKey, and clear when the probe reads it.
-    let f = flags(rig) & !ON_SEEN;
-    assert_keys_with(rig, name, count, code, f, report);
-}
-
-/// The same with the flag byte the screen shows given.
-fn assert_keys_with(rig: &mut Rig, name: &str, count: u16, code: u8, f: u8, report: &Report) {
-    rig.assert_screen(name, &key_screen(count, code, f, report));
-    assert_eq!(rig.keys(), count, "{name}: the probe's count");
-}
 
 /// Taps every key after `modifier`, the keys that leave excepted, and returns how many `_GetKey`
 /// returns that is and the last code.
@@ -77,37 +38,14 @@ fn sweep(rig: &mut Rig, modifier: &[u8], table: &[u8; 56]) -> (u16, u8) {
     (returns, last)
 }
 
-/// Runs the OS until auto power down fires, wakes it with ON and lets it settle.
-fn power_cycle(rig: &mut Rig) {
-    let lcd = rig.os.packed_screen();
-    let mut seconds = 0;
-    while rig.os.m.in_port(3) & POWER_DOWN == 0 {
-        assert!(seconds < 600, "no auto power down in 600 s");
-        rig.os.run_ms(5_000);
-        seconds += 5;
-    }
-    let tail = SAVE_SCREEN + 768 - 128;
-    assert_eq!(
-        rig.peek(tail, 128),
-        lcd[768 - 128..],
-        "the power down left the screen's pixels in saveSScreen"
-    );
-    rig.tap(Machine::KEY_ON);
-    rig.os.run_ms(3000);
-    assert_eq!(
-        rig.os.m.in_port(3) & POWER_DOWN,
-        0,
-        "ON woke the calculator"
-    );
-}
-
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn the_start_screen_shows_the_version_the_flag_byte_the_script_vars_and_a_good_fill() {
     let mut rig = probe();
-    rig.assert_screen("start", &start_screen(VER, 0, "none", "none"));
+    rig.assert_screen("start", &start_screen(VER, 0, "none", "none", false));
     rig.assert_patterns("after the fill");
     assert_eq!(rig.keys(), 0);
+    rig.assert_confined("the start screen");
 }
 
 #[test]
@@ -168,6 +106,19 @@ fn keys_modifiers_contrast_and_on_leave_vars_stack_and_appdata_whole() {
         &Report::ok(),
     );
     rig.assert_patterns("after every key");
+    rig.assert_confined("after every key, contrast and ON");
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn second_quit_is_counted_as_a_key_and_does_not_leave() {
+    let mut rig = probe();
+    rig.tap(SCAN_2ND);
+    rig.tap(0x37);
+    assert_keys(&mut rig, "2nd+QUIT", 1, 0x40, &Report::ok());
+    rig.tap(SCAN_5);
+    assert_keys(&mut rig, "a key after 2nd+QUIT", 2, CODE_5, &Report::ok());
+    rig.assert_confined("2nd+QUIT");
 }
 
 #[test]
@@ -191,13 +142,17 @@ fn an_auto_power_down_and_wake_leave_vars_and_stack_ok_and_the_save_screen_tail_
         CODE_5,
         &Report::ok(),
     );
+    rig.assert_confined("an auto power down and wake");
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn an_onscrpt_in_ram_with_bit_0_set_damages_appdata_and_nothing_else_the_probe_reports() {
     let mut rig = with_scripts(&["MAKE_ON"]);
-    rig.assert_screen("start with ONSCRPT", &start_screen(VER, 0, "ram", "none"));
+    rig.assert_screen(
+        "start with ONSCRPT",
+        &start_screen(VER, 0, "ram", "none", false),
+    );
     set_flags(&mut rig, 1);
     rig.tap(SCAN_5);
     power_cycle(&mut rig);
@@ -229,6 +184,7 @@ fn an_onscrpt_in_ram_with_bit_0_set_damages_appdata_and_nothing_else_the_probe_r
         ..Report::ok()
     };
     assert_keys(&mut rig, "ONSCRPT damage stays", 3, CODE_5, &still);
+    rig.assert_confined("an ONSCRPT that ran");
 }
 
 #[test]
@@ -244,7 +200,7 @@ fn scripts_that_are_archived_or_have_no_flag_set_leave_appdata_whole_after_a_pow
         (&["MAKE_ON", "MAKE_OFF"][..], 0, "ram", "ram"),
     ] {
         let mut rig = with_scripts(defines);
-        rig.assert_screen("start with scripts", &start_screen(VER, 0, on, off));
+        rig.assert_screen("start with scripts", &start_screen(VER, 0, on, off, false));
         set_flags(&mut rig, flag);
         rig.tap(SCAN_5);
         power_cycle(&mut rig);
@@ -255,36 +211,13 @@ fn scripts_that_are_archived_or_have_no_flag_set_leave_appdata_whole_after_a_pow
             ..Report::ok()
         };
         assert_keys(&mut rig, "scripts that do not run", 2, CODE_5, &report);
+        rig.assert_confined("scripts that do not run");
     }
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn an_offscrpt_runs_at_2nd_off_and_the_os_leaves_the_probe_so_it_cannot_report() {
-    let mut rig = with_scripts(&["MAKE_OFF"]);
-    set_flags(&mut rig, 2);
-    rig.tap(SCAN_5);
-    rig.os.run_ms(1000);
-    rig.tap(SCAN_2ND);
-    rig.os.m.press_key(Machine::KEY_ON);
-    rig.os.run_ms(300);
-    rig.os.m.release_key(Machine::KEY_ON);
-    rig.os.run_ms(2000);
-    assert_ne!(rig.os.m.in_port(3) & POWER_DOWN, 0, "2nd+OFF powered down");
-    assert_eq!(rig.peek(MARK + 1, 1), [0xA5], "the script ran");
-    rig.tap(Machine::KEY_ON);
-    rig.os.run_ms(3000);
-    rig.tap(SCAN_5);
-    assert_eq!(
-        rig.keys(),
-        1,
-        "no key reaches the probe after waking from 2nd+OFF"
-    );
-}
-
-#[test]
-#[ignore = "needs the reference ROM image"]
-fn a_changed_byte_in_vars_stack_appdata_statvars_or_the_tail_is_reported_by_the_next_key() {
+fn a_changed_byte_in_any_region_is_reported_by_the_next_key_and_the_owner_data_stays_whole() {
     for (region, offset) in [
         ("SCR_VARS", 0),
         ("SCR_VARS", 107),
@@ -304,38 +237,36 @@ fn a_changed_byte_in_vars_stack_appdata_statvars_or_the_tail_is_reported_by_the_
         } else {
             report.stack = hit;
         }
-        assert_keys(
-            &mut rig,
-            &format!("{region} at {offset}"),
-            1,
-            CODE_5,
-            &report,
-        );
+        let name = format!("{region} at {offset}");
+        assert_keys(&mut rig, &name, 1, CODE_5, &report);
+        rig.assert_confined(&name);
+    }
+    for end in [0, STAT_VARS.1 - 1] {
+        let mut rig = probe();
+        rig.poke(STAT_VARS.0 + end as u16, &[0xEE]);
+        rig.tap(SCAN_5);
+        let report = Report {
+            stat: "chg",
+            ..Report::ok()
+        };
+        assert_keys(&mut rig, &format!("statVars at {end}"), 1, CODE_5, &report);
+        rig.assert_confined(&format!("statVars at {end}"));
     }
     let mut rig = probe();
+    let tail = OTHERS[2].1;
+    rig.poke(tail, &[0xEE]);
     rig.poke(0x8000 + 200, &[0]);
-    rig.poke(STAT_VARS.0 + 9, &[0xEE]);
-    rig.poke(0x86EC + 768 - 1, &[0xEE]);
     rig.tap(SCAN_5);
-    let hit = pattern(256, 0x44)[200] != 0;
-    assert!(hit);
+    assert_ne!(pattern(256, 0x44)[200], 0);
     let report = Report {
         appd: changed(200, 1),
-        stat: "chg",
         ssc: "chg",
         ..Report::ok()
     };
-    assert_keys(
-        &mut rig,
-        "appData, statVars and the tail",
-        1,
-        CODE_5,
-        &report,
-    );
+    assert_keys(&mut rig, "appData and the tail at 0", 1, CODE_5, &report);
     rig.tap(SCAN_5);
     let report = Report {
         appd: changed(200, 1),
-        stat: "chg",
         ..Report::ok()
     };
     assert_keys(
@@ -345,45 +276,24 @@ fn a_changed_byte_in_vars_stack_appdata_statvars_or_the_tail_is_reported_by_the_
         CODE_5,
         &report,
     );
+    rig.assert_confined("appData and the tail");
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn the_probe_never_writes_statvars_or_prev_data_through_keys_and_a_power_down() {
-    let (stat, prev) = (pattern(STAT_VARS.1, 0x33), pattern(PREV_DATA.1, 0x66));
-    let build = assemble(PROBE, &[]);
-    let mut rig = Rig::real_with(&build, |m| {
-        let page = m.ram_page(1);
-        page[usize::from(STAT_VARS.0) - RAM_BASE..][..stat.len()].copy_from_slice(&stat);
-        page[usize::from(PREV_DATA.0) - RAM_BASE..][..prev.len()].copy_from_slice(&prev);
-    });
-    rig.assert_screen("start", &start_screen(VER, 0, "none", "none"));
+fn a_whole_region_changed_reports_offset_0_and_the_full_count() {
+    let mut rig = probe();
+    let vars = rig.label("SCR_VARS");
+    let flipped: Vec<u8> = pattern(108, 0x77).iter().map(|b| !b).collect();
+    rig.poke(vars, &flipped);
+    let data: Vec<u8> = pattern(256, 0x44).iter().map(|b| !b).collect();
+    rig.poke(0x8000, &data);
     rig.tap(SCAN_5);
-    power_cycle(&mut rig);
-    rig.tap(SCAN_5);
-    assert_eq!(rig.peek(STAT_VARS.0, stat.len()), stat, "statVars");
-    assert_eq!(rig.peek(PREV_DATA.0, prev.len()), prev, "prevData");
     let report = Report {
-        ssc: "chg",
+        vars: changed(0, 108),
+        appd: changed(0, 256),
         ..Report::ok()
     };
-    assert_keys(&mut rig, "statVars whole", 2, CODE_5, &report);
-}
-
-#[test]
-#[ignore = "needs the reference ROM image"]
-fn clear_leaves_for_the_home_screen_and_keys_no_longer_reach_the_probe() {
-    let mut rig = probe();
-    rig.tap(SCAN_5);
-    rig.tap(KEY_CLEAR);
-    rig.os.run_ms(1000);
-    let lcd = rig.os.screen();
-    rig.dump("home", &lcd);
-    let lit: Vec<usize> = (0..lcd.len()).filter(|&i| lcd[i]).collect();
-    assert!(
-        lit.iter().all(|&i| i / 96 < 8 && i % 96 < 6),
-        "the home screen is blank but for its cursor in the first cell"
-    );
-    rig.tap(SCAN_5);
-    assert_eq!(rig.keys(), 1, "CLEAR is not counted and the probe is gone");
+    assert_keys(&mut rig, "whole regions", 1, CODE_5, &report);
+    rig.assert_confined("whole regions");
 }

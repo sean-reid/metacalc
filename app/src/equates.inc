@@ -64,3 +64,5 @@ saveSScreen      = 86ECh
 SAVE_SCREEN_SIZE = 768
 statVars         = 8A3Ah
 STAT_VARS_SIZE   = 531
+prevData         = 9198h
+PREV_DATA_SIZE   = 283
