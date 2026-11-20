@@ -54,6 +54,9 @@ pub const STATUSES: [(&str, u8); 10] = [
 
 pub const SPARE_BASE: u16 = 0xC000;
 
+/// The node that means no cursor.
+pub const NO_CURSOR: u8 = 0xFF;
+
 /// A status of fm by its name, or a constant of the image, such as the kernel's ST_MALFORMED.
 pub fn code(name: &str) -> u8 {
     match STATUSES.iter().find(|(n, _)| *n == name) {
@@ -192,20 +195,11 @@ impl Fm {
         self.rig.call("FM_FOLDED", regs)
     }
 
-    /// Inverts the runs of `node`, drawn with the arguments of `draw`.
-    pub fn cursor(
-        &mut self,
-        node: usize,
-        x: usize,
-        row: i16,
-        width: usize,
-        window: (u8, u8),
-    ) -> Out {
+    /// Makes `node` of the selected statement the cursor the next `draw` inverts, `NO_CURSOR`
+    /// for none.
+    pub fn cursor(&mut self, node: u8) -> Out {
         let regs = Regs {
-            a: node as u8,
-            hl: row as u16,
-            de: ((width as u16) << 8) | x as u16,
-            bc: (u16::from(window.0) << 8) | u16::from(window.1),
+            a: node,
             ..Regs::default()
         };
         self.rig.call("FM_CURSOR", regs)

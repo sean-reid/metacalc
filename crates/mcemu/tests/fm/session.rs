@@ -39,21 +39,30 @@ fn calls(n: u16, k: u8) -> Vec<(&'static str, Regs, u8)> {
             "FM_CURSOR",
             Regs {
                 a: 0,
-                ..regs(0, (94 << 8) | 1, 8)
+                ..regs(0, 0, 0)
             },
             ok,
         ),
         (
             "FM_CURSOR",
             Regs {
-                a: 0xFF,
-                ..regs(0, (94 << 8) | 1, 8)
+                a: 0xFE,
+                ..regs(0, 0, 0)
             },
             code("FM_ERR_INDEX"),
         ),
         ("FM_DRAW", regs(0xFFFF, (94 << 8) | 1, 8), ok),
         ("FM_DRAW", regs(2, (20 << 8) | 3, (3 << 8) | 5), ok),
         ("FM_DRAW", regs(0, 94 << 8, (6 << 8) | 2), ok),
+        (
+            "FM_CURSOR",
+            Regs {
+                a: NO_CURSOR,
+                ..regs(0, 0, 0)
+            },
+            ok,
+        ),
+        ("FM_DRAW", regs(0, (94 << 8) | 1, 8), ok),
         ("FM_STATEMENT", regs(n, 0x77, 0), code("FM_ERR_INDEX")),
         ("FM_NODES", regs(0, 0, 0), code("FM_ERR_INDEX")),
         ("FM_STATEMENT", regs(0x7FFF, 0xFF, 0), code("FM_ERR_INDEX")),
@@ -143,7 +152,11 @@ fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8, cached: bool) -> usiz
     fm.rig.ei = true;
     let (n, k, _) = longest(&fixture::library());
     let clear = |fm: &mut Fm| match target {
-        "FM_DRAW" | "FM_CURSOR" => fm.clear(),
+        "FM_DRAW" => fm.clear(),
+        "FM_CURSOR" => {
+            assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
+            fm.clear();
+        }
         "FM_FOLD" => {
             assert_eq!(fm.fold(3, 0).status(), 0);
         }
@@ -160,7 +173,13 @@ fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8, cached: bool) -> usiz
         assert_eq!(fm.statement(n, k).status(), 0);
         assert_eq!(fm.nodes().status(), 0);
     }
+    let settle = |fm: &mut Fm| {
+        if target == "FM_CURSOR" {
+            assert_eq!(fm.draw(1, 0, 94, (0, 8)).status(), 0);
+        }
+    };
     let want = fm.rig.call(target, regs);
+    settle(fm);
     let frame = fm.frame();
     let rows = fm.rows(94).bc;
     let nodes = target == "FM_NODES";
@@ -180,6 +199,7 @@ fn sweep(fm: &mut Fm, target: &str, regs: Regs, port7: u8, cached: bool) -> usiz
         assert_eq!((out.af >> 8, out.bc), (want.af >> 8, want.bc), "{what}");
         assert_eq!((out.port5, out.port7, out.iff), (0, port7, 1), "{what}");
         assert_eq!(fm.rig.m.regs().sp, fm.rig.sp, "{what}: SP");
+        settle(fm);
         assert_eq!(fm.frame(), frame, "{what}: frame");
         assert_eq!(fm.rows(94).bc, rows, "{what}: rows");
         if nodes {
@@ -231,8 +251,6 @@ fn an_interrupt_in_the_entry_or_the_exit_of_a_session_changes_nothing() {
         assert_eq!(fm.nodes().status(), 0);
         let cursor = Regs {
             a: 3,
-            de: (94 << 8) | 1,
-            bc: 8,
             ..Regs::default()
         };
         assert!(sweep(&mut fm, "FM_CURSOR", cursor, port7, false) > 800);
@@ -243,6 +261,7 @@ fn an_interrupt_in_the_entry_or_the_exit_of_a_session_changes_nothing() {
         };
         assert!(sweep(&mut fm, "FM_FOLD", fold, port7, false) > 800);
         assert_eq!(fm.fold(3, 0).status(), 0);
+        assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
         fm.clear();
         fm.draw(1, 0, 94, (0, 8));
         crate::ui_support::same_frame(
@@ -472,8 +491,9 @@ fn a_session_reaches_a_stack_depth_the_header_states() {
                 assert_eq!(fm.fold(0, 1).status(), 0);
                 assert_eq!(fm.folded(0).status(), 0);
                 assert_eq!(fm.draw(1, -2, 94, (0, 8)).status(), 0);
-                assert_eq!(fm.cursor(0, 1, -2, 94, (0, 8)).status(), 0);
-                assert_eq!(fm.cursor(0, 0, 0, 20, (0, 8)).status(), 0);
+                assert_eq!(fm.cursor(0).status(), 0);
+                assert_eq!(fm.draw(1, -2, 94, (0, 8)).status(), 0);
+                assert_eq!(fm.draw(0, 0, 20, (0, 8)).status(), 0);
             }
             let page = fm.rig.m.ram_page(SPARE_PAGE);
             let unused = page[low..low + size].iter().take_while(|&&b| b == mark);

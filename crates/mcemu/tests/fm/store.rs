@@ -395,8 +395,8 @@ const CEILINGS: [Ceilings; 3] = [
 
 /// What fm_select costs beyond a session's entry and exit, and in all, about 5 percent over the
 /// largest of the three libraries.
-const SELECT_BODY: u32 = 352;
-const SELECT_TOTAL: u32 = 849;
+const SELECT_BODY: u32 = 362;
+const SELECT_TOTAL: u32 = 859;
 
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]

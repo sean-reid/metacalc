@@ -7,6 +7,7 @@ use crate::session::allowed;
 use crate::support::*;
 use crate::ui_support::same_frame;
 use mcui::canvas::{GUTTER, STATEMENT_WIDTH};
+use mcui::expr::Expr;
 use mcui::fold::{Folds, layout};
 
 fn assertion(bytes: &[u8], label: &str) -> u16 {
@@ -34,18 +35,14 @@ fn fm_fold_and_fm_folded_and_fm_cursor_answer_with_the_documented_statuses() {
     let bytes = fixture::nodes_library();
     let model = Model::new(&bytes);
     let mut closed = Fm::bare(&bytes);
-    for out in [
-        closed.fold(0, 1),
-        closed.folded(0),
-        closed.cursor(0, 1, 0, 94, (0, 8)),
-    ] {
+    for out in [closed.fold(0, 1), closed.folded(0), closed.cursor(0)] {
         assert_eq!(out.status(), code("FM_ERR_NOT_OPEN"));
     }
     let mut fm = Fm::new(&bytes);
     let index = code("FM_ERR_INDEX");
     assert_eq!(fm.fold(0, 1).status(), index, "nothing loaded");
     assert_eq!(fm.folded(0).status(), index);
-    assert_eq!(fm.cursor(0, 1, 0, 94, (0, 8)).status(), index);
+    assert_eq!(fm.cursor(0).status(), index);
 
     let (n, k) = mixed(&model, &bytes);
     let expr = model.expr(n, k);
@@ -58,11 +55,7 @@ fn fm_fold_and_fm_folded_and_fm_cursor_answer_with_the_documented_statuses() {
     );
     assert_eq!(fm.header().nodes, 0, "a bad mode builds no table");
     assert_eq!(fm.folded(0).status(), index, "no table: folded");
-    assert_eq!(
-        fm.cursor(0, 1, 0, 94, (0, 8)).status(),
-        index,
-        "no table: cursor"
-    );
+    assert_eq!(fm.cursor(0).status(), index, "no table: cursor");
 
     let out = fm.fold(0, 1);
     assert_eq!(
@@ -113,7 +106,7 @@ fn fm_fold_and_fm_folded_and_fm_cursor_answer_with_the_documented_statuses() {
         "a bad mode does not set a clear flag"
     );
     assert_eq!(fm.folded(past).status(), index);
-    assert_eq!(fm.cursor(past, 1, 0, 94, (0, 8)).status(), index);
+    assert_eq!(fm.cursor(past as u8).status(), index);
     assert_eq!(fm.fold(0, 1).status(), 0);
     assert_eq!(
         fm.folded(past).status(),
@@ -176,7 +169,7 @@ fn a_fold_changes_the_records_and_clearing_every_fold_gives_back_the_ones_fm_ass
 }
 
 #[test]
-fn the_first_call_after_a_fold_applies_it_whichever_call_it_is() {
+fn the_draw_after_a_fold_applies_it_and_draws_a_cursor_set_before_the_fold() {
     let bytes = fixture::nodes_library();
     let model = Model::new(&bytes);
     let mut fm = Fm::new(&bytes);
@@ -188,33 +181,25 @@ fn the_first_call_after_a_fold_applies_it_whichever_call_it_is() {
         let sets = fold_sets(&expr, 11, false);
         let mut now = Folds::none(&expr);
         for (i, (name, folds)) in sets.iter().skip(1).take(node_count).enumerate() {
-            let first = if i % 2 == 0 { "draw" } else { "cursor" };
-            put(&mut fm, &expr, &now, folds);
-            now = folds.clone();
+            let first = if i % 2 == 0 { "no cursor" } else { "cursor" };
             let node = (0..expr.len())
                 .rev()
                 .find(|&i| hidden(&expr, folds, i))
                 .unwrap_or(0);
+            let cursor = (i % 2 == 1).then_some(node);
+            let set = cursor.map_or(NO_CURSOR, |n| n as u8);
+            assert_eq!(fm.cursor(set).status(), 0);
+            put(&mut fm, &expr, &now, folds);
+            now = folds.clone();
             let place = (GUTTER, 0, (0u8, 8u8));
             fm.clear();
-            let want = if first == "draw" {
-                assert_eq!(fm.draw(GUTTER, 0, STATEMENT_WIDTH, (0, 8)).status(), 0);
-                model_frame_of(&expr, folds, STATEMENT_WIDTH, place, None)
-            } else {
-                // On a blank frame the cursor leaves what it flips: the model's frame with it
-                // and without it, xor-ed.
-                assert_eq!(
-                    fm.cursor(node, GUTTER, 0, STATEMENT_WIDTH, (0, 8)).status(),
-                    0
-                );
-                let mut blank = model_frame_of(&expr, folds, STATEMENT_WIDTH, place, Some(node));
-                let text = model_frame_of(&expr, folds, STATEMENT_WIDTH, place, None);
-                for (b, t) in blank.iter_mut().zip(&text) {
-                    *b ^= *t;
-                }
-                blank
-            };
-            same_frame(&format!("{k} {name}, {first} first"), &fm.frame(), &want);
+            assert_eq!(fm.draw(GUTTER, 0, STATEMENT_WIDTH, (0, 8)).status(), 0);
+            let want = model_frame_of(&expr, folds, STATEMENT_WIDTH, place, cursor);
+            same_frame(
+                &format!("{k} {name}, {first} before the fold"),
+                &fm.frame(),
+                &want,
+            );
         }
     }
 }
@@ -339,8 +324,9 @@ fn the_fold_calls_write_only_fms_memory() {
             assert_eq!(fm.rows(width).status(), 0);
             assert_eq!(fm.draw(1, -1, width, (0, 8)).status(), 0);
             for node in 0..expr.len() {
-                assert_eq!(fm.cursor(node, 0, 0, width, (0, 8)).status(), 0);
-                assert_eq!(fm.cursor(node, 90, -2, width, (1, 5)).status(), 0);
+                assert_eq!(fm.cursor(node as u8).status(), 0);
+                assert_eq!(fm.draw(0, 0, width, (0, 8)).status(), 0);
+                assert_eq!(fm.draw(90, -2, width, (1, 5)).status(), 0);
             }
         }
         assert_eq!(fm.fold(0, 0).status(), 0);
@@ -361,4 +347,136 @@ fn the_fold_calls_write_only_fms_memory() {
     );
     assert_eq!(fm.rows(94).status(), 0);
     assert_eq!(fm.memory("FM_TOKENS", 4 * expr.len()), tokens);
+}
+
+/// Draws the selected statement and requires the model's frame for `expr` under `folds` with the
+/// cursor on `node`.
+fn drawn_with(fm: &mut Fm, expr: &Expr, folds: &Folds, node: Option<usize>, what: &str) {
+    fm.clear();
+    assert_eq!(fm.draw(GUTTER, 0, STATEMENT_WIDTH, (0, 8)).status(), 0);
+    let want = model_frame_of(expr, folds, STATEMENT_WIDTH, (GUTTER, 0, (0, 8)), node);
+    same_frame(what, &fm.frame(), &want);
+}
+
+fn cursor_byte(fm: &mut Fm) -> u8 {
+    fm.memory("FV_CURN", 1)[0]
+}
+
+#[test]
+fn fm_open_fm_assertion_fm_statement_and_fm_select_clear_the_cursor_and_fm_fold_does_not() {
+    let bytes = fixture::nodes_library();
+    let model = Model::new(&bytes);
+    let n = assertion(&bytes, "many");
+    let mut fm = Fm::new(&bytes);
+    assert_eq!(fm.assertion(n).status(), 0);
+    assert_eq!(cursor_byte(&mut fm), NO_CURSOR, "fm_assertion clears it");
+    let (k, other) = (0xFF, 0);
+    let expr = model.expr(n, k);
+    let plain = Folds::none(&expr);
+    let foldable = (1..expr.len()).find(|&i| expr.foldable(i)).unwrap();
+    assert_eq!(fm.select(k).status(), 0);
+    assert_eq!(fm.nodes().status(), 0);
+
+    assert_eq!(fm.cursor(foldable as u8).status(), 0);
+    assert_eq!(cursor_byte(&mut fm), foldable as u8);
+    drawn_with(&mut fm, &expr, &plain, Some(foldable), "the cursor set");
+    let mut folded = Folds::none(&expr);
+    folded.toggle(&expr, foldable);
+    assert_eq!(fm.fold(foldable, 1).status(), 0);
+    assert_eq!(cursor_byte(&mut fm), foldable as u8, "fm_fold keeps it");
+    drawn_with(&mut fm, &expr, &folded, Some(foldable), "the folded cursor");
+    assert_eq!(fm.fold(foldable, 0).status(), 0);
+
+    let index = code("FM_ERR_INDEX");
+    assert_eq!(fm.select(0x77).status(), index);
+    assert_eq!(
+        cursor_byte(&mut fm),
+        foldable as u8,
+        "a refused select keeps it"
+    );
+    drawn_with(
+        &mut fm,
+        &expr,
+        &plain,
+        Some(foldable),
+        "after a refused select",
+    );
+    assert_eq!(fm.select(other).status(), 0);
+    assert_eq!(cursor_byte(&mut fm), NO_CURSOR, "fm_select clears it");
+    let first = model.expr(n, other);
+    assert_eq!(fm.nodes().status(), 0);
+    drawn_with(
+        &mut fm,
+        &first,
+        &Folds::none(&first),
+        None,
+        "after fm_select",
+    );
+
+    assert_eq!(fm.select(k).status(), 0);
+    assert_eq!(fm.cursor(foldable as u8).status(), 0);
+    assert_eq!(fm.statement(n, k).status(), 0);
+    assert_eq!(cursor_byte(&mut fm), NO_CURSOR, "fm_statement clears it");
+    assert_eq!(fm.nodes().status(), 0);
+    drawn_with(&mut fm, &expr, &plain, None, "after fm_statement");
+
+    assert_eq!(fm.cursor(foldable as u8).status(), 0);
+    assert_eq!(fm.statement(n, 0x77).status(), index);
+    assert_eq!(
+        cursor_byte(&mut fm),
+        NO_CURSOR,
+        "a refused fm_statement clears it too"
+    );
+    assert_eq!(fm.statement(n, k).status(), 0);
+    assert_eq!(fm.nodes().status(), 0);
+    assert_eq!(fm.cursor(foldable as u8).status(), 0);
+    assert_eq!(fm.assertion(n).status(), 0);
+    assert_eq!(cursor_byte(&mut fm), NO_CURSOR, "fm_assertion clears it");
+    assert_eq!(fm.select(k).status(), 0);
+    assert_eq!(fm.nodes().status(), 0);
+    drawn_with(&mut fm, &expr, &plain, None, "after fm_assertion");
+
+    assert_eq!(fm.cursor(foldable as u8).status(), 0);
+    assert_eq!(fm.assertion(0x7FFF).status(), index);
+    assert_eq!(
+        cursor_byte(&mut fm),
+        NO_CURSOR,
+        "a refused fm_assertion clears it too"
+    );
+    assert_eq!(fm.assertion(n).status(), 0);
+    assert_eq!(fm.select(k).status(), 0);
+    assert_eq!(fm.nodes().status(), 0);
+    assert_eq!(fm.cursor(foldable as u8).status(), 0);
+    assert_eq!(fm.open().status(), 0);
+    assert_eq!(cursor_byte(&mut fm), NO_CURSOR, "fm_open clears it");
+}
+
+#[test]
+fn a_cursor_refused_with_an_index_leaves_the_previous_one_and_none_always_succeeds() {
+    let bytes = fixture::nodes_library();
+    let model = Model::new(&bytes);
+    let (n, k) = mixed(&model, &bytes);
+    let expr = model.expr(n, k);
+    let plain = Folds::none(&expr);
+    let mut fm = Fm::new(&bytes);
+    let index = code("FM_ERR_INDEX");
+    assert_eq!(fm.cursor(NO_CURSOR).status(), 0, "none with nothing loaded");
+    assert_eq!(fm.statement(n, k).status(), 0);
+    assert_eq!(fm.cursor(NO_CURSOR).status(), 0, "none with no table");
+    assert_eq!(fm.cursor(0).status(), index, "no table");
+    assert_eq!(cursor_byte(&mut fm), NO_CURSOR);
+    assert_eq!(fm.nodes().status(), 0);
+    let node = expr.len() - 1;
+    assert_eq!(fm.cursor(node as u8).status(), 0);
+    for past in [expr.len(), expr.len() + 1, 0xFE] {
+        assert_eq!(fm.cursor(past as u8).status(), index, "node {past}");
+        assert_eq!(
+            cursor_byte(&mut fm),
+            node as u8,
+            "node {past} left the cursor"
+        );
+    }
+    drawn_with(&mut fm, &expr, &plain, Some(node), "after the refused ones");
+    assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
+    drawn_with(&mut fm, &expr, &plain, None, "cleared");
 }

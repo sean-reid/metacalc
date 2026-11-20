@@ -9,8 +9,9 @@ const BUDGET: u32 = 50 * 6000;
 
 /// T-state ceilings, a little above what each took.
 pub struct Ceilings {
-    pub cursor_root: u32,
-    pub cursor_child: u32,
+    pub set: u32,
+    pub frame_root: u32,
+    pub frame_child: u32,
     pub apply_one: u32,
     pub apply_all: u32,
     pub apply_depth: u32,
@@ -18,16 +19,18 @@ pub struct Ceilings {
 }
 
 pub const FIXTURE: Ceilings = Ceilings {
-    cursor_root: 65_000,
-    cursor_child: 65_000,
+    set: 1_000,
+    frame_root: 298_100,
+    frame_child: 299_400,
     apply_one: 128_500,
     apply_all: 81_500,
     apply_depth: 128_500,
     fold: 3_300,
 };
 pub const RING: Ceilings = Ceilings {
-    cursor_root: 63_500,
-    cursor_child: 62_000,
+    set: 1_000,
+    frame_root: 292_900,
+    frame_child: 293_000,
     apply_one: 51_000,
     apply_all: 32_500,
     apply_depth: 50_500,
@@ -38,9 +41,17 @@ fn base(fm: &mut Fm) -> u32 {
     fm.rig.call("CALL_NOP", Regs::default()).tstates
 }
 
-/// What fm_cursor costs on node 0 and on the child of node 0 with the most tokens, drawn after
-/// fm_draw of the statement, and what the whole frame comes to with it.
-pub fn cursor_costs(name: &str, bytes: &[u8], at: (u16, u8), frame: u32, ceilings: &Ceilings) {
+/// What fm_cursor costs alone, and the frame `frame` comes to when `draw` of it draws the cursor
+/// as well, on node 0 and on the child of node 0 with the most tokens, in the fm_draw of the
+/// statement the screens call. The frame is the calls of a screen, clear to blit, and `draw` is
+/// the share of it that is fm_draw.
+pub fn cursor_costs(
+    name: &str,
+    bytes: &[u8],
+    at: (u16, u8),
+    (frame, draw): (u32, u32),
+    ceilings: &Ceilings,
+) {
     let mut fm = Fm::new(bytes);
     let zero = base(&mut fm);
     let table = fm.built(at.0, at.1);
@@ -50,31 +61,46 @@ pub fn cursor_costs(name: &str, bytes: &[u8], at: (u16, u8), frame: u32, ceiling
         .unwrap_or(0);
     let mut costs = Vec::new();
     for node in [0, child] {
+        let set = fm.cursor(node as u8);
+        assert_eq!(set.status(), 0);
         fm.clear();
-        assert_eq!(fm.draw(GUTTER, 1, STATEMENT_WIDTH, (1, 7)).status(), 0);
-        let out = fm.cursor(node, GUTTER, 1, STATEMENT_WIDTH, (1, 7));
+        let out = fm.draw(GUTTER, 1, STATEMENT_WIDTH, (1, 7));
         assert_eq!(out.status(), 0);
-        costs.push(out.tstates - zero);
+        costs.push((set.tstates - zero, out.tstates - zero));
     }
+    assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
+    fm.clear();
+    let plain = fm.draw(GUTTER, 1, STATEMENT_WIDTH, (1, 7)).tstates - zero;
+    assert_eq!(plain, draw, "fm_draw with no cursor");
+    let frames: Vec<u32> = costs
+        .iter()
+        .map(|&(set, drawn)| frame - draw + set + drawn)
+        .collect();
     println!(
-        "{name}: fm_cursor on node 0 {}, on node {child} (the largest child, {} tokens) {}; the frame \
-         with the cursor on node 0 is {} T-states, with the child {}, against {BUDGET}",
-        costs[0],
+        "{name}: fm_cursor alone {}; fm_draw with the cursor on node 0 {} and on node {child} (the \
+         largest child, {} tokens) {}, against {draw} with none; the frame with the cursor on node 0 \
+         is {} T-states, with the child {}, against {BUDGET}",
+        costs[0].0,
+        costs[0].1,
         table[child].1 - table[child].0 + 1,
-        costs[1],
-        frame + costs[0],
-        frame + costs[1]
+        costs[1].1,
+        frames[0],
+        frames[1]
     );
     assert!(
-        costs[0] <= ceilings.cursor_root,
-        "cursor on node 0 took {}",
-        costs[0]
+        costs[0].0 <= ceilings.set && costs[1].0 <= ceilings.set,
+        "fm_cursor took {costs:?}"
     );
-    assert!(
-        costs[1] <= ceilings.cursor_child,
-        "cursor on the child took {}",
-        costs[1]
-    );
+    for (what, took, ceiling) in [
+        ("node 0", frames[0], ceilings.frame_root),
+        ("the child", frames[1], ceilings.frame_child),
+    ] {
+        assert!(took < BUDGET, "the frame with the cursor on {what}: {took}");
+        assert!(
+            took <= ceiling,
+            "the frame with the cursor on {what} took {took}, over {ceiling}"
+        );
+    }
 }
 
 /// The pass that applies folds, on the statement with the most tokens: the rows call after one

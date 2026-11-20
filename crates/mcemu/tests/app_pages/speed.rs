@@ -18,6 +18,9 @@ const BUDGET: u32 = 50 * 6000;
 /// entry page included.
 const FIXTURE_FRAME: u32 = 274_000;
 const RING_FRAME: u32 = 268_000;
+/// The same frames with the cursor on node 0.
+const FIXTURE_CURSOR_FRAME: u32 = 299_400;
+const RING_CURSOR_FRAME: u32 = 294_100;
 
 /// The T-states a routine takes beyond the driver's own call and halt, which a call of a RAM
 /// `ret` measures.
@@ -186,7 +189,7 @@ fn heaviest(bytes: &[u8]) -> (u16, u8, Vec<String>) {
     (worst.1, worst.2, worst.3)
 }
 
-fn frame(name: &str, built: &'static Built, bytes: &[u8], ceiling: u32) {
+fn frame(name: &str, built: &'static Built, bytes: &[u8], ceilings: (u32, u32)) {
     let (n, k, _) = heaviest(bytes);
     let mut app = opened_on(built);
     let driver = driver_cost(&mut app);
@@ -259,7 +262,54 @@ fn frame(name: &str, built: &'static Built, bytes: &[u8], ceiling: u32) {
         BUDGET - total
     );
     assert!(total < BUDGET, "the frame fits 50 ms");
-    assert!(total <= ceiling, "{total} is over the ceiling {ceiling}");
+    assert!(
+        total <= ceilings.0,
+        "{total} is over the ceiling {}",
+        ceilings.0
+    );
+
+    assert_eq!(app.far("far_fm_nodes", In::default()).status(), 0);
+    let calls = [
+        ("far_ui_clear", In::default()),
+        (
+            "far_ui_title",
+            In {
+                hl: left,
+                de: right,
+                ..In::default()
+            },
+        ),
+        ("far_fm_cursor", In::default()),
+        ("far_fm_draw", draw_input),
+        (
+            "far_ui_soft_keys",
+            In {
+                hl: list,
+                ..In::default()
+            },
+        ),
+        ("far_ui_blit", In::default()),
+    ];
+    let mut marked = 0;
+    for (call, input) in calls {
+        let done = app.far(call, input);
+        if call.starts_with("far_fm") {
+            assert_eq!(done.status(), 0, "{call}");
+        }
+        marked += done.tstates - driver;
+    }
+    println!(
+        "{name}: the same frame with the cursor on node 0: {marked} T-states, {:.1} ms at 6 MHz, \
+         headroom {} of {BUDGET}",
+        f64::from(marked) / 6000.0,
+        BUDGET.saturating_sub(marked)
+    );
+    assert!(marked < BUDGET, "the frame with the cursor fits 50 ms");
+    assert!(
+        marked <= ceilings.1,
+        "{marked} is over the ceiling {}",
+        ceilings.1
+    );
 }
 
 #[test]
@@ -268,7 +318,7 @@ fn a_frame_of_six_rows_drawn_from_the_entry_page_by_a_ram_driver_fits_the_budget
         "fixture",
         with_library(),
         &fixture::library(),
-        FIXTURE_FRAME,
+        (FIXTURE_FRAME, FIXTURE_CURSOR_FRAME),
     );
 }
 
@@ -276,5 +326,10 @@ fn a_frame_of_six_rows_drawn_from_the_entry_page_by_a_ram_driver_fits_the_budget
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding ring.mclib>"]
 fn the_heaviest_ring_frame_drawn_from_the_entry_page_by_a_ram_driver_fits_the_budget() {
     let built = shipped("ring");
-    frame("ring", built, built.library.as_ref().unwrap(), RING_FRAME);
+    frame(
+        "ring",
+        built,
+        built.library.as_ref().unwrap(),
+        (RING_FRAME, RING_CURSOR_FRAME),
+    );
 }

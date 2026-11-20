@@ -4,8 +4,8 @@
 ; of its symbol from the library's glyph map, placed in lines by mcglyph's place and drawn with
 ; ui_text on the text row of its line, only on rows inside a window. It also builds the
 ; subexpression table of each statement, the nodes of the model's Expr, folds nodes behind an
-; ellipsis and inverts a node's runs as a cursor. Fitting a statement to a number of lines is
-; not here.
+; ellipsis and inverts a node's pieces on each line as it draws, as a cursor. Fitting a statement
+; to a number of lines is not here.
 ;
 ; Code runs from flash in bank A and is position dependent. An including file defines FM_EMBEDDED
 ; first and places the code itself, after the reader (lib/) and the canvas (ui/) it calls, with -I
@@ -64,11 +64,11 @@
 ; measured is fm_open on the ring library, 484,449 T-states (81 ms at 6 MHz), then fm_nodes of its
 ; largest statement, 358,365, fm_assertion of its largest assertion, 187,619, and fm_draw of a full
 ; window, at most 180,804; fm_fold repeats fm_nodes with 3,300 more when the table is not built,
-; fm_cursor alone takes up to 65,000. fm_rows, fm_draw and fm_cursor first run the pass that applies
-; folds when the statement is stale, so the call after an fm_fold costs its figure plus the pass,
-; up to 128,000 on the fixture and 50,000 on ring. The six-row frame of the ring statement with the
-; cursor on node 0 takes 329,512 T-states, over the 50 ms budget of 300,000: one ui_invert
-; for each line is most of the cursor. The reader and the
+; fm_cursor alone takes 975. fm_rows and fm_draw first run the pass that applies folds when the
+; statement is stale, so the call after an fm_fold costs its figure plus the pass, up to 128,000 on
+; the fixture and 50,000 on ring. The six-row frame of the ring statement takes 266,746 T-states
+; and with the cursor on node 0 or on its largest child 292,619, within the 50 ms budget of 300,000:
+; the cursor adds one ui_invert for each line, 3,427 for a line as wide as the window. The reader and the
 ; canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
 ; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
@@ -108,7 +108,7 @@
 ;                      table fits, every item lies after the table and inside the copy and has 1
 ;                      to 255 parts, and each child of its axiom's arity appears once and no
 ;                      other does. A library with neither trees nor shapes opens, and every
-;                      statement of it is one node. Marks fm open; closed until it returns 0.
+;                      statement of it is one node. Marks fm open, closed until it returns 0, and clears the cursor.
 ;                      FM_ERR_CLOSED: the reader is not open. FM_ERR_NO_MAP: the library has no
 ;                      glyph map. FM_ERR_FONT: its map is for another font. FM_ERR_TOO_BIG: the
 ;                      glyph section or the shapes section is longer than 2,048 bytes.
@@ -124,14 +124,16 @@
 ;                      FM_ERR_INDEX: no such assertion. FM_ERR_BAD: a symbol past the glyph map,
 ;                      or a token wider than 255 pixels. FM_ERR_NOT_OPEN: fm closed or another
 ;                      library open. A refused call leaves nothing loaded and nothing selected.
-;                      The node tables of an earlier load are gone.
+;                      The node tables of an earlier load are gone and the cursor is cleared, also
+;                      when the call is refused.
 ;   fm_select     in:  E = statement, numbered as fm_statement numbers them: the hypotheses from
 ;                      0, FFh the conclusion
 ;                 out: A = status, B = its token count. Makes the statement the one fm_rows,
-;                      fm_draw, fm_nodes, fm_fold, fm_folded and fm_cursor work on. Reads no flash and copies no token or node:
-;                      the stored statement is used where it is. FM_ERR_INDEX: the loaded
-;                      assertion has no such statement, or nothing is loaded; the selection is
-;                      kept. The statement of a store fm_statement loaded is number 0, or FFh
+;                      fm_draw, fm_nodes, fm_fold, fm_folded and fm_cursor work on, and clears the
+;                      cursor. Reads no flash and copies no token or node: the stored statement
+;                      is used where it is. FM_ERR_INDEX: the loaded
+;                      assertion has no such statement, or nothing is loaded; the selection and
+;                      the cursor are kept. The statement of a store fm_statement loaded is number 0, or FFh
 ;                      when it is a conclusion.
 ;   fm_statement  in:  HL = assertion number, E = statement, numbered as lib_tree numbers them:
 ;                      the essential hypotheses in record order from 0, FFh the conclusion
@@ -140,7 +142,7 @@
 ;                      first. Loads that one statement as a store of one and selects it.
 ;                      FM_ERR_INDEX: no such assertion or statement. FM_ERR_BAD: a symbol past
 ;                      the glyph map, or a token wider than 255 pixels. A refused call leaves no
-;                      statement loaded.
+;                      statement loaded. Clears the cursor, also when refused.
 ;   fm_rows       in:  D = width in pixels, 0 to 255
 ;                 out: A = status, B = the number of lines the selected statement takes, with its
 ;                      folds applied. A token wider than the width sits alone on its line.
@@ -153,6 +155,12 @@
 ;                      the one before it starts the next run at the x after the last glyph plus
 ;                      three. The space glyph is two columns wide and would make the gap four.
 ;                      A run is also cut after FM_RUN_MAX codes and continues one column on.
+;                      With a cursor set, after each line's glyphs it inverts the pieces of the
+;                      cursor's node on the line, or of its outermost folded ancestor when the
+;                      node is hidden: the rectangle from the first piece's x to the end of the
+;                      last, one column wider each side and the text row's 8 scanlines high,
+;                      clipped to the screen, found from the line's token records with no second
+;                      layout. A cursor the table has no node for draws nothing.
 ;   fm_nodes      in:  nothing; the selected statement
 ;                 out: A = status, B = the number of nodes. Builds the node table of the selected
 ;                      statement, which is the model's Expr for it: the nodes in preorder, node 0
@@ -183,22 +191,19 @@
 ;                      gone with the tables on fm_assertion, fm_statement and fm_open. A node that is not
 ;                      foldable, with no node after it in its table that is deeper, keeps its
 ;                      flag at 0 and returns status 0 and B = 0. The records are rewritten by
-;                      the next fm_rows, fm_draw or fm_cursor, once for any number of changes.
+;                      the next fm_rows or fm_draw, once for any number of changes.
 ;                      FM_ERR_BAD: D above 2, checked before anything is built.
 ;                      FM_ERR_INDEX: no node E in the table.
 ;   fm_folded     in:  E = node of the selected statement
 ;                 out: A = status, B = bit 0 its flag, bit 1 set when it is foldable, bit 2 set
 ;                      when it is hidden inside a folded node. FM_ERR_INDEX: the table is not
 ;                      built or has no node E.
-;   fm_cursor     in:  A = node, HL, D, E, B and C as fm_draw takes them
-;                 out: A = status. Inverts the node's runs, or those of its outermost folded
-;                      ancestor when it is hidden, for the pieces it shows: on each line that
-;                      holds some, the rectangle from the first one's x to the end of the last,
-;                      one column wider each side and the text row's 8 scanlines high, only on
-;                      rows inside the window and clipped to the screen. Call it after fm_draw
-;                      with the same arguments. FM_ERR_INDEX: the table is not built or has no
-;                      node A.
-;                      The node waits on the caller's stack through the entry's interrupt reads.
+;   fm_cursor     in:  A = node of the selected statement, FFh for none
+;                 out: A = status. Stores the node, which the draws that follow show as the
+;                      cursor, until fm_open, fm_assertion, fm_statement or a fm_select that
+;                      selects clears it; a fold change keeps it. Draws nothing. FFh always
+;                      succeeds. FM_ERR_INDEX: the table is not built or has no node A, and the
+;                      cursor stays as it was.
 ; Other statuses: FM_ERR_NOT_OPEN, from every routine but fm_open.
 
 #ifndef FM_EMBEDDED

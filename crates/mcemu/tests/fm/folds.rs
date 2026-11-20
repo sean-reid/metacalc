@@ -240,6 +240,7 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, dep
             };
             for (c, (row, window)) in cases(laid.rows()).into_iter().take(used).enumerate() {
                 let place = (x, row, window);
+                assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
                 fm.clear();
                 let out = fm.draw(x, row, width, window);
                 assert_eq!(out.status(), 0, "{what}: draw");
@@ -254,18 +255,21 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, dep
                     vec![(o * 7 + c * 3 + marked.len()) % expr.len()]
                 };
                 for node in nodes {
-                    let out = fm.cursor(node, x, row, width, window);
+                    let out = fm.cursor(node as u8);
                     assert_eq!((out.status(), count(out)), (0, 0), "{label}: cursor {node}");
-                    let marked = fm.frame();
+                    fm.clear();
+                    assert_eq!(fm.draw(x, row, width, window).status(), 0, "{label}: draw");
                     let mask = model_frame_of(expr, folds, width, place, Some(node));
-                    same_frame(&format!("{label}, cursor on {node}"), &marked, &mask);
+                    same_frame(&format!("{label}, cursor on {node}"), &fm.frame(), &mask);
                     tally.cursors += 1;
                     tally.hidden_cursors += usize::from(hidden(expr, folds, node));
                     let rects = laid.cursor(expr, node);
                     tally.to_edge += usize::from(rects.iter().any(|r| x + r.x + r.width >= 95));
-                    fm.cursor(node, x, row, width, window);
+                    assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
+                    fm.clear();
+                    fm.draw(x, row, width, window);
                     same_frame(
-                        &format!("{label}, cursor on {node} twice"),
+                        &format!("{label}, cursor on {node} then cleared"),
                         &fm.frame(),
                         &drawn,
                     );

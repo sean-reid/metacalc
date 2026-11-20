@@ -33,12 +33,18 @@ draw_body:
 	call fo_fresh
 	ld a,1
 	ld (fv_draw),a
+	xor a
+	ld (fv_cc),a
+	ld a,(fv_curn)
+	inc a
+	call nz,cu_prepare
 	call fm_lay
 	xor a
 	ld b,a
 	jp fm_leave
 
-; Breaks the tokens into lines and draws the ones on a visible line when fv_draw is set. A token
+; Breaks the tokens into lines and draws the ones on a visible line when fv_draw is set, and with
+; fv_cc set inverts the cursor's pieces on each line it draws (cursor.inc). A token
 ; goes on the current line when the line's width, its gap and its own width fit the width, else it
 ; starts a line. The shadow registers hold the walk through the records: HL' the next token's
 ; record, B' the tokens left, C' the columns left on the line. ui_text and the window code leave
@@ -65,7 +71,15 @@ ly_line:
 	ld a,(fv_show)
 	or a
 	jr z,ly_skip
+	ld a,(fv_cc)
+	or a
+	jr nz,ly_cursor
 	call ly_draw
+	jr ly_more
+ly_cursor:
+	call cu_start
+	call ly_draw
+	call cu_end
 	jr ly_more
 ly_skip:
 	call ly_scan
