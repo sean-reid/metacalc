@@ -4,6 +4,12 @@ mod bar;
 mod blit;
 #[path = "ui/draw.rs"]
 mod draw;
+#[path = "ui/fit.rs"]
+mod fit;
+#[path = "ui/fit_cost.rs"]
+mod fit_cost;
+#[path = "ui/fit_wrap.rs"]
+mod fit_wrap;
 #[path = "ui/font.rs"]
 mod font;
 #[path = "ui/frames.rs"]
