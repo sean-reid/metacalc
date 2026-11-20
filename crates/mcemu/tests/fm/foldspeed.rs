@@ -79,8 +79,8 @@ pub fn cursor_costs(name: &str, bytes: &[u8], at: (u16, u8), frame: u32, ceiling
 
 /// The pass that applies folds, on the statement with the most tokens: the rows call after one
 /// fold less the same call with nothing to apply, the same with every foldable node folded, and
-/// fm_fold alone.
-pub fn apply_costs(name: &str, bytes: &[u8], ceilings: &Ceilings) {
+/// fm_fold alone. Returns how many disjoint folds the one-depth measurement set.
+pub fn apply_costs(name: &str, bytes: &[u8], ceilings: &Ceilings) -> usize {
     let model = Model::new(bytes);
     let all = statements(&decoded(bytes));
     let (n, k, _) = all.iter().max_by_key(|(_, _, t)| t.len()).unwrap();
@@ -111,7 +111,6 @@ pub fn apply_costs(name: &str, bytes: &[u8], ceilings: &Ceilings) {
     for node in (0..expr.len()).filter(|&i| expr.depth(i) == widest && expr.foldable(i)) {
         level.toggle(&expr, node);
     }
-    assert!(level.count() > 1, "{name}: several folds of one depth");
     let mut spent = Vec::new();
     for folds in [&one, &every, &level] {
         put(&mut fm, &expr, &none, folds);
@@ -143,4 +142,5 @@ pub fn apply_costs(name: &str, bytes: &[u8], ceilings: &Ceilings) {
         spent[2]
     );
     assert!(fold <= ceilings.fold, "fm_fold: {fold}");
+    level.count()
 }

@@ -229,5 +229,6 @@ fn applying_folds_and_fm_fold_stay_within_their_ceilings_on_the_fixture() {
 fn applying_folds_and_fm_fold_stay_within_their_ceilings_on_ring() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
     let bytes = std::fs::read(format!("{dir}/ring.mclib")).expect("library reads");
-    crate::foldspeed::apply_costs("ring", &bytes, &crate::foldspeed::RING);
+    let disjoint = crate::foldspeed::apply_costs("ring", &bytes, &crate::foldspeed::RING);
+    assert!(disjoint > 1, "{disjoint} folds of one depth");
 }
