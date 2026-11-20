@@ -1,0 +1,248 @@
+; The screen framework with a call driver and five fake kinds. Each fake routine appends a record
+; to the log at FK_LOG, then fills every register, the shadow set and IX included, with junk and
+; returns what the test scripted:
+;   record, 24 bytes: routine (1 enter, 2 draw, 3 key, 4 land), the fake's kind, the frame address,
+;   the frame's 16 bytes, DE, A, B as the routine got them.
+;   enter returns the next byte of the queue at FK_STATQ; key returns the action at FK_SCRIPT, DE
+;   from FK_SCRIPT+2, and for SCR_PUSH copies the 16 bytes at FK_SCRIPT+4 to scr_new.
+; The driver makes one call per run, with the registers and interrupt state the test sets.
+
+#define SCR_EMBEDDED
+
+TEST_TARGET	.equ $A000
+TEST_SP		.equ $A002
+TEST_EI		.equ $A004
+IN_A		.equ $A005
+IN_BC		.equ $A006
+IN_DE		.equ $A008
+IN_HL		.equ $A00A
+IN_IX		.equ $A00C
+IN_IY		.equ $A00E
+OUT_AF		.equ $A010
+OUT_BC		.equ $A012
+OUT_DE		.equ $A014
+OUT_HL		.equ $A016
+OUT_IX		.equ $A018
+OUT_IY		.equ $A01A
+OUT_IFF		.equ $A01C
+OUT_SP		.equ $A01D
+TEST_MASK	.equ $A01F
+IRQ_COUNT	.equ $A020
+FK_SCRIPT	.equ $A030
+FK_STATQ	.equ $A050
+FK_STATQ_P	.equ $A060
+FK_LOGP		.equ $A062
+FK_IN_DE	.equ $A064
+FK_IN_A		.equ $A066
+FK_IN_B		.equ $A067
+FK_RID		.equ $A068
+FK_RET_A	.equ $A069
+FK_LOG		.equ $A100
+FK_TABLE	.equ $A400
+IRQ_HANDLER	.equ $A600
+
+.org $4000
+	jp call_entry
+
+call_entry:
+	ld a,(TEST_MASK)
+	out (3),a
+	ld sp,(TEST_SP)
+	ld hl,call_done
+	push hl
+	ld hl,(TEST_TARGET)
+	push hl
+	ld a,(TEST_EI)
+	or a
+	jr z,call_load
+	ei
+call_load:
+	ld ix,(IN_IX)
+	ld iy,(IN_IY)
+	ld hl,(IN_HL)
+	ld de,(IN_DE)
+	ld bc,(IN_BC)
+	ld a,(IN_A)
+	ret
+
+call_nop:
+	ret
+
+call_done:
+	ld (OUT_HL),hl
+	ld (OUT_DE),de
+	ld (OUT_BC),bc
+	ld (OUT_IX),ix
+	ld (OUT_IY),iy
+	ld (OUT_SP),sp
+	push af
+	pop hl
+	ld (OUT_AF),hl
+	ld a,i
+	ld a,0
+	jp po,call_iff_off
+	inc a
+call_iff_off:
+	ld (OUT_IFF),a
+	di
+	halt
+
+irq_body_start:
+	push af
+	in a,(3)
+	push af
+	xor a
+	out (3),a
+	pop af
+	out (3),a
+	ld a,(IRQ_COUNT)
+	inc a
+	ld (IRQ_COUNT),a
+	exx
+	ld bc,$BAD0
+	ld de,$BAD1
+	ld hl,$BAD2
+	exx
+	ex af,af'
+	ld a,$A5
+	ex af,af'
+	pop af
+	ei
+	reti
+irq_body_end:
+
+fk_junk:
+	exx
+	ld bc,$1111
+	ld de,$2222
+	ld hl,$3333
+	exx
+	ld a,$44
+	ex af,af'
+	ld a,$55
+	ex af,af'
+	ld ix,$6666
+	ld bc,$7777
+	ld hl,$8888
+	ld de,$9999
+	ret
+
+; in C = routine, A = kind, HL = frame; the inputs of the fake are in FK_IN_*
+fk_common:
+	ld b,a
+	ld a,c
+	ld (FK_RID),a
+	push hl
+	ld hl,(FK_LOGP)
+	ld (hl),c
+	inc hl
+	ld (hl),b
+	inc hl
+	pop de
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	inc hl
+	ex de,hl
+	ld bc,16
+	ldir
+	ex de,hl
+	ld de,(FK_IN_DE)
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	inc hl
+	ld a,(FK_IN_A)
+	ld (hl),a
+	inc hl
+	ld a,(FK_IN_B)
+	ld (hl),a
+	inc hl
+	ld (FK_LOGP),hl
+	ld a,(FK_RID)
+	cp 3
+	jr z,fk_key
+	cp 1
+	jr z,fk_enter
+	call fk_junk
+	ret
+fk_enter:
+	ld hl,(FK_STATQ_P)
+	ld a,(hl)
+	inc hl
+	ld (FK_STATQ_P),hl
+	ld (FK_RET_A),a
+	call fk_junk
+	ld a,(FK_RET_A)
+	ret
+fk_key:
+	ld a,(FK_SCRIPT)
+	ld (FK_RET_A),a
+	cp SCR_PUSH
+	jr nz,fk_key_done
+	ld hl,FK_SCRIPT+4
+	ld de,scr_new
+	ld bc,16
+	ldir
+fk_key_done:
+	call fk_junk
+	ld de,(FK_SCRIPT+2)
+	ld a,(FK_RET_A)
+	ret
+
+#macro FK_STUB(routine, id)
+	ld (FK_IN_DE),de
+	ld (FK_IN_A),a
+	ld a,b
+	ld (FK_IN_B),a
+	ld c,routine
+	ld a,id
+	jp fk_common
+#endmacro
+
+fk1_enter:
+	FK_STUB(1, 1)
+fk1_draw:
+	FK_STUB(2, 1)
+fk1_key:
+	FK_STUB(3, 1)
+fk1_land:
+	FK_STUB(4, 1)
+
+fk2_enter:
+	FK_STUB(1, 2)
+fk2_draw:
+	FK_STUB(2, 2)
+fk2_key:
+	FK_STUB(3, 2)
+fk2_land:
+	FK_STUB(4, 2)
+
+fk3_enter:
+	FK_STUB(1, 3)
+fk3_draw:
+	FK_STUB(2, 3)
+fk3_key:
+	FK_STUB(3, 3)
+fk3_land:
+	FK_STUB(4, 3)
+
+fk4_enter:
+	FK_STUB(1, 200)
+fk4_draw:
+	FK_STUB(2, 200)
+fk4_key:
+	FK_STUB(3, 200)
+fk4_land:
+	FK_STUB(4, 200)
+
+fk5_enter:
+	FK_STUB(1, 255)
+fk5_draw:
+	FK_STUB(2, 255)
+fk5_key:
+	FK_STUB(3, 255)
+fk5_land:
+	FK_STUB(4, 255)
+
+#include "scr/scr.z80"
