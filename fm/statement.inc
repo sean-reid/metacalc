@@ -53,8 +53,8 @@ fg_spaced:
 
 ; out: Z when the reader has open the library fm_open copied from, else NZ and A =
 ; FM_ERR_NOT_OPEN: the glyph section at the same place and of the same length in the same flash
-; page, the same syntax axiom count, and the shapes section at the same place and of the same
-; length, or none in both. Destroys all but IX, IY.
+; page, the same constant and symbol counts, the same syntax axiom count, and the shapes section
+; at the same place and of the same length, or none in both. Destroys all but IX, IY.
 fm_same_library:
 	call lib_glyphs
 	jr nz,fs_other
@@ -71,6 +71,16 @@ fm_same_library:
 	jr nz,fs_other
 	ld a,(lr_page)
 	ld hl,fv_lib+5
+	cp (hl)
+	jr nz,fs_other
+	call lib_symbol_counts
+	jr nz,fs_other
+	ld a,(fv_consts)
+	cp b
+	jr nz,fs_other
+	ld a,b
+	add a,c
+	ld hl,fv_nsyms
 	cp (hl)
 	jr nz,fs_other
 	call lib_syntax_count

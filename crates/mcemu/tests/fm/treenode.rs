@@ -1,8 +1,9 @@
 use crate::fixture;
+use crate::nodes::Model;
 use crate::rig::*;
 use crate::support::*;
 use crate::treelibs::*;
-use mcpack::library::{Library, Node};
+use mcpack::library::{Library, Node, TREES, decode};
 
 const TREE_ERR: u8 = 9;
 const AT: u16 = 0xA200;
@@ -23,15 +24,27 @@ fn full_tree(rig: &mut Rig, n: u16, k: u8) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-/// Every stored tree of the open library, walked through fm_tree_node against the nodes the
-/// host decoder reads from it. Returns how many trees it walked.
-fn check_nodes(rig: &mut Rig, library: &Library, what: &str) -> usize {
-    rig.set_facts_of(library);
+/// Every stored tree of the open library, or of assertion `only`, walked through fm_tree_node
+/// against the nodes the host decoder reads from it, with the facts the host gives when
+/// `host_facts` and those fm_open left otherwise. Returns how many trees it walked.
+fn check_nodes(
+    rig: &mut Rig,
+    library: &Library,
+    what: &str,
+    only: Option<usize>,
+    host_facts: bool,
+) -> usize {
+    if host_facts {
+        rig.set_facts_of(library);
+    }
     let Some(trees) = library.sections.as_ref().and_then(|s| s.trees.as_ref()) else {
         return 0;
     };
     let mut walked = 0;
     for (n, item) in trees.items.iter().enumerate() {
+        if only.is_some_and(|only| only != n) {
+            continue;
+        }
         for (k, stored) in item.iter().enumerate() {
             let Some(tree) = stored else { continue };
             let asked = if k + 1 == item.len() { 0xFF } else { k as u8 };
@@ -65,9 +78,62 @@ fn every_tree_of_the_corpus_and_the_fixture_walks_to_the_nodes_the_decoder_reads
     let mut total = 0;
     for (name, bytes) in &libraries {
         let mut fm = opened_fm(bytes);
-        total += check_nodes(&mut fm.rig, &decoded(bytes), name);
+        total += check_nodes(&mut fm.rig, &decoded(bytes), name, None, true);
     }
     assert!(total > 200, "{total} trees walked");
+    let fixture = fixture::nodes_library();
+    let mut fm = Fm::new(&fixture);
+    let walked = check_nodes(&mut fm.rig, &decoded(&fixture), "fixture", None, false);
+    assert!(walked > 100, "{walked} trees walked on what fm_open left");
+}
+
+#[test]
+fn trees_of_201_to_507_bytes_walk_across_the_refill_as_the_decoder_reads_them() {
+    let bytes = long_trees();
+    let mut fm = opened_fm(&bytes);
+    let walked = check_nodes(&mut fm.rig, &decoded(&bytes), "long trees", None, true);
+    assert!(walked > 10, "{walked} trees walked");
+    for (label, len, between) in [
+        ("ax-long-100", 201usize, None),
+        ("ax-mixed", 254, None),
+        ("ax-long-127", 255, None),
+        ("ax-shift", 256, Some(true)),
+        ("ax-long-128", 257, Some(false)),
+        ("ax-long-200", 401, Some(false)),
+        ("ax-long-253", 507, Some(false)),
+    ] {
+        let tree = full_tree(&mut fm.rig, number(&bytes, label), 0xFF).unwrap();
+        assert_eq!(tree.len(), len, "{label}");
+        let (mut at, mut bounds) = (0, Vec::new());
+        while at < tree.len() {
+            let end = tree.len().min(at + 2);
+            let node = fm.rig.node(&tree[at..end], AT);
+            assert_eq!(node.0, 0, "{label}");
+            at = end - usize::from(node.4);
+            bounds.push(at);
+        }
+        if let Some(between) = between {
+            assert_eq!(bounds.contains(&255), between, "{label}: the cut at 255");
+        }
+    }
+}
+
+#[test]
+fn fm_nodes_reads_trees_of_255_256_and_257_bytes_that_the_refill_cuts_at_a_node_and_inside_one() {
+    let bytes = fixture::nodes_library();
+    let library = decoded(&bytes);
+    let mut fm = Fm::new(&bytes);
+    for label in ["t255", "t256", "t257"] {
+        let n = number(&bytes, label);
+        assert_eq!(fm.statement(n, 0xFF).status(), 0, "{label}");
+        assert_eq!(
+            fm.nodes().status(),
+            0,
+            "{label}: fm_nodes through the refill"
+        );
+        let walked = check_nodes(&mut fm.rig, &library, label, Some(usize::from(n)), false);
+        assert_eq!(walked, 1, "{label}");
+    }
 }
 
 #[test]
@@ -76,8 +142,11 @@ fn every_tree_of_the_shipped_libraries_walks_to_the_nodes_the_decoder_reads() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
     for name in ["prop", "pred", "ring"] {
         let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
-        let mut fm = opened_fm(&bytes);
-        let walked = check_nodes(&mut fm.rig, &decoded(&bytes), name);
+        let mut fm = Fm::new(&bytes);
+        let (_, _, constants, variables) = fm.rig.counts();
+        assert_eq!(fm.memory("FV_CONSTS", 1), [constants], "{name}");
+        assert_eq!(fm.memory("FV_NSYMS", 1), [constants + variables], "{name}");
+        let walked = check_nodes(&mut fm.rig, &decoded(&bytes), name, None, false);
         println!("{name}: {walked} trees walked");
         assert!(walked > 100, "{name}: {walked}");
     }
@@ -237,4 +306,106 @@ fn a_variable_number_that_added_to_the_constants_passes_255_is_refused() {
     assert_eq!(fm.rig.node(&[0x85], AT).0, TREE_ERR, "symbol 255 of 255");
     assert_eq!(fm.rig.node(&[0x8A], AT).0, TREE_ERR, "250 and 10 pass 255");
     assert_eq!(fm.rig.node(&[0xFE], AT).0, TREE_ERR, "250 and 126 pass 255");
+}
+
+/// The bytes of the trees section that hold trees, and where each assertion's item starts.
+fn tree_items(bytes: &[u8]) -> (usize, usize, Vec<usize>) {
+    let library = decoded(bytes);
+    let sections = library.sections.as_ref().unwrap();
+    let row = sections.table.iter().find(|e| e.id == TREES).unwrap();
+    let syntax = sections.trees.as_ref().unwrap().syntax.len();
+    let index = row.offset + 2 + 3 * syntax;
+    let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+    let starts = (0..library.assertions.len())
+        .map(|i| word(index + 4 * i))
+        .collect();
+    (
+        index + 4 * library.assertions.len(),
+        row.offset + row.length,
+        starts,
+    )
+}
+
+#[test]
+fn a_changed_byte_in_a_tree_walks_to_the_hosts_nodes_or_is_refused_by_fm_nodes() {
+    let good = pack_all(&parse(
+        "$c wff |- ( ) -> & -. $.\n$v p q r s $.\n\
+         wp $f wff p $.\nwq $f wff q $.\nwr $f wff r $.\nws $f wff s $.\n\
+         wn $a wff -. p $.\nwi $a wff ( p -> q ) $.\nwa $a wff ( p & q ) $.\n\
+         ax1 $a |- ( p -> q ) $.\nax2 $a |- ( p & ( q -> r ) ) $.\n\
+         ${\nh $e |- ( p -> q ) $.\nax3 $a |- -. ( p & -. q ) $.\n$}\n",
+    ));
+    let (first, end, starts) = tree_items(&good);
+    let all = statements(&decoded(&good));
+    let model = Model::new(&good);
+    let library = decoded(&good);
+    let syntax = library
+        .sections
+        .as_ref()
+        .unwrap()
+        .trees
+        .as_ref()
+        .unwrap()
+        .syntax
+        .len();
+    let consts = library.constants.len();
+    let symbols = consts + library.variables.len();
+    let mut fm = Fm::new(&good);
+    let allowed = [TREE_ERR, code("FM_ERR_READ"), code("FM_ERR_LIMIT")];
+    let (mut host_ok, mut host_refused, mut tree_refusals, mut slack) = (0, 0, 0, 0);
+    for at in first..end {
+        let item = starts.iter().rposition(|&s| s <= at).unwrap();
+        for edit in EDITS {
+            let new = edit.apply(good[at]);
+            if new == good[at] {
+                continue;
+            }
+            let bytes = fixture::with(&good, |b| b[at] = new);
+            let what = format!("byte {at:#x} {:#04x} -> {new:#04x}", good[at]);
+            fm.rig.load(&bytes);
+            assert_eq!(fm.rig.open(), 0, "{what}: the reader opens");
+            match decode(&bytes) {
+                Ok(library) => {
+                    host_ok += 1;
+                    check_nodes(&mut fm.rig, &library, &what, Some(item), false);
+                }
+                Err(_) => {
+                    host_refused += 1;
+                    for (n, k, _) in all.iter().filter(|(n, ..)| usize::from(*n) == item) {
+                        if let Some(tree) = full_tree(&mut fm.rig, *n, *k) {
+                            let (_, nodes) = fm.rig.walk(&tree);
+                            for (kind, value) in nodes {
+                                let ok = match kind {
+                                    0 => usize::from(value) < syntax,
+                                    _ => (consts..symbols).contains(&usize::from(value)),
+                                };
+                                assert!(ok, "{what}: node ({kind}, {value}) is out of range");
+                            }
+                        }
+                        assert_eq!(fm.statement(*n, *k).status(), 0, "{what}");
+                        let out = fm.nodes();
+                        if out.status() == 0 {
+                            slack += 1;
+                            assert_eq!(
+                                fm.table(count(out)),
+                                model.table(*n, *k),
+                                "{what}: fm builds what it built before"
+                            );
+                        } else {
+                            tree_refusals += usize::from(out.status() == TREE_ERR);
+                            assert!(
+                                allowed.contains(&out.status()),
+                                "{what}: status {}",
+                                out.status()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    println!(
+        "{host_ok} mutants the host decodes, {host_refused} it refuses, fm_nodes refused {tree_refusals} with FM_ERR_TREE and built {slack} tables"
+    );
+    assert!(host_ok > 5 && host_refused > 50 && tree_refusals > 5);
 }

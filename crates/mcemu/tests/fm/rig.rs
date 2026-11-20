@@ -239,9 +239,8 @@ impl Rig {
         );
     }
 
-    /// One call of fm_tree_node on the bytes, which are placed at `at`, with fm's page mapped:
-    /// (status, kind, value, the pointer after, the count left).
-    pub fn node(&mut self, bytes: &[u8], at: u16) -> (u8, u8, u16, u16, u8) {
+    /// One call of fm_tree_node on the bytes, which are placed at `at`, with fm's page mapped.
+    pub fn node_out(&mut self, bytes: &[u8], at: u16) -> Out {
         self.poke(at, bytes);
         let regs = Regs {
             hl: at,
@@ -251,6 +250,12 @@ impl Rig {
         self.m.out_port(5, SPARE_PAGE);
         let out = self.call("FM_TREE_NODE", regs);
         self.m.out_port(5, 0);
+        out
+    }
+
+    /// `node_out` as (status, kind, value, the pointer after, the count left).
+    pub fn node(&mut self, bytes: &[u8], at: u16) -> (u8, u8, u16, u16, u8) {
+        let out = self.node_out(bytes, at);
         (
             out.status(),
             (out.bc >> 8) as u8,

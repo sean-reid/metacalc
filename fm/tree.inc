@@ -47,9 +47,9 @@ tn_bad:
 
 ; in: HL = the next node byte, C = bytes left from HL, 1 to 255. out: Z with B = 0 for a syntax
 ; index and 1 for a variable, DE = the index or the variable's symbol id, HL past the node, C = bytes
-; left; NZ with A = FM_ERR_TREE for no byte left, an escape byte with no second byte, an index
-; past fv_ns or a symbol past fv_nsyms. A variable is the byte, or the escape and its second byte,
-; plus fv_consts.
+; left; NZ with A = FM_ERR_TREE for no byte left or an escape byte with no second byte, with HL and
+; C as they came in, and for an index past fv_ns or a symbol past fv_nsyms. A variable is the byte,
+; or the escape and its second byte, plus fv_consts.
 fm_tree_node:
 	ld a,c
 	or a
