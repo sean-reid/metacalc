@@ -4,23 +4,29 @@
 ; The probe writes SCR_VARS, SCR_STACK, appData, textShadow and the last REPORT_TAIL bytes of
 ; saveSScreen, and only reads statVars, through a checksum. The patterns are the ones in
 ; crates/mcemu/tests/screen_state.rs: byte i of a region is seed + STEP * i.
-; Scratch is S_BASE, outside every region above; the stack is the OS's.
+; Scratch is S_BASE, outside every region above; the stack is the OS's. It holds a copy of
+; textShadow, SCR_STACK, SCR_VARS and appData as found, one after the other, and their checksum.
 ; Start screen: title, OS version bytes (A and B from _GetBaseVer), the flag byte at iy+33h,
 ; ONSCRPT and OFFSCRPT as none, ram or arc, the fill check with "stale" after it when a region
-; already held its pattern, a note that 2nd+QUIT is counted as a key, the way out.
+; is stale, a note that 2nd+QUIT is counted as a key, the way out.
 ; Key screen: key count and code, one line each for vars, stack and appd (ok, or @ the first
 ; changed offset in hex and x the count), stat for statVars, ssc for saveSScreen's tail
-; changed since the last key, the flag byte. ON is not a key. CLEAR puts textShadow, SCR_STACK,
-; SCR_VARS and appData back as the probe found them and leaves for the home screen; the tail of
-; saveSScreen is OS scratch and stays. A region that already held its pattern at the start was
-; left by an earlier run the OS cut short, so CLEAR writes what the OS holds at a fresh entry
-; instead: spaces in textShadow and SCR_STACK, zeros in SCR_VARS and appData.
+; changed since the last key, the flag byte and save: ok when the copies still sum to what they
+; did at the start, chg when not. ON is not a key.
+; A region is stale when fewer than half its bytes differ from its pattern, which a run the OS
+; cut short without CLEAR leaves behind or damages in part. The copy of a stale region is
+; replaced by what the OS holds at an entry from a cleared home screen: spaces in textShadow and
+; SCR_STACK, zeros in SCR_VARS and appData.
+; CLEAR puts each of the four regions back from its copy and leaves for the home screen; when
+; the copies no longer sum to what they did at the start it writes those four constants into the
+; regions instead. The scratch and the tail of saveSScreen are left changed.
 
 VERSION      = 1
 STEP         = 37
 REPORT_TAIL  = 128
 SSC_TAIL     = saveSScreen + SAVE_SCREEN_SIZE - REPORT_TAIL
 REGION_COUNT = 5
+CHECKED      = 4
 COMPARED     = 3
 
 #ifndef S_BASE
@@ -41,16 +47,22 @@ S_SSC        = S_BASE + 12
 S_STAT       = S_BASE + 16
 S_SUM        = S_BASE + 20
 S_RES        = S_BASE + 24
-P_TMP        = S_BASE + 33
-P_TMP2       = S_BASE + 35
-P_STR        = S_BASE + 36
-S_STALE      = S_BASE + 38
-S_SAVE_TEXT  = S_BASE + 39
-S_SAVE_STACK = S_SAVE_TEXT + TEXT_SHADOW_SIZE
-S_SAVE_VARS  = S_SAVE_STACK + SCR_STACK_SIZE
-S_SAVE_DATA  = S_SAVE_VARS + SCR_VARS_SIZE
-S_SIZE       = 39 + TEXT_SHADOW_SIZE + SCR_STACK_SIZE + SCR_VARS_SIZE + APP_DATA_SIZE
+P_TMP        = S_BASE + 36
+P_TMP2       = S_BASE + 38
+P_STR        = S_BASE + 39
+S_STALE      = S_BASE + 41
+S_MODE       = S_BASE + 42
+S_SAVE_NOW   = S_BASE + 43
+S_SAVE_SUM   = S_BASE + 44
+S_STALE_R    = S_BASE + 48
+S_SAVE_VARS  = S_BASE + 52
+S_SAVE_STACK = S_SAVE_VARS + SCR_VARS_SIZE
+S_SAVE_DATA  = S_SAVE_STACK + SCR_STACK_SIZE
+S_SAVE_TEXT  = S_SAVE_DATA + APP_DATA_SIZE
+SAVE_BYTES   = SCR_VARS_SIZE + SCR_STACK_SIZE + APP_DATA_SIZE + TEXT_SHADOW_SIZE
+S_SIZE       = 52 + SAVE_BYTES
 SAVE_COUNT   = 4
+SAVE_ENTRY   = 7
 
 RAM_WITHIN(S_BASE, S_SIZE, $8000, $C000, "statecheck's RAM runs past bank B")
 RAM_DISJOINT(S_BASE, S_SIZE, SCR_VARS, SCR_VARS_SIZE, "statecheck's RAM overlaps SCR_VARS")
@@ -91,7 +103,10 @@ probe_start:
 	call find_stale
 	xor a
 	call copy_saves
-	call use_expected
+	xor a
+	call put_constants
+	call sum_saves
+	call copy_sum_to_save
 	call fill_all
 	ld hl, statVars
 	ld bc, STAT_VARS_SIZE
@@ -122,8 +137,17 @@ on_key:
 	jr wait
 
 leave:
+	call save_check
+	ld a, (S_SAVE_NOW)
+	or a
+	jr nz, leave_constants
 	ld a, 1
 	call copy_saves
+	jr leave_home
+leave_constants:
+	ld a, 1
+	call put_constants
+leave_home:
 	bjump(_JForceCmdNoChar)
 
 #include "onbreak.inc"
@@ -277,6 +301,15 @@ ssc_text:
 	ld a, 6
 	call at_row
 	call put_flag
+	ld hl, txt_save
+	call putstr
+	ld a, (S_SAVE_NOW)
+	ld hl, txt_ok
+	or a
+	jr z, save_text
+	ld hl, txt_chg
+save_text:
+	call putstr
 put_exit:
 	ld a, 7
 	call at_row
@@ -354,6 +387,8 @@ txt_stale:
 	.db " stale", 0
 txt_exit:
 	.db "CLEAR exits", 0
+txt_save:
+	.db " save ", 0
 txt_keys:
 	.db "keys ", 0
 txt_code:

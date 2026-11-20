@@ -25,6 +25,25 @@ pub const OTHERS: [(&str, u16, usize, u8); 3] = [
     ("textShadow", TEXT_SHADOW, 128, 0x11),
     ("saveSScreen tail", 0x86EC + 768 - 128, 128, 0x88),
 ];
+pub const SCR_VARS: u16 = 0x90D3;
+pub const SCR_STACK: u16 = 0x966E;
+pub const APP_DATA: u16 = 0x8000;
+/// The regions the probe restores and the labels of their saved copies.
+pub const SAVES: [(&str, &str); 4] = [
+    ("SCR_VARS", "S_SAVE_VARS"),
+    ("SCR_STACK", "S_SAVE_STACK"),
+    ("appData", "S_SAVE_DATA"),
+    ("textShadow", "S_SAVE_TEXT"),
+];
+
+pub fn region_len(name: &str) -> usize {
+    match name {
+        "SCR_VARS" => 108,
+        "SCR_STACK" | "textShadow" => 128,
+        _ => 256,
+    }
+}
+
 pub const STAT_VARS: (u16, usize) = (0x8A3A, 531);
 pub const PREV_DATA: (u16, usize) = (0x9198, 283);
 
@@ -85,24 +104,34 @@ pub fn assemble(source: &str, defines: &[&str]) -> Build {
 pub const PROBE: &str = "../../probe/statecheck.z80";
 pub const WITH_SCRIPTS: &str = "tests/routines/statecheck_scripts.z80";
 
-/// A calculator running the probe: the stub OS or the reference OS.
-#[derive(Clone, Copy, PartialEq)]
-pub enum Scripts {
-    None,
-    Ram,
-    Archived,
+/// One thing done to a calculator after the app started, so a control image can be given the
+/// same.
+#[derive(Clone)]
+pub enum Act {
+    Tap(u8, u32, u32),
+    Press(u8),
+    Release(u8),
+    Run(u32),
+    Poke(u16, Vec<u8>),
 }
 
+/// A calculator running the probe: the stub OS or the reference OS.
 pub struct Rig {
     pub os: RealOs,
     lab: PathBuf,
     pub real: bool,
     /// Bank B as the OS had it before the app was started.
     home: Vec<u8>,
-    /// An auto power down has run: the OS has put the screen in saveSScreen.
-    pub apd: bool,
-    /// The image makes script AppVars.
-    pub scripts: Scripts,
+    /// Everything done since the app started, and what was in RAM before it.
+    acts: Vec<Act>,
+    before: Vec<(u16, Vec<u8>)>,
+    defines: Vec<String>,
+    /// The control image given the same acts, made when the first stray check needs it.
+    control: Option<Box<Control>>,
+    /// The screen the OS put in saveSScreen at an auto power down.
+    pub apd_pixels: Option<Vec<u8>>,
+    /// The four saved copies as the probe made them at its start.
+    saves0: Vec<Vec<u8>>,
 }
 
 impl Rig {
@@ -118,76 +147,92 @@ impl Rig {
             lab: build.lab.clone(),
             real: false,
             home: Vec::new(),
-            apd: false,
-            scripts: Scripts::None,
+            acts: Vec::new(),
+            before: Vec::new(),
+            defines: Vec::new(),
+            control: None,
+            apd_pixels: None,
+            saves0: Vec::new(),
         };
         rig.os.run_ms(200);
         rig
     }
 
-    /// A rig over a calculator that is already running the app.
-    pub fn from_os(mut os: RealOs, build: &Build) -> Rig {
-        let home = os.m.ram_page(1).to_vec();
-        Rig {
-            os,
-            lab: build.lab.clone(),
-            real: true,
-            home,
-            apd: false,
-            scripts: Scripts::None,
-        }
-    }
-
-    /// The probe started from the APPS menu of the reference OS, where it is entry 2.
-    pub fn real(build: &Build) -> Rig {
-        Rig::real_with(build, |_| {})
-    }
-
-    /// The same, with `before` run on the booted OS first, and the image one that makes scripts.
-    pub fn real_with(build: &Build, before: impl FnOnce(&mut Machine)) -> Rig {
+    /// The probe started from the APPS menu of the reference OS, where it is entry 2, with
+    /// `before` written to RAM first. `defines` are the ones the image was assembled with.
+    pub fn real_with(build: &Build, before: &[(u16, Vec<u8>)], defines: &[&str]) -> Rig {
         let mut os = RealOs::boot(&build.app);
-        before(&mut os.m);
+        poke_all(&mut os.m, before);
         let home = os.m.ram_page(1).to_vec();
-        os.tap(realos::KEY_APPS, 150, 600);
-        os.tap(realos::KEY_2, 150, 300);
-        os.run_ms(1500);
-        Rig {
+        launch_entry_2(&mut os);
+        let mut rig = Rig {
             os,
             lab: build.lab.clone(),
             real: true,
             home,
-            apd: false,
-            scripts: Scripts::None,
-        }
+            acts: Vec::new(),
+            before: before.to_vec(),
+            defines: defines.iter().map(|d| d.to_string()).collect(),
+            control: None,
+            apd_pixels: None,
+            saves0: Vec::new(),
+        };
+        rig.saves0 = SAVES
+            .iter()
+            .map(|(region, save)| rig.peek(rig.label(save), region_len(region)))
+            .collect();
+        rig
     }
 
-    pub fn home_copy(&self) -> Vec<u8> {
-        self.home.clone()
+    /// Runs the OS for `ms`, which a control image is given too.
+    pub fn run_ms(&mut self, ms: u32) {
+        self.acts.push(Act::Run(ms));
+        self.os.run_ms(ms);
     }
 
-    /// Every byte of bank B that differs from `home` and is not in a region the probe writes, its
-    /// scratch, saveSScreen after a power down, or a run the OS or the probe's OS calls change.
+    pub fn press(&mut self, key: u8) {
+        self.acts.push(Act::Press(key));
+        self.os.m.press_key(key);
+    }
+
+    pub fn release(&mut self, key: u8) {
+        self.acts.push(Act::Release(key));
+        self.os.m.release_key(key);
+    }
+
+    pub fn tap_for(&mut self, key: u8, down_ms: u32, up_ms: u32) {
+        self.acts.push(Act::Tap(key, down_ms, up_ms));
+        self.os.tap(key, down_ms, up_ms);
+    }
+
+    /// Bank B bytes the probe left that differ from before the app started and are not in a
+    /// region it writes, its scratch, a run its own OS calls change, the pixels an auto power
+    /// down saved, or something the control image did to the same byte in the same scenario.
     pub fn strays(&mut self) -> Vec<u16> {
-        let now = self.os.m.ram_page(1).to_vec();
+        self.stray_values().iter().map(|s| s.0).collect()
+    }
+
+    /// The same with the value the probe's run holds and the control's, if it changed the byte.
+    fn stray_values(&mut self) -> Vec<(u16, u8, Option<u8>)> {
+        let (now, control) = (self.os.m.ram_page(1).to_vec(), self.control_diff());
         let scratch = (self.label("S_BASE"), usize::from(self.label("S_SIZE")));
         let mut spans: Vec<(u16, usize)> = self.regions().iter().map(|r| (r.1, r.2)).collect();
         spans.push(scratch);
-        spans.extend(OS_RUNS.iter().chain(PROBE_RUNS));
-        match self.scripts {
-            Scripts::None => {}
-            Scripts::Ram => spans.extend(SCRIPT_RAM_RUNS),
-            Scripts::Archived => spans.extend(SCRIPT_ARC_RUNS),
-        }
-        if self.apd {
-            spans.push((SAVE_SCREEN, 768));
-        }
+        spans.extend(PROBE_RUNS.iter().chain(TIMER_RUNS));
         (0..now.len())
             .filter(|&i| now[i] != self.home[i])
-            .map(|i| (RAM_BASE + i) as u16)
-            .filter(|&a| {
-                !spans
+            .filter(|&i| control[i] != Some(now[i]))
+            .map(|i| ((RAM_BASE + i) as u16, now[i], control[i]))
+            .filter(|&(a, now, _)| {
+                let in_span = spans
                     .iter()
-                    .any(|&(s, l)| a >= s && usize::from(a) < usize::from(s) + l)
+                    .any(|&(s, l)| a >= s && usize::from(a) < usize::from(s) + l);
+                let saved = self.apd_pixels.as_ref().is_some_and(|p| {
+                    a.checked_sub(SAVE_SCREEN)
+                        .and_then(|off| p.get(usize::from(off)))
+                        .is_some_and(|&b| b == now)
+                });
+                !in_span && !saved
             })
             .collect()
     }
@@ -203,17 +248,44 @@ impl Rig {
 
     /// No byte outside the allowed runs differs from before the app started.
     pub fn assert_confined(&mut self, when: &str) {
-        let strays = self.strays();
         if std::env::var_os("STATECHECK_LEARN").is_some() {
-            println!("LEARN {when}: {}", runs(&strays));
+            let values: Vec<String> = self
+                .stray_values()
+                .iter()
+                .map(|(a, now, ctl)| format!("{a:04X}={now:02X}/{ctl:02X?}"))
+                .collect();
+            println!("LEARN {when}: {}", values.join(" "));
+            let control = self.control_diff();
+            let changed: Vec<u16> = (0..control.len())
+                .filter(|&i| control[i].is_some())
+                .map(|i| (RAM_BASE + i) as u16)
+                .collect();
+            println!("CONTROL {when}: {}", runs(&changed));
             return;
         }
+        let strays = self.strays();
+        println!("{when}: {} bytes differ from the control", strays.len());
         assert!(
             strays.is_empty(),
             "{when}: bytes outside the allowed runs changed: {}",
             runs(&strays)
         );
         self.assert_owner_data(when);
+    }
+
+    /// The address of a restored region.
+    pub fn addr(&self, region: &str) -> u16 {
+        match region {
+            "textShadow" => TEXT_SHADOW,
+            "appData" => APP_DATA,
+            n => self.label(n),
+        }
+    }
+
+    /// `len` bytes at `addr` as they were before the app started.
+    pub fn home_at(&self, addr: u16, len: usize) -> Vec<u8> {
+        let at = usize::from(addr) - RAM_BASE;
+        self.home[at..at + len].to_vec()
     }
 
     pub fn label(&self, name: &str) -> u16 {
@@ -230,6 +302,9 @@ impl Rig {
     pub fn poke(&mut self, addr: u16, bytes: &[u8]) {
         let at = usize::from(addr) - RAM_BASE;
         self.os.m.ram_page(1)[at..at + bytes.len()].copy_from_slice(bytes);
+        if self.real {
+            self.acts.push(Act::Poke(addr, bytes.to_vec()));
+        }
         if !self.home.is_empty() {
             self.home[at..at + bytes.len()].copy_from_slice(bytes);
         }
@@ -277,7 +352,7 @@ impl Rig {
     }
 
     pub fn tap(&mut self, key: u8) {
-        self.os.tap(key, 150, 300);
+        self.tap_for(key, 150, 300);
     }
 
     pub fn keys(&mut self) -> u16 {
@@ -344,154 +419,9 @@ impl Rig {
     }
 }
 
-pub fn start_screen(ver: &str, flags: u8, on: &str, off: &str, stale: bool) -> Vec<String> {
-    [
-        "statechk v1".to_string(),
-        format!("ver {ver}"),
-        format!("f33 {flags:02X}"),
-        format!("ONSCRPT {on}"),
-        format!("OFFSCRPT {off}"),
-        if stale { "fill ok stale" } else { "fill ok" }.to_string(),
-        "QUIT is a key".to_string(),
-        "CLEAR exits".to_string(),
-    ]
-    .to_vec()
-}
-
-/// The lines for vars, stack and appd, a changed region as `@offset xcount`, then stat and ssc.
-pub struct Report {
-    pub vars: String,
-    pub stack: String,
-    pub appd: String,
-    pub stat: &'static str,
-    pub ssc: &'static str,
-}
-
-impl Report {
-    pub fn ok() -> Report {
-        Report {
-            vars: "ok".into(),
-            stack: "ok".into(),
-            appd: "ok".into(),
-            stat: "ok",
-            ssc: "same",
-        }
-    }
-}
-
-pub fn key_screen(count: u16, code: u8, flags: u8, r: &Report) -> Vec<String> {
-    [
-        format!("keys {count:05} k={code:02X}"),
-        format!("vars {}", r.vars),
-        format!("stack {}", r.stack),
-        format!("appd {}", r.appd),
-        format!("stat {}", r.stat),
-        format!("ssc {}", r.ssc),
-        format!("f33 {flags:02X}"),
-        "CLEAR exits".to_string(),
-    ]
-    .to_vec()
-}
-
-/// A changed region as the key screen prints it: the first offset in hex, then the count.
-pub fn changed(first: usize, count: usize) -> String {
-    format!("@{first:02X} x{count:03}")
-}
-
-/// The addresses as `ADDR+length` runs.
-pub fn runs(addrs: &[u16]) -> String {
-    let mut out: Vec<String> = Vec::new();
-    let mut i = 0;
-    while i < addrs.len() {
-        let mut j = i;
-        while j + 1 < addrs.len() && addrs[j + 1] == addrs[j] + 1 {
-            j += 1;
-        }
-        out.push(format!("{:04X}+{}", addrs[i], j - i + 1));
-        i = j + 1;
-    }
-    out.join(" ")
-}
-
 /// saveSScreen: the whole of it, 768 bytes.
 pub const SAVE_SCREEN: u16 = 0x86EC;
 include!("statecheck_runs.rs");
-
-// What the reference OS tests share.
-
-pub const SCAN_2ND: u8 = 0x36;
-pub const SCAN_ALPHA: u8 = 0x30;
-pub const SCAN_5: u8 = 0x1B;
-pub const POWER_DOWN: u8 = 0x10;
-pub const VER: &str = "02 2B";
-/// The `_GetKey` code of 5.
-pub const CODE_5: u8 = 0x93;
-/// Bit 3 of iy+33h, which a tap of ON leaves set.
-pub const ON_SEEN: u8 = 0x08;
-
-/// The probe on the reference OS with patterns in statVars and prevData, which it must not touch.
-pub fn probe() -> Rig {
-    let (stat, prev) = (pattern(STAT_VARS.1, 0x33), pattern(PREV_DATA.1, 0x66));
-    Rig::real_with(&assemble(PROBE, &[]), |m| {
-        let page = m.ram_page(1);
-        page[usize::from(STAT_VARS.0) - RAM_BASE..][..stat.len()].copy_from_slice(&stat);
-        page[usize::from(PREV_DATA.0) - RAM_BASE..][..prev.len()].copy_from_slice(&prev);
-    })
-}
-
-pub fn with_scripts(defines: &[&str]) -> Rig {
-    let mut rig = Rig::real(&assemble(WITH_SCRIPTS, defines));
-    rig.scripts = if defines.contains(&"ARCHIVE_SCRIPTS") {
-        Scripts::Archived
-    } else {
-        Scripts::Ram
-    };
-    rig
-}
-
-pub fn flags(rig: &mut Rig) -> u8 {
-    rig.peek(SCRIPT_FLAGS as u16, 1)[0]
-}
-
-pub fn set_flags(rig: &mut Rig, bits: u8) {
-    let now = flags(rig);
-    rig.poke(SCRIPT_FLAGS as u16, &[now | bits]);
-}
-
-/// The key screen after `count` keys, the last with `code`, and `report`.
-pub fn assert_keys(rig: &mut Rig, name: &str, count: u16, code: u8, report: &Report) {
-    // Bit 3 of iy+33h is set while the OS waits in _GetKey, and clear when the probe reads it.
-    let f = flags(rig) & !ON_SEEN;
-    assert_keys_with(rig, name, count, code, f, report);
-}
-
-/// The same with the flag byte the screen shows given.
-pub fn assert_keys_with(rig: &mut Rig, name: &str, count: u16, code: u8, f: u8, report: &Report) {
-    rig.assert_screen(name, &key_screen(count, code, f, report));
-    assert_eq!(rig.keys(), count, "{name}: the probe's count");
-}
-
-/// Runs the OS until auto power down fires, wakes it with ON and lets it settle. The OS must
-/// have put the whole screen in saveSScreen.
-pub fn power_cycle(rig: &mut Rig) {
-    let lcd = rig.os.packed_screen();
-    let mut seconds = 0;
-    while rig.os.m.in_port(3) & POWER_DOWN == 0 {
-        assert!(seconds < 600, "no auto power down in 600 s");
-        rig.os.run_ms(5_000);
-        seconds += 5;
-    }
-    assert_eq!(
-        rig.peek(SAVE_SCREEN, 768),
-        lcd,
-        "the power down left the screen's pixels in saveSScreen"
-    );
-    rig.apd = true;
-    rig.tap(mcemu::Machine::KEY_ON);
-    rig.os.run_ms(3000);
-    assert_eq!(
-        rig.os.m.in_port(3) & POWER_DOWN,
-        0,
-        "ON woke the calculator"
-    );
-}
+include!("statecheck_screens.rs");
+include!("statecheck_control.rs");
+include!("statecheck_real.rs");

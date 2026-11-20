@@ -1,107 +1,24 @@
-// Included by statecheck.rs: the runs of bank B that may change outside the probe's regions.
+// Included by statecheck.rs: the bytes of bank B the probe's own OS calls and the OS's timers
+// change, whatever the scenario.
 
-/// The runs below were found by taking bank B before the app starts and after the same keys,
-/// contrast, ON, auto power down with a wake, and CLEAR, on a control image that only waits in
-/// `_GetKey` (statecheck_scripts.z80 with CONTROL) and on the probe, outside the regions the probe
-/// writes and its scratch. OS_RUNS is what the OS changes by itself, PROBE_RUNS what only the
-/// probe's own OS calls change (curRow and curCol, and bytes the text, _ChkFindSym and
-/// _GetBaseVer calls touch), SCRIPT_RAM_RUNS and SCRIPT_ARC_RUNS what making the script AppVars
-/// changes in RAM and archived, with the byte the ONSCRPT script writes at MARK. 8447 is the
-/// contrast, which the 2nd+UP and 2nd+DOWN of the key sweep move; 846F to 8473 follow the last
-/// character the probe printed.
-pub const OS_RUNS: &[(u16, usize)] = &[
-    (0x8447, 1),
-    (0x8129, 83),
-    (0x82A3, 1),
-    (0x838D, 4),
-    (0x83E8, 1),
-    (0x83EA, 1),
-    (0x843C, 3),
-    (0x8442, 1),
-    (0x8444, 2),
-    (0x8448, 3),
-    (0x8451, 1),
-    (0x845A, 7),
-    (0x8476, 11),
-    (0x8484, 8),
-    (0x848E, 1),
-    (0x8490, 8),
-    (0x8499, 9),
-    (0x84BF, 8),
-    (0x84E3, 2),
-    (0x858B, 1),
-    (0x858D, 29),
-    (0x85BE, 2),
-    (0x85E1, 4),
-    (0x85E6, 10),
-    (0x85F2, 1),
-    (0x89F1, 1),
-    (0x89F9, 1),
-    (0x89FB, 3),
-    (0x8A01, 1),
-    (0x8A06, 1),
-    (0x8A08, 1),
-    (0x8A0D, 1),
-    (0x8A0F, 1),
-    (0x8A15, 2),
-    (0x8A18, 1),
-    (0x9815, 2),
-    (0x9820, 6),
-    (0x9832, 2),
-    (0x984A, 1),
-    (0x9868, 1),
-    (0x9C87, 1),
-    (0x9C94, 1),
-    (0x9D8A, 1),
-];
+/// Found by running the probe and a control image that only waits in `_GetKey`
+/// (statecheck_scripts.z80 with CONTROL) through the same keys, and taking what only the probe's
+/// run changed outside its regions and scratch: the cursor bytes at 844A to 844C, OP1, which
+/// _ChkFindSym and the script names use, OP4, which the OS fills from OP1 when the app leaves,
+/// the bytes the text and _GetBaseVer calls touch, and 846F to 8473, which follow the last
+/// character printed. What the OS changes by itself is not listed: the control image gives it,
+/// scenario by scenario, in Rig::strays.
 pub const PROBE_RUNS: &[(u16, usize)] = &[
     (0x846F, 5),
-    (0x844B, 2),
+    (0x844A, 3),
     (0x846E, 1),
     (0x8474, 1),
-    (0x847D, 1),
+    (0x8478, 11),
+    (0x8499, 9),
     (0x8A2F, 1),
 ];
-pub const SCRIPT_RAM_RUNS: &[(u16, usize)] = &[
-    (0x8481, 3),
-    (0x84A2, 2),
-    (0x84D5, 5),
-    (0x96F8, 1),
-    (0x96FA, 1),
-    (0x9826, 1),
-    (0x9828, 1),
-    (0x982E, 1),
-    (0x9DB7, 1),
-    (0x9DB9, 3),
-    (0x9DBD, 61),
-    (0x9DFB, 64),
-    (0xA800, 1),
-];
-pub const SCRIPT_ARC_RUNS: &[(u16, usize)] = &[
-    (0x8100, 34),
-    (0x8124, 5),
-    (0x82A5, 2),
-    (0x83A0, 3),
-    (0x83EB, 1),
-    (0x83EE, 8),
-    (0x83F7, 1),
-    (0x83F9, 1),
-    (0x83FB, 2),
-    (0x83FF, 1),
-    (0x8402, 3),
-    (0x8481, 3),
-    (0x848F, 1),
-    (0x8498, 1),
-    (0x84A2, 2),
-    (0x84D7, 1),
-    (0x8A14, 1),
-    (0x96F8, 1),
-    (0x96FA, 1),
-    (0x981C, 2),
-    (0x9826, 1),
-    (0x9828, 1),
-    (0x982E, 1),
-    (0x9869, 5),
-    (0x9C9B, 3),
-    (0x9DF5, 4),
-];
+
+/// Timer and keyboard state the OS rewrites in both images, in a different one of the two within
+/// the same scenario because the probe's own work moves the interrupts: the word at 8448, 8451
+/// and 845A to 8460.
+pub const TIMER_RUNS: &[(u16, usize)] = &[(0x8448, 2), (0x8451, 1), (0x845A, 7)];

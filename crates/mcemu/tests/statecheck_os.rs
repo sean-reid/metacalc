@@ -46,11 +46,12 @@ fn the_start_screen_shows_the_version_the_flag_byte_the_script_vars_and_a_good_f
     rig.assert_patterns("after the fill");
     assert_eq!(rig.keys(), 0);
     rig.assert_confined("the start screen");
+    assert_clear_restores(&mut rig, "start");
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn keys_modifiers_contrast_and_on_leave_vars_stack_and_appdata_whole() {
+fn keys_and_modifiers_leave_vars_stack_and_appdata_whole() {
     let mut rig = probe();
     rig.tap(SCAN_5);
     assert_keys(&mut rig, "one key", 1, CODE_5, &Report::ok());
@@ -71,7 +72,16 @@ fn keys_modifiers_contrast_and_on_leave_vars_stack_and_appdata_whole() {
     rig.tap(SCAN_ALPHA);
     count += returns;
     assert_keys(&mut rig, "alpha lock", count, last, &Report::ok());
+    rig.assert_patterns("after every key");
+    rig.assert_confined("after every key");
+    assert_clear_restores(&mut rig, "key sweep");
+}
 
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn the_contrast_keys_return_nothing_and_leave_the_regions_whole() {
+    let mut rig = probe();
+    rig.tap(SCAN_5);
     let contrast = rig.peek(CONTRAST, 1)[0];
     for _ in 0..4 {
         rig.tap(SCAN_2ND);
@@ -86,10 +96,22 @@ fn keys_modifiers_contrast_and_on_leave_vars_stack_and_appdata_whole() {
         rig.tap(SCAN_DOWN);
     }
     assert_eq!(rig.peek(CONTRAST, 1)[0], contrast);
-    assert_eq!(rig.keys(), count, "the contrast keys return nothing");
+    assert_keys(&mut rig, "after contrast", 1, CODE_5, &Report::ok());
+    rig.tap(SCAN_5);
+    assert_keys(&mut rig, "key after contrast", 2, CODE_5, &Report::ok());
+    rig.assert_patterns("after contrast");
+    rig.assert_confined("contrast");
+    assert_clear_restores(&mut rig, "contrast");
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn a_tap_of_on_is_not_a_key_and_leaves_the_regions_whole() {
+    let mut rig = probe();
+    rig.tap(SCAN_5);
     rig.tap(Machine::KEY_ON);
-    rig.os.run_ms(500);
-    assert_keys(&mut rig, "after ON", count, last, &Report::ok());
+    rig.run_ms(500);
+    assert_keys(&mut rig, "after ON", 1, CODE_5, &Report::ok());
     rig.tap(SCAN_5);
     let f = flags(&mut rig);
     assert_eq!(
@@ -97,16 +119,10 @@ fn keys_modifiers_contrast_and_on_leave_vars_stack_and_appdata_whole() {
         ON_SEEN,
         "a tap of ON leaves bit 3 of iy+33h set"
     );
-    assert_keys_with(
-        &mut rig,
-        "key after contrast and ON",
-        count + 1,
-        CODE_5,
-        f,
-        &Report::ok(),
-    );
-    rig.assert_patterns("after every key");
-    rig.assert_confined("after every key, contrast and ON");
+    assert_keys_with(&mut rig, "key after ON", 2, CODE_5, f, &Report::ok());
+    rig.assert_patterns("after ON");
+    rig.assert_confined("ON");
+    assert_clear_restores(&mut rig, "ON");
 }
 
 #[test]
@@ -119,6 +135,7 @@ fn second_quit_is_counted_as_a_key_and_does_not_leave() {
     rig.tap(SCAN_5);
     assert_keys(&mut rig, "a key after 2nd+QUIT", 2, CODE_5, &Report::ok());
     rig.assert_confined("2nd+QUIT");
+    assert_clear_restores(&mut rig, "2nd+QUIT");
 }
 
 #[test]
@@ -143,6 +160,7 @@ fn an_auto_power_down_and_wake_leave_vars_and_stack_ok_and_the_save_screen_tail_
         &Report::ok(),
     );
     rig.assert_confined("an auto power down and wake");
+    assert_clear_restores(&mut rig, "auto power down");
 }
 
 #[test]
@@ -185,6 +203,7 @@ fn an_onscrpt_in_ram_with_bit_0_set_damages_appdata_and_nothing_else_the_probe_r
     };
     assert_keys(&mut rig, "ONSCRPT damage stays", 3, CODE_5, &still);
     rig.assert_confined("an ONSCRPT that ran");
+    assert_clear_restores(&mut rig, "ONSCRPT");
 }
 
 #[test]
@@ -212,6 +231,7 @@ fn scripts_that_are_archived_or_have_no_flag_set_leave_appdata_whole_after_a_pow
         };
         assert_keys(&mut rig, "scripts that do not run", 2, CODE_5, &report);
         rig.assert_confined("scripts that do not run");
+        assert_clear_restores(&mut rig, "scripts that do not run");
     }
 }
 

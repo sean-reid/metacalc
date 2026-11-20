@@ -19,7 +19,7 @@ const POKED: [(&str, usize); 8] = [
     ("SCR_VARS", 0),
     ("SCR_VARS", 53),
     ("SCR_VARS", 107),
-    ("SCR_STACK", 0),
+    ("SCR_STACK", 0x20),
     ("SCR_STACK", 64),
     ("SCR_STACK", 127),
     ("appData", 0),
@@ -170,23 +170,28 @@ fn script_appvars_are_found_in_ram_and_a_missing_one_is_none() {
     }
 }
 
-/// The probe on the stub with `contents` in each of its restored regions before launch, and
-/// patterns in statVars and prevData.
+/// The probe on the stub with `contents` in each of its restored regions before launch, patterns
+/// in statVars and prevData, and a guard byte in place beside every region the probe must not
+/// write past.
 fn stub_with(build: &Build, contents: &[(&str, Vec<u8>)]) -> Rig {
     let (stat, prev) = (pattern(STAT_VARS.1, 0x33), pattern(PREV_DATA.1, 0x66));
+    let guards = guards(&build.lab);
     Rig::stub(build, |m| {
         let page = m.ram_page(1);
         let at = |a: u16| usize::from(a) - RAM_BASE;
         for (name, bytes) in contents {
             let addr = match *name {
                 "textShadow" => TEXT_SHADOW,
-                "appData" => 0x8000,
+                "appData" => APP_DATA,
                 n => realos::label_in(&build.lab, n),
             };
             page[at(addr)..][..bytes.len()].copy_from_slice(bytes);
         }
         page[at(STAT_VARS.0)..][..stat.len()].copy_from_slice(&stat);
         page[at(PREV_DATA.0)..][..prev.len()].copy_from_slice(&prev);
+        for g in guards {
+            page[at(g)] = 0xEE;
+        }
     })
 }
 
@@ -199,6 +204,14 @@ fn found() -> Vec<(&'static str, Vec<u8>)> {
     ]
 }
 
+/// What the OS holds in each region at an entry from a cleared home screen.
+const FRESH: [(&str, u8); 4] = [
+    ("SCR_VARS", 0),
+    ("SCR_STACK", 0x20),
+    ("appData", 0),
+    ("textShadow", 0x20),
+];
+
 /// The byte before and after each region the probe writes, which it must leave alone: by name
 /// and offset from the label, or by address.
 fn guards(lab: &std::path::Path) -> Vec<u16> {
@@ -208,7 +221,7 @@ fn guards(lab: &std::path::Path) -> Vec<u16> {
         l("SCR_VARS") + l("SCR_VARS_SIZE"),
         l("SCR_STACK") - 1,
         l("SCR_STACK") + l("SCR_STACK_SIZE"),
-        0x8000 + 256,
+        APP_DATA + 256,
         TEXT_SHADOW - 1,
         TEXT_SHADOW + 128,
         OTHERS[2].1 - 1,
@@ -218,19 +231,16 @@ fn guards(lab: &std::path::Path) -> Vec<u16> {
     ]
 }
 
-const SAVES: [(&str, &str); 4] = [
-    ("textShadow", "S_SAVE_TEXT"),
-    ("SCR_STACK", "S_SAVE_STACK"),
-    ("SCR_VARS", "S_SAVE_VARS"),
-    ("appData", "S_SAVE_DATA"),
-];
-
-fn addr_of(rig: &Rig, name: &str) -> u16 {
-    match name {
-        "textShadow" => TEXT_SHADOW,
-        "appData" => 0x8000,
-        n => rig.label(n),
+fn assert_guards(rig: &mut Rig, lab: &std::path::Path, when: &str) {
+    for g in guards(lab) {
+        assert_eq!(rig.peek(g, 1), [0xEE], "the byte at {g:04X} {when}");
     }
+}
+
+/// Presses CLEAR and runs until the probe leaves.
+fn clear(rig: &mut Rig) {
+    rig.os.m.press_key(realos::KEY_CLEAR);
+    assert_eq!(rig.os.m.run_app(3_000_000).stop, Stop::Exited);
 }
 
 #[test]
@@ -238,14 +248,10 @@ fn clear_puts_the_four_regions_back_as_found_and_leaves_the_tail_and_the_owner_d
     let build = assemble(PROBE, &[]);
     let contents = found();
     let mut rig = stub_with(&build, &contents);
-    let guards = guards(&build.lab);
-    for &g in &guards {
-        rig.poke(g, &[0xEE]);
-    }
-
+    assert_guards(&mut rig, &build.lab, "before the first key");
     assert_eq!(rig.byte("S_STALE"), 0);
-    for ((name, bytes), (_, save)) in contents.iter().zip(SAVES) {
-        let (a, s) = (addr_of(&rig, name), rig.label(save));
+    for ((name, bytes), (_, save)) in contents.iter().zip(SAVES_BY_FOUND) {
+        let (a, s) = (rig.addr(name), rig.label(save));
         assert_eq!(
             rig.peek(s, bytes.len()),
             *bytes,
@@ -254,20 +260,16 @@ fn clear_puts_the_four_regions_back_as_found_and_leaves_the_tail_and_the_owner_d
         assert_ne!(rig.peek(a, bytes.len()), *bytes, "{name} is filled");
     }
     rig.tap(SCAN_5);
-    for &g in &guards {
-        assert_eq!(rig.peek(g, 1), [0xEE], "the byte at {g:04X} after a key");
-    }
-    rig.os.m.press_key(realos::KEY_CLEAR);
-    assert_eq!(rig.os.m.run_app(3_000_000).stop, Stop::Exited);
+    assert_eq!(rig.byte("S_SAVE_NOW"), 0, "the copies are whole");
+    assert_guards(&mut rig, &build.lab, "after a key");
+    clear(&mut rig);
     assert_eq!(rig.keys(), 1, "CLEAR is not counted");
-    for ((name, bytes), (_, save)) in contents.iter().zip(SAVES) {
-        let (a, s) = (addr_of(&rig, name), rig.label(save));
+    for ((name, bytes), (_, save)) in contents.iter().zip(SAVES_BY_FOUND) {
+        let (a, s) = (rig.addr(name), rig.label(save));
         assert_eq!(rig.peek(a, bytes.len()), *bytes, "{name} is put back");
         assert_eq!(rig.peek(s, bytes.len()), *bytes, "{save} is as it was");
     }
-    for &g in &guards {
-        assert_eq!(rig.peek(g, 1), [0xEE], "the byte at {g:04X} after CLEAR");
-    }
+    assert_guards(&mut rig, &build.lab, "after CLEAR");
     let tail = OTHERS[2];
     assert_eq!(
         rig.peek(tail.1, tail.2),
@@ -284,10 +286,137 @@ fn clear_puts_the_four_regions_back_as_found_and_leaves_the_tail_and_the_owner_d
     );
 }
 
+/// `found()` is in the order of these.
+const SAVES_BY_FOUND: [(&str, &str); 4] = [
+    ("textShadow", "S_SAVE_TEXT"),
+    ("SCR_STACK", "S_SAVE_STACK"),
+    ("SCR_VARS", "S_SAVE_VARS"),
+    ("appData", "S_SAVE_DATA"),
+];
+
 #[test]
-fn a_region_already_holding_its_pattern_is_stale_and_clear_writes_what_a_fresh_entry_holds() {
+fn a_saved_copy_damaged_during_the_wait_makes_clear_write_what_a_cleared_home_screen_holds() {
     let build = assemble(PROBE, &[]);
-    let lab = &build.lab;
+    let contents = found();
+    for (_, save) in SAVES_BY_FOUND {
+        let len = region_len(SAVES.iter().find(|s| s.1 == save).unwrap().0);
+        for offset in [0, len / 2, len - 1] {
+            let mut rig = stub_with(&build, &contents);
+            let at = rig.label(save) + offset as u16;
+            let was = rig.peek(at, 1)[0];
+            rig.poke(at, &[!was]);
+            rig.tap(SCAN_5);
+            assert_eq!(rig.byte("S_SAVE_NOW"), 1, "{save}+{offset} is seen");
+            clear(&mut rig);
+            for (region, fill) in FRESH {
+                let len = region_len(region);
+                assert_eq!(
+                    rig.peek(rig.addr(region), len),
+                    vec![fill; len],
+                    "{save}+{offset}: {region}"
+                );
+            }
+            assert_guards(
+                &mut rig,
+                &build.lab,
+                &format!("after CLEAR, {save}+{offset}"),
+            );
+            let tail = OTHERS[2];
+            assert_eq!(rig.peek(tail.1, tail.2), pattern(tail.2, tail.3));
+            assert_eq!(
+                rig.peek(STAT_VARS.0, STAT_VARS.1),
+                pattern(STAT_VARS.1, 0x33)
+            );
+            assert_eq!(
+                rig.peek(PREV_DATA.0, PREV_DATA.1),
+                pattern(PREV_DATA.1, 0x66)
+            );
+        }
+    }
+}
+
+/// The pattern of a region with its first `k` bytes inverted.
+fn off_pattern(len: usize, seed: u8, k: usize) -> Vec<u8> {
+    let mut bytes = pattern(len, seed);
+    bytes[..k].iter_mut().for_each(|b| *b = !*b);
+    bytes
+}
+
+/// Region, length, seed and, for a run of k bytes off the pattern, whether the region is stale.
+type StaleCase = (&'static str, usize, u8, &'static [(usize, bool)]);
+const STALE_CASES: [StaleCase; 4] = [
+    (
+        "SCR_VARS",
+        108,
+        0x77,
+        &[(0, true), (1, true), (53, true), (54, false), (108, false)],
+    ),
+    (
+        "SCR_STACK",
+        128,
+        0x22,
+        &[(0, true), (1, true), (63, true), (64, false), (128, false)],
+    ),
+    (
+        "appData",
+        256,
+        0x44,
+        &[
+            (0, true),
+            (1, true),
+            (64, true),
+            (127, true),
+            (128, false),
+            (256, false),
+        ],
+    ),
+    (
+        "textShadow",
+        128,
+        0x11,
+        &[(0, true), (1, true), (63, true), (64, false)],
+    ),
+];
+
+#[test]
+fn a_region_is_stale_when_fewer_than_half_its_bytes_are_off_its_pattern_and_only_it_is_restored_to_a_constant()
+ {
+    let build = assemble(PROBE, &[]);
+    for (region, len, seed, cases) in STALE_CASES {
+        for &(k, stale) in cases {
+            let mut contents = found();
+            let held = off_pattern(len, seed, k);
+            contents.iter_mut().find(|c| c.0 == region).unwrap().1 = held.clone();
+            let mut rig = stub_with(&build, &contents);
+            let name = format!("{region} with {k} bytes off");
+            let flags = rig.peek(rig.label("S_STALE_R"), 4);
+            let want: Vec<u8> = SAVES
+                .iter()
+                .map(|s| u8::from(s.0 == region && stale))
+                .collect();
+            assert_eq!(flags, want, "{name}: stale flags");
+            assert_eq!(rig.byte("S_STALE"), u8::from(stale), "{name}");
+            rig.tap(SCAN_5);
+            clear(&mut rig);
+            for (other, bytes) in &contents {
+                let (addr, len) = (rig.addr(other), bytes.len());
+                let fresh = FRESH.iter().find(|f| f.0 == *other).unwrap().1;
+                let want = if *other == region && stale {
+                    vec![fresh; len]
+                } else {
+                    bytes.clone()
+                };
+                assert_eq!(rig.peek(addr, len), want, "{name}: {other} after CLEAR");
+            }
+            assert_guards(&mut rig, &build.lab, &format!("after CLEAR, {name}"));
+        }
+    }
+}
+
+#[test]
+fn regions_holding_their_whole_patterns_are_all_stale_and_clear_writes_what_a_cleared_home_screen_holds()
+ {
+    let build = assemble(PROBE, &[]);
     let whole = [
         ("SCR_VARS", pattern(108, 0x77)),
         ("SCR_STACK", pattern(128, 0x22)),
@@ -295,31 +424,27 @@ fn a_region_already_holding_its_pattern_is_stale_and_clear_writes_what_a_fresh_e
     ];
     let mut cases: Vec<Vec<(&str, Vec<u8>)>> = whole.iter().map(|w| vec![w.clone()]).collect();
     cases.push(whole.to_vec());
-    for contents in cases {
+    for patterns in cases {
+        let mut contents = found();
+        for (name, bytes) in &patterns {
+            contents.iter_mut().find(|c| c.0 == *name).unwrap().1 = bytes.clone();
+        }
+        let names: Vec<_> = patterns.iter().map(|c| c.0).collect();
         let mut rig = stub_with(&build, &contents);
-        assert_eq!(
-            rig.byte("S_STALE"),
-            1,
-            "{:?}",
-            contents.iter().map(|c| c.0).collect::<Vec<_>>()
-        );
+        assert_eq!(rig.byte("S_STALE"), 1, "{names:?}");
         rig.tap(SCAN_5);
-        rig.os.m.press_key(realos::KEY_CLEAR);
-        assert_eq!(rig.os.m.run_app(3_000_000).stop, Stop::Exited);
-        assert_eq!(rig.peek(TEXT_SHADOW, 128), [0x20; 128]);
-        assert_eq!(
-            rig.peek(realos::label_in(lab, "SCR_STACK"), 128),
-            [0x20; 128]
-        );
-        assert_eq!(rig.peek(realos::label_in(lab, "SCR_VARS"), 108), [0; 108]);
-        assert_eq!(rig.peek(0x8000, 256), [0; 256]);
+        clear(&mut rig);
+        for (name, bytes) in &contents {
+            let len = bytes.len();
+            let fresh = FRESH.iter().find(|f| f.0 == *name).unwrap().1;
+            let want = if names.contains(name) {
+                vec![fresh; len]
+            } else {
+                bytes.clone()
+            };
+            assert_eq!(rig.peek(rig.addr(name), len), want, "{names:?}: {name}");
+        }
     }
-    let mut fresh = stub_with(&build, &[("SCR_VARS", pattern(108, 0x78))]);
-    assert_eq!(
-        fresh.byte("S_STALE"),
-        0,
-        "a region one byte off its pattern is not stale"
-    );
 }
 
 #[test]
