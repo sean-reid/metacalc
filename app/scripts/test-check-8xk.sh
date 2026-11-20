@@ -1,17 +1,23 @@
 #!/bin/sh
 # Usage: test-check-8xk.sh app.8xk [name]
 #        test-check-8xk.sh -l library app.8xk [name]
-# The first form breaks a one-page app each way the checker must notice. The second form does
+# Either form takes -p code-pages first, the app's number of code pages, 1 by default. The first
+# form breaks an app of only code pages each way the checker must notice. The second form does
 # the same to an app built from the library, for the rules about pages and the library's bytes.
 set -eu
 export LC_ALL=C
 
+usage='usage: test-check-8xk.sh [-p code-pages] [-l library] app.8xk [name]'
 library=
-if [ "${1:-}" = -l ]; then
-	library=${2:?usage: test-check-8xk.sh -l library app.8xk [name]}
-	shift 2
-fi
-good=${1:?usage: test-check-8xk.sh [-l library] app.8xk [name]}
+code=1
+while :; do
+	case ${1:-} in
+		-p) code=${2:?$usage}; shift 2 ;;
+		-l) library=${2:?$usage}; shift 2 ;;
+		*) break ;;
+	esac
+done
+good=${1:?$usage}
 name=${2:-metacalc}
 hexname=$(printf %s "$name" | od -An -tx1 | tr -d ' \n' | tr a-f A-F)
 namefield=804$(printf %X "${#name}")
@@ -25,13 +31,34 @@ else
 	trap 'rm -rf "$dir"' EXIT
 fi
 
+# run_check args: the checker with the code page count and the library, if there is one.
+run_check() {
+	if [ -n "$library" ]; then
+		sh "$check" -p "$code" -l "$library" "$@"
+	else
+		sh "$check" -p "$code" "$@"
+	fi
+}
+
+# wrong_code_pages: the checker must refuse the good file when told another number of code pages.
+wrong_code_pages() {
+	for wrong in $((code + 1)) $((code - 1)); do
+		[ "$wrong" -ge 1 ] || continue
+		if [ -n "$library" ]; then
+			sh "$check" -p "$wrong" -l "$library" "$good" "$name" > /dev/null 2>&1 && ran=yes || ran=
+		else
+			sh "$check" -p "$wrong" "$good" "$name" > /dev/null 2>&1 && ran=yes || ran=
+		fi
+		if [ -n "$ran" ]; then
+			echo "test-check-8xk: accepted an app of $code code pages as one of $wrong" >&2
+			exit 1
+		fi
+	done
+}
+
 # refuses file reason [message]: the checker must fail, and say message if one is given.
 refuses() {
-	if [ -n "$library" ]; then
-		sh "$check" -l "$library" "$dir/$1.8xk" "$name" 2> "$dir/err" && ran=yes || ran=
-	else
-		sh "$check" "$dir/$1.8xk" "$name" 2> "$dir/err" && ran=yes || ran=
-	fi
+	run_check "$dir/$1.8xk" "$name" 2> "$dir/err" && ran=yes || ran=
 	if [ -n "$ran" ]; then
 		echo "test-check-8xk: accepted an app with $2" >&2
 		exit 1
@@ -125,7 +152,7 @@ mutate() {
 # as hex digits.
 read_field() {
 	body=$(grep -a -E '^:[0-9A-F]{6}00' "$good" | tr -d '\r' | sed -E 's/^:[0-9A-F]{6}00(.*)..$/\1/' | tr -d '\n')
-	n=$(sh "$check" "$good" "$name" | sed -n 's/.*, \([0-9]*\)-byte signature.*/\1/p')
+	n=$(run_check "$good" "$name" | sed -n 's/.*, \([0-9]*\)-byte signature.*/\1/p')
 	stripped=$(printf '%s' "$body" | sed -E 's/F+$//')
 	case $stripped in
 		*010[123]) t=2 ;;
@@ -289,7 +316,7 @@ trailer_tests() {
 	form=0
 	while [ "$form" -le 3 ]; do
 		python3 -I -c "$RESIGN" "$good" "$dir/form$form.8xk" "$form" 0 "$form"
-		sh "$check" "$dir/form$form.8xk" "$name" > /dev/null || {
+		run_check "$dir/form$form.8xk" "$name" > /dev/null || {
 			echo "test-check-8xk: refused a correct file with trailer form $form" >&2
 			exit 1
 		}
@@ -351,12 +378,13 @@ if [ -z "$library" ]; then
 	set_field "$dir/sixty-five.8xk" "$too_long"
 	refuses sixty-five "a length byte of 65, which the signer cannot emit" "no signature field"
 
-	sh "$check" "$good" "$name" > /dev/null
+	wrong_code_pages
+	run_check "$good" "$name" > /dev/null
 	echo "test-check-8xk: ok"
 	exit 0
 fi
 
-pages=$(sh "$check" -l "$library" "$good" "$name" | sed -n 's/.* \([0-9][0-9]*\) pages.*/\1/p')
+pages=$(run_check "$good" "$name" | sed -n 's/.* \([0-9][0-9]*\) pages.*/\1/p')
 [ "$pages" -ge 3 ] || { echo "test-check-8xk: $good has $pages pages, need at least 3" >&2; exit 1; }
 len=$(wc -c < "$library" | tr -d ' ')
 common_tests
@@ -391,7 +419,7 @@ refuses gap "a missing record in the middle of a page" "not contiguous"
 unlf "$dir/long-page.8xk"
 refuses long-page "a last page over 16384 bytes" "over 16384"
 
-corrupt "$good" 1 1 "$dir/chunk.tmp"
+corrupt "$good" "$code" 1 "$dir/chunk.tmp"
 resum "$dir/chunk.tmp" "$dir/chunk.8xk"
 refuses chunk "a byte of chunk 0 changed" "is not chunk 0"
 
@@ -419,5 +447,6 @@ library=$dir/shorter.lib
 refuses same "one chunk less in the library than in the app" "pages for a"
 library=$real
 
-sh "$check" -l "$library" "$good" "$name" > /dev/null
+wrong_code_pages
+run_check "$good" "$name" > /dev/null
 echo "test-check-8xk: ok: $good"

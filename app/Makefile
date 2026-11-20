@@ -1,23 +1,35 @@
 SPASM   ?= spasm
 BUILD   ?= build
 LIBRARY ?=
+# A directory holding font.inc; by default the one mcglyph writes into BUILD.
+FONT    ?=
 OUT     := $(BUILD)/metacalc.8xk
 ASM     := SPASM="$(SPASM)" sh ../scripts/spasm.sh
+INCLUDE := -I ../kernel -I src -I .. -I ../ui
+
+ifeq ($(FONT),)
+FONTDIR := $(BUILD)
+else
+FONTDIR := $(FONT)
+endif
 
 ifeq ($(LIBRARY),)
-FLAGS := -I src
-CHECK := sh scripts/check-8xk.sh "$(OUT)"
-SELF  := sh scripts/test-check-8xk.sh "$(OUT)"
+FLAGS := $(INCLUDE) -I "$(FONTDIR)"
+CHECK := sh scripts/check-8xk.sh -p 3 "$(OUT)"
+SELF  := sh scripts/test-check-8xk.sh -p 3 "$(OUT)"
 else
-FLAGS := -I src -I "$(BUILD)" -DLIBRARY
-CHECK := sh scripts/check-8xk.sh -l "$(LIBRARY)" "$(OUT)"
-SELF  := sh scripts/test-check-8xk.sh -l "$(LIBRARY)" "$(OUT)"
+FLAGS := $(INCLUDE) -I "$(FONTDIR)" -I "$(BUILD)" -DLIBRARY
+CHECK := sh scripts/check-8xk.sh -p 3 -l "$(LIBRARY)" "$(OUT)"
+SELF  := sh scripts/test-check-8xk.sh -p 3 -l "$(LIBRARY)" "$(OUT)"
 endif
 
 # A phony target, so a path with a space is never a make target, and the app is always
 # assembled because make cannot see LIBRARY change.
 app:
 	mkdir -p "$(BUILD)"
+ifeq ($(FONT),)
+	cargo run --quiet --locked --manifest-path ../Cargo.toml -p mcglyph -- z80 "$(BUILD)/font.inc" > /dev/null
+endif
 ifneq ($(LIBRARY),)
 	sh scripts/library-include.sh "$(LIBRARY)" > "$(BUILD)/library.inc"
 endif

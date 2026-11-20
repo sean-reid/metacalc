@@ -1,16 +1,25 @@
 #!/bin/sh
-# Usage: check-8xk.sh [-l library] app.8xk [name]
-# With -l, pages 1 onward must hold the library's 16 KB chunks, then only zero padding and the signature.
+# Usage: check-8xk.sh [-p code-pages] [-l library] app.8xk [name]
+# With -l, the pages after the app's code pages, 1 unless -p says otherwise, must hold the
+# library's 16 KB chunks, then only zero padding and the signature.
 set -eu
 export LC_ALL=C
 
 PAGE=16384
+usage='usage: check-8xk.sh [-p code-pages] [-l library] app.8xk [name]'
 library=
-if [ "${1:-}" = -l ]; then
-	library=${2:?usage: check-8xk.sh [-l library] app.8xk [name]}
-	shift 2
-fi
-f=${1:?usage: check-8xk.sh [-l library] app.8xk [name]}
+code=1
+while :; do
+	case ${1:-} in
+		-p) code=${2:?$usage}; shift 2 ;;
+		-l) library=${2:?$usage}; shift 2 ;;
+		*) break ;;
+	esac
+done
+case $code in
+	'' | *[!0-9]* | 0) echo "$usage" >&2; exit 2 ;;
+esac
+f=${1:?$usage}
 want=${2:-metacalc}
 hexname=$(printf %s "$want" | od -An -tx1 | tr -d ' \n' | tr a-f A-F)
 namefield=804$(printf %X "${#want}")
@@ -104,16 +113,18 @@ while [ "$n" -lt "$pages" ]; do
 done
 [ "$(wc -c < "$dir/page.$pages" | tr -d ' ')" -le $((PAGE * 2)) ] || fail "the last page is over $PAGE bytes"
 
-if [ -n "$library" ]; then
+if [ -z "$library" ]; then
+	[ "$pages" = "$code" ] || fail "$pages pages, want the $code code pages"
+else
 	len=$(wc -c < "$library" | tr -d ' ')
 	[ "$len" -gt 0 ] || fail "library is empty"
-	want_pages=$(((PAGE + len + 96 + PAGE - 1) / PAGE))
+	want_pages=$(((code * PAGE + len + 96 + PAGE - 1) / PAGE))
 	[ "$pages" = "$want_pages" ] || fail "$pages pages for a $len byte library, want $want_pages"
 	c=0
 	while [ $((c * PAGE)) -lt "$len" ]; do
 		want_chunk=$(dd if="$library" bs=$PAGE skip=$c count=1 2>/dev/null | od -An -v -tx1 | tr -d ' \n' | tr a-f A-F)
-		got=$(cut -c1-${#want_chunk} "$dir/page.$((c + 2))")
-		[ "$got" = "$want_chunk" ] || fail "page $((c + 1)) is not chunk $c of the library"
+		got=$(cut -c1-${#want_chunk} "$dir/page.$((c + code + 1))")
+		[ "$got" = "$want_chunk" ] || fail "page $((c + code)) is not chunk $c of the library"
 		c=$((c + 1))
 	done
 	n=1
@@ -121,7 +132,7 @@ if [ -n "$library" ]; then
 		cat "$dir/page.$n"
 		n=$((n + 1))
 	done > "$dir/all"
-	tail=$(cut -c$(((PAGE + len) * 2 + 1))- "$dir/all")
+	tail=$(cut -c$(((code * PAGE + len) * 2 + 1))- "$dir/all")
 	pad=$((${#tail} - 192))
 	[ "$pad" -ge 0 ] || fail "bytes after the library are not zero padding then the signature"
 	[ "$pad" -eq 0 ] || [ -z "$(printf '%s' "$tail" | cut -c1-"$pad" | tr -d 0)" ] ||

@@ -1,59 +1,67 @@
+; The metacalc app. Three code pages (pages.inc) and, when built with a library, the library after
+; them. This file is the entry page: the header, the shell and every call into the OS. Everything
+; it needs from the canvas, fm, the kernel and the reader it reaches through a far entry.
+;
+; The start screen is the canvas's, drawn from the strings on the draw page. app_key redraws it
+; after every key but CLEAR and QUIT, which leave. RAM: the canvas's, fm's and the kernel's blocks
+; in ram_map.inc, and libPage, the flash page of the library's chunk 0, when built with LIBRARY.
+
 #include "equates.inc"
 
 #define APP_NAME "metacalc"
+#include "pages.inc"
 #include "header.inc"
+	jp app_start
+#include "farcall.inc"
+far_table .equ $
+#define FAR_STUBS
+#include "far_reader.inc"
+#undef FAR_STUBS
+far_table_end .equ $
+#include "far_draw.inc"
+#include "far_kernel.inc"
+#include "libpage.inc"
 
-start:
+app_start:
+	call far_init
 #ifdef LIBRARY
 	call app_find_library
 #endif
-	bcall(_ClrLCDFull)
-	ld hl, UI_FRAME
-	ld de, UI_FRAME + 1
-	ld bc, UI_FRAME_SIZE - 1
-	ld (hl), 0
-	ldir
-	ld hl, title
-	ld de, UI_FRAME + (TITLE_ROW * 12) + TITLE_COL
-	ld b, 8
-draw:
-	push bc
-	ld bc, 8
-	ldir
-	ld bc, 4
-	ex de, hl
-	add hl, bc
-	ex de, hl
-	pop bc
-	djnz draw
-	bcall(_GrBufCpy)
-wait_for_clear:
-	ei
-	halt
-	bcall(_GetCSC)
-	cp skClear
-	jr nz, wait_for_clear
+	ld hl, ui_font
+	call far_ui_set_font
+app_screen:
+	call far_ui_clear
+	ld hl, str_title
+	ld de, str_none
+	call far_ui_title
+	ld hl, str_hint
+	ld de, HINT_COL
+	ld b, HINT_ROW
+	call far_ui_text
+	call far_ui_blit
+	call app_key
+	cp KEY_CLEAR
+	jr z, app_exit
+	cp KEY_QUIT
+	jr z, app_exit
+	jr app_screen
+app_exit:
 	di
 	res onInterrupt, (iy + onFlags)
 	set graphDraw, (iy + graphFlags)
 	bjump(_JForceCmdNoChar)
 
-TITLE_ROW = 28
-TITLE_COL = 2
+HINT_ROW = 3
+HINT_COL = 1
 
-; "metacalc", eight rows of eight glyph bytes.
-title:
-	.db 000h, 000h, 040h, 000h, 000h, 000h, 060h, 000h
-	.db 0D0h, 070h, 0F0h, 070h, 070h, 070h, 020h, 070h
-	.db 0A8h, 088h, 040h, 008h, 088h, 008h, 020h, 088h
-	.db 0A8h, 0F8h, 040h, 078h, 080h, 078h, 020h, 080h
-	.db 0A8h, 080h, 040h, 088h, 080h, 088h, 020h, 080h
-	.db 0A8h, 088h, 048h, 098h, 088h, 098h, 020h, 088h
-	.db 0A8h, 070h, 030h, 068h, 070h, 068h, 070h, 070h
-	.db 000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h
+#define KEYS_SET_FONT far_ui_set_font
+#include "keys.inc"
+
+	APP_PAGE_FILL(PAGE_ENTRY)
+#include "page_draw.inc"
+#include "page_data.inc"
 
 #ifdef LIBRARY
-#include "libpage.inc"
 .fill 8000h - $, 0
 #include "library.inc"
 #endif

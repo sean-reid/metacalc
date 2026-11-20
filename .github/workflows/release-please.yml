@@ -83,7 +83,7 @@ jobs:
         run: sh scripts/build-libraries.sh "$SETMM" "$RUNNER_TEMP/libraries" "$RUNNER_TEMP/pages"
       - run: |
           make -s -C app BUILD="$RUNNER_TEMP/app" LIBRARY="$RUNNER_TEMP/libraries/ring.mclib"
-          sh app/scripts/check-8xk.sh -l "$RUNNER_TEMP/libraries/ring.mclib" "$RUNNER_TEMP/app/metacalc.8xk"
+          sh app/scripts/check-8xk.sh -p 3 -l "$RUNNER_TEMP/libraries/ring.mclib" "$RUNNER_TEMP/app/metacalc.8xk"
           mkdir "$RUNNER_TEMP/dist"
           cp "$RUNNER_TEMP/app/metacalc.8xk" "$RUNNER_TEMP/dist/"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
