@@ -19,11 +19,11 @@ pub const KEY_CLEAR: u8 = 0x0F;
 pub const OS_FLAGS: usize = 0x09F0;
 pub const ON_FLAGS: usize = OS_FLAGS + 9;
 pub const ON_INTERRUPT: u8 = 0x10;
+/// The byte the control app writes just before it hands the machine back: the first byte of
+/// SCR_VARS in ram_map.inc, which crates/mcemu/tests/screen_state.rs measures to keep every byte
+/// through leaving the app. The one definition: `assemble_routine` gives it to the assembler.
+pub const EXIT_MARK: u16 = 0x90D3;
 /// The OS flag byte holding `graphDraw`, bit 0, which the app sets as its last mark before it leaves.
-/// The byte the control app writes just before it hands the machine back: the first byte of the app's
-/// APP_BUF in ram_map.inc, which the OS leaves alone while it idles at the home screen. The one
-/// definition: `assemble_routine` gives it to the assembler.
-pub const EXIT_MARK: u16 = 0x8806;
 pub const GRAPH_FLAGS: usize = OS_FLAGS + 3;
 
 fn rom() -> Option<Vec<u8>> {

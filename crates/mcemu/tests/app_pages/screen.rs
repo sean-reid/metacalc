@@ -170,14 +170,16 @@ fn a_library_with_no_assertion_shows_the_readers_status_for_its_first() {
 
 #[test]
 fn a_page_that_holds_no_library_is_refused_by_the_reader_across_the_pages() {
-    // app_lib_page's `sub 3` becomes `sub 1`: chunk 0 is taken to be on the data page, which holds
-    // the kernel and the reader and no library.
+    // app_lib_page's `sub 3` becomes `sub 1`: chunk 0 is taken to be on the draw page, one below
+    // the entry page, which holds the canvas and fm and no library.
     let built = with_library();
     let page0 = &mcemu::decode_app(&built.file).unwrap()[0];
-    let at = page0
-        .windows(3)
-        .position(|w| w == [0xD6, 0x03, 0xC9])
-        .expect("app_lib_page");
+    let at = usize::from(built.label("app_lib_page") - 0x4000);
+    assert_eq!(
+        page0[at..at + 3],
+        [0xD6, 0x03, 0xC9],
+        "sub 3, ret at app_lib_page"
+    );
     let mut app = App::boot_with(built, |m| {
         m.load_flash(BASE, at + 1, &[0x01]);
     });
@@ -225,15 +227,20 @@ fn the_font_is_set_before_the_kernel_and_fm_are_opened() {
 fn a_break_flagged_as_the_app_reads_clear_is_cleared_by_its_exit() {
     const HOOK: u16 = 0xA630;
     let built = plain();
-    // Every time the app sets the font, which app_key does after the OS returns a key and before
-    // it compares it, the OS "flags a break": set 4,(iy+9), then on to ui_set_font. The flag is set
-    // after app_key's own test of it, so only the exit can clear it.
+    // The app is booted and waiting for a key first, so nothing flagged by the hook before it can be
+    // taken by app_key's own branch. Then every time the app sets the font, which app_key does after
+    // the OS returns a key and before it compares it, the OS "flags a break": set 4,(iy+9), then on
+    // to ui_set_font. The flag is set after app_key's own test of it, so only the exit can clear it.
+    let mut app = App::boot(built);
     let far = built.label("far_page1").to_le_bytes();
-    let hook = [0xFD, 0xCB, 0x09, 0xE6, 0xC3, far[0], far[1]];
-    let mut app = App::boot_with(built, |m| {
-        m.load_ram(HOOK, &hook);
-        hook_stub(m, built, "far_ui_set_font", HOOK);
-    });
+    app.m
+        .load_ram(HOOK, &[0xFD, 0xCB, 0x09, 0xE6, 0xC3, far[0], far[1]]);
+    hook_stub(&mut app.m, built, "far_ui_set_font", HOOK);
+    assert_eq!(
+        app.m.read_ram(0x89F9, 1)[0] & ON_INTERRUPT_BIT,
+        0,
+        "no break flagged yet"
+    );
     app.m.press_key(KEY_CLEAR);
     assert_eq!(app.m.run_app(3 * TAP).stop, Stop::Exited);
     assert_eq!(

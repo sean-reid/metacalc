@@ -1,6 +1,6 @@
 //! Building the app and standing on one of its pages.
 
-use crate::realos::{BASE, KEY_2, KEY_APPS, RealOs, start_model};
+use crate::realos::{BASE, KEY_2, KEY_APPS, RealOs, start_model, start_pixels};
 use crate::ui_support::{pack, same_frame};
 use mcemu::{Machine, Regs, STUB_ROM, Stop};
 use std::path::Path;
@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 /// Where the driver and the callee's buffers sit, in RAM below the app's own regions.
 pub const DRIVER: u16 = 0xA000;
 pub const SCRATCH: u16 = 0xA800;
-const STACK: u16 = 0xAF00;
+pub const STACK: u16 = 0xAF00;
 const FLAGS: u16 = 0x89F0;
 pub const UI_FRAME: u16 = 0x9340;
 pub const UI_VARS: u16 = 0x86EC;
@@ -175,6 +175,12 @@ impl Done {
 pub struct App {
     pub m: Machine,
     pub built: &'static Built,
+    /// Where `call` puts its driver, its stack and the ranges it writes: `DRIVER_RAM` on the stub
+    /// OS, a small place inside A800h to AA0Fh, which other real-OS tests write too, on the reference
+    /// OS.
+    pub driver: u16,
+    pub stack: u16,
+    pub scratch: Vec<(u16, u16)>,
 }
 
 impl App {
@@ -191,7 +197,17 @@ impl App {
         m.launch(BASE).expect("the app launches");
         setup(&mut m);
         assert_eq!(m.run_app(BOOT).stop, Stop::Limit, "the app waits for a key");
-        App { m, built }
+        App::with(m, built)
+    }
+
+    fn with(m: Machine, built: &'static Built) -> App {
+        App {
+            m,
+            built,
+            driver: DRIVER,
+            stack: STACK,
+            scratch: DRIVER_RAM.to_vec(),
+        }
     }
 
     /// `boot`, and the app has drawn the start screen the model draws for its library: the frame it
@@ -205,10 +221,19 @@ impl App {
 
     /// The app installed on the reference OS and started from the APPS menu, left at its key wait.
     pub fn on_real_os(built: &'static Built) -> App {
-        App {
-            m: started_on_real_os(built),
-            built,
-        }
+        let mut app = App::with(started_on_real_os(built), built);
+        // The driver, its callee's buffer and a stack of 64 bytes, all in A800h to AA0Fh.
+        app.driver = 0xA800;
+        app.stack = 0xAA00;
+        app.scratch = vec![(0xA800, 0xA810), (0xA9C0, 0xAA00)];
+        let screen = start_pixels(built.library.as_deref(), 0);
+        let lcd = app.m.lcd();
+        let lit: Vec<bool> = (0..64)
+            .flat_map(|y| (0..96).map(move |x| (x, y)))
+            .map(|(x, y)| lcd.pixel(x, y))
+            .collect();
+        assert!(lit == screen, "the app has not reached its key wait");
+        app
     }
 
     pub fn label(&self, name: &str) -> u16 {
@@ -224,7 +249,8 @@ impl App {
     pub fn call(&mut self, page: u8, target: u16, input: In) -> Done {
         self.assert_scratch_is_free();
         let [lo, hi] = target.to_le_bytes();
-        self.m.load_ram(DRIVER, &[0xCD, lo, hi, 0x76, 0x18, 0xFD]);
+        self.m
+            .load_ram(self.driver, &[0xCD, lo, hi, 0x76, 0x18, 0xFD]);
         self.m.out_port(0x06, page);
         self.m.set_regs(&Regs {
             af: u16::from(input.a) << 8,
@@ -233,8 +259,8 @@ impl App {
             hl: input.hl,
             ix: 0x1111,
             iy: FLAGS,
-            sp: STACK,
-            pc: DRIVER,
+            sp: self.stack,
+            pc: self.driver,
             af2: 0x2222,
             bc2: 0x3333,
             de2: 0x4444,
@@ -252,7 +278,7 @@ impl App {
         );
         let regs = self.m.regs();
         assert!(
-            (DRIVER + 3..=DRIVER + 5).contains(&regs.pc),
+            (self.driver + 3..=self.driver + 5).contains(&regs.pc),
             "the call to {target:04X} stopped at {:04X}",
             regs.pc
         );
@@ -278,7 +304,7 @@ impl App {
         ];
         for (base, size) in regions {
             let (low, len) = (self.label(base), self.label(size));
-            for (from, to) in DRIVER_RAM {
+            for &(from, to) in &self.scratch {
                 assert!(
                     to <= low || low + len <= from,
                     "the driver's RAM {from:04X} to {to:04X} overlaps {base} at {low:04X}"

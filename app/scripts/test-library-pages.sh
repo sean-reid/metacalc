@@ -1,11 +1,24 @@
 #!/bin/sh
 # Usage: test-library-pages.sh spasm
+#        test-library-pages.sh --find spasm first last
 # Builds the app around libraries with 0, 95, 96 and 97 free bytes in the last chunk and with
 # short last chunks, and checks each.
+# The signature lengths in the table below, the second `for entry` loop, belong to the app's bytes
+# and go stale with every change to the Z80 under app/, ui/, fm/, lib/ or kernel/. Then run
+# --find: it builds the app around a library of each length from first to last and prints the
+# length, the page count, the signature's length and its trailer, so that a length for each of
+# the four trailers and for a 63-byte signature can be copied into the table. A 63-byte signature
+# with trailer 00 may not exist in the range; any trailer will do for the 63-byte entry.
 set -eu
 export LC_ALL=C
 
-spasm=${1:?usage: test-library-pages.sh spasm}
+usage='usage: test-library-pages.sh spasm | --find spasm first last'
+find=
+if [ "${1:-}" = --find ]; then
+	find=yes
+	shift
+fi
+spasm=${1:?$usage}
 app=$(cd "$(dirname "$0")/.." && pwd)
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
@@ -14,6 +27,21 @@ trap 'rm -rf "$dir"' EXIT
 make_library() {
 	awk -v n="$1" 'BEGIN { for (i = 0; i < n; i++) printf "%c", (i * 7 + int(i / 16384)) % 120 + 1 }' > "$dir/lib"
 }
+
+if [ -n "$find" ]; then
+	first=${2:?$usage}
+	last=${3:?$usage}
+	len=$first
+	while [ "$len" -le "$last" ]; do
+		make_library "$len"
+		rm -rf "$dir/build"
+		make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" > /dev/null
+		out=$(sh "$app/scripts/check-8xk.sh" -p 3 -l "$dir/lib" "$dir/build/metacalc.8xk")
+		echo "$len $(echo "$out" | sed 's/.*bytes, //')"
+		len=$((len + 1))
+	done
+	exit 0
+fi
 
 # Library length, then the app's pages: the three code pages, the chunks, and one more when the
 # last chunk leaves under 96 bytes.

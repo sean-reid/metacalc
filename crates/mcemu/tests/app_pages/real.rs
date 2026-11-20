@@ -71,3 +71,17 @@ fn on_the_reference_os_a_refused_library_shows_its_status() {
         "the status"
     );
 }
+
+/// Driven by a RAM driver inside A800h to AA0Fh: fm on the draw page calls the reader on the data
+/// page for several statements of the fixture, hypotheses and conclusions, at three widths, and the
+/// frames are the model's. The app has drawn its start screen first.
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn on_the_reference_os_a_ram_driver_draws_several_statements_of_the_fixture_through_fm() {
+    let mut app = App::on_real_os(with_library());
+    let count = crate::support::decoded(&fixture::library())
+        .assertions
+        .len();
+    let drawn = crate::draw::frames_on_the_draw_page(&mut app, (count / 5).max(1));
+    assert!(drawn > 40, "{drawn} frames compared");
+}
