@@ -301,6 +301,29 @@ fn a_changed_byte_in_any_region_is_reported_by_the_next_key_and_the_owner_data_s
 
 #[test]
 #[ignore = "needs the reference ROM image"]
+fn a_saved_copy_damaged_in_the_wait_shows_save_chg_and_clear_leaves_a_blank_home_screen() {
+    for (_, save) in SAVES {
+        let mut rig = probe();
+        let at = rig.label(save) + 3;
+        let was = rig.peek(at, 1)[0];
+        rig.poke(at, &[!was]);
+        rig.tap(SCAN_5);
+        let report = Report {
+            save: "chg",
+            ..Report::ok()
+        };
+        assert_keys(&mut rig, &format!("{save} damaged"), 1, CODE_5, &report);
+        rig.tap(KEY_CLEAR);
+        rig.run_ms(1000);
+        assert_blank_home(&mut rig, &format!("{save}-damaged-clear"));
+        assert_eq!(rig.peek(SCR_VARS, 108), [0; 108], "{save}: SCR_VARS");
+        assert_eq!(rig.peek(APP_DATA, 256), [0; 256], "{save}: appData");
+        rig.assert_confined(&format!("{save} damaged"));
+    }
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
 fn a_whole_region_changed_reports_offset_0_and_the_full_count() {
     let mut rig = probe();
     let vars = rig.label("SCR_VARS");

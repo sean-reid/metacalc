@@ -300,13 +300,23 @@ fn a_saved_copy_damaged_during_the_wait_makes_clear_write_what_a_cleared_home_sc
     let contents = found();
     for (_, save) in SAVES_BY_FOUND {
         let len = region_len(SAVES.iter().find(|s| s.1 == save).unwrap().0);
-        for offset in [0, len / 2, len - 1] {
+        for (offset, late) in [
+            (0, false),
+            (len / 2, false),
+            (len - 1, false),
+            (len - 1, true),
+        ] {
             let mut rig = stub_with(&build, &contents);
             let at = rig.label(save) + offset as u16;
             let was = rig.peek(at, 1)[0];
+            if late {
+                rig.tap(SCAN_5);
+            }
             rig.poke(at, &[!was]);
-            rig.tap(SCAN_5);
-            assert_eq!(rig.byte("S_SAVE_NOW"), 1, "{save}+{offset} is seen");
+            if !late {
+                rig.tap(SCAN_5);
+                assert_eq!(rig.byte("S_SAVE_NOW"), 1, "{save}+{offset} is seen");
+            }
             clear(&mut rig);
             for (region, fill) in FRESH {
                 let len = region_len(region);
