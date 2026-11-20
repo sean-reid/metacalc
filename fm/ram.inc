@@ -4,7 +4,7 @@
 #endif
 
 #ifndef FM_VARS_SIZE
-FM_VARS_SIZE        .equ $68
+FM_VARS_SIZE        .equ $82
 #endif
 #if FM_VARS_SIZE > $100
  .error "FM_VARS_SIZE must leave the stack at FM_RAM + $100 alone"
@@ -50,16 +50,17 @@ FM_SYMF             .equ FM_SYMW + $100
 FM_FIRST            .equ FM_SYMF + $100
 FM_LAST             .equ FM_FIRST + FM_PLANE
 FM_DEPTH            .equ FM_LAST + FM_PLANE
-FM_LOW_USED         .equ FM_DEPTH + FM_PLANE - FM_LOW
+FM_FOLDS             .equ FM_DEPTH + FM_PLANE
+FM_LOW_USED         .equ FM_FOLDS + FM_PLANE - FM_LOW
 #ifndef FM_LOW_FREE
-FM_LOW_FREE         .equ $400
+FM_LOW_FREE         .equ $280
 #endif
 RAM_DISJOINT(FM_HDR, FM_HDR_SIZE, KSTACK, KSTACK_TOP - KSTACK, "the statement headers must stay off the kernel's stack page, which a refused kernel call writes")
 #if FM_LOW_USED > FM_LOW_SIZE
  .error "FM_LOW_SIZE in ram_map.inc is smaller than what fm lays out"
 #endif
 #if (FM_LOW_USED + FM_LOW_FREE) > FM_LOW_SIZE
- .error "fm must leave $400 bytes of FM_LOW unused"
+ .error "fm must leave $280 bytes of FM_LOW unused"
 #endif
 
 #define FM_NEXT 0
@@ -136,6 +137,28 @@ FM_VAR(fv_gap, $63, 1)
 FM_VAR(fv_id, $64, 1)
 FM_VAR(fv_ip, $65, 2)
 FM_VAR(fv_consts, $67, 1)
+FM_VAR(fv_ew, $68, 1)
+FM_VAR(fv_ell, $69, 2)
+FM_VAR(fv_then, $6B, 2)
+FM_VAR(fv_fn, $6D, 1)
+FM_VAR(fv_fm, $6E, 1)
+FM_VAR(fv_tb, $6F, 2)
+FM_VAR(fv_tcnt, $71, 1)
+FM_VAR(fv_m, $72, 1)
+FM_VAR(fv_md, $73, 1)
+FM_VAR(fv_ni, $74, 1)
+FM_VAR(fv_fa, $75, 1)
+FM_VAR(fv_fb, $76, 1)
+FM_VAR(fv_ta, $77, 1)
+FM_VAR(fv_cf, $78, 1)
+FM_VAR(fv_cl, $79, 1)
+FM_VAR(fv_cptr, $7A, 2)
+FM_VAR(fv_cs, $7C, 1)
+FM_VAR(fv_ce, $7D, 1)
+FM_VAR(fv_ca, $7E, 1)
+FM_VAR(fv_cb, $7F, 1)
+FM_VAR(fv_xs, $80, 1)
+FM_VAR(fv_xe, $81, 1)
 
 FM_OPEN_MAGIC       .equ $464D
 FM_OWNED            .equ $4F46
@@ -143,6 +166,9 @@ FM_OWNED            .equ $4F46
  .error "FM_OWNED must differ from the kernel's ready magic and from 0"
 #endif
 FM_SPACE            .equ 2
+FM_ELLIPSIS         .equ 7
+FM_PAD_VAR          .equ 4
+FM_MODE_TOGGLE      .equ 2
 
 FM_OK               .equ 0
 FM_ERR_NOT_OPEN     .equ 1

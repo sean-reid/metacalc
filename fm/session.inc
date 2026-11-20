@@ -1,6 +1,6 @@
 ; The session every public routine runs in. The stub of a routine loads IX with its body and
-; jumps to fm_enter; a body ends with A = status and B = its result at fm_leave, or at fm_fail
-; for a status with no result.
+; jumps to fm_enter, fm_cursor's to fe_save after the same entry of its own; a body ends with A =
+; status and B = its result at fm_leave, or at fm_fail for a status with no result.
 
 fm_open:
 	ld ix,open_body
@@ -25,6 +25,37 @@ fm_rows:
 fm_nodes:
 	ld ix,nodes_body
 	jr fm_enter
+
+fm_fold:
+	ld ix,fold_body
+	jr fm_enter
+
+fm_folded:
+	ld ix,folded_body
+	jr fm_enter
+
+; fm_cursor takes the node in A, which fm_enter's interrupt reads destroy and which no register
+; keeps while interrupts are on: the stub pushes AF on the caller's stack, makes the same two reads
+; and the di, and only then pops it into AF', where no interrupt can reach it.
+fm_cursor:
+	push af
+	ld a,i
+	jp pe,fc_on
+	ld a,i
+	jp pe,fc_on
+	di
+	exx
+	ld b,0
+	jr fc_go
+fc_on:
+	di
+	exx
+	ld b,1
+fc_go:
+	pop af
+	ex af,af'
+	ld ix,cursor_body
+	jr fe_save
 
 fm_draw:
 	ld ix,draw_body

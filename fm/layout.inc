@@ -7,6 +7,7 @@ rows_body:
 	jp nz,fm_fail
 	ld a,d
 	ld (fv_limit),a
+	call fo_fresh
 	xor a
 	ld (fv_draw),a
 	call fm_lay
@@ -29,6 +30,7 @@ draw_body:
 	ld (fv_lo),a
 	ld a,c
 	ld (fv_hi),a
+	call fo_fresh
 	ld a,1
 	ld (fv_draw),a
 	call fm_lay
@@ -138,6 +140,8 @@ dw_room:
 	inc hl
 	inc hl
 	inc hl
+	bit FM_ELLIPSIS,(hl)
+	jp nz,dw_first
 	inc hl
 	dec b
 	exx
@@ -179,6 +183,8 @@ dw_next:
 	jr c,dw_wrap
 	ld c,a
 	inc hl
+	bit FM_ELLIPSIS,(hl)
+	jr nz,dw_ell
 	inc hl
 	dec b
 	ld a,d
@@ -188,6 +194,7 @@ dw_next:
 	exx
 	jr dw_copy
 dw_split:
+	jr c,dw_next
 	ld (fv_gap),a
 	ex af,af'
 	exx
@@ -224,6 +231,42 @@ dw_flush:
 	ld hl,FM_SCRATCH
 	ld de,(fv_x)
 	jp ui_text
+
+; The ellipsis of a folded node: its code joins the run as a token's codes do.
+dw_first:
+	inc hl
+	dec b
+	exx
+	jr dw_put
+dw_ell:
+	inc hl
+	dec b
+	ld a,d
+	cp 1
+	exx
+	jr z,dw_put
+	ld (fv_gap),a
+	call dw_flush
+	ld a,(fv_gap)
+	ld l,a
+	ld h,0
+	add hl,de
+	ld (fv_x),hl
+	ld de,FM_SCRATCH
+dw_put:
+	ld hl,-FM_SCRATCH-FM_RUN_MAX
+	add hl,de
+	jr nc,dw_room_ell
+	call dw_flush
+	inc de
+	ld (fv_x),de
+	ld de,FM_SCRATCH
+dw_room_ell:
+	ld a,UI_FONT_CH_2026
+	ld (de),a
+	inc de
+	exx
+	jp dw_next
 
 ; The line just started, number fv_line - 1: fv_show says whether it is inside the window and
 ; fv_rowb is its text row. out: carry when it and every later line is below the window. Keeps

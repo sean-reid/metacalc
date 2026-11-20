@@ -4,6 +4,12 @@ mod damaged;
 mod errors;
 #[path = "fm/fixture.rs"]
 mod fixture;
+#[path = "fm/folds.rs"]
+mod folds;
+#[path = "fm/foldspeed.rs"]
+mod foldspeed;
+#[path = "fm/foldstate.rs"]
+mod foldstate;
 #[path = "common/guard.rs"]
 mod guard;
 #[path = "fm/kernel.rs"]

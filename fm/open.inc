@@ -6,6 +6,14 @@ open_body:
 	ld (fv_open),a
 	ld (fv_open+1),a
 	call fm_clear
+	ld a,UI_FONT_CH_2026
+	ld (fv_ell),a
+	xor a
+	ld (fv_ell+1),a
+	ld hl,fv_ell
+	call ui_text_width
+	ld a,l
+	ld (fv_ew),a
 	xor a
 	ld (fv_sk+5),a
 	ld (fv_ns),a

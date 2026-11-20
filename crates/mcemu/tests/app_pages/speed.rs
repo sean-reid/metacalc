@@ -16,7 +16,7 @@ use mcui::canvas::{GUTTER, STATEMENT_WIDTH};
 const BUDGET: u32 = 50 * 6000;
 /// Ceilings a little above the dearest frame on the fixture and on ring, the far calls from the
 /// entry page included.
-const FIXTURE_FRAME: u32 = 273_000;
+const FIXTURE_FRAME: u32 = 274_000;
 const RING_FRAME: u32 = 268_000;
 
 /// The T-states a routine takes beyond the driver's own call and halt, which a call of a RAM
