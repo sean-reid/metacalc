@@ -112,7 +112,7 @@ ak_pairs:
 	.db $02,KEY_LEFT
 	.db $01,KEY_RIGHT
 	.db $05,KEY_ENTER
-	.db $09,KEY_CLEAR
+	.db kClear,KEY_CLEAR
 	.db $49,KEY_F1
 	.db $48,KEY_F2
 	.db $2E,KEY_F3

@@ -27,6 +27,9 @@ endif
 # assembled because make cannot see LIBRARY change.
 app:
 	mkdir -p "$(BUILD)"
+ifneq ($(FONT),)
+	@test -f "$(FONT)/font.inc" || { echo "app: $(FONT)/font.inc is missing" >&2; exit 1; }
+endif
 ifeq ($(FONT),)
 	cargo run --quiet --locked --manifest-path ../Cargo.toml -p mcglyph -- z80 "$(BUILD)/font.inc" > /dev/null
 endif

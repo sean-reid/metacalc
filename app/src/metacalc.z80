@@ -2,9 +2,17 @@
 ; them. This file is the entry page: the header, the shell and every call into the OS. Everything
 ; it needs from the canvas, fm, the kernel and the reader it reaches through a far entry.
 ;
-; The start screen is the canvas's, drawn from the strings on the draw page. app_key redraws it
-; after every key but CLEAR and QUIT, which leave. RAM: the canvas's, fm's and the kernel's blocks
-; in ram_map.inc, and libPage, the flash page of the library's chunk 0, when built with LIBRARY.
+; Start. far_init, then with LIBRARY: app_find_library, kernel_reset, lib_open on the library's chunk
+; 0 and fm_open; the first status that is not 0 is kept in appStatus. The canvas font is set once.
+; Screen, drawn again after every key but CLEAR and QUIT, which leave:
+;   with LIBRARY  row 0 the title, row 1 the label of the library's first assertion, rows 2 to 6 its
+;                 conclusion from fm_assertion and fm_draw, row 7 the hint; a refused call leaves
+;                 the formula out and shows its status as two hex digits on row 7 in place of the
+;                 hint
+;   without       row 0 the title, row 3 the hint
+; RAM: the canvas's, fm's and the kernel's blocks in ram_map.inc, libPage (the flash page of
+; library chunk 0) and appStatus after it, and APP_BUF, which holds the reader's scratch and the
+; strings in glyph codes. The strings the canvas reads from the draw page are in strings.inc.
 
 #include "equates.inc"
 
@@ -22,11 +30,32 @@ far_table_end .equ $
 #include "far_kernel.inc"
 #include "libpage.inc"
 
+HINT_ROW = 3
+HINT_COL = 1
+LABEL_ROW = 1
+FORMULA_ROW = 2
+FORMULA_END = 7
+LIBRARY_HINT_ROW = 7
+FORMULA_X = 3
+FORMULA_WIDTH = 92
+
 app_start:
 	call far_init
+	xor a
+	ld (appStatus), a
 #ifdef LIBRARY
 	call app_find_library
+	call far_kernel_reset
+	ld a, (libPage)
+	ld de, APP_BUF
+	call far_lib_open
+	ld (appStatus), a
+	or a
+	jr nz, app_font
+	call far_fm_open
+	ld (appStatus), a
 #endif
+app_font:
 	ld hl, ui_font
 	call far_ui_set_font
 app_screen:
@@ -34,10 +63,14 @@ app_screen:
 	ld hl, str_title
 	ld de, str_none
 	call far_ui_title
+#ifdef LIBRARY
+	call app_library_rows
+#else
 	ld hl, str_hint
 	ld de, HINT_COL
 	ld b, HINT_ROW
 	call far_ui_text
+#endif
 	call far_ui_blit
 	call app_key
 	cp KEY_CLEAR
@@ -51,8 +84,116 @@ app_exit:
 	set graphDraw, (iy + graphFlags)
 	bjump(_JForceCmdNoChar)
 
-HINT_ROW = 3
-HINT_COL = 1
+#ifdef LIBRARY
+; Draws rows 1 to 7 of the library screen.
+app_library_rows:
+	ld a, (appStatus)
+	or a
+	jr nz, app_refused
+	ld hl, 0
+	ld de, APP_BUF
+	call far_lib_label
+	or a
+	jr nz, app_kept
+	ld hl, APP_BUF
+	call app_codes
+	ld hl, APP_BUF
+	ld de, HINT_COL
+	ld b, LABEL_ROW
+	call far_ui_text
+	ld hl, 0
+	call far_fm_assertion
+	or a
+	jr nz, app_kept
+	ld hl, FORMULA_ROW
+	ld d, FORMULA_WIDTH
+	ld e, FORMULA_X
+	ld b, FORMULA_ROW
+	ld c, FORMULA_END
+	call far_fm_draw
+	or a
+	jr nz, app_kept
+	ld hl, str_hint
+	ld de, HINT_COL
+	ld b, LIBRARY_HINT_ROW
+	jp far_ui_text
+app_kept:
+	ld (appStatus), a
+; Shows appStatus as two hex digits on the hint row.
+app_refused:
+	ld a, (appStatus)
+	ld b, a
+	rrca
+	rrca
+	rrca
+	rrca
+	call app_digit
+	ld (APP_BUF), a
+	ld a, b
+	call app_digit
+	ld (APP_BUF + 1), a
+	xor a
+	ld (APP_BUF + 2), a
+	ld hl, APP_BUF
+	ld de, HINT_COL
+	ld b, LIBRARY_HINT_ROW
+	jp far_ui_text
+
+; In: A, low nibble. Out: A = the glyph code of its hex digit. Keeps B.
+app_digit:
+	and 0Fh
+	ld e, a
+	ld d, 0
+	ld hl, app_hex
+	add hl, de
+	ld a, (hl)
+	ret
+
+; In: B = the length of the ASCII text at HL. Writes the glyph codes of the characters over it and a
+; zero after them. A character with no glyph in the table is a question mark.
+app_codes:
+	ld a, b
+	or a
+	jr z, app_codes_end
+app_code:
+	ld a, (hl)
+	sub 20h
+	cp 95
+	jr c, app_code_in
+	ld a, 3Fh - 20h
+app_code_in:
+	push hl
+	ld e, a
+	ld d, 0
+	ld hl, app_ascii
+	add hl, de
+	ld a, (hl)
+	pop hl
+	ld (hl), a
+	inc hl
+	djnz app_code
+app_codes_end:
+	ld (hl), 0
+	ret
+
+app_hex:
+	.db UI_FONT_CH_30, UI_FONT_CH_31, UI_FONT_CH_32, UI_FONT_CH_33, UI_FONT_CH_34, UI_FONT_CH_35, UI_FONT_CH_36, UI_FONT_CH_37, UI_FONT_CH_38, UI_FONT_CH_39, UI_FONT_CH_41, UI_FONT_CH_42, UI_FONT_CH_43, UI_FONT_CH_44, UI_FONT_CH_45, UI_FONT_CH_46
+
+; The glyph code of each character from the space to the tilde.
+app_ascii:
+	.db UI_FONT_CH_20, UI_FONT_CH_21, UI_FONT_CH_22, UI_FONT_CH_23, UI_FONT_CH_24, UI_FONT_CH_25, UI_FONT_CH_26, UI_FONT_CH_27
+	.db UI_FONT_CH_28, UI_FONT_CH_29, UI_FONT_CH_2A, UI_FONT_CH_2B, UI_FONT_CH_2C, UI_FONT_CH_2D, UI_FONT_CH_2E, UI_FONT_CH_2F
+	.db UI_FONT_CH_30, UI_FONT_CH_31, UI_FONT_CH_32, UI_FONT_CH_33, UI_FONT_CH_34, UI_FONT_CH_35, UI_FONT_CH_36, UI_FONT_CH_37
+	.db UI_FONT_CH_38, UI_FONT_CH_39, UI_FONT_CH_3A, UI_FONT_CH_3B, UI_FONT_CH_3C, UI_FONT_CH_3D, UI_FONT_CH_3E, UI_FONT_CH_3F
+	.db UI_FONT_CH_40, UI_FONT_CH_41, UI_FONT_CH_42, UI_FONT_CH_43, UI_FONT_CH_44, UI_FONT_CH_45, UI_FONT_CH_46, UI_FONT_CH_47
+	.db UI_FONT_CH_48, UI_FONT_CH_49, UI_FONT_CH_4A, UI_FONT_CH_4B, UI_FONT_CH_4C, UI_FONT_CH_4D, UI_FONT_CH_4E, UI_FONT_CH_4F
+	.db UI_FONT_CH_50, UI_FONT_CH_51, UI_FONT_CH_52, UI_FONT_CH_53, UI_FONT_CH_54, UI_FONT_CH_55, UI_FONT_CH_56, UI_FONT_CH_57
+	.db UI_FONT_CH_58, UI_FONT_CH_59, UI_FONT_CH_5A, UI_FONT_CH_5B, UI_FONT_CH_5C, UI_FONT_CH_5D, UI_FONT_CH_5E, UI_FONT_CH_5F
+	.db UI_FONT_CH_60, UI_FONT_CH_61, UI_FONT_CH_62, UI_FONT_CH_63, UI_FONT_CH_64, UI_FONT_CH_65, UI_FONT_CH_66, UI_FONT_CH_67
+	.db UI_FONT_CH_68, UI_FONT_CH_69, UI_FONT_CH_6A, UI_FONT_CH_6B, UI_FONT_CH_6C, UI_FONT_CH_6D, UI_FONT_CH_6E, UI_FONT_CH_6F
+	.db UI_FONT_CH_70, UI_FONT_CH_71, UI_FONT_CH_72, UI_FONT_CH_73, UI_FONT_CH_74, UI_FONT_CH_75, UI_FONT_CH_76, UI_FONT_CH_77
+	.db UI_FONT_CH_78, UI_FONT_CH_79, UI_FONT_CH_7A, UI_FONT_CH_7B, UI_FONT_CH_7C, UI_FONT_CH_7D, UI_FONT_CH_7E
+#endif
 
 #define KEYS_SET_FONT far_ui_set_font
 #include "keys.inc"

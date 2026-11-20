@@ -32,7 +32,9 @@ appBackUpScreen  = 9872h
  .error "KD_SCRATCH in ram_map.inc must be appBackUpScreen"
 #endif
 libPage          = KD_SCRATCH
+appStatus        = KD_SCRATCH + 1
 skClear          = 0Fh
+kClear           = 09h
 onFlags          = 9
 onInterrupt      = 4
 graphFlags       = 3

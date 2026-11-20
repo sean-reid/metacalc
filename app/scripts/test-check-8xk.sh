@@ -1,6 +1,6 @@
 #!/bin/sh
-# Usage: test-check-8xk.sh app.8xk [name]
-#        test-check-8xk.sh -l library app.8xk [name]
+# Usage: test-check-8xk.sh [-p code-pages] app.8xk [name]
+#        test-check-8xk.sh [-p code-pages] -l library app.8xk [name]
 # Either form takes -p code-pages first, the app's number of code pages, 1 by default. The first
 # form breaks an app of only code pages each way the checker must notice. The second form does
 # the same to an app built from the library, for the rules about pages and the library's bytes.
@@ -17,6 +17,9 @@ while :; do
 		*) break ;;
 	esac
 done
+case $code in
+	'' | *[!0-9]* | 0) echo "$usage" >&2; exit 2 ;;
+esac
 good=${1:?$usage}
 name=${2:-metacalc}
 hexname=$(printf %s "$name" | od -An -tx1 | tr -d ' \n' | tr a-f A-F)

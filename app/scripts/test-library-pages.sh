@@ -37,7 +37,7 @@ done
 # Libraries whose apps hash to each signature trailer form (01 01 to 01 03, then 00), and to a
 # signature of 63 bytes, the signer's output being a function of the app's bytes alone. Length,
 # signature bytes, trailer.
-for entry in 91:63:00 21:64:01\ 01 23:64:01\ 02 20:64:01\ 03; do
+for entry in 85:63:01\ 03 18:64:01\ 01 21:64:01\ 02 19:64:01\ 03 16:64:00; do
 	len=${entry%%:*}
 	rest=${entry#*:}
 	want=${rest%%:*}
@@ -73,6 +73,21 @@ mv "$dir/lib" "$dir/with space/my library.mclib"
 make -s -C "$app" SPASM="$spasm" BUILD="$dir/with space/build dir" LIBRARY="$dir/with space/my library.mclib" > /dev/null
 sh "$app/scripts/check-8xk.sh" -p 3 -l "$dir/with space/my library.mclib" "$dir/with space/build dir/metacalc.8xk" > /dev/null
 echo "test-library-pages: paths with spaces"
+
+# Both scripts refuse a code page count that is not a positive number, and say how to call them.
+for bad in 0 x 1x ''; do
+	for script in check-8xk.sh test-check-8xk.sh; do
+		if out=$(sh "$app/scripts/$script" -p "$bad" "$dir/build/metacalc.8xk" 2>&1); then
+			echo "test-library-pages: $script accepted -p '$bad'" >&2
+			exit 1
+		fi
+		case $out in
+			*usage:*) ;;
+			*) echo "test-library-pages: $script refused -p '$bad' without its usage: $out" >&2; exit 1 ;;
+		esac
+	done
+done
+echo "test-library-pages: -p is checked"
 
 : > "$dir/lib"
 if sh "$app/scripts/library-include.sh" "$dir/lib" 2> /dev/null; then

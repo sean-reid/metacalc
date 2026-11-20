@@ -2,13 +2,12 @@
 ; data page through the far entries of far_reader.inc, which the aliases name for the length of
 ; the include. Included at the app's page 1 by metacalc.z80; see pages.inc.
 	APP_PAGE(PAGE_DRAW)
-#define FAR_PAD
 #include "farcall.inc"
 #if $ != far_table
  .error "the far entries are not at the same address on every page"
 #endif
 #undef FAR_DATA_ENTRY
-#define FAR_DATA_ENTRY(real, stub) FAR_CODE_TO_DATA(real)
+#define FAR_DATA_ENTRY(real, stub) FAR_JUMP_DATA(real)
 #define FAR_STUBS
 #include "far_reader.inc"
 #undef FAR_STUBS

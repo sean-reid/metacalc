@@ -7,4 +7,8 @@
 #include "kernel.z80"
 #define LIB_EMBEDDED
 #include "lib/lib.z80"
+#ifdef LIBRARY
 	APP_PAGE_END(PAGE_DATA)
+#else
+	APP_PAGE_LAST(PAGE_DATA)
+#endif

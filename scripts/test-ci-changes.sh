@@ -37,10 +37,11 @@ expect guide-page "docs libraries site" docs/src/guide/worked-examples.md
 expect screens "$crate" crates/mcui/src/data.rs
 expect editor "$crate" crates/mcedit/src/ops.rs
 expect packer "$crate" crates/mcpack/src/library/pack.rs
-expect font "$crate" crates/mcglyph/src/z80.rs
+expect font "rust emu app libraries site" crates/mcglyph/src/z80.rs
+expect font-manifest "rust emu audit app libraries site" crates/mcglyph/Cargo.toml
 expect harness "$crate" crates/mcemu/src/lib.rs
-expect crate-manifest "rust emu audit libraries site" crates/mcui/Cargo.toml
-expect sender-manifest "rust emu audit libraries site installer" crates/mcsend/Cargo.toml
+expect crate-manifest "rust emu audit app libraries site" crates/mcui/Cargo.toml
+expect sender-manifest "rust emu audit app libraries site installer" crates/mcsend/Cargo.toml
 expect sender "rust audit app installer" crates/mcsend/src/tifile.rs
 expect sender-test "rust audit app installer" crates/mcsend/tests/transfer.rs
 expect install-script "site installer" scripts/install.sh
