@@ -30,8 +30,8 @@ cb_index:
 
 ; Sets fv_cc when the cursor node is in the selected statement's table: fv_cf and fv_cl are then
 ; the first and last token of the node drawn in its place, the node itself or the outermost
-; folded node it is hidden inside. A node whose first token has a width is not hidden, since a fold
-; gives every token it hides width 0. Destroys all but IX and IY.
+; folded node it is hidden inside. A node whose first token has a width and is not an ellipsis is
+; not hidden, since a fold gives every token it hides width 0. Destroys all but IX and IY.
 cu_prepare:
 	call fo_table
 	ret z
@@ -57,7 +57,12 @@ cu_prepare:
 	inc hl
 	ld a,(hl)
 	or a
-	jr nz,cp_shown
+	jr z,cp_hidden
+	inc hl
+	inc hl
+	bit FM_ELLIPSIS,(hl)
+	jr z,cp_shown
+cp_hidden:
 	ld a,(fv_curn)
 	call fo_effective
 	ld de,0

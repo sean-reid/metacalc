@@ -19,7 +19,7 @@ pub struct Ceilings {
 
 pub const FIXTURE: Ceilings = Ceilings {
     set: 730,
-    frame_worst: 297_600,
+    frame_worst: 297_640,
     apply_one: 128_500,
     apply_all: 81_500,
     apply_depth: 128_500,
@@ -27,7 +27,7 @@ pub const FIXTURE: Ceilings = Ceilings {
 };
 pub const RING: Ceilings = Ceilings {
     set: 730,
-    frame_worst: 291_600,
+    frame_worst: 291_640,
     apply_one: 51_000,
     apply_all: 32_500,
     apply_depth: 50_500,
