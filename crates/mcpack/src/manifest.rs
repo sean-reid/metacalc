@@ -85,6 +85,18 @@ impl Pin {
     }
 }
 
+/// Puts `libraries` in the order their manifests give, refusing two with the same order.
+pub fn sort_by_order<T>(libraries: &mut [(Manifest, T)]) -> Result<(), String> {
+    libraries.sort_by_key(|(m, _)| m.order);
+    match libraries.windows(2).find(|w| w[0].0.order == w[1].0.order) {
+        Some(pair) => Err(format!(
+            "{} and {} have the same order, {}",
+            pair[0].0.name, pair[1].0.name, pair[0].0.order
+        )),
+        None => Ok(()),
+    }
+}
+
 pub fn sha256_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()

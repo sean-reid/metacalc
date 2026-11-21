@@ -13,22 +13,24 @@ const MAX_INDENT: usize = 3;
 /// The section titles of a library, one per row.
 pub struct Sections {
     library: usize,
+    stage: usize,
     cursor: usize,
     top: usize,
 }
 
 impl Sections {
-    pub fn open(ctx: &Ctx, library: usize, current: Option<usize>) -> Sections {
+    pub fn open(ctx: &Ctx, library: usize, stage: usize, current: Option<usize>) -> Sections {
         let cursor = current.map_or(0, |i| ctx.libs[library].section_of(i));
         Sections {
             library,
+            stage,
             cursor,
             top: reveal(0, cursor, CONTENT_ROWS),
         }
     }
 
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
-        let titles = ctx.libs[self.library].titles();
+        let titles = ctx.libs[self.library].stage_titles(self.stage);
         match key {
             Key::Up | Key::Down | Key::Left | Key::Right => {
                 self.cursor = step(self.cursor, titles.len(), key, CONTENT_ROWS);
@@ -47,8 +49,11 @@ impl Sections {
 
     pub fn draw(&self, ctx: &Ctx, canvas: &mut Canvas) {
         let lib = &ctx.libs[self.library];
-        let titles = lib.titles();
-        canvas.title(&lib.name, &format!("{}/{}", self.cursor + 1, titles.len()));
+        let titles = lib.stage_titles(self.stage);
+        canvas.title(
+            &lib.stages()[self.stage].name,
+            &format!("{}/{}", self.cursor + 1, titles.len()),
+        );
         for (row, title) in titles.iter().skip(self.top).take(CONTENT_ROWS).enumerate() {
             let indent = usize::from(title.depth.saturating_sub(1)).min(MAX_INDENT);
             let text = format!("{}{}", " ".repeat(indent), title.text);
@@ -58,7 +63,7 @@ impl Sections {
     }
 
     pub fn state(&self, ctx: &Ctx) -> State {
-        let titles = ctx.libs[self.library].titles();
+        let titles = ctx.libs[self.library].stage_titles(self.stage);
         State::Sections {
             library: self.library,
             title: titles.get(self.cursor).map(|t| t.text.clone()),

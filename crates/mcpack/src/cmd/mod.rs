@@ -3,7 +3,7 @@ mod library;
 mod tree;
 
 pub use inspect::{closure, outline, parse, verify};
-pub use library::{build, doc, export, pack, summary};
+pub use library::{build, doc, export, pack, stages, summary};
 pub use tree::{Form, spell};
 
 use mcpack::mm::{self, Database, Grammar};

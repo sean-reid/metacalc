@@ -46,6 +46,7 @@ impl Kind {
 
 pub struct List {
     library: usize,
+    stage: usize,
     kind: Kind,
     items: Vec<usize>,
     cursor: usize,
@@ -56,9 +57,10 @@ pub struct List {
 }
 
 impl List {
-    pub fn open(ctx: &Ctx, library: usize) -> Screen {
+    pub fn open(ctx: &Ctx, library: usize, stage: usize) -> Screen {
         let mut list = List {
             library,
+            stage,
             kind: Kind::All,
             items: Vec::new(),
             cursor: 0,
@@ -74,7 +76,7 @@ impl List {
 
     fn filtered(&self, ctx: &Ctx) -> Vec<usize> {
         let lib = &ctx.libs[self.library];
-        (0..lib.len())
+        (0..lib.stages()[self.stage].end)
             .filter(|&i| match self.kind {
                 Kind::All => true,
                 Kind::Theorems => lib.is_theorem(i),
@@ -162,8 +164,8 @@ impl List {
                 }
             }
             Key::F5 => {
-                if !ctx.libs[self.library].titles().is_empty() {
-                    let sections = Sections::open(ctx, self.library, self.current());
+                if !ctx.libs[self.library].stage_titles(self.stage).is_empty() {
+                    let sections = Sections::open(ctx, self.library, self.stage, self.current());
                     return Nav::push(Screen::Sections(sections));
                 }
             }
@@ -190,7 +192,8 @@ impl List {
     pub fn draw(&self, ctx: &Ctx, canvas: &mut Canvas) {
         let lib = &ctx.libs[self.library];
         let right = if self.find.is_empty() {
-            let counts = format!("{}/{}", lib.checked(), lib.len());
+            let stage = lib.counts(self.stage);
+            let counts = format!("{}/{}", stage.checked, stage.total);
             if lib.degraded() {
                 format!("flat {counts}")
             } else {
@@ -201,7 +204,7 @@ impl List {
         } else {
             tail(&self.find, PREFIX_WIDTH)
         };
-        canvas.title_with_tail(&lib.name, self.kind.suffix(), &right);
+        canvas.title_with_tail(&lib.stages()[self.stage].name, self.kind.suffix(), &right);
         if self.items.is_empty() {
             canvas.text_centered(3, "none");
         }
@@ -225,7 +228,7 @@ impl List {
             );
         }
         let mut keys = KEYS;
-        if lib.titles().is_empty() {
+        if lib.stage_titles(self.stage).is_empty() {
             keys[4] = "";
         }
         canvas.soft_keys(keys);
@@ -234,6 +237,7 @@ impl List {
     pub fn state(&self, ctx: &Ctx) -> State {
         State::List {
             library: self.library,
+            stage: self.stage,
             label: self
                 .current()
                 .map(|i| ctx.libs[self.library].label(i).to_string()),
