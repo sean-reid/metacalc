@@ -28,6 +28,10 @@ TEST_RESET_STATUS	.equ $FF2C
 TEST_SP			.equ $FF2D
 TEST_PORT7		.equ $FF31
 TEST_PARAMS		.equ $7F00
+TEST_SC_PTR		.equ $FF40
+TEST_SC_OUT		.equ $FF42
+TEST_SCRIPT		.equ $9000
+TEST_SCRIPT_OUT		.equ $9800
 
 .org $4000
 	jp entry_one
@@ -48,6 +52,72 @@ entry_one:
 	call kernel_verify
 	ld (TEST_VERIFY_STATUS),a
 	call iff_flag
+	halt
+
+; Runs the ops at TEST_SCRIPT until 255: 0 init, 1 reset, 2 verify (a word, the id follows),
+; 3 refs. Each op leaves 8 bytes at TEST_SCRIPT_OUT: A, BC, DE, HL, one zero.
+entry_script:
+	di
+	ld hl,TEST_SCRIPT
+	ld (TEST_SC_PTR),hl
+	ld hl,TEST_SCRIPT_OUT
+	ld (TEST_SC_OUT),hl
+sc_next:
+	ld hl,(TEST_SC_PTR)
+	ld a,(hl)
+	inc hl
+	cp 255
+	jr z,sc_end
+	or a
+	jr z,sc_init
+	dec a
+	jr z,sc_reset
+	dec a
+	jr z,sc_verify
+	ld (TEST_SC_PTR),hl
+	call kernel_refs
+	jr sc_store
+sc_init:
+	ld (TEST_SC_PTR),hl
+	call test_init
+	jr sc_store
+sc_reset:
+	ld (TEST_SC_PTR),hl
+	call kernel_reset
+	jr sc_store
+sc_verify:
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	ld (TEST_SC_PTR),hl
+	ex de,hl
+	call kernel_verify
+sc_store:
+	ld ix,(TEST_SC_OUT)
+	ld (ix+0),a
+	ld (ix+1),c
+	ld (ix+2),b
+	ld (ix+3),e
+	ld (ix+4),d
+	ld (ix+5),l
+	ld (ix+6),h
+	ld (ix+7),0
+	ld de,8
+	add ix,de
+	ld (TEST_SC_OUT),ix
+	jr sc_next
+sc_end:
+	halt
+
+entry_refs_only:
+	di
+	call kernel_refs
+	halt
+
+entry_call_only:
+	di
+	call overhead_body
 	halt
 
 entry_reset:

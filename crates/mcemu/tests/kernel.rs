@@ -20,6 +20,8 @@ mod libraries;
 mod limits;
 #[path = "kernel/names.rs"]
 mod names;
+#[path = "common/refs.rs"]
+mod oracle;
 #[path = "../../mcpack/tests/cases/raw.rs"]
 mod raw;
 #[path = "common/realos.rs"]
@@ -30,6 +32,8 @@ mod recheck;
 mod records;
 #[path = "kernel/references.rs"]
 mod references;
+#[path = "kernel/refs.rs"]
+mod refs;
 #[path = "kernel/reinit.rs"]
 mod reinit;
 #[path = "kernel/reset.rs"]

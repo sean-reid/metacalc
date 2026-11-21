@@ -26,6 +26,8 @@ mod isolation;
 mod lastrecord;
 #[path = "reader/libraries.rs"]
 mod libraries;
+#[path = "common/refs.rs"]
+mod oracle;
 #[path = "reader/placements.rs"]
 mod placements;
 #[path = "reader/ports.rs"]
@@ -34,6 +36,8 @@ mod ports;
 mod ramplan;
 #[path = "reader/reads.rs"]
 mod reads;
+#[path = "reader/refs.rs"]
+mod refs;
 #[path = "reader/safety.rs"]
 mod safety;
 #[path = "reader/secrig.rs"]
