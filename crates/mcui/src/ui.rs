@@ -1,5 +1,5 @@
 use crate::canvas::{Call, Canvas};
-use crate::data::{Installed, Lib, LoadError, Statuses};
+use crate::data::{Installed, Lib, LoadError, Stage, Statuses};
 use crate::edit::Editor;
 use crate::key::Key;
 use crate::proofs::{Proofs, RestoreError, SavedProof};
@@ -34,6 +34,24 @@ pub struct Ui {
 impl Ui {
     /// Installs `libraries`, each with its row of `statuses`, and starts on the libraries screen.
     pub fn new(libraries: Vec<Installed>, statuses: Statuses) -> Result<Ui, LoadError> {
+        let stages = vec![Vec::new(); libraries.len()];
+        Ui::with_stages(libraries, stages, statuses)
+    }
+
+    /// Installs `libraries` like [`Ui::new`], each shown as the stages in the same place of
+    /// `stages`; a library given none is one stage.
+    pub fn with_stages(
+        libraries: Vec<Installed>,
+        stages: Vec<Vec<Stage>>,
+        statuses: Statuses,
+    ) -> Result<Ui, LoadError> {
+        if libraries.len() != stages.len() {
+            return Err(LoadError::Stages(format!(
+                "{} libraries and {} stage tables",
+                libraries.len(),
+                stages.len()
+            )));
+        }
         if libraries.len() != statuses.libraries.len() {
             return Err(LoadError::Statuses(format!(
                 "{} libraries and {} status tables",
@@ -44,7 +62,8 @@ impl Ui {
         let libs = libraries
             .into_iter()
             .zip(statuses.libraries)
-            .map(|(installed, status)| Lib::new(installed, status))
+            .zip(stages)
+            .map(|((installed, status), stages)| Lib::with_stages(installed, status, stages))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Ui {
             libs,
@@ -114,14 +133,14 @@ impl Ui {
         Ok(())
     }
 
-    /// Checks the next unchecked assertion of the library on the open checking screen, and
+    /// Checks the next unchecked assertion of the stage on the open checking screen, and
     /// records the outcome in the status table every screen reads.
     pub fn step_check(&mut self) -> CheckStep {
         let Some(Screen::Checking(screen)) = self.stack.last() else {
             return CheckStep::Idle;
         };
         let lib = &mut self.libs[screen.library()];
-        let Some(i) = lib.next_unchecked() else {
+        let Some(i) = lib.next_unchecked_in(screen.stage()) else {
             return CheckStep::Finished;
         };
         if lib.verify(i) {

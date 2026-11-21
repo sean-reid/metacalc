@@ -16,10 +16,10 @@ mod screens;
 mod status;
 mod ui;
 
-pub use data::{Installed, LoadError, Statuses};
+pub use data::{Installed, LoadError, Stage, Statuses};
 pub use key::Key;
 pub use mcpack::library::Title;
 pub use proofs::{RestoreError, SavedProof};
 pub use screens::{Kind, State, View};
-pub use status::{Mark, Status};
+pub use status::{Counts, Mark, Status};
 pub use ui::{CheckStep, MAX_DEPTH, Ui};

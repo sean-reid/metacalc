@@ -5,7 +5,7 @@ mod sections;
 pub mod unicode;
 
 use crate::library::{self, Assertion, Hypothesis, Library, ReadError};
-use crate::manifest::{Manifest, Pin};
+use crate::manifest::{Manifest, Pin, sort_by_order};
 use std::fmt::Write;
 
 /// The mirror of set.mm whose pages explain each label.
@@ -292,13 +292,7 @@ pub fn row(manifest: &Manifest, library: &[u8]) -> Result<String, ReadError> {
 
 /// The index table of `libraries`, ordered by their manifests' `order`.
 pub fn table(mut libraries: Vec<(Manifest, Vec<u8>)>) -> Result<String, String> {
-    libraries.sort_by_key(|(m, _)| m.order);
-    if let Some(pair) = libraries.windows(2).find(|w| w[0].0.order == w[1].0.order) {
-        return Err(format!(
-            "{} and {} have the same order, {}",
-            pair[0].0.name, pair[1].0.name, pair[0].0.order
-        ));
-    }
+    sort_by_order(&mut libraries)?;
     let mut out = String::from(
         "| Library | Covers | Axioms | Theorems | Size (bytes) | Flash pages |\n| --- | --- | ---: | ---: | ---: | ---: |\n",
     );
