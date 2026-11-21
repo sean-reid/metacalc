@@ -64,6 +64,23 @@ fn inverting_clips_at_the_bottom_and_ignores_empty_or_outside_rectangles() {
 }
 
 #[test]
+fn inverting_at_every_x_in_widths_around_the_byte_edges_to_the_edge_and_past_it() {
+    for x in 0..96usize {
+        let widths = [1usize, 2, 7, 8, 9, 15, 16, 17, 96 - x, 97 - x, 200];
+        for w in widths {
+            agree(&format!("invert at x {x} width {w}"), |c| {
+                filled(c);
+                c.invert(x, 0, w, 1);
+                c.invert(x, 2, w, 8);
+                c.invert(x, 11, w, 8);
+                c.invert(x, 20, w, 1);
+                c.invert(x, 60, w, 8);
+            });
+        }
+    }
+}
+
+#[test]
 fn inverting_twice_restores_the_frame() {
     agree("twice", |c| {
         filled(c);
