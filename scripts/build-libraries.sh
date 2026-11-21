@@ -16,7 +16,7 @@ pagedir=$3
 
 mcpack() { cargo run --release --locked -q --manifest-path "$root/Cargo.toml" -p mcpack -- "$@"; }
 mkdir -p "$libdir" "$pagedir"
-rm -f "$libdir/libraries.list"
+rm -f "$libdir/libraries.list" "$libdir/stages.list" "$libdir/stages.list.new"
 set --
 names=
 for manifest in "$root"/libraries/*.toml; do
@@ -38,4 +38,5 @@ done
 
 printf '%s' "$names" >"$libdir/libraries.list"
 mcpack summary "$libdir" "$@" >"$pagedir/libraries-table.md"
-mcpack stages "$libdir" "$@" >"$libdir/stages.list"
+mcpack stages "$libdir" "$@" >"$libdir/stages.list.new"
+mv "$libdir/stages.list.new" "$libdir/stages.list"

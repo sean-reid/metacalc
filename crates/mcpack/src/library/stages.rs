@@ -15,6 +15,10 @@ pub struct Stage {
 pub enum StagesError {
     Order(String),
     Unreadable(String, ReadError),
+    /// A library with no assertions.
+    Empty(String),
+    /// A name that is empty or holds whitespace, which the `NAME COUNT TITLE` lines cannot carry.
+    BadName(String),
     /// A library whose assertion count is not above the previous one's: name, previous name.
     NotLarger(String, String),
     /// The smaller library has a different label at this position: smaller, larger, position,
@@ -27,6 +31,10 @@ impl std::fmt::Display for StagesError {
         match self {
             StagesError::Order(e) => f.write_str(e),
             StagesError::Unreadable(name, e) => write!(f, "{name}: {e}"),
+            StagesError::Empty(name) => write!(f, "{name} has no assertions"),
+            StagesError::BadName(name) => {
+                write!(f, "the name {name:?} is empty or holds whitespace")
+            }
             StagesError::NotLarger(name, before) => {
                 write!(f, "{name} has no more assertions than {before}")
             }
@@ -53,6 +61,12 @@ pub fn stages(mut libraries: Vec<(Manifest, Vec<u8>)>) -> Result<Vec<Stage>, Sta
     let mut stages: Vec<Stage> = Vec::new();
     for (i, (manifest, _)) in libraries.iter().enumerate() {
         let assertions = &decoded[i];
+        if manifest.name.is_empty() || manifest.name.contains(char::is_whitespace) {
+            return Err(StagesError::BadName(manifest.name.clone()));
+        }
+        if assertions.is_empty() {
+            return Err(StagesError::Empty(manifest.name.clone()));
+        }
         if let Some(before) = stages.last()
             && assertions.len() <= before.count
         {

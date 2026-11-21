@@ -576,3 +576,54 @@ fn ring_with_the_stages_mcpack_reports_reads_779_1171_and_3326() {
         press(&mut ui, &vec![Up; stage]);
     }
 }
+
+#[test]
+fn a_run_goes_past_a_recorded_failure_to_the_end_of_its_stage() {
+    let mut table = table(5, &[]);
+    table[index_of(&bytes(), "a1i")] = Status::Failed;
+    let mut ui = staged(table);
+    press(&mut ui, &[Down, F2]);
+    assert_eq!(checking(&ui), (1, 6, 8, 1, false));
+    assert_eq!(run_all(&mut ui), (2, 0));
+    assert_eq!(checking(&ui), (1, 8, 8, 1, true));
+    ui.press(Clear);
+    assert_eq!(
+        rows(&ui)[..3],
+        read(&[
+            ("base", &CHECK.to_string()),
+            ("rules", &CROSS.to_string()),
+            ("all", &CROSS.to_string())
+        ])[..]
+    );
+}
+
+#[test]
+fn more_stage_rows_than_the_screen_holds_scroll_and_open_the_stage_under_the_cursor() {
+    let ends = [1, 2, 3, 4, 5, 6, 8, 11];
+    let stages = ends
+        .iter()
+        .enumerate()
+        .map(|(i, &end)| Stage {
+            name: format!("s{i}"),
+            title: String::new(),
+            end,
+        })
+        .collect();
+    let mut ui = ui_with(bytes(), table(0, &[]), stages).unwrap();
+    assert_eq!(rows(&ui).len(), 6);
+    press(&mut ui, &[Down; 8]);
+    assert_eq!(ui.state(), State::Libraries { cursor: 8, top: 3 });
+    let names: Vec<String> = rows(&ui).into_iter().map(|r| r.0).collect();
+    assert_eq!(names, ["s3", "s4", "s5", "s6", "s7", "My proofs"]);
+    press(&mut ui, &[Down, Up]);
+    assert_eq!(ui.state(), State::Libraries { cursor: 7, top: 3 });
+    ui.press(Enter);
+    assert_eq!(list(&ui), (7, Some("wi".into()), 0, 11));
+    ui.press(Clear);
+    press(&mut ui, &[Up, Up, Up]);
+    ui.press(Enter);
+    assert_eq!(list(&ui), (4, Some("wi".into()), 0, 5));
+    ui.press(Clear);
+    press(&mut ui, &[Up; 10]);
+    assert_eq!(ui.state(), State::Libraries { cursor: 0, top: 0 });
+}

@@ -1,4 +1,4 @@
-use mcpack::library::{self, StagesError, pack};
+use mcpack::library::{self, Stage, StagesError, pack};
 use mcpack::manifest::Manifest;
 use mcpack::mm::{self, StmtId};
 use std::path::{Path, PathBuf};
@@ -75,6 +75,16 @@ fn the_lines_render_writes_parse_back_into_the_same_stages() {
     let text = library::render_stages(&stages);
     assert_eq!(library::parse_stages(&text), Ok(stages));
     assert_eq!(library::parse_stages(""), Ok(vec![]));
+    let odd = |title: &str| Stage {
+        name: "s".into(),
+        title: title.into(),
+        count: 3,
+    };
+    for title in ["", "a  b   c", " lead", "trail "] {
+        let stages = vec![odd(title)];
+        let text = library::render_stages(&stages);
+        assert_eq!(library::parse_stages(&text), Ok(stages), "{title:?}");
+    }
     for bad in [
         "small",
         "small x title",
@@ -111,15 +121,43 @@ fn a_library_that_is_not_the_start_of_the_next_names_the_first_difference() {
 }
 
 #[test]
-fn a_library_that_is_not_a_prefix_of_the_largest_fails_even_when_a_neighbour_matches() {
-    let skewed = ["ax-b", "ax-a", "ax-c", "ax-d", "ax-e"];
+fn a_library_is_compared_with_the_largest_not_only_with_its_neighbour() {
+    let other = ["ax-a", "ax-x", "ax-c", "ax-d", "ax-e"];
     let err = library::stages(vec![
-        (manifest("one", 1), packed(&AXIOMS, 2)),
-        (manifest("two", 2), packed(&skewed, 4)),
-        (manifest("three", 3), packed(&AXIOMS, 5)),
+        (manifest("small", 1), packed(&other, 2)),
+        (manifest("mid", 2), packed(&other, 3)),
+        (manifest("large", 3), packed(&AXIOMS, 5)),
     ])
     .unwrap_err();
-    assert!(matches!(err, StagesError::NotPrefix(ref a, ..) if a == "one" || a == "two"));
+    assert_eq!(
+        err,
+        StagesError::NotPrefix(
+            "small".into(),
+            "large".into(),
+            1,
+            "ax-x".into(),
+            "ax-b".into()
+        )
+    );
+}
+
+#[test]
+fn a_library_with_no_assertions_is_refused() {
+    let err = library::stages(vec![
+        (manifest("none", 1), packed(&AXIOMS, 0)),
+        (manifest("big", 2), packed(&AXIOMS, 5)),
+    ])
+    .unwrap_err();
+    assert_eq!(err, StagesError::Empty("none".into()));
+    assert_eq!(err.to_string(), "none has no assertions");
+}
+
+#[test]
+fn a_name_with_whitespace_or_none_is_refused() {
+    for name in ["two words", "tab\there", ""] {
+        let err = library::stages(vec![(manifest(name, 1), packed(&AXIOMS, 2))]).unwrap_err();
+        assert_eq!(err, StagesError::BadName(name.into()), "{name:?}");
+    }
 }
 
 #[test]
