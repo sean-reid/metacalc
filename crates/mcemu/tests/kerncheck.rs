@@ -643,7 +643,7 @@ fn a_hold_during_the_call_before_a_progress_print_never_reaches_a_text_call() {
             assert_eq!(rig.m.run(pc, 40).stop, Stop::Limit);
             pc = rig.m.pc();
         }
-        assert_eq!(rig.m.run(pc, 600).stop, Stop::Limit);
+        assert_eq!(rig.m.run(pc, 640).stop, Stop::Limit);
         pc = rig.m.pc();
         let proofs = label("VERIFY_BODY")..label("KERNEL_CRC_BEGIN");
         assert!(

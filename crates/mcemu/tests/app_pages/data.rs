@@ -46,7 +46,10 @@ fn kernel_init_called_by_a_ram_driver_reads_its_block_across_the_pages() {
 #[test]
 fn kernel_refs_called_through_its_far_entry_gives_the_list_of_the_last_verify() {
     let mut app = App::start(with_library());
-    let library = fixture::library();
+    let library = crate::support::pack_all(&crate::support::corpus("demo0.mm"));
+    for (i, chunk) in library.chunks(1 << 14).enumerate() {
+        app.m.load_flash(LIBRARY_PAGE - i as u8, 0, chunk);
+    }
     let mut params = vec![LIBRARY_PAGE];
     for limit in [0xFFFFu16; 4] {
         params.extend(limit.to_le_bytes());
@@ -73,7 +76,7 @@ fn kernel_refs_called_through_its_far_entry_gives_the_list_of_the_last_verify() 
         assert_eq!(library[at..at + 2 * list.len()], bytes_of(list), "{id}");
         entries += list.len();
     }
-    assert!(entries > 0, "the fixture has a reference list");
+    assert!(entries > 0, "the library has a reference list");
     assert_eq!(app.far("far_kernel_reset", In::default()).status(), 0);
     let none = app.far("far_kernel_refs", In::default());
     assert_eq!((none.status(), none.regs.de, none.regs.hl), (17, 0, 0));
