@@ -217,3 +217,28 @@ fn the_slowest_bar_takes_under_its_ceiling_at_6_mhz() {
         "the slowest bar took {took} T-states against a ceiling of {BAR_CEILING}"
     );
 }
+
+/// Ceilings in T-states for the dearest ui_invert of each rectangle over the left edges tried and
+/// the eight text rows, a little above what each takes: (width, left edges, ceiling, what).
+const INVERTS: [(u8, &[u8], u32, &str); 4] = [
+    (94, &[0, 1, 2, 3, 4, 5, 6, 7], 3_220, "94 by 8"),
+    (96, &[0], 3_220, "the full 96 wide run"),
+    (80, &[9], 3_880, "80 by 8 from x 9"),
+    (8, &[0, 1, 2, 3, 4, 5, 6, 7], 1_800, "8 by 8"),
+];
+
+#[test]
+fn inverting_wide_and_square_rectangles_takes_under_their_ceilings_at_6_mhz() {
+    for (w, xs, ceiling, what) in INVERTS {
+        let (took, at, row) = xs
+            .iter()
+            .flat_map(|&x| (0..8).map(move |r| (x, 8 * r)))
+            .map(|(x, y)| (cost(Speed::Mhz6, &[Op::Invert { x, y, w, h: 8 }]), x, y))
+            .max()
+            .unwrap();
+        report(format!(
+            "6 MHz: ui_invert of {what} takes {took} T-states at most (x {at}, y {row}), ceiling {ceiling}"
+        ));
+        assert!(took < ceiling, "{what} took {took}");
+    }
+}

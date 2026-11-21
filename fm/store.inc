@@ -13,6 +13,7 @@ fm_clear:
 	ld (fv_nused),hl
 	dec a
 	ld (fv_last),a
+	ld (fv_curn),a
 	ld hl,FM_TOKENS
 	ld (fv_tokp),hl
 	ret
@@ -107,6 +108,8 @@ sl_conclusion:
 	jr z,sl_index
 	dec a
 sl_go:
+	ld hl,fv_curn
+	ld (hl),$FF
 	call sel_index
 	jp fm_leave
 sl_index:
