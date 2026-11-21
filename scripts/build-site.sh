@@ -46,7 +46,7 @@ sh "$root/scripts/worked-examples.sh" images "$sitedir/src/guide/examples"
 mdbook build "$sitedir"
 
 status=0
-guide=$sitedir/book/guide/worked-examples.html
+guide=$sitedir/book/guide/examples.html
 if [ ! -f "$guide" ]; then
 	echo "build-site: $guide was not built" >&2
 	status=1

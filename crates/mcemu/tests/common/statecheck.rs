@@ -53,12 +53,7 @@ pub fn pattern(len: usize, seed: u8) -> Vec<u8> {
         .collect()
 }
 
-/// Contents with no two neighbouring bytes alike, so a restore from the wrong offset differs.
-pub fn varied(len: usize, seed: u8) -> Vec<u8> {
-    (0..len)
-        .map(|i| seed ^ (i as u8).wrapping_mul(7).wrapping_add((i / 5) as u8))
-        .collect()
-}
+pub use super::realos::{Watch, assert_blank_home, varied};
 
 pub struct Build {
     pub app: Vec<u8>,
@@ -416,10 +411,22 @@ impl Rig {
 
     /// Writes the LCD as a PGM under the target tree for looking at.
     pub fn dump(&self, name: &str, lcd: &[bool]) {
-        let mut pgm = b"P5\n96 64\n255\n".to_vec();
-        pgm.extend(lcd.iter().map(|&p| if p { 0 } else { 255 }));
         let file = format!("statecheck-{}.pgm", name.replace([' ', ','], "-"));
-        let _ = std::fs::write(Path::new(env!("CARGO_TARGET_TMPDIR")).join(file), pgm);
+        realos::write_pgm(&file, lcd);
+    }
+}
+
+impl Watch for Rig {
+    fn lcd(&mut self) -> Vec<bool> {
+        self.os.screen()
+    }
+
+    fn wait(&mut self, ms: u32) {
+        self.run_ms(ms);
+    }
+
+    fn dump(&self, name: &str, lcd: &[bool]) {
+        Rig::dump(self, name, lcd);
     }
 }
 
