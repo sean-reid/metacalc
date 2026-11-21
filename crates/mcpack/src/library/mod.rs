@@ -100,7 +100,7 @@ pub use sections::{
     TRAILER_MAGIC, TRAILER_VERSION, TREES, Title, Tree, Trees, VARIABLE_CAPACITY,
     locate as locate_sections, titles_in_order, verify_sections,
 };
-pub use stages::{Stage, StagesError, render as render_stages, stages};
+pub use stages::{Stage, StagesError, parse as parse_stages, render as render_stages, stages};
 
 pub const MAGIC: &[u8; 4] = b"MCL1";
 pub const CHUNK: usize = 1 << 14;

@@ -66,6 +66,27 @@ fn libraries_cut_from_one_another_give_their_counts_in_order() {
 }
 
 #[test]
+fn the_lines_render_writes_parse_back_into_the_same_stages() {
+    let stages = library::stages(vec![
+        (manifest("small", 1), packed(&AXIOMS, 2)),
+        (manifest("big", 2), packed(&AXIOMS, 5)),
+    ])
+    .unwrap();
+    let text = library::render_stages(&stages);
+    assert_eq!(library::parse_stages(&text), Ok(stages));
+    assert_eq!(library::parse_stages(""), Ok(vec![]));
+    for bad in [
+        "small",
+        "small x title",
+        "small 2",
+        " 2 title",
+        "small -1 t",
+    ] {
+        assert!(library::parse_stages(bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
 fn a_library_that_is_not_the_start_of_the_next_names_the_first_difference() {
     let other = ["ax-a", "ax-x", "ax-c", "ax-d", "ax-e"];
     let err = library::stages(vec![

@@ -95,3 +95,21 @@ pub fn render(stages: &[Stage]) -> String {
         .map(|s| format!("{} {} {}\n", s.name, s.count, s.title))
         .collect()
 }
+
+/// The stages in the lines [`render`] writes, or the first line that is not one.
+pub fn parse(text: &str) -> Result<Vec<Stage>, String> {
+    text.lines()
+        .map(|line| {
+            let mut parts = line.splitn(3, ' ');
+            let (name, count, title) = (parts.next(), parts.next(), parts.next());
+            match (name, count.and_then(|c| c.parse().ok()), title) {
+                (Some(name), Some(count), Some(title)) if !name.is_empty() => Ok(Stage {
+                    name: name.into(),
+                    title: title.into(),
+                    count,
+                }),
+                _ => Err(format!("not a stage line: {line:?}")),
+            }
+        })
+        .collect()
+}

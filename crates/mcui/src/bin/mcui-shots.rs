@@ -1,12 +1,13 @@
 //! Scripts key sequences against built libraries and writes each frame as a PNG.
 //!
 //! Usage: mcui-shots <libdir> [outdir]
-//! `libdir` holds prop.mclib, pred.mclib and ring.mclib as built by scripts/build-libraries.sh.
+//! `libdir` holds ring.mclib and stages.list as built by scripts/build-libraries.sh: the calculator
+//! ships ring, which the libraries screen shows as the stages the list names.
 //! The frames go to `outdir` (default target/shots) at four times their size.
 
 use mcglyph::png;
 use mcpack::library;
-use mcui::{CheckStep, Installed, Key, State, Status, Statuses, Ui};
+use mcui::{CheckStep, Installed, Key, Stage, State, Status, Statuses, Ui};
 use std::path::{Path, PathBuf};
 use std::{env, fs, process};
 
@@ -103,11 +104,10 @@ impl Shots {
     }
 }
 
-/// Axioms count as checked. Theorems are checked in order up to 60 percent of the library,
+/// Axioms count as checked. Theorems are checked in order up to the first `cut` assertions,
 /// except a few early ones left out, so their dependents show the resting mark, and one failure.
-fn statuses(bytes: &[u8]) -> Vec<Status> {
+fn statuses(bytes: &[u8], cut: usize) -> Vec<Status> {
     let assertions = library::read(bytes).expect("library reads");
-    let cut = assertions.len() * 6 / 10;
     assertions
         .iter()
         .enumerate()
@@ -123,31 +123,44 @@ fn statuses(bytes: &[u8]) -> Vec<Status> {
         .collect()
 }
 
+/// Ring with the stages `stages.list` names, its theorems checked up to the first `cut` assertions.
+fn calculator(libdir: &Path, stages: &[Stage], cut: usize) -> Ui {
+    let bytes = fs::read(libdir.join("ring.mclib")).expect("read library");
+    let table = statuses(&bytes, cut);
+    let library = Installed {
+        name: "ring".into(),
+        bytes,
+    };
+    let statuses = Statuses {
+        libraries: vec![table],
+        my_proofs: 3,
+    };
+    Ui::with_stages(vec![library], vec![stages.to_vec()], statuses).expect("library loads")
+}
+
 fn main() {
     let mut args = env::args().skip(1);
     let Some(libdir) = args.next() else {
         eprintln!("usage: mcui-shots <libdir> [outdir]");
         process::exit(2);
     };
+    let libdir = PathBuf::from(libdir);
     let out = PathBuf::from(args.next().unwrap_or_else(|| "target/shots".into()));
     fs::create_dir_all(&out).expect("create output directory");
 
-    let mut libraries = Vec::new();
-    let mut tables = Vec::new();
-    for name in ["prop", "pred", "ring"] {
-        let bytes =
-            fs::read(Path::new(&libdir).join(format!("{name}.mclib"))).expect("read library");
-        tables.push(statuses(&bytes));
-        libraries.push(Installed {
-            name: name.into(),
-            bytes,
-        });
-    }
-    let statuses = Statuses {
-        libraries: tables,
-        my_proofs: 3,
-    };
-    let ui = Ui::new(libraries, statuses).expect("libraries load");
+    let list = fs::read_to_string(libdir.join("stages.list")).expect("read stages.list");
+    let named = library::parse_stages(&list).expect("stages.list holds stage lines");
+    let stages: Vec<Stage> = named
+        .iter()
+        .map(|s| Stage {
+            name: s.name.clone(),
+            title: s.title.clone(),
+            end: s.count,
+        })
+        .collect();
+    let first = stages.first().expect("stages.list names a stage").end;
+    let total = stages.last().expect("stages.list names a stage").end;
+    let ui = calculator(&libdir, &stages, total * 6 / 10);
     let mut s = Shots { ui, out };
 
     s.shot("01-libraries");
@@ -202,6 +215,7 @@ fn main() {
     s.press(&[Key::Enter]);
     s.shot("21-not-available");
     s.home();
+    s.times(Key::Down, 3);
     s.press(&[Key::F3]);
     s.shot("22-about");
     s.press(&[Key::Clear, Key::Down, Key::Down, Key::Down, Key::F2]);
@@ -243,6 +257,7 @@ fn main() {
     s.press(&[Key::F4]);
     s.shot("35-proving-axiom-refused");
 
+    s.ui = calculator(&libdir, &stages, first * 6 / 10);
     s.home();
     s.press(&[Key::F2]);
     s.shot("36-checking-prop-start");
@@ -257,6 +272,7 @@ fn main() {
     s.shot("39-checking-prop-finished");
     s.press(&[Key::Clear]);
     s.shot("40-checking-finished-libraries");
+    s.ui = calculator(&libdir, &stages, total * 6 / 10);
     s.press(&[Key::Down, Key::Down, Key::F2]);
     s.shot("41-checking-ring-with-failure");
 
