@@ -14,7 +14,8 @@ crc_refuse:
 	ld (KERNEL_CRC+2),hl
 	ld d,h
 	ld e,l
-	jp fail_malformed
+	ld a,ST_MALFORMED
+	jp leave
 
 #macro CRC_BYTE(k)
 	ld a,(ix+k)
