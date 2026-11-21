@@ -732,7 +732,11 @@ fn assemble_ui(out: &Path) {
             None,
         ),
         (&["UI_VARS=$9640", "FM_SCRATCH=$A000"][..], None),
-        (&["UI_FRAME=$9572", "SCR_STACK=$9000"][..], None),
+        (&["UI_FRAME=$93EE", "SCR_STACK=$9000"][..], None),
+        (
+            &["UI_FRAME=$93EF", "SCR_STACK=$9000"][..],
+            Some("HOME_STATE and UI_FRAME overlap"),
+        ),
         (&["APP_BUF=$8000"][..], None),
         (&["APP_BUF=$7FFF"][..], Some("APP_BUF runs past bank B")),
         (&["APP_BUF=$BF00"][..], None),
@@ -746,7 +750,10 @@ fn assemble_ui(out: &Path) {
         ),
         (&["APP_BUF=$9240"][..], None),
         (&["APP_BUF=$9241"][..], Some("APP_BUF and UI_FRAME overlap")),
-        (&["APP_BUF=$9640", "SCR_STACK=$A000"][..], None),
+        (
+            &["APP_BUF=$9640", "SCR_STACK=$A000", "HOME_STATE=$A100"][..],
+            None,
+        ),
         (
             &["APP_BUF=$963F", "SCR_STACK=$A000"][..],
             Some("APP_BUF and UI_FRAME overlap"),
@@ -809,7 +816,14 @@ fn assemble_ui(out: &Path) {
         (&["KERNEL_RAM_HIGH=$D700"][..], None),
         (&["SCR_VARS=$9100"][..], None),
         (&["SCR_STACK=$9700"][..], None),
-        (&["SCR_VARS_SIZE=$80", "SCR_STACK_SIZE=$100"][..], None),
+        (
+            &[
+                "SCR_VARS_SIZE=$80",
+                "SCR_STACK_SIZE=$100",
+                "HOME_STATE=$A100",
+            ][..],
+            None,
+        ),
         (&["SCR_VARS=$8000"][..], None),
         (&["SCR_VARS=$7FFF"][..], Some("SCR_VARS runs past bank B")),
         (&["SCR_VARS=$BF94"][..], None),
@@ -955,7 +969,33 @@ fn assemble_ui(out: &Path) {
             &["FM_SCRATCH=$956F", "UI_FRAME=$A000"][..],
             Some("FM_SCRATCH and SCR_STACK overlap"),
         ),
-        (&["FM_SCRATCH=$96EE"][..], None),
+        (
+            &["FM_SCRATCH=$96EE"][..],
+            Some("HOME_STATE and FM_SCRATCH overlap"),
+        ),
+        (&["FM_SCRATCH=$96F3"][..], None),
+        (
+            &["FM_SCRATCH=$96F2"][..],
+            Some("HOME_STATE and FM_SCRATCH overlap"),
+        ),
+        (
+            &["APP_BUF=$96F2"][..],
+            Some("HOME_STATE and APP_BUF overlap"),
+        ),
+        (&["APP_BUF=$96F3"][..], None),
+        (
+            &["SCR_STACK=$9670"][..],
+            Some("HOME_STATE and SCR_STACK overlap"),
+        ),
+        (
+            &["SCR_VARS=$96EF"][..],
+            Some("HOME_STATE and SCR_VARS overlap"),
+        ),
+        (&["SCR_VARS=$96F3"][..], None),
+        (
+            &["HOME_STATE=$BFFC"][..],
+            Some("HOME_STATE runs past bank B"),
+        ),
         (
             &["FM_SCRATCH=$96ED"][..],
             Some("FM_SCRATCH and SCR_STACK overlap"),

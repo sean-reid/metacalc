@@ -23,6 +23,8 @@
 ;   UI_FRAME          B     the UI's 96 by 64 frame, plotSScreen
 ;   SCR_STACK         B     the stack of open screens, 128 bytes: cmdShadow, 966Eh to 96EDh,
 ;                           cmdShadCur follows
+;   HOME_STATE        B     the OS's home screen state that app_putaway writes, 5 bytes: cmdShadCur, 96EEh,
+;                           to cmdCursor, 96F2h; no region may overlap it
 ;   KD_SCRATCH        B     the kernel driver's scratch, from libPage, in appBackUpScreen. The app's own
 ;                           two bytes are libPage (offset 0) and appStatus (offset 1), checked in
 ;                           equates.inc; probe/kerndriver.inc lays out its own variables over the same
@@ -65,6 +67,12 @@ SCR_STACK           .equ $966E
 #endif
 #ifndef SCR_STACK_SIZE
 SCR_STACK_SIZE      .equ 128
+#endif
+#ifndef HOME_STATE
+HOME_STATE          .equ $96EE
+#endif
+#ifndef HOME_STATE_SIZE
+HOME_STATE_SIZE     .equ 5
 #endif
 #ifndef UI_FRAME
 UI_FRAME            .equ $9340
@@ -152,6 +160,7 @@ name .equ base + offset
 
 RAM_WITHIN(SCR_VARS, SCR_VARS_SIZE, $8000, $C000, "SCR_VARS runs past bank B")
 RAM_WITHIN(SCR_STACK, SCR_STACK_SIZE, $8000, $C000, "SCR_STACK runs past bank B")
+RAM_WITHIN(HOME_STATE, HOME_STATE_SIZE, $8000, $C000, "HOME_STATE runs past bank B")
 RAM_WITHIN(UI_VARS, UI_VARS_SIZE, $8000, $C000, "UI_VARS runs past bank B")
 RAM_WITHIN(UI_FRAME, UI_FRAME_SIZE, $8000, $C000, "UI_FRAME runs past bank B")
 RAM_WITHIN(KD_SCRATCH, KD_SCRATCH_SIZE, $8000, $C000, "KD_SCRATCH runs past bank B")
@@ -205,6 +214,15 @@ RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "APP_BUF and KD
 RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, FAR_VARS, FAR_VARS_SIZE, "APP_BUF and FAR_VARS overlap")
 RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, LIB_STATE, LIB_STATE_SIZE, "APP_BUF and LIB_STATE overlap")
 RAM_DISJOINT(APP_BUF, APP_BUF_SIZE, FM_SCRATCH, FM_SCRATCH_SIZE, "APP_BUF and FM_SCRATCH overlap")
+RAM_DISJOINT(HOME_STATE, HOME_STATE_SIZE, UI_VARS, UI_VARS_SIZE, "HOME_STATE and UI_VARS overlap")
+RAM_DISJOINT(HOME_STATE, HOME_STATE_SIZE, UI_FRAME, UI_FRAME_SIZE, "HOME_STATE and UI_FRAME overlap")
+RAM_DISJOINT(HOME_STATE, HOME_STATE_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "HOME_STATE and KD_SCRATCH overlap")
+RAM_DISJOINT(HOME_STATE, HOME_STATE_SIZE, FAR_VARS, FAR_VARS_SIZE, "HOME_STATE and FAR_VARS overlap")
+RAM_DISJOINT(HOME_STATE, HOME_STATE_SIZE, LIB_STATE, LIB_STATE_SIZE, "HOME_STATE and LIB_STATE overlap")
+RAM_DISJOINT(HOME_STATE, HOME_STATE_SIZE, SCR_VARS, SCR_VARS_SIZE, "HOME_STATE and SCR_VARS overlap")
+RAM_DISJOINT(HOME_STATE, HOME_STATE_SIZE, SCR_STACK, SCR_STACK_SIZE, "HOME_STATE and SCR_STACK overlap")
+RAM_DISJOINT(HOME_STATE, HOME_STATE_SIZE, FM_SCRATCH, FM_SCRATCH_SIZE, "HOME_STATE and FM_SCRATCH overlap")
+RAM_DISJOINT(HOME_STATE, HOME_STATE_SIZE, APP_BUF, APP_BUF_SIZE, "HOME_STATE and APP_BUF overlap")
 RAM_DISJOINT(FM_RAM, FM_RAM_SIZE, LIB_BOUNCE, LIB_BOUNCE_SIZE, "FM_RAM and LIB_BOUNCE overlap")
 
 #endif

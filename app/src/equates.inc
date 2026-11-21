@@ -36,6 +36,8 @@ smallEditRAM     = 90D3h
 XFact            = 913Fh
 cmdShadow        = 966Eh
 cmdShadCur       = 96EEh
+cmdCursor        = 96F2h
+editTop          = 96F4h
 #if (smallEditRAM < SCR_VARS) || (smallEditRAM > SCR_VARS)
  .error "SCR_VARS in ram_map.inc must be smallEditRAM"
 #endif
@@ -47,6 +49,12 @@ cmdShadCur       = 96EEh
 #endif
 #if (cmdShadCur < (SCR_STACK + SCR_STACK_SIZE)) || (cmdShadCur > (SCR_STACK + SCR_STACK_SIZE))
  .error "SCR_STACK in ram_map.inc must end where cmdShadCur starts"
+#endif
+#if (cmdShadCur < HOME_STATE) || (cmdShadCur > HOME_STATE)
+ .error "HOME_STATE in ram_map.inc must start at cmdShadCur"
+#endif
+#if (cmdCursor + 1) > (HOME_STATE + HOME_STATE_SIZE)
+ .error "HOME_STATE in ram_map.inc must cover cmdCursor"
 #endif
 libPage          = KD_SCRATCH
 appStatus        = KD_SCRATCH + 1

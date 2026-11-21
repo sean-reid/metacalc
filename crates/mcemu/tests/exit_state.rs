@@ -26,10 +26,16 @@ const VARS: (u16, usize) = (0x90D3, 108);
 const NEIGHBOURS: [u16; 4] = [0x966D, 0x96F0, 0x90D2, 0x913F];
 /// cmdShadCur, the two bytes after cmdShadow that the home screen restores its cursor from.
 const CMD_CUR: u16 = 0x96EE;
+/// The home entry line's buffer start and cursor pointers, and the first byte of the buffer.
+const EDIT_TOP: u16 = 0x96F4;
+const EDIT_CURSOR: u16 = 0x96F6;
+const CMD_CURSOR: u16 = 0x96F2;
+const EDIT_BUF: u16 = 0x9DB7;
 const TEXT_SHADOW: u16 = 0x8508;
 const CUR_ROW: u16 = 0x844B;
 const CUR_COL: u16 = 0x844C;
 const SCAN_ENTER: u8 = 0x09;
+const THREE_ENTRIES: [u8; 6] = [SCAN_5, SCAN_ENTER, SCAN_5, SCAN_ENTER, SCAN_5, SCAN_ENTER];
 const SCAN_2ND: u8 = 0x36;
 const SCAN_MODE: u8 = 0x37;
 const SCAN_5: u8 = 0x1B;
@@ -123,22 +129,20 @@ fn context(os: &mut RealOs) -> Vec<Vec<u8>> {
 /// The app waiting for a key on the reference OS, entered from a cleared home screen after a
 /// graph was drawn, and what `context` and the text shadow held before the launch.
 fn launched(app: &[u8], start: Option<&[bool]>) -> (RealOs, Vec<Vec<u8>>, Vec<u8>) {
-    launched_after(app, start, 0)
+    launched_after(app, start, &[])
 }
 
-/// `launched` with `entries` lines of `5` and ENTER typed on the cleared home screen first, which
-/// leaves the cursor `2 * entries` rows down.
+/// `launched` with `keys` tapped on the cleared home screen first.
 fn launched_after(
     app: &[u8],
     start: Option<&[bool]>,
-    entries: u32,
+    keys: &[u8],
 ) -> (RealOs, Vec<Vec<u8>>, Vec<u8>) {
     let mut os = RealOs::boot(app);
     os.tap(KEY_GRAPH, 150, 2500);
     os.tap(KEY_CLEAR, 150, 800);
-    for _ in 0..entries {
-        os.tap(SCAN_5, 150, 300);
-        os.tap(SCAN_ENTER, 150, 600);
+    for &key in keys {
+        os.tap(key, 150, 600);
     }
     assert_eq!(
         os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW,
@@ -161,13 +165,25 @@ fn clear(os: &mut RealOs) {
     os.tap(KEY_CLEAR, 150, 1500);
 }
 
+/// Milliseconds to wait after 2nd: with an entry line open the OS redraws it first and drops the
+/// next key if it comes within about a second.
+fn second_gap(os: &mut RealOs) -> u32 {
+    if read(os, CMD_CURSOR, 1)[0] == 0 {
+        300
+    } else {
+        1500
+    }
+}
+
 fn quit(os: &mut RealOs) {
-    os.tap(SCAN_2ND, 150, 300);
+    let gap = second_gap(os);
+    os.tap(SCAN_2ND, 150, gap);
     os.tap(SCAN_MODE, 150, 1500);
 }
 
 fn off(os: &mut RealOs) {
-    os.tap(SCAN_2ND, 150, 300);
+    let gap = second_gap(os);
+    os.tap(SCAN_2ND, 150, gap);
     os.m.press_key(Machine::KEY_ON);
     os.run_ms(300);
     os.m.release_key(Machine::KEY_ON);
@@ -334,9 +350,84 @@ fn lit_text_rows(os: &mut RealOs) -> Vec<usize> {
     rows.into_iter().collect()
 }
 
+/// Where the home cursor and entry line are when the app starts: the cursor part way down the
+/// screen with a closed entry, and in column 1 of row 0 with an unentered 5 on the entry line.
+const STARTS: [(&str, &[u8], (u8, u8)); 2] = [
+    ("lower row", &THREE_ENTRIES, (6, 0)),
+    ("open entry", &[SCAN_5], (0, 1)),
+];
+
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn every_way_out_homes_the_cursor_from_a_lower_row() {
+fn every_way_out_homes_the_cursor_from_a_lower_row_and_from_a_column() {
+    for (start, keys, at) in STARTS {
+        for (kind, app) in [
+            ("no library", shell()),
+            ("library", with_library()),
+            ("refused library", refused()),
+        ] {
+            for (way, exit, _) in EXITS {
+                let name = format!("{start}, {kind}, {way}");
+                let (mut os, ..) = launched_after(&app.file, Some(&app.start), keys);
+                assert_eq!(cursor(&mut os), at, "{name}: where the cursor starts");
+                assert_eq!(
+                    read(&mut os, CMD_CUR, 2),
+                    [at.0, at.1],
+                    "{name}: cmdShadCur starts as the cursor"
+                );
+                println!(
+                    "{name}: before the exit curRow, curCol {at:?}, cmdShadCur {:02X?}, 96F0..96F2 {:02X?}, editTop {:02X?}, editCursor {:02X?}, buffer {:02X?}",
+                    read(&mut os, CMD_CUR, 2),
+                    read(&mut os, CMD_CUR + 2, 3),
+                    read(&mut os, EDIT_TOP, 2),
+                    read(&mut os, EDIT_CURSOR, 2),
+                    read(&mut os, EDIT_BUF, 3)
+                );
+                exit(&mut os);
+                assert_eq!(cursor(&mut os), (0, 0), "{name}: curRow and curCol");
+                assert_eq!(read(&mut os, CMD_CUR, 2), [0, 0], "{name}: cmdShadCur");
+                assert_blank_home(&mut os, &name);
+                os.tap(SCAN_5, 150, 500);
+                assert_eq!(
+                    read(&mut os, TEXT_SHADOW, 1),
+                    *b"5",
+                    "{name}: the digit is in cell 0"
+                );
+                assert_eq!(
+                    cursor(&mut os),
+                    (0, 1),
+                    "{name}: the cursor follows the digit"
+                );
+                assert_eq!(lit_text_rows(&mut os), [0], "{name}: the digit is on row 0");
+            }
+        }
+    }
+}
+
+/// What the home screen shows after ENTER: the cursor, the text shadow and the rows with ink.
+fn after_enter(os: &mut RealOs) -> ((u8, u8), Vec<u8>, Vec<usize>) {
+    os.tap(SCAN_ENTER, 150, 800);
+    (cursor(os), read(os, TEXT_SHADOW, 128), lit_text_rows(os))
+}
+
+fn shadow_text(shadow: &[u8]) -> String {
+    let text: String = shadow
+        .iter()
+        .map(|&b| {
+            if (0x20..0x7F).contains(&b) {
+                b as char
+            } else {
+                '.'
+            }
+        })
+        .collect();
+    text.trim().to_string()
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn an_unentered_line_is_gone_after_every_way_out() {
+    let mut wrong = vec![];
     for (kind, app) in [
         ("no library", shell()),
         ("library", with_library()),
@@ -344,35 +435,30 @@ fn every_way_out_homes_the_cursor_from_a_lower_row() {
     ] {
         for (way, exit, _) in EXITS {
             let name = format!("{kind}, {way}");
-            let (mut os, ..) = launched_after(&app.file, Some(&app.start), 3);
-            assert_eq!(
-                cursor(&mut os),
-                (6, 0),
-                "{name}: the cursor starts on row 6"
-            );
-            assert_ne!(
-                read(&mut os, TEXT_SHADOW, 1),
-                *b" ",
-                "{name}: with entries above"
-            );
+            let (mut clean, ..) = launched(&app.file, Some(&app.start));
+            exit(&mut clean);
+            let want = after_enter(&mut clean);
+            let (mut os, ..) = launched_after(&app.file, Some(&app.start), &[SCAN_5]);
             exit(&mut os);
-            println!("{name}: curRow, curCol {:?}", cursor(&mut os));
-            assert_eq!(cursor(&mut os), (0, 0), "{name}: curRow and curCol");
-            assert_blank_home(&mut os, &name);
-            os.tap(SCAN_5, 150, 500);
-            assert_eq!(
-                read(&mut os, TEXT_SHADOW, 1),
-                *b"5",
-                "{name}: the digit is in cell 0"
+            let left = (read(&mut os, EDIT_CURSOR, 2), read(&mut os, EDIT_TOP, 2));
+            let got = after_enter(&mut os);
+            println!(
+                "{name}: after the exit editCursor {:02X?} editTop {:02X?}; ENTER leaves curRow, curCol {:?}, rows {:?}, shadow '{}'",
+                left.0,
+                left.1,
+                got.0,
+                got.2,
+                shadow_text(&got.1)
             );
-            assert_eq!(
-                cursor(&mut os),
-                (0, 1),
-                "{name}: the cursor follows the digit"
-            );
-            assert_eq!(lit_text_rows(&mut os), [0], "{name}: the digit is on row 0");
+            if left.0 != left.1 || got.1.contains(&b'5') || got != want {
+                wrong.push(name);
+            }
         }
     }
+    assert!(
+        wrong.is_empty(),
+        "an entry line the user did not enter comes back, or ENTER differs from a home screen left clean: {wrong:?}"
+    );
 }
 
 #[test]
@@ -611,6 +697,9 @@ fn on_the_stub_both_exits_zero_the_cursor() {
         m.load_ram(CUR_ROW, &[5]);
         m.load_ram(CUR_COL, &[9]);
         m.load_ram(CMD_CUR, &[4, 7]);
+        m.load_ram(EDIT_TOP, &[0xB7, 0x9D]);
+        m.load_ram(EDIT_TOP - 2, &[3, 0]);
+        m.load_ram(CMD_CURSOR, &[3]);
         if quit {
             stub_tap(&mut m, SCAN_2ND);
             m.press_key(SCAN_MODE);
@@ -620,5 +709,16 @@ fn on_the_stub_both_exits_zero_the_cursor() {
         assert_eq!(m.run_app(LIMIT).stop, Stop::Exited, "{name}");
         assert_eq!(m.read_ram(CUR_ROW, 2), [0, 0], "{name}: curRow and curCol");
         assert_eq!(m.read_ram(CMD_CUR, 2), [0, 0], "{name}: cmdShadCur");
+        assert_eq!(
+            m.read_ram(EDIT_TOP - 2, 2),
+            [0, 0],
+            "{name}: the entry line's length"
+        );
+        assert_eq!(m.read_ram(CMD_CURSOR, 1), [0], "{name}: cmdCursor");
+        assert_eq!(
+            m.read_ram(EDIT_TOP, 2),
+            [0xB7, 0x9D],
+            "{name}: editTop is kept"
+        );
     }
 }

@@ -13,8 +13,10 @@
 ;   without       row 0 the title, row 3 the hint
 ; Exit. CLEAR and 2nd+QUIT leave through app_exit; 2nd+OFF is the OS's. Every way out runs
 ; app_putaway, which fills SCR_STACK with spaces and SCR_VARS with zeros, the state the home screen
-; draws as blank, zeroes curRow, curCol and cmdShadCur, which the home screen restores its cursor
-; from, clears appRunning and appLaunched in iy+28h and onInterrupt, and sets graphDraw.
+; draws as blank, empties the home entry line by zeroing cmdCursor and the length word two bytes
+; before editTop, zeroes curRow and curCol, the live cursor, and cmdShadCur, the copy the home
+; screen restores the cursor from, clears appRunning and appLaunched in iy+28h and onInterrupt,
+; and sets graphDraw.
 ; start installs a context with _AppInit for that: the OS calls cxPPutAway and cxPutAway at 2nd+OFF
 ; and at _JForceCmdNoChar, and cxPPutAway alone when an OS call raises an error. On that error
 ; screen 1:Quit returns to the home screen through the OS and 2:Goto through cxErrorEP, which
@@ -105,6 +107,14 @@ app_putaway:
 	ld bc, SCR_VARS_SIZE - 1
 	ld (hl), 0
 	ldir
+	ld hl, (editTop)
+	dec hl
+	dec hl
+	xor a
+	ld (hl), a
+	inc hl
+	ld (hl), a
+	ld (cmdCursor), a
 	ld hl, 0
 	ld (curRow), hl
 	ld (cmdShadCur), hl
