@@ -75,6 +75,8 @@ fill_bytes:
 	jp copy_bc
 
 init_body:
+	xor a
+	ld (kv_listed),a
 	ld a,h
 	cp $C0
 	jp nc,init_refused

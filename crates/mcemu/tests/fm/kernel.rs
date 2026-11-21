@@ -470,3 +470,20 @@ fn a_verify_or_crc_call_the_kernel_refuses_while_fm_owns_the_mark_writes_only_it
     let out = fm.nodes();
     assert_eq!(out.status(), 0, "and its headers are intact");
 }
+
+#[test]
+fn an_fm_call_takes_the_reference_list_the_last_verify_left() {
+    let bytes = fixture::library();
+    let mut fm = Fm::new(&bytes);
+    assert_eq!(fm.rig.kernel_init(), 0);
+    assert_eq!(fm.rig.kernel_verify(0), 0);
+    let held = fm.rig.call("KERNEL_REFS", Regs::default());
+    assert_eq!((held.status(), held.bc), (0, 0), "an axiom's list, held");
+    fm.rows(94);
+    assert_eq!(ready(&mut fm), owned());
+    let gone = fm.rig.call("KERNEL_REFS", Regs::default());
+    assert_eq!(
+        (gone.status(), gone.de, gone.hl),
+        (code("ST_NO_REFS"), 0, 0)
+    );
+}

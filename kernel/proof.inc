@@ -297,11 +297,15 @@ cf_next:
 	jr cf_outer
 
 verify_body:
+	xor a
+	ld (kv_listed),a
 	ld (kv_arg_id),hl
 	call require_ready
 	ld ix,CUR_DESC
 	ld hl,(kv_arg_id)
 	call parse_record
+	ld a,1
+	ld (kv_listed),a
 	call require_sound
 	ld a,(CUR_DESC+D_KIND)
 	or a

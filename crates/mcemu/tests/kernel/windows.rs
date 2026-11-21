@@ -27,6 +27,21 @@ fn the_entry_and_exit_windows_hold_no_stack_instruction() {
         );
 
         let (start, end) = (at(image, "LEAVE_WINDOW"), at(image, "LEAVE_WINDOW_END"));
+        let refs = (at(image, "REFS_WINDOW"), at(image, "REFS_WINDOW_END"));
+        assert!(
+            stackfree::breaks(code, refs.0, refs.1, &[]).is_empty(),
+            "refs exit window"
+        );
+        assert_eq!(
+            code[refs.0..refs.1],
+            out_5,
+            "the refs window is the port 5 restore"
+        );
+        assert_eq!(
+            code[refs.0 - 4..refs.0 - 2],
+            [0xED, 0x7B],
+            "after the stack restore"
+        );
         let found = stackfree::breaks(code, start, end, &[]);
         assert!(found.is_empty(), "exit window: {found:x?}");
         assert_eq!(code[start..end], out_5, "the window is the port 5 restore");
