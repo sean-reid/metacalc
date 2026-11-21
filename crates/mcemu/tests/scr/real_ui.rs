@@ -77,11 +77,21 @@ fn ui() -> Ui {
     .expect("the library loads")
 }
 
+/// The assertions of the fixture, in the order that gives each theorem screen its tag.
+const LABELS: [&str; 20] = [
+    "wi", "ax-1", "ax-2", "ax-mp", "a1i", "a2i", "mpd", "id", "t1", "t2", "t3", "t4", "t5", "t6",
+    "t7", "t8", "t9", "t10", "t11", "t12",
+];
+
 struct Run {
     ui: Ui,
     pair: Pair,
-    identities: Vec<String>,
-    frames_of: HashMap<[u8; 2], String>,
+    /// Every frame pushed, by serial, byte for byte.
+    pushed: Vec<Frame>,
+    /// The serials of the open screens, bottom first, kept by the same rule the model follows.
+    open: Vec<usize>,
+    /// The screen identities seen for each pair of leading frame bytes.
+    seen: HashMap<[u8; 2], String>,
     /// Where each pushed frame sat when it was pushed, by serial.
     born: Vec<usize>,
     evictions: usize,
@@ -89,66 +99,83 @@ struct Run {
 
 impl Run {
     fn new() -> Run {
-        let ui = ui();
         let mut run = Run {
-            ui,
+            ui: ui(),
             pair: Pair::new(REAL),
-            identities: vec![],
-            frames_of: HashMap::new(),
-            born: vec![0],
+            pushed: vec![],
+            open: vec![],
+            seen: HashMap::new(),
+            born: vec![],
             evictions: 0,
         };
-        let mut first = run.frame_of();
-        first[2..4].copy_from_slice(&0u16.to_le_bytes());
+        let first = run.pushed_frame(0);
         run.pair.init(first, &[]);
+        run.born.push(0);
+        run.open.push(0);
         run
     }
 
-    /// The frame the Z80 side keeps for the screen on top: its type is the kind and the tag is
-    /// the position of the screen's identity in the list of those seen, so two different screens
-    /// are two different frames, which is asserted. Bytes 2 and 3 are left for the push serial.
-    fn frame_of(&mut self) -> Frame {
-        let (kind, identity) = match self.ui.state() {
-            State::Libraries { .. } => (200, "libraries".to_string()),
-            State::List { .. } => (255, "list".to_string()),
-            State::Theorem { label, .. } => (1, format!("theorem {label}")),
-            State::Proof { label, .. } => (2, format!("proof {label}")),
-            State::Notice { title } => (3, format!("notice {title}")),
+    /// The first two bytes of the frame for the screen on top of the model: its type is the kind
+    /// and the theorem is the tag. Two different screens must not share them, which is asserted
+    /// over every screen seen.
+    fn screen_bytes(&mut self) -> [u8; 2] {
+        let theorem = |label: &str| {
+            LABELS
+                .iter()
+                .position(|l| *l == label)
+                .unwrap_or_else(|| panic!("a screen of {label}")) as u8
+        };
+        let (kind, tag, identity) = match self.ui.state() {
+            State::Libraries { .. } => (200, 0, "libraries".to_string()),
+            State::List { .. } => (255, 0, "list".to_string()),
+            State::Theorem { label, .. } => (1, theorem(&label), format!("theorem {label}")),
+            State::Proof { label, .. } => (2, theorem(&label), format!("proof {label}")),
+            State::Notice { title } => (3, 0, format!("notice {title}")),
             other => panic!("{other:?}"),
         };
-        let at = self
-            .identities
-            .iter()
-            .position(|i| *i == identity)
-            .unwrap_or_else(|| {
-                self.identities.push(identity.clone());
-                self.identities.len() - 1
-            });
-        let tag = u8::try_from(at).expect("fewer than 256 different screens");
-        let made = frame(kind, tag);
         let known = self
-            .frames_of
-            .entry([made[0], made[1]])
+            .seen
+            .entry([kind, tag])
             .or_insert_with(|| identity.clone());
-        assert_eq!(*known, identity, "two screens map to one frame");
-        made
+        assert_eq!(*known, identity, "two different screens share a frame");
+        [kind, tag]
+    }
+
+    /// The frame pushed for the screen on top of the model, with `serial` in bytes 2 and 3 and the
+    /// rest depending on the serial, so no two pushes make the same frame.
+    fn pushed_frame(&mut self, serial: usize) -> Frame {
+        let [kind, tag] = self.screen_bytes();
+        let mut f = frame(kind, tag);
+        f[2..4].copy_from_slice(&u16::try_from(serial).expect("serial fits").to_le_bytes());
+        for (i, b) in f.iter_mut().enumerate().skip(4) {
+            *b = b.wrapping_add(serial as u8 ^ i as u8);
+        }
+        self.pushed.push(f);
+        f
     }
 
     /// Presses `key` on the model, and the action it took on the Z80: a push when the stack grew
     /// or when F3 was pressed on a full one, a pop when it shrank or CLEAR was pressed on the
-    /// first screen. Depth and the frame on top must match afterwards.
+    /// first screen. Every open frame on the Z80 side must be the exact bytes pushed, and the
+    /// model's top screen must be the one the top frame was pushed for.
     fn press(&mut self, key: Key) {
         let before = self.ui.depth();
         self.ui.press(key);
         let after = self.ui.depth();
         let act = if after == before + 1 || (before == mcui::MAX_DEPTH && key == Key::F3) {
-            let mut f = self.frame_of();
-            let serial = u16::try_from(self.born.len()).expect("fewer than 65536 pushes");
-            f[2..4].copy_from_slice(&serial.to_le_bytes());
+            let serial = self.pushed.len();
+            let f = self.pushed_frame(serial);
             self.born.push(after - 1);
-            self.evictions += usize::from(before == mcui::MAX_DEPTH);
+            if before == mcui::MAX_DEPTH {
+                self.evictions += 1;
+                self.open.remove(2);
+            }
+            self.open.push(serial);
             Act::Push(f)
         } else if after + 1 == before || (before == 1 && key == Key::Clear) {
+            if before > 1 {
+                self.open.pop();
+            }
             Act::Pop
         } else {
             Act::Stay
@@ -159,8 +186,16 @@ impl Run {
 
     fn same(&mut self, what: &str) {
         assert_eq!(self.pair.rig.depth(), self.ui.depth(), "{what}: depth");
-        let want = self.frame_of();
-        assert_eq!(self.pair.rig.top().1[..2], want[..2], "{what}: top screen");
+        let top = *self.open.last().expect("a screen is open");
+        let want = self.pushed[top];
+        assert_eq!(self.pair.rig.top().1, want, "{what}: top frame");
+        assert_eq!(
+            self.screen_bytes(),
+            [want[0], want[1]],
+            "{what}: the model's top screen"
+        );
+        let open: Vec<Frame> = self.open.iter().map(|&s| self.pushed[s]).collect();
+        assert_eq!(self.pair.rig.frames(), open, "{what}: open frames");
     }
 
     fn open_theorem(&mut self) {
@@ -239,6 +274,7 @@ fn two_thousand_random_opens_and_closes_keep_the_depth_and_the_screens_of_the_mo
     let mut run = Run::new();
     let mut rng = Xorshift(0xC0FF_EE11_D00D_F00D);
     let mut full_opens = 0;
+    let mut max_shifted = 0;
     let mut depths = [0usize; mcui::MAX_DEPTH + 1];
     for step in 0..2000 {
         let open = if (step / 200) % 2 == 0 { 90 } else { 30 };
@@ -260,10 +296,13 @@ fn two_thousand_random_opens_and_closes_keep_the_depth_and_the_screens_of_the_mo
         };
         full_opens += usize::from(run.ui.depth() == mcui::MAX_DEPTH && key == Key::F3);
         run.press(key);
+        if step % 10 == 0 {
+            max_shifted = max_shifted.max(run.shifted());
+        }
     }
     println!("{full_opens} opens on a full stack, steps at each depth {depths:?}");
     assert!(full_opens > 100);
-    run.shifted();
+    assert!(max_shifted >= 4, "{max_shifted} shifted frames at most");
     run.clear_all();
     assert!(depths[1..].iter().all(|&n| n > 20), "{depths:?}");
 }

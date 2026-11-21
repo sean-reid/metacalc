@@ -3,7 +3,13 @@ use crate::support::*;
 
 #[test]
 fn pushes_on_a_full_stack_keep_the_two_bottom_frames_and_the_newest_ones_in_order() {
-    let mut pair = Pair::opened(REAL, MAX_DEPTH);
+    for ei in [true, false] {
+        pushes_on_a_full_stack_keep_the_two_bottom_frames_and_the_newest_ones_in_order_in(ei);
+    }
+}
+
+fn pushes_on_a_full_stack_keep_the_two_bottom_frames_and_the_newest_ones_in_order_in(ei: bool) {
+    let mut pair = Pair::opened_with(REAL, MAX_DEPTH, ei);
     let start = pair.rig.frames();
     let mut pushed = vec![];
     for n in 1..=12 {
@@ -24,7 +30,13 @@ fn pushes_on_a_full_stack_keep_the_two_bottom_frames_and_the_newest_ones_in_orde
 
 #[test]
 fn popping_after_full_pushes_walks_back_through_the_newest_screens_to_the_second() {
-    let mut pair = Pair::opened(REAL, MAX_DEPTH);
+    for ei in [true, false] {
+        popping_after_full_pushes_walks_back_through_the_newest_screens_to_the_second_in(ei);
+    }
+}
+
+fn popping_after_full_pushes_walks_back_through_the_newest_screens_to_the_second_in(ei: bool) {
+    let mut pair = Pair::opened_with(REAL, MAX_DEPTH, ei);
     let start = pair.rig.frames();
     let mut pushed = vec![];
     for _ in 0..9 {
@@ -46,7 +58,13 @@ fn popping_after_full_pushes_walks_back_through_the_newest_screens_to_the_second
 
 #[test]
 fn a_jump_on_a_full_stack_lands_the_screen_under_the_top() {
-    let mut pair = Pair::opened(REAL, MAX_DEPTH);
+    for ei in [true, false] {
+        a_jump_on_a_full_stack_lands_the_screen_under_the_top_in(ei);
+    }
+}
+
+fn a_jump_on_a_full_stack_lands_the_screen_under_the_top_in(ei: bool) {
+    let mut pair = Pair::opened_with(REAL, MAX_DEPTH, ei);
     let new = pair.fresh(2);
     pair.key(1, 0, Act::Push(new), &[]);
     let before = pair.rig.frames();
@@ -58,7 +76,13 @@ fn a_jump_on_a_full_stack_lands_the_screen_under_the_top() {
 
 #[test]
 fn a_stack_grown_and_shrunk_again_keeps_every_frame_byte_for_byte() {
-    let mut pair = Pair::opened(REAL, 5);
+    for ei in [true, false] {
+        a_stack_grown_and_shrunk_again_keeps_every_frame_byte_for_byte_in(ei);
+    }
+}
+
+fn a_stack_grown_and_shrunk_again_keeps_every_frame_byte_for_byte_in(ei: bool) {
+    let mut pair = Pair::opened_with(REAL, 5, ei);
     for (kind, _) in KINDS.iter().take(4) {
         for _ in 0..4 {
             let new = pair.fresh(*kind);

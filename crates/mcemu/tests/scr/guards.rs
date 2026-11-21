@@ -8,9 +8,9 @@ fn a_framework_with_its_ram_moved_agrees_with_the_mirror_too() {
     let mut pair = Pair::new(MOVED);
     let first = pair.fresh(1);
     pair.init(first, &[]);
-    let seen = run(&mut pair, &mut Xorshift(12345), 800);
+    let seen = run(&mut pair, &mut Xorshift(12345), 2000);
     println!("{seen:?}");
-    floors(&seen, 800);
+    floors(&seen, 2000);
 }
 
 /// Changes one byte of guarded range `range` and makes an ordinary framework call, which must
@@ -28,34 +28,25 @@ fn call_after_poking(range: usize, at_end: bool) {
     rig.call("SCR_DEPTH", Regs::default());
 }
 
-#[test]
-#[should_panic(expected = "bytes outside the framework's changed")]
-fn a_call_notices_a_change_in_the_bytes_before_the_stack() {
-    call_after_poking(0, true);
+/// What the panic of an ordinary call says after one byte of a guarded range changed.
+fn noticed(range: usize, at_end: bool) -> String {
+    match std::panic::catch_unwind(|| call_after_poking(range, at_end)) {
+        Ok(()) => String::new(),
+        Err(why) => why.downcast_ref::<String>().cloned().unwrap_or_default(),
+    }
 }
 
 #[test]
-#[should_panic(expected = "bytes outside the framework's changed")]
-fn a_call_notices_a_change_in_the_byte_after_the_stack() {
-    call_after_poking(1, false);
-}
-
-#[test]
-#[should_panic(expected = "bytes outside the framework's changed")]
-fn a_call_notices_a_change_in_the_bytes_before_the_variables() {
-    call_after_poking(2, true);
-}
-
-#[test]
-#[should_panic(expected = "bytes outside the framework's changed")]
-fn a_call_notices_a_change_in_an_unclaimed_variable_byte() {
-    call_after_poking(3, false);
-}
-
-#[test]
-#[should_panic(expected = "bytes outside the framework's changed")]
-fn a_call_notices_a_change_in_the_byte_after_the_variables() {
-    call_after_poking(4, false);
+fn a_call_notices_a_change_at_either_end_of_every_guarded_range() {
+    for range in 0..5 {
+        for at_end in [false, true] {
+            let said = noticed(range, at_end);
+            assert!(
+                said.contains("bytes outside the framework's changed"),
+                "range {range}, end {at_end}: {said:?}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -77,7 +68,7 @@ fn the_stack_use_stays_within_what_the_header_states() {
 
 /// An interrupt after every `step` T-states of one call, up to past its measured length. Every
 /// trial is compared with the mirror. Returns the trials made, the interrupts taken, the last
-/// offset tried and the call's length without interrupts.
+/// offset that took an interrupt and the call's length without interrupts.
 fn sweep(
     depth: usize,
     act: impl Fn(&mut Pair) -> Act,
@@ -90,7 +81,7 @@ fn sweep(
     let first = act(&mut pair);
     pair.key(1, 0, first, statuses);
     let length = pair.key_spent;
-    let (mut fired, mut trials) = (0, 0);
+    let (mut fired, mut trials, mut last_fired) = (0, 0, 0);
     let mut after = 1;
     loop {
         pair.reopen(depth);
@@ -98,18 +89,28 @@ fn sweep(
         let taken = pair.key_interrupted(act, statuses, after);
         trials += 1;
         fired += usize::from(taken > 0);
+        if taken > 0 {
+            last_fired = after;
+        }
         if after > length {
-            return (trials, fired, after, length);
+            return (trials, fired, last_fired, length);
         }
         after += step;
     }
 }
 
+/// T-states at the end of a measured call that are the driver's own `di` and `halt`, where no
+/// interrupt is taken.
+const DRIVER_TAIL: u32 = 30;
+
 fn swept(depth: usize, act: impl Fn(&mut Pair) -> Act, statuses: &[u8]) {
     let (trials, fired, last, length) = sweep(depth, act, statuses, 7);
     println!("{fired} of {trials} interrupts landed inside a call of {length} T-states");
     assert!(fired * 10 >= trials * 9, "{fired} of {trials}");
-    assert!(last > length, "the sweep stopped at {last} of {length}");
+    assert!(
+        length.abs_diff(last) <= 7 + DRIVER_TAIL,
+        "the last interrupt was after {last} T-states of a call of {length}"
+    );
 }
 
 #[test]
