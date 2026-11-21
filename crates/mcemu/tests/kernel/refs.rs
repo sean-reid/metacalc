@@ -461,7 +461,8 @@ fn the_on_key_during_kernel_refs_gives_the_list_or_status_14_and_never_a_wrong_c
     }
     assert!(lists > 0 && stops > 0, "{lists} lists, {stops} stops");
     println!("{total} T-states swept: {lists} lists, {stops} stops");
-    for tap in total.saturating_sub(200)..=total {
+    device.m.out_port(3, 0);
+    for tap in total.saturating_sub(700)..=total {
         for hold in 1..=30 {
             device.params(ASKED_UNBOUNDED);
             device.m.load_ram(SCRIPT, &[3, 255]);
