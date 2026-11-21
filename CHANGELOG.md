@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.2.0](https://github.com/sean-reid/metacalc/compare/v0.1.0...v0.2.0) (2026-11-21)
+
+
+### Features
+
+* **app:** add app_key, the one key wait ([#137](https://github.com/sean-reid/metacalc/issues/137)) ([1e2fb7b](https://github.com/sean-reid/metacalc/commit/1e2fb7b530c1f523136fbc93b1de87ca18fd51cf))
+* **app:** build the app as entry, draw and data code pages ([#147](https://github.com/sean-reid/metacalc/issues/147)) ([202d5bc](https://github.com/sean-reid/metacalc/commit/202d5bc093ff1946586c79d8fb4f082d07441b24))
+* **app:** call across code pages from flash ([#139](https://github.com/sean-reid/metacalc/issues/139)) ([1fb9abe](https://github.com/sean-reid/metacalc/commit/1fb9abeb7091c82200aa0827b0a183e7c986885b))
+* **app:** keep the screen state in cmdShadow and smallEditRAM ([#146](https://github.com/sean-reid/metacalc/issues/146)) ([056f208](https://github.com/sean-reid/metacalc/commit/056f20897f5e03d71e4340bc3d4a29e563527f99))
+* **app:** leave the home screen's RAM clean on every way out ([#152](https://github.com/sean-reid/metacalc/issues/152)) ([05494bc](https://github.com/sean-reid/metacalc/commit/05494bca5772bac398d922fe493a6a32be99453b))
+* **fm:** build a statement's subexpression table on the Z80 ([#130](https://github.com/sean-reid/metacalc/issues/130)) ([1eaf3fc](https://github.com/sean-reid/metacalc/commit/1eaf3fc42ad3b04615f05be744e6908c64aea770))
+* **fm:** fold nodes behind an ellipsis and draw a node's cursor ([#149](https://github.com/sean-reid/metacalc/issues/149)) ([2f3cc51](https://github.com/sean-reid/metacalc/commit/2f3cc5126da07ad35e61dfde2c91ac3dac0835eb))
+* **fm:** hold every statement of an assertion and draw tokens in runs ([#141](https://github.com/sean-reid/metacalc/issues/141)) ([7124ca3](https://github.com/sean-reid/metacalc/commit/7124ca343e1510f051049da123c03ccb211e3c9e))
+* **fm:** lay out and draw one unfolded statement on the Z80 ([#129](https://github.com/sean-reid/metacalc/issues/129)) ([37e7948](https://github.com/sean-reid/metacalc/commit/37e79481d9441f9f474c3c1dc11b4e200775ca72))
+* **lib:** store each syntax axiom's parts in reading order ([#128](https://github.com/sean-reid/metacalc/issues/128)) ([4035f00](https://github.com/sean-reid/metacalc/commit/4035f006a25a75efbfcefa054f31d6828f43b156))
+* **mcui:** fit a theorem screen again when it is uncovered ([#144](https://github.com/sean-reid/metacalc/issues/144)) ([a7f1a3f](https://github.com/sean-reid/metacalc/commit/a7f1a3f90068280818db6c99827e3731e13807b9))
+* **mcui:** refuse assertions past the calculator's statement caps ([#132](https://github.com/sean-reid/metacalc/issues/132)) ([0331417](https://github.com/sean-reid/metacalc/commit/033141704f90df8bd8ab5d3cdfdd9d2c97ca85c8))
+* **mcui:** show a library as stages ([#156](https://github.com/sean-reid/metacalc/issues/156)) ([010ab79](https://github.com/sean-reid/metacalc/commit/010ab79ffca8bfd0c41ed9754937a1231708578d))
+* **probe:** check the screen-state RAM on a calculator ([#150](https://github.com/sean-reid/metacalc/issues/150)) ([0c8ee78](https://github.com/sean-reid/metacalc/commit/0c8ee78fb910e1dac9302d8b66b92a2bdce0a990))
+* **scr:** add the screen stack and its navigation ([#155](https://github.com/sean-reid/metacalc/issues/155)) ([48f05a8](https://github.com/sean-reid/metacalc/commit/48f05a8f156e1c6f0485b1b0b934c7c7eacc796d))
+* **ui:** draw the progress bar on the Z80 canvas ([#133](https://github.com/sean-reid/metacalc/issues/133)) ([b1d78b4](https://github.com/sean-reid/metacalc/commit/b1d78b4b9ab0aa539145a1c63d954a4b2b993cc3))
+* **ui:** fit text to a width on the Z80 canvas ([#142](https://github.com/sean-reid/metacalc/issues/142)) ([8aa1608](https://github.com/sean-reid/metacalc/commit/8aa160834b63ca2ac898f4433b3505cd05cede74))
+
+
+### Bug Fixes
+
+* **kernel:** charge substitution and copying to the work limit ([#119](https://github.com/sean-reid/metacalc/issues/119)) ([f17ced1](https://github.com/sean-reid/metacalc/commit/f17ced11cefb172da2c0a2adce57829f986d1895))
+* **kernel:** charge the record check an apply repeats past the cache ([#135](https://github.com/sean-reid/metacalc/issues/135)) ([54f4bb1](https://github.com/sean-reid/metacalc/commit/54f4bb1620d0dbc62c564c7c149d359c97a13d33)), closes [#117](https://github.com/sean-reid/metacalc/issues/117)
+* **kernel:** clear the ready mark at app start with kernel_reset ([#123](https://github.com/sean-reid/metacalc/issues/123)) ([8bdf32d](https://github.com/sean-reid/metacalc/commit/8bdf32d6cb2d4c28b835fd2427907b801987f985))
+* **kernel:** refuse records whose floats are out of variable order ([#138](https://github.com/sean-reid/metacalc/issues/138)) ([91a1357](https://github.com/sean-reid/metacalc/commit/91a1357621e0ef7214764a8dbf4c97c5cefc2a39)), closes [#96](https://github.com/sean-reid/metacalc/issues/96)
+* **kernel:** report an ON tap that falls inside a kernel call ([#140](https://github.com/sean-reid/metacalc/issues/140)) ([2c40066](https://github.com/sean-reid/metacalc/commit/2c40066f9aaf19e372ecb6b5aae13a2fead20a13)), closes [#136](https://github.com/sean-reid/metacalc/issues/136)
+* **mcpack:** report a cut that drops a needed syntax axiom as a manifest fault ([#124](https://github.com/sean-reid/metacalc/issues/124)) ([49e6830](https://github.com/sean-reid/metacalc/commit/49e68308d47baf1630a10e0cd9bb1d3ff398d1af))
+* **mcui:** read and prove theorems around a rejected assertion ([#115](https://github.com/sean-reid/metacalc/issues/115)) ([c60db73](https://github.com/sean-reid/metacalc/commit/c60db736e6ca3ebf19a4d6da05c758a533c951cd))
+* **probe:** check the probes' RAM against the app's map ([#134](https://github.com/sean-reid/metacalc/issues/134)) ([de69509](https://github.com/sean-reid/metacalc/commit/de6950989cf1e00da5c8f9858fbb9130760bd0aa)), closes [#127](https://github.com/sean-reid/metacalc/issues/127)
+* **ram:** put every app RAM region in one map and fail on overlap ([#126](https://github.com/sean-reid/metacalc/issues/126)) ([e97ec7b](https://github.com/sean-reid/metacalc/commit/e97ec7b21dd7711b35af04edd0ae4a1e3797c9b9))
+
+
+### Performance
+
+* **fm:** draw the cursor inside the frame budget ([#154](https://github.com/sean-reid/metacalc/issues/154)) ([bce262f](https://github.com/sean-reid/metacalc/commit/bce262fef177e9f7db959c825ad280fc418db472))
+* **fm:** read the syntax arities in one call and decode tree nodes in fm ([#145](https://github.com/sean-reid/metacalc/issues/145)) ([ecf7b61](https://github.com/sean-reid/metacalc/commit/ecf7b6184f91c9cd1a31a6197f489c28251e4c73))
+* **ui:** draw rows of narrow glyphs inside the 50 ms budget ([#122](https://github.com/sean-reid/metacalc/issues/122)) ([08d1c30](https://github.com/sean-reid/metacalc/commit/08d1c30bacd378d453b8634ecfec110acda56ed0))
+
 ## 0.1.0 (2026-11-19)
 
 
