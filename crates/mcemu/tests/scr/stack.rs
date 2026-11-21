@@ -59,9 +59,9 @@ fn a_jump_on_a_full_stack_lands_the_screen_under_the_top() {
 #[test]
 fn a_stack_grown_and_shrunk_again_keeps_every_frame_byte_for_byte() {
     let mut pair = Pair::opened(REAL, 5);
-    for round in 0..4 {
+    for (kind, _) in KINDS.iter().take(4) {
         for _ in 0..4 {
-            let new = pair.fresh(KINDS[round].0);
+            let new = pair.fresh(*kind);
             pair.key(1, 0, Act::Push(new), &[]);
         }
         for _ in 0..3 {
