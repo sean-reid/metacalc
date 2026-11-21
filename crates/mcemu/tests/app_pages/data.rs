@@ -72,7 +72,8 @@ fn kernel_refs_called_through_its_far_entry_gives_the_list_of_the_last_verify() 
         assert_eq!(refs.status(), 0, "{id}");
         assert_eq!(refs.page, BASE, "{id}: back on the entry page");
         assert_eq!(usize::from(refs.regs.bc), list.len(), "{id}: count");
-        let at = usize::from(refs.regs.de & 0xFF) << 16 | usize::from(refs.regs.hl);
+        assert!(refs.regs.de <= 0xFF, "{id}: D is 0");
+        let at = usize::from(refs.regs.de) << 16 | usize::from(refs.regs.hl);
         assert_eq!(library[at..at + 2 * list.len()], bytes_of(list), "{id}");
         entries += list.len();
     }

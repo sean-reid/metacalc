@@ -2,7 +2,7 @@ use crate::oracle::{bytes_of, stored};
 use crate::references::cases;
 use crate::support::*;
 use crate::work::press_on_during;
-use mcemu::Machine;
+use mcemu::{Machine, Stop};
 
 const SCRIPT: u16 = 0x9000;
 const OUT: u16 = 0x9800;
@@ -28,11 +28,16 @@ struct Slot {
 impl Slot {
     /// The 24-bit library offset in E:HL, with D as the call returns it.
     fn offset(&self) -> usize {
-        usize::from(self.de & 0xFF) << 16 | usize::from(self.hl)
+        assert_eq!(self.de >> 8, 0, "D is 0");
+        usize::from(self.de) << 16 | usize::from(self.hl)
     }
 }
 
 fn run_script(device: &mut Device, ops: &[Op]) -> Vec<Slot> {
+    run_script_timed(device, ops).0
+}
+
+fn run_script_timed(device: &mut Device, ops: &[Op]) -> (Vec<Slot>, u32) {
     let mut bytes = Vec::new();
     for op in ops {
         match *op {
@@ -45,8 +50,12 @@ fn run_script(device: &mut Device, ops: &[Op]) -> Vec<Slot> {
     bytes.push(255);
     device.params(ASKED_UNBOUNDED);
     device.m.load_ram(SCRIPT, &bytes);
-    device.run("ENTRY_SCRIPT");
-    let out = device.m.read_ram(OUT, 8 * ops.len());
+    let tstates = device.run("ENTRY_SCRIPT");
+    (read_slots(device, ops.len()), tstates)
+}
+
+fn read_slots(device: &mut Device, n: usize) -> Vec<Slot> {
+    let out = device.m.read_ram(OUT, 8 * n);
     out.chunks(8)
         .map(|s| Slot {
             status: s[0],
@@ -269,31 +278,212 @@ fn kernel_refs_changes_only_the_session_save_area_and_its_return_address_and_not
     let after = device.kram(0xC000, 0x4000);
     let low = usize::from(label("KERNEL_RAM_LOW") - 0xC000);
     let top = usize::from(label("KSTACK_TOP") - 0xC000);
-    let allowed = [low + 0x10..low + 0x15, top - 2..top];
+    let allowed = [low + 0x10..low + 0x15, top - 4..top];
     let changed: Vec<usize> = (0..before.len())
         .filter(|&at| before[at] != after[at] && !allowed.iter().any(|r| r.contains(&at)))
         .collect();
     assert!(changed.is_empty(), "kernel_refs wrote at {changed:x?}");
 }
 
+/// The three figures the header gives for kernel_refs, in the order it gives them.
+fn header_figures() -> [u32; 4] {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../kernel/kernel.z80");
+    let text = std::fs::read_to_string(path).unwrap();
+    let text: Vec<&str> = text
+        .lines()
+        .map(|l| l.trim_start_matches(';').trim())
+        .collect();
+    let text = text.join(" ");
+    let at = text
+        .find("kernel_refs costs ")
+        .expect("the header gives the cost");
+    let rest = &text[at..text.find(", entry and exit").unwrap()];
+    let numbers: Vec<u32> = rest
+        .split(|c: char| !c.is_ascii_digit())
+        .filter_map(|n| n.parse().ok())
+        .collect();
+    numbers.try_into().expect("four figures")
+}
+
 #[test]
-fn kernel_refs_costs_what_the_ceiling_allows() {
-    const CEILING: u32 = 680;
+fn kernel_refs_costs_what_the_header_says_and_the_ceiling_allows() {
+    const CEILING: u32 = 780;
     let bytes = cases::pack_source(&cases::long_source(79));
     let mut device = Device::with_library(&bytes);
     run_script(&mut device, &[Op::Init, Op::Verify(79)]);
     let call = device.run("ENTRY_CALL_ONLY");
     let refs = device.run("ENTRY_REFS_ONLY") - call;
-    println!("kernel_refs: {refs} T-states beyond a call and return");
     run_script(&mut device, &[Op::Verify(0)]);
     let axiom = device.run("ENTRY_REFS_ONLY") - call;
-    println!("kernel_refs after an axiom: {axiom} T-states");
+    run_script(&mut device, &[Op::Init]);
+    let unlisted = device.run("ENTRY_REFS_ONLY") - call;
     run_script(&mut device, &[Op::Reset]);
     let none = device.run("ENTRY_REFS_ONLY") - call;
-    println!("kernel_refs with no list: {none} T-states");
-    assert!(axiom < refs && none < refs);
+    println!(
+        "kernel_refs: {refs} with a list, {axiom} after an axiom, {unlisted} with the mark set and no list, {none} with the mark clear"
+    );
+    assert_eq!([refs, axiom, unlisted, none], header_figures());
+    assert!(axiom < refs && unlisted < axiom && none < unlisted);
     assert!(
         refs <= CEILING,
         "{refs} T-states, over the ceiling of {CEILING}"
     );
+}
+
+const KV_READY: &str = "KV_READY";
+
+#[test]
+fn kernel_refs_needs_the_ready_mark_and_a_flag_of_exactly_one() {
+    let none = st("ST_NO_REFS");
+    let (db, bytes) = small_library();
+    let id = number(&db, "dummy");
+    let want = stored(&bytes);
+    let magic = constant("READY_MAGIC") as u16;
+    let no_list =
+        |slot: Slot| assert_eq!((slot.status, slot.de, slot.hl), (none, 0, 0), "{slot:?}");
+
+    for fill in [0xFFu8, 0x00, 0x01] {
+        let mut device = Device::with_library(&bytes);
+        device.m.ram_page(SPARE_PAGE).fill(fill);
+        no_list(run_script(&mut device, &[Op::Refs])[0]);
+    }
+    let mut device = Device::with_library(&bytes);
+    for (at, byte) in device.m.ram_page(SPARE_PAGE).iter_mut().enumerate() {
+        *byte = (at.wrapping_mul(31) ^ (at >> 8).wrapping_mul(7)) as u8 | 1;
+    }
+    device.kram_write(device.label("KV_LISTED"), &[1]);
+    device.kram_write(device.label(KV_READY), &[0xA5, 0x00]);
+    no_list(run_script(&mut device, &[Op::Refs])[0]);
+
+    let mut device = Device::with_library(&bytes);
+    let slots = run_script(&mut device, &[Op::Init, Op::Verify(id), Op::Refs]);
+    assert_eq!(usize::from(slots[2].bc), want[id].len());
+    for fm_value in [0x1234u16, 0, 0x5AA4, 0xA55A] {
+        device.kram_write(device.label(KV_READY), &fm_value.to_le_bytes());
+        no_list(run_script(&mut device, &[Op::Refs])[0]);
+    }
+    device.kram_write(device.label(KV_READY), &magic.to_le_bytes());
+    let slots = run_script(&mut device, &[Op::Refs]);
+    assert_eq!(
+        usize::from(slots[0].bc),
+        want[id].len(),
+        "the mark alone hid the list"
+    );
+    for flag in [0u8, 2, 0xFF, 0x81] {
+        device.kram_write(device.label("KV_LISTED"), &[flag]);
+        no_list(run_script(&mut device, &[Op::Refs])[0]);
+    }
+}
+
+#[test]
+fn a_verify_refused_for_want_of_the_ready_mark_leaves_no_list() {
+    let (db, bytes) = small_library();
+    let (first, second) = (number(&db, "dummy"), number(&db, "both"));
+    let magic = constant("READY_MAGIC") as u16;
+    let mut device = Device::with_library(&bytes);
+    run_script(&mut device, &[Op::Init, Op::Verify(first)]);
+    device.kram_write(device.label(KV_READY), &[0, 0]);
+    let slots = run_script(&mut device, &[Op::Verify(second)]);
+    assert_eq!(slots[0].status, st("ST_MALFORMED"));
+    device.kram_write(device.label(KV_READY), &magic.to_le_bytes());
+    let slots = run_script(&mut device, &[Op::Refs]);
+    assert_eq!(
+        (slots[0].status, slots[0].de, slots[0].hl),
+        (st("ST_NO_REFS"), 0, 0)
+    );
+}
+
+#[test]
+fn a_verify_that_returns_malformed_after_the_record_was_parsed_leaves_no_list() {
+    let mut bytes = cases::base();
+    let spot = cases::spot(&bytes, cases::TH);
+    let len = usize::from(u16::from_le_bytes([
+        bytes[spot.proof - 2],
+        bytes[spot.proof - 1],
+    ]));
+    bytes[spot.proof + len - 1] = 0xF1;
+    reseal(&mut bytes);
+    assert_eq!(
+        model_one(&bytes, cases::TH, ASKED_UNBOUNDED),
+        st("ST_MALFORMED"),
+        "a wide step cut off by the end of the proof"
+    );
+    let want = stored(&cases::base());
+    let mut device = Device::with_library(&bytes);
+    let slots = run_script(
+        &mut device,
+        &[
+            Op::Init,
+            Op::Verify(cases::TH2),
+            Op::Refs,
+            Op::Verify(cases::TH),
+            Op::Refs,
+        ],
+    );
+    assert_eq!(slots[1].status, 0);
+    assert_eq!(usize::from(slots[2].bc), want[cases::TH2].len());
+    assert_eq!(slots[3].status, st("ST_MALFORMED"));
+    assert_eq!(
+        (slots[4].status, slots[4].de, slots[4].hl),
+        (st("ST_NO_REFS"), 0, 0)
+    );
+}
+
+#[test]
+fn the_on_key_during_kernel_refs_gives_the_list_or_status_14_and_never_a_wrong_count() {
+    let (db, bytes) = small_library();
+    let id = number(&db, "dummy");
+    let want = stored(&bytes);
+    let mut device = Device::with_library(&bytes);
+    run_script(&mut device, &[Op::Init, Op::Verify(id)]);
+    let (clean, total) = run_script_timed(&mut device, &[Op::Refs]);
+    let clean = clean[0];
+    assert_eq!(usize::from(clean.bc), want[id].len());
+    let interrupted = st("ST_INTERRUPTED");
+    let (mut lists, mut stops) = (0, 0);
+    for tap in 0..=total {
+        device.params(ASKED_UNBOUNDED);
+        device.m.load_ram(SCRIPT, &[3, 255]);
+        let mut run = device.m.run(device.label("ENTRY_SCRIPT"), tap);
+        if run.stop == Stop::Limit {
+            device.m.press_key(Machine::KEY_ON);
+            run = device.m.resume(RUN_LIMIT);
+        }
+        assert_eq!(run.stop, Stop::Halted, "tap at {tap}");
+        device.m.release_key(Machine::KEY_ON);
+        let got = read_slots(&mut device, 1)[0];
+        if got.status == interrupted {
+            stops += 1;
+        } else {
+            assert_eq!(got, clean, "tap at {tap}");
+            lists += 1;
+        }
+    }
+    assert!(lists > 0 && stops > 0, "{lists} lists, {stops} stops");
+    println!("{total} T-states swept: {lists} lists, {stops} stops");
+    for tap in total.saturating_sub(200)..=total {
+        for hold in 1..=30 {
+            device.params(ASKED_UNBOUNDED);
+            device.m.load_ram(SCRIPT, &[3, 255]);
+            let mut run = device.m.run(device.label("ENTRY_SCRIPT"), tap);
+            if run.stop == Stop::Limit {
+                device.m.press_key(Machine::KEY_ON);
+                run = device.m.resume(hold);
+                device.m.release_key(Machine::KEY_ON);
+                if run.stop == Stop::Limit {
+                    run = device.m.resume(RUN_LIMIT);
+                }
+            }
+            assert_eq!(run.stop, Stop::Halted, "tap at {tap} for {hold}");
+            let got = read_slots(&mut device, 1)[0];
+            assert!(
+                got.status == interrupted || got == clean,
+                "ON down at {tap} for {hold} T-states: {got:?}"
+            );
+        }
+    }
+    device.m.press_key(Machine::KEY_ON);
+    let held = run_script(&mut device, &[Op::Refs])[0];
+    device.m.release_key(Machine::KEY_ON);
+    assert_eq!(held.status, interrupted, "ON held across the call");
 }
