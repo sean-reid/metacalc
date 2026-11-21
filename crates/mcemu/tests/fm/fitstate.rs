@@ -205,6 +205,11 @@ fn the_cached_row_count_follows_a_fold_a_width_and_a_reload() {
     folds.toggle(&expr, node);
     assert_ne!(rows_of(&folds, 92), rows_of(&fitted, 92));
     assert_eq!(count(fm.rows(92)), rows_of(&fitted, 92), "read back");
+    assert_eq!(
+        count(fm.rows(60)),
+        rows_of(&fitted, 60),
+        "read back at another width"
+    );
     let set = fm.fold(node, 1);
     assert_eq!((set.status(), count(set)), (0, 1));
     assert_eq!(count(fm.rows(92)), rows_of(&folds, 92), "after a fold");

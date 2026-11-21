@@ -24,12 +24,17 @@ fn negations(count: usize) -> String {
 fn cases_source() -> String {
     let mut src = String::from("ax-id $a |- ( ph -> ph ) $.\n");
     src += &format!(
-        "${{\nf1.1 $e |- {} $.\nf1.2 $e |- ( ph -> ps ) $.\nf1 $a |- ph $.\n$}}\n",
+        "${{\nf1.1 $e |- {} $.\nf1.2 $e |- ( ph -> ( ps -> ch ) ) $.\nf1 $a |- ph $.\n$}}\n",
         nested(22)
     );
     src += &format!(
         "${{\ng1.1 $e |- {0} $.\ng1.2 $e |- {0} $.\ng1 $a |- ps $.\n$}}\n",
         nested(16)
+    );
+    src += &format!(
+        "${{\nf2.1 $e |- {} $.\nf2.2 $e |- {} $.\nf2 $a |- ph $.\n$}}\n",
+        negations(8),
+        nested(22)
     );
     src += "${\n";
     for h in 1..=7 {
@@ -138,15 +143,35 @@ fn one_long_statement_is_folded_one_level_further_for_each_line_taken_away() {
 #[test]
 fn folding_the_first_statement_is_enough_and_a_line_of_one_is_skipped() {
     let mut named = Named::new(&cases_library());
-    let (outcome, o) = named.at("f1", CONTENT_ROWS);
-    assert_eq!(outcome, Outcome::Fitted);
-    let counts = folded(&o);
-    assert!(
-        counts[0] > 0 && counts[1] == 0 && counts[2] == 0,
-        "{counts:?}"
-    );
-    assert_eq!(o.rows_of(1), 1, "the second hypothesis takes a line");
-    assert!(o.exprs[1].foldable(0), "and it could have been folded");
+    for rows in [CONTENT_ROWS, 3] {
+        let (outcome, o) = named.at("f1", rows);
+        assert_eq!(outcome, Outcome::Fitted);
+        let counts = folded(&o);
+        assert!(
+            counts[0] > 0 && counts[1] == 0 && counts[2] == 0,
+            "{counts:?}"
+        );
+        assert_eq!(o.rows_of(1), 1, "the second hypothesis takes a line");
+        assert!(
+            (1..o.exprs[1].len()).any(|n| o.exprs[1].foldable(n)),
+            "and it has a node below its root to fold"
+        );
+    }
+}
+
+#[test]
+fn a_line_of_one_ahead_of_a_long_statement_is_skipped_at_every_depth() {
+    let mut named = Named::new(&cases_library());
+    for rows in [3, 4] {
+        let (outcome, o) = named.at("f2", rows);
+        assert_eq!(outcome, Outcome::Fitted);
+        let counts = folded(&o);
+        assert_eq!((counts[0], counts[2]), (0, 0), "{counts:?}");
+        assert!(counts[1] > 0);
+        assert_eq!(o.rows_of(0), 1);
+        let eager = without_skip(&o, rows);
+        assert_ne!(eager, o.folds, "folding it too would show at {rows} rows");
+    }
 }
 
 #[test]
@@ -260,4 +285,38 @@ fn the_too_large_assertions_are_refused_with_no_fold_changed() {
         }
     }
     assert_eq!(refused, 1, "big3 is past the 384 nodes and big2 is not");
+}
+
+/// The model's fold_levels with the rule that skips a statement of one line taken out.
+fn without_skip(o: &Oracle, rows: usize) -> Vec<Folds> {
+    use mcui::fold::layout as lay;
+    let total = |f: &[Folds]| -> usize {
+        (0..f.len())
+            .map(|s| lay(&o.exprs[s], &f[s], o.widths[s]).rows())
+            .sum()
+    };
+    let mut folds: Vec<Folds> = o.exprs.iter().map(Folds::none).collect();
+    if total(&folds) <= rows {
+        return folds;
+    }
+    let deepest = o
+        .exprs
+        .iter()
+        .flat_map(|e| (0..e.len()).map(|n| e.depth(n)))
+        .max()
+        .unwrap();
+    for depth in (0..=deepest).rev() {
+        for s in 0..o.exprs.len() {
+            let mut changed = false;
+            for n in (0..o.exprs[s].len()).filter(|&n| o.exprs[s].depth(n) == depth) {
+                if !folds[s].is_folded(n) {
+                    changed |= folds[s].toggle(&o.exprs[s], n);
+                }
+            }
+            if changed && total(&folds) <= rows {
+                return folds;
+            }
+        }
+    }
+    folds
 }
