@@ -105,6 +105,16 @@ enum Command {
         #[arg(required = true)]
         manifests: Vec<PathBuf>,
     },
+    /// Print the stages of the libraries, one `NAME COUNT TITLE` line each, smallest first
+    ///
+    /// The libraries are one library cut at several points: each one's assertions must be the
+    /// first assertions of the next, in order, or this fails with exit code 1.
+    Stages {
+        /// The directory holding the libraries written by `build`, as NAME.mclib
+        libdir: PathBuf,
+        #[arg(required = true)]
+        manifests: Vec<PathBuf>,
+    },
     /// Write a packed library back out as a Metamath database
     Export {
         library: PathBuf,
@@ -162,6 +172,7 @@ fn main() -> ExitCode {
             require_meaning,
         ),
         Command::Summary { libdir, manifests } => cmd::summary(&manifests, &libdir),
+        Command::Stages { libdir, manifests } => cmd::stages(&manifests, &libdir),
         Command::Export { library, output } => cmd::export(&library, &output),
     }
     .unwrap_or_else(|code| code)

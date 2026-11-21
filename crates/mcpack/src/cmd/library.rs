@@ -125,7 +125,10 @@ pub fn doc(
     Ok(ExitCode::SUCCESS)
 }
 
-pub fn summary(manifests: &[PathBuf], libdir: &Path) -> Result<ExitCode, ExitCode> {
+fn read_libraries(
+    manifests: &[PathBuf],
+    libdir: &Path,
+) -> Result<Vec<(Manifest, Vec<u8>)>, ExitCode> {
     let mut libraries = Vec::new();
     for path in manifests {
         let (manifest, _) = manifest_and_pin(path)?;
@@ -134,8 +137,18 @@ pub fn summary(manifests: &[PathBuf], libdir: &Path) -> Result<ExitCode, ExitCod
         check(&bytes).map_err(|e| fail(format_args!("{}: {e}", file.display())))?;
         libraries.push((manifest, bytes));
     }
-    let table = page::table(libraries).map_err(unusable)?;
+    Ok(libraries)
+}
+
+pub fn summary(manifests: &[PathBuf], libdir: &Path) -> Result<ExitCode, ExitCode> {
+    let table = page::table(read_libraries(manifests, libdir)?).map_err(unusable)?;
     print!("{table}");
+    Ok(ExitCode::SUCCESS)
+}
+
+pub fn stages(manifests: &[PathBuf], libdir: &Path) -> Result<ExitCode, ExitCode> {
+    let stages = library::stages(read_libraries(manifests, libdir)?).map_err(fail)?;
+    print!("{}", library::render_stages(&stages));
     Ok(ExitCode::SUCCESS)
 }
 

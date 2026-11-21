@@ -4,7 +4,9 @@
 # library's reference page into pagedir, writes the number of proofs each export holds beside it as
 # name.proofs and the names it built to libraries.list, and checks that each library exports to a
 # database mcpack verify accepts and that every symbol in it has a Unicode spelling and a meaning.
-# Also writes libraries-table.md into pagedir, the index table in the order the manifests give.
+# Also writes libraries-table.md into pagedir, the index table in the order the manifests give, and
+# stages.list into libdir, one `name count title` line per library smallest first, after checking
+# that each library's assertions are the first of the next one's.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -36,3 +38,4 @@ done
 
 printf '%s' "$names" >"$libdir/libraries.list"
 mcpack summary "$libdir" "$@" >"$pagedir/libraries-table.md"
+mcpack stages "$libdir" "$@" >"$libdir/stages.list"
