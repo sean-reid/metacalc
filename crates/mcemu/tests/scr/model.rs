@@ -118,16 +118,23 @@ pub struct Pair {
     pub rig: Rig,
     pub mirror: Mirror,
     pub tag: u8,
+    /// T-states of the last scr_key, the driver's own included.
+    pub key_spent: u32,
 }
 
 impl Pair {
     pub fn new(image: Image) -> Pair {
-        let rig = Rig::new(image);
+        Pair::with_ei(image, true)
+    }
+
+    pub fn with_ei(image: Image, ei: bool) -> Pair {
+        let rig = Rig::with_ei(image, ei);
         let mirror = Mirror::new(rig.stack());
         Pair {
             rig,
             mirror,
             tag: 0,
+            key_spent: 0,
         }
     }
 
@@ -147,7 +154,11 @@ impl Pair {
 
     /// A stack `depth` deep: kinds cycle through the table's rows, every frame distinct.
     pub fn opened(image: Image, depth: usize) -> Pair {
-        let mut pair = Pair::new(image);
+        Pair::opened_with(image, depth, true)
+    }
+
+    pub fn opened_with(image: Image, depth: usize, ei: bool) -> Pair {
+        let mut pair = Pair::with_ei(image, ei);
         pair.reopen(depth);
         pair
     }
@@ -166,6 +177,7 @@ impl Pair {
     pub fn key(&mut self, key: u8, ch: u8, act: Act, statuses: &[u8]) -> Keyed {
         let want = self.mirror.press(key, ch, act, statuses);
         let (out, log) = self.rig.key(key, ch, act, statuses);
+        self.key_spent = out.tstates;
         self.agree(
             &format!("{act:?} at depth {}", self.mirror.frames.len()),
             &want,

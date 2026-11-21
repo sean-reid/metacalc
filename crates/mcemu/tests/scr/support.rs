@@ -158,6 +158,10 @@ pub struct Rig {
 
 impl Rig {
     pub fn new(image: Image) -> Rig {
+        Rig::with_ei(image, true)
+    }
+
+    pub fn with_ei(image: Image, ei: bool) -> Rig {
         let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
         m.out_port(0x29, 0x17);
         m.out_port(0x2A, 0x27);
@@ -167,7 +171,7 @@ impl Rig {
         let mut rig = Rig {
             m,
             image,
-            ei: true,
+            ei,
             spent: 0,
             stack_mark: 0,
         };
@@ -210,18 +214,19 @@ impl Rig {
         }
     }
 
-    /// The ranges the framework must not change: the bytes around SCR_STACK, and the bytes of
-    /// SCR_VARS it has not claimed, with a margin past them.
-    fn guarded(&self) -> Vec<(u16, usize)> {
+    /// The ranges the framework must not change: the bytes around SCR_STACK, the bytes of SCR_VARS
+    /// it has not claimed, and the bytes after SCR_VARS.
+    pub fn guarded(&self) -> Vec<(u16, usize)> {
         let (stack, vars) = (self.stack(), self.label("SCR_VARS"));
         let used = self.label("SCR_USED");
-        let size = 108;
+        let size = self.label("SCR_VARS_SIZE");
         let g = usize::from(GUARD);
         vec![
             (stack - GUARD, g),
-            (stack + 128, g),
+            (stack + self.label("SCR_STACK_SIZE"), g),
             (vars - GUARD, g),
-            (vars + used, usize::from(size - used) + g),
+            (vars + used, usize::from(size - used)),
+            (vars + size, g),
         ]
     }
 
@@ -312,6 +317,8 @@ impl Rig {
             .position(|(a, b)| a != b)
             .map_or(0, |at| 0x80 - at);
         self.check_guards();
+        let over = self.peek(self.label("FK_OVER"), 1)[0];
+        assert_eq!(over, 0, "{target}: the fake kinds' log overflowed");
         let taken = self.peek(self.label("IRQ_COUNT"), 1)[0];
         (
             Out {
@@ -336,6 +343,7 @@ impl Rig {
         assert!(statuses.len() <= 16);
         let log = self.label("FK_LOG");
         self.poke(self.label("FK_LOGP"), &log.to_le_bytes());
+        self.poke(self.label("FK_OVER"), &[0]);
         let queue = self.label("FK_STATQ");
         self.poke(self.label("FK_STATQ_P"), &queue.to_le_bytes());
         let mut padded = statuses.to_vec();

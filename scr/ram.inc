@@ -31,4 +31,4 @@ SCR_VAR(scr_vec, $05, 2)
 SCR_VAR(scr_de, $07, 2)
 SCR_VAR(scr_new, $09, SCR_FRAME)
 SCR_VAR(scr_evict, $19, SCR_FRAME)
-SCR_USED                .equ $29
+SCR_USED                .equ SCR_NEXT

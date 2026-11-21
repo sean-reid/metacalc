@@ -66,6 +66,17 @@ pub fn run(pair: &mut Pair, rng: &mut Xorshift, steps: usize) -> Seen {
     seen
 }
 
+/// Floors on what a run of `steps` keys reached, per 4000 keys: far under what the seeds reach.
+pub fn floors(seen: &Seen, steps: usize) {
+    let per = |n: usize, floor: usize| n * 4000 >= floor * steps;
+    assert!(per(seen.full_pushes, 100), "{seen:?}");
+    assert!(per(seen.leaves, 20), "{seen:?}");
+    assert!(per(seen.idle_jumps, 5), "{seen:?}");
+    assert!(per(seen.jumps, 100), "{seen:?}");
+    assert!(per(seen.failures, 100), "{seen:?}");
+    assert!(seen.at_depth[1..].iter().all(|&n| per(n, 50)), "{seen:?}");
+}
+
 #[test]
 fn four_thousand_random_keys_agree_with_the_mirror_and_reach_every_case() {
     let mut pair = Pair::new(REAL);
@@ -73,10 +84,5 @@ fn four_thousand_random_keys_agree_with_the_mirror_and_reach_every_case() {
     pair.init(first, &[]);
     let seen = run(&mut pair, &mut Xorshift(0x9E37_79B9_7F4A_7C15), 4000);
     println!("{seen:?}");
-    assert!(seen.full_pushes > 100, "{seen:?}");
-    assert!(seen.leaves > 20, "{seen:?}");
-    assert!(seen.idle_jumps > 5, "{seen:?}");
-    assert!(seen.jumps > 100, "{seen:?}");
-    assert!(seen.failures > 100, "{seen:?}");
-    assert!(seen.at_depth[1..].iter().all(|&n| n > 50), "{seen:?}");
+    floors(&seen, 4000);
 }

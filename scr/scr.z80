@@ -24,6 +24,11 @@
 ;          SCR_POP, or SCR_JUMP (DE = the assertion to land on). Any other value is SCR_STAY.
 ;   land   in HL = frame, DE = the assertion. Moves the screen to it, after its enter.
 ;
+; Contracts the code does not check: scr_init runs before any other routine; a kind is 1 to 255 and
+; has a row in the table; a key routine that returns SCR_PUSH has filled scr_new with a frame whose
+; kind is not 0; after SCR_RES_FAILED from a pop or a jump the uncovered screen has not been entered,
+; so the caller runs scr_refresh, or leaves, before the next scr_key.
+;
 ; Variables. SCR_USED (41) bytes of SCR_VARS, laid out in ram.inc; scr_new is the frame a key
 ; routine writes before it returns SCR_PUSH. Nothing is kept in a register across a call of a
 ; kind's routine. Only the stack, the variables and scr_new hold state, so all of it survives a
@@ -169,10 +174,8 @@ scr_key:
 	cp SCR_JUMP
 	jr z,sk_jump
 	cp SCR_REDRAW
-	ld a,SCR_RES_IDLE
-	ret nz
-	ld a,SCR_RES_REDRAW
-	ret
+	jr z,sk_redraw
+	jr sk_idle
 
 sk_pop:
 	ld a,(scr_count)

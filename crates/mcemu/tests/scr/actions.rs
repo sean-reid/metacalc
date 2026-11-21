@@ -14,7 +14,13 @@ fn raw_stack(pair: &mut Pair) -> Vec<u8> {
 
 #[test]
 fn init_clears_the_stack_pushes_the_frame_and_enters_it() {
-    let mut pair = Pair::new(REAL);
+    for ei in [true, false] {
+        init_clears_the_stack_pushes_the_frame_and_enters_it_in(ei);
+    }
+}
+
+fn init_clears_the_stack_pushes_the_frame_and_enters_it_in(ei: bool) {
+    let mut pair = Pair::with_ei(REAL, ei);
     let at = pair.rig.stack();
     pair.rig.poke(at, &[0x77; 128]);
     let first = pair.fresh(2);
@@ -32,7 +38,13 @@ fn init_clears_the_stack_pushes_the_frame_and_enters_it() {
 
 #[test]
 fn init_hands_back_a_failing_enter_with_one_screen_open() {
-    let mut pair = Pair::new(REAL);
+    for ei in [true, false] {
+        init_hands_back_a_failing_enter_with_one_screen_open_in(ei);
+    }
+}
+
+fn init_hands_back_a_failing_enter_with_one_screen_open_in(ei: bool) {
+    let mut pair = Pair::with_ei(REAL, ei);
     let first = pair.fresh(3);
     assert_eq!(pair.init(first, &[9]), 9);
     assert_eq!(pair.rig.depth(), 1);
@@ -41,7 +53,13 @@ fn init_hands_back_a_failing_enter_with_one_screen_open() {
 
 #[test]
 fn a_second_init_replaces_the_stack() {
-    let mut pair = Pair::opened(REAL, 6);
+    for ei in [true, false] {
+        a_second_init_replaces_the_stack_in(ei);
+    }
+}
+
+fn a_second_init_replaces_the_stack_in(ei: bool) {
+    let mut pair = Pair::opened_with(REAL, 6, ei);
     let first = pair.fresh(1);
     pair.init(first, &[]);
     assert_eq!(pair.rig.frames(), [first]);
@@ -51,13 +69,19 @@ fn a_second_init_replaces_the_stack() {
 
 #[test]
 fn stay_and_redraw_call_only_key_with_the_key_it_was_given() {
+    for ei in [true, false] {
+        stay_and_redraw_call_only_key_with_the_key_it_was_given_in(ei);
+    }
+}
+
+fn stay_and_redraw_call_only_key_with_the_key_it_was_given_in(ei: bool) {
     for depth in 1..=MAX_DEPTH {
         for (act, res) in [
             (Act::Stay, IDLE),
             (Act::Redraw, DRAW),
             (Act::Other(9), IDLE),
         ] {
-            let mut pair = Pair::opened(REAL, depth);
+            let mut pair = Pair::opened_with(REAL, depth, ei);
             let before = raw_stack(&mut pair);
             let top = pair.mirror.frames[depth - 1];
             let keyed = pair.key(KEY_LETTER, b'Q', act, &[]);
@@ -72,8 +96,14 @@ fn stay_and_redraw_call_only_key_with_the_key_it_was_given() {
 
 #[test]
 fn push_below_a_full_stack_adds_the_frame_on_top_and_enters_it() {
+    for ei in [true, false] {
+        push_below_a_full_stack_adds_the_frame_on_top_and_enters_it_in(ei);
+    }
+}
+
+fn push_below_a_full_stack_adds_the_frame_on_top_and_enters_it_in(ei: bool) {
     for depth in 1..MAX_DEPTH {
-        let mut pair = Pair::opened(REAL, depth);
+        let mut pair = Pair::opened_with(REAL, depth, ei);
         let before = pair.rig.frames();
         let new = pair.fresh(KINDS[depth % KINDS.len()].0);
         let keyed = pair.key(1, 0, Act::Push(new), &[]);
@@ -90,7 +120,13 @@ fn push_below_a_full_stack_adds_the_frame_on_top_and_enters_it() {
 
 #[test]
 fn push_on_a_full_stack_removes_the_frame_at_index_two() {
-    let mut pair = Pair::opened(REAL, MAX_DEPTH);
+    for ei in [true, false] {
+        push_on_a_full_stack_removes_the_frame_at_index_two_in(ei);
+    }
+}
+
+fn push_on_a_full_stack_removes_the_frame_at_index_two_in(ei: bool) {
+    let mut pair = Pair::opened_with(REAL, MAX_DEPTH, ei);
     let before = pair.rig.frames();
     let new = pair.fresh(2);
     let keyed = pair.key(1, 0, Act::Push(new), &[]);
@@ -107,8 +143,14 @@ fn push_on_a_full_stack_removes_the_frame_at_index_two() {
 
 #[test]
 fn pop_removes_the_top_frame_and_enters_the_one_it_uncovers() {
+    for ei in [true, false] {
+        pop_removes_the_top_frame_and_enters_the_one_it_uncovers_in(ei);
+    }
+}
+
+fn pop_removes_the_top_frame_and_enters_the_one_it_uncovers_in(ei: bool) {
     for depth in 2..=MAX_DEPTH {
-        let mut pair = Pair::opened(REAL, depth);
+        let mut pair = Pair::opened_with(REAL, depth, ei);
         let before = pair.rig.frames();
         let keyed = pair.key(6, 0, Act::Pop, &[]);
         assert_eq!(keyed.res, DRAW);
@@ -122,7 +164,13 @@ fn pop_removes_the_top_frame_and_enters_the_one_it_uncovers() {
 
 #[test]
 fn pop_with_one_screen_open_reports_leave_and_changes_nothing() {
-    let mut pair = Pair::opened(REAL, 1);
+    for ei in [true, false] {
+        pop_with_one_screen_open_reports_leave_and_changes_nothing_in(ei);
+    }
+}
+
+fn pop_with_one_screen_open_reports_leave_and_changes_nothing_in(ei: bool) {
+    let mut pair = Pair::opened_with(REAL, 1, ei);
     let before = raw_stack(&mut pair);
     let keyed = pair.key(6, 0, Act::Pop, &[]);
     assert_eq!(keyed.res, LEAVE);
@@ -133,7 +181,13 @@ fn pop_with_one_screen_open_reports_leave_and_changes_nothing() {
 
 #[test]
 fn popping_down_to_one_screen_then_again_leaves_with_the_stack_untouched() {
-    let mut pair = Pair::opened(REAL, MAX_DEPTH);
+    for ei in [true, false] {
+        popping_down_to_one_screen_then_again_leaves_with_the_stack_untouched_in(ei);
+    }
+}
+
+fn popping_down_to_one_screen_then_again_leaves_with_the_stack_untouched_in(ei: bool) {
+    let mut pair = Pair::opened_with(REAL, MAX_DEPTH, ei);
     let bottom = pair.rig.frames()[0];
     for left in (1..MAX_DEPTH).rev() {
         assert_eq!(pair.key(6, 0, Act::Pop, &[]).res, DRAW);
@@ -149,8 +203,14 @@ fn popping_down_to_one_screen_then_again_leaves_with_the_stack_untouched() {
 
 #[test]
 fn jump_enters_the_uncovered_screen_and_then_lands_it_on_the_assertion() {
+    for ei in [true, false] {
+        jump_enters_the_uncovered_screen_and_then_lands_it_on_the_assertion_in(ei);
+    }
+}
+
+fn jump_enters_the_uncovered_screen_and_then_lands_it_on_the_assertion_in(ei: bool) {
     for depth in 2..=MAX_DEPTH {
-        let mut pair = Pair::opened(REAL, depth);
+        let mut pair = Pair::opened_with(REAL, depth, ei);
         let before = pair.rig.frames();
         let keyed = pair.key(5, 0, Act::Jump(0xBEEF), &[]);
         assert_eq!(keyed.res, DRAW);
@@ -167,7 +227,13 @@ fn jump_enters_the_uncovered_screen_and_then_lands_it_on_the_assertion() {
 
 #[test]
 fn jump_with_one_screen_open_does_nothing() {
-    let mut pair = Pair::opened(REAL, 1);
+    for ei in [true, false] {
+        jump_with_one_screen_open_does_nothing_in(ei);
+    }
+}
+
+fn jump_with_one_screen_open_does_nothing_in(ei: bool) {
+    let mut pair = Pair::opened_with(REAL, 1, ei);
     let before = raw_stack(&mut pair);
     let keyed = pair.key(5, 0, Act::Jump(7), &[]);
     assert_eq!(keyed.res, IDLE);
@@ -177,10 +243,16 @@ fn jump_with_one_screen_open_does_nothing() {
 
 #[test]
 fn every_action_from_every_depth_agrees_with_the_model() {
+    for ei in [true, false] {
+        every_action_from_every_depth_agrees_with_the_model_in(ei);
+    }
+}
+
+fn every_action_from_every_depth_agrees_with_the_model_in(ei: bool) {
     for depth in 1..=MAX_DEPTH {
         for kind in KINDS.map(|(kind, _)| kind) {
             for act in 0..6 {
-                let mut pair = Pair::opened(REAL, depth);
+                let mut pair = Pair::opened_with(REAL, depth, ei);
                 let top = pair.mirror.frames.len() - 1;
                 pair.mirror.frames[top][0] = kind;
                 let mut raw = pair.mirror.frames[top];
@@ -204,8 +276,14 @@ fn every_action_from_every_depth_agrees_with_the_model() {
 
 #[test]
 fn draw_calls_only_the_top_screens_draw_and_refresh_only_its_enter() {
+    for ei in [true, false] {
+        draw_calls_only_the_top_screens_draw_and_refresh_only_its_enter_in(ei);
+    }
+}
+
+fn draw_calls_only_the_top_screens_draw_and_refresh_only_its_enter_in(ei: bool) {
     for depth in 1..=MAX_DEPTH {
-        let mut pair = Pair::opened(REAL, depth);
+        let mut pair = Pair::opened_with(REAL, depth, ei);
         let before = raw_stack(&mut pair);
         pair.rig.arm(&[]);
         pair.rig.call("SCR_DRAW", Regs::default());

@@ -66,6 +66,7 @@ fn the_cost_of_a_key_is_small_and_stays_under_its_ceilings() {
         "STAY {stay} {stay_one}"
     );
     assert!(push <= CEIL_PUSH, "PUSH {push}");
+    assert!(push_low <= CEIL_PUSH_LOW, "PUSH at depth 3 {push_low}");
     assert!(push_low < push, "{push_low} against {push}");
     assert!(pop <= CEIL_POP, "POP {pop}");
     assert!(jump <= CEIL_JUMP, "JUMP {jump}");
@@ -74,6 +75,7 @@ fn the_cost_of_a_key_is_small_and_stays_under_its_ceilings() {
 
 const CEIL_STAY: u32 = 600;
 const CEIL_PUSH: u32 = 4400;
+const CEIL_PUSH_LOW: u32 = 1800;
 const CEIL_POP: u32 = 1200;
 const CEIL_JUMP: u32 = 1800;
 const CEIL_ROLLED: u32 = 7600;

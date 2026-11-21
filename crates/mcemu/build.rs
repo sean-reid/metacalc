@@ -1096,6 +1096,7 @@ fn assemble_ui(out: &Path) {
 /// The screen framework with its fake kinds, as shipped and with its RAM moved, and the layout
 /// checks: the variables must fit SCR_VARS_SIZE to the byte and the stack must hold its frames.
 fn assemble_scr(out: &Path) {
+    println!("cargo:rerun-if-changed=../../scr");
     for entry in fs::read_dir("../../scr").unwrap().flatten() {
         println!("cargo:rerun-if-changed={}", entry.path().display());
     }

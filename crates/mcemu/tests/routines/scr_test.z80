@@ -5,6 +5,7 @@
 ;   the frame's 16 bytes, DE, A, B as the routine got them.
 ;   enter returns the next byte of the queue at FK_STATQ; key returns the action at FK_SCRIPT, DE
 ;   from FK_SCRIPT+2, and for SCR_PUSH copies the 16 bytes at FK_SCRIPT+4 to scr_new.
+; FK_OVER is set instead of logging once the log is full.
 ; The driver makes one call per run, with the registers and interrupt state the test sets.
 
 #define SCR_EMBEDDED
@@ -37,9 +38,11 @@ FK_IN_A		.equ $A066
 FK_IN_B		.equ $A067
 FK_RID		.equ $A068
 FK_RET_A	.equ $A069
+FK_OVER		.equ $A06A
 FK_LOG		.equ $A100
+FK_LOG_END	.equ $A400
 FK_TABLE	.equ $A400
-IRQ_HANDLER	.equ $A600
+IRQ_HANDLER	.equ $AD00
 
 .org $4000
 	jp call_entry
@@ -134,6 +137,14 @@ fk_common:
 	ld (FK_RID),a
 	push hl
 	ld hl,(FK_LOGP)
+	ld a,h
+	cp FK_LOG_END >> 8
+	jr c,fk_write
+	ld a,1
+	ld (FK_OVER),a
+	pop hl
+	jr fk_dispatch
+fk_write:
 	ld (hl),c
 	inc hl
 	ld (hl),b
@@ -159,6 +170,7 @@ fk_common:
 	ld (hl),a
 	inc hl
 	ld (FK_LOGP),hl
+fk_dispatch:
 	ld a,(FK_RID)
 	cp 3
 	jr z,fk_key
