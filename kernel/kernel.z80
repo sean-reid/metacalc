@@ -65,17 +65,18 @@
 ;                          exit, and DE:HL are then undefined, whatever the chunk had computed.
 ;
 ; A list is held once kernel_verify has parsed the whole record of its assertion, whatever the
-; verdict after that: BadRecord, a wrong proof step, WorkLimit and a stop by the ON key all leave
-; it in place. Malformed clears it, wherever in the call it arises, so a list is held after every
-; status of kernel_verify but Malformed. It stays until the next kernel_verify, kernel_reset or
-; kernel_init, each of which clears it as its first act, so a verify refused before the record
-; was parsed (Malformed, not ready, no such assertion) leaves ST_NO_REFS and never an earlier
-; assertion's list. kernel_refs also needs the ready mark: it returns ST_NO_REFS when the mark is
-; not the magic, and a flag byte other than 1 counts as no list. The list is therefore gone once
-; fm has run, which sets the mark to FM_OWNED, or once anything else has written the kernel's
-; regions: the app calls kernel_refs right after kernel_verify, before any fm call. kernel_refs
-; does not change the list and may be called again; kernel_crc_begin and kernel_crc_chunk leave
-; it alone. The offset stays right as long as the library stays where kernel_init found it.
+; verdict after that: BadRecord, a wrong proof step, WorkLimit and a stop by the ON key that
+; arrives after the parse all leave it in place. Malformed clears it, wherever in the call it
+; arises, so a list is held after every status of kernel_verify but Malformed. It stays until
+; the next kernel_verify, kernel_reset or kernel_init, each of which clears it as its first act,
+; so a verify refused before the record was parsed (Malformed, not ready, no such assertion)
+; leaves ST_NO_REFS and never an earlier assertion's list. kernel_refs also needs the ready
+; mark: it returns ST_NO_REFS when the mark is not the magic, and a flag byte other than 1
+; counts as no list. The list is therefore gone once fm has run, which sets the mark to
+; FM_OWNED, or once anything else has written the kernel's regions: the app calls kernel_refs
+; right after kernel_verify, before any fm call. kernel_refs does not change the list and may be
+; called again; kernel_crc_begin and kernel_crc_chunk leave it alone. The offset stays right as
+; long as the library stays where kernel_init found it.
 ; kernel_refs costs 737 T-states for a list with entries, 614 for an axiom, 589 for ST_NO_REFS
 ; with the mark set and no list held and 562 with the mark clear, entry and exit included, a call
 ; and its return not, the same for any length of list. A tap in the 142 T-states between its read

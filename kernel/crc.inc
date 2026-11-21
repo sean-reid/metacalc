@@ -8,6 +8,7 @@ kernel_crc_chunk:
 	ld ix,crc_chunk_body
 	jp kernel_enter
 
+; Not fail_malformed, which clears the reference list: a refused checksum keeps it.
 crc_refuse:
 	ld hl,0
 	ld (KERNEL_CRC),hl
