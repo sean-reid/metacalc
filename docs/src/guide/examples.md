@@ -1,4 +1,4 @@
-# Worked examples
+# Examples
 
 Eight proofs of the kind an intro-to-proofs course sets, taken from the set.mm libraries metacalc builds and printed as goal trees.
 

@@ -33,7 +33,7 @@ expect licence "installer" LICENSE
 expect favicon "docs site" docs/theme/favicon.svg
 expect book-config "docs site" docs/book.toml
 expect library-page "docs site" docs/src/libraries/prop.md
-expect guide-page "docs libraries site" docs/src/guide/worked-examples.md
+expect guide-page "docs libraries site" docs/src/guide/examples.md
 expect screens "$crate" crates/mcui/src/data.rs
 expect editor "$crate" crates/mcedit/src/ops.rs
 expect packer "$crate" crates/mcpack/src/library/pack.rs
