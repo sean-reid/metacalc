@@ -2,6 +2,8 @@ use mcemu::{Machine, STUB_ROM, Stop};
 
 pub const APP: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/storecheck.8xk"));
 pub const BASE: u8 = 0x69;
+/// The AppVar the probe keeps its table in.
+pub const VAR: &str = "MCPROB";
 pub const LOG: u16 = 0x9872;
 const LIMIT: u32 = 2_000_000_000;
 
@@ -43,12 +45,24 @@ pub enum Cmd {
     Locate,
     Nop,
     Repeat(u16),
+    /// The counts of the first N assertions.
+    CountTo(u16),
+    /// One pass over the table for the counts below each end.
+    CountEnds(&'static [u16]),
+    /// Deletes the table.
+    Drop,
+    /// Moves the table to the archive, or back.
+    Archive,
+    /// Holds the screen until CLEAR after the last command.
+    Wait,
+    /// Creates MCFILL so that this many bytes of RAM stay free, on the reference OS only.
+    Leave(u16),
     /// Creates the list named Q of this many elements, which the OS keeps below every AppVar.
     List(u16),
 }
 
 impl Cmd {
-    fn bytes(self) -> Vec<u8> {
+    pub fn bytes(self) -> Vec<u8> {
         match self {
             Cmd::Open(crc, count) => {
                 let mut b = vec![1];
@@ -68,6 +82,16 @@ impl Cmd {
             Cmd::Nop => vec![11],
             Cmd::Repeat(n) => [&[12][..], &n.to_le_bytes()].concat(),
             Cmd::List(n) => [&[16][..], &n.to_le_bytes()].concat(),
+            Cmd::CountTo(n) => [&[17][..], &n.to_le_bytes()].concat(),
+            Cmd::CountEnds(ends) => {
+                let mut b = vec![18, ends.len() as u8];
+                b.extend(ends.iter().flat_map(|e| e.to_le_bytes()));
+                b
+            }
+            Cmd::Drop => vec![19],
+            Cmd::Archive => vec![20],
+            Cmd::Wait => vec![13],
+            Cmd::Leave(n) => [&[21][..], &n.to_le_bytes()].concat(),
         }
     }
 }
@@ -90,18 +114,54 @@ impl Rec {
     }
 
     pub fn counts(&self) -> [u16; 4] {
-        [0, 2, 4, 6].map(|i| self.word(i))
+        self.counts_at(0)
+    }
+
+    fn counts_at(&self, at: usize) -> [u16; 4] {
+        [0, 2, 4, 6].map(|i| self.word(at + i))
+    }
+
+    /// A `CountEnds` record: the four counts of each result slot the log holds, at most 8.
+    pub fn ends(&self) -> Vec<[u16; 4]> {
+        (0..self.rest.len() / 8)
+            .map(|i| self.counts_at(1 + 8 * i))
+            .collect()
+    }
+
+    /// Every byte of a `CountEnds` result slot is the probe's fill, which nothing wrote.
+    pub fn untouched(&self) -> bool {
+        self.rest[1..].iter().all(|&b| b == 0xA5)
     }
 }
 
-fn record_len(cmd: u8, a: u8) -> usize {
+/// The length of the record at the start of `at`, which `bytes` holds whole.
+fn record_len(at: &[u8]) -> usize {
+    let (cmd, a) = (at[0], at[1]);
     match cmd {
         1 | 2 => 3,
         4 => 4,
-        6 => 10,
-        10 if a == 0 => 6,
+        6 | 17 => 10,
+        10 if a == 0 => 8,
+        21 if a == 0 => 6,
+        18 => 3 + 8 * usize::from(at[2]).min(8),
         _ => 2,
     }
+}
+
+/// The records in the log's bytes after its end pointer.
+pub fn parse_log(bytes: &[u8]) -> Vec<Rec> {
+    let mut recs = Vec::new();
+    let mut at = 0;
+    while at < bytes.len() {
+        let len = record_len(&bytes[at..]);
+        recs.push(Rec {
+            cmd: bytes[at],
+            a: bytes[at + 1],
+            rest: bytes[at + 2..at + len].to_vec(),
+        });
+        at += len;
+    }
+    recs
 }
 
 /// Known AppVars on both sides of the table and the RAM past the heap, to see that nothing but
@@ -136,9 +196,9 @@ impl Rig {
         }
     }
 
-    /// The raw bytes of MCSTAT after the size word.
+    /// The raw bytes of the table after the size word.
     pub fn raw(&mut self) -> Option<Vec<u8>> {
-        self.m.read_var("MCSTAT").map(|v| v.data)
+        self.m.read_var(VAR).map(|v| v.data)
     }
 
     /// Launches the app on `cmds` and returns its log.
@@ -153,13 +213,24 @@ impl Rig {
 
     /// As `run`, with the T-states the whole run took.
     pub fn run_timed(&mut self, cmds: &[Cmd], free: Option<usize>) -> (Vec<Rec>, u32) {
-        let mut script: Vec<u8> = cmds.iter().flat_map(|c| c.bytes()).collect();
-        script.push(0);
+        self.run_script(Some(cmds), free)
+    }
+
+    /// Launches the app with no MCCMD, which runs its default script.
+    pub fn run_bare(&mut self) -> Vec<Rec> {
+        self.run_script(None, None).0
+    }
+
+    fn run_script(&mut self, cmds: Option<&[Cmd]>, free: Option<usize>) -> (Vec<Rec>, u32) {
         self.m.delete_var("MCCMD");
-        self.m
-            .create_var("MCCMD", &script)
-            .expect("room for the script");
-        if self.m.read_var("MCSTAT").is_some() && self.m.read_var("GUARDZ").is_none() {
+        if let Some(cmds) = cmds {
+            let mut script: Vec<u8> = cmds.iter().flat_map(|c| c.bytes()).collect();
+            script.push(0);
+            self.m
+                .create_var("MCCMD", &script)
+                .expect("room for the script");
+        }
+        if self.m.read_var(VAR).is_some() && self.m.read_var("GUARDZ").is_none() {
             self.m.create_var("GUARDZ", &[0x5E; 37]).unwrap();
         }
         match free {
@@ -173,7 +244,7 @@ impl Rig {
         let after = self.guards();
         assert_eq!(after.before, before.before, "the AppVar below the table");
         assert_eq!(after.after, before.after, "the AppVar above the table");
-        if after.heap_end == before.heap_end {
+        if cmds.is_some() && after.heap_end == before.heap_end {
             assert_eq!(after.past, before.past, "the RAM past the heap");
         }
         (self.log(), run.tstates)
@@ -184,25 +255,12 @@ impl Rig {
             let b = self.m.read_ram(LOG, 2);
             usize::from(u16::from_le_bytes([b[0], b[1]]))
         };
-        let bytes = self.m.read_ram(LOG + 2, end - usize::from(LOG) - 2);
-        let mut recs = Vec::new();
-        let mut at = 0;
-        while at < bytes.len() {
-            let (cmd, a) = (bytes[at], bytes[at + 1]);
-            let len = record_len(cmd, a);
-            recs.push(Rec {
-                cmd,
-                a,
-                rest: bytes[at + 2..at + len].to_vec(),
-            });
-            at += len;
-        }
-        recs
+        parse_log(&self.m.read_ram(LOG + 2, end - usize::from(LOG) - 2))
     }
 
     /// The table as the host reads it from the AppVar.
     pub fn table(&mut self) -> Option<crate::layout::Table> {
-        let var = self.m.read_var("MCSTAT")?;
-        Some(crate::layout::decode(&var.data).expect("MCSTAT holds a table"))
+        let var = self.m.read_var(VAR)?;
+        Some(crate::layout::decode(&var.data).expect("the table decodes"))
     }
 }
