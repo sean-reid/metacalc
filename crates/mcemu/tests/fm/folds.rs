@@ -169,6 +169,8 @@ pub struct Tally {
     pub nested: usize,
     pub to_edge: usize,
     pub hidden_cursors: usize,
+    /// Cursor frames with a line in the window whose first token is wider than the width.
+    pub wide_first: usize,
 }
 
 /// How much of a statement is compared: one of up to `whole` nodes gets every fold set and a cursor
@@ -240,6 +242,7 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, dep
             };
             for (c, (row, window)) in cases(laid.rows()).into_iter().take(used).enumerate() {
                 let place = (x, row, window);
+                assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
                 fm.clear();
                 let out = fm.draw(x, row, width, window);
                 assert_eq!(out.status(), 0, "{what}: draw");
@@ -254,18 +257,30 @@ pub fn compare(fm: &mut Fm, model: &Model, at: (u16, u8), tally: &mut Tally, dep
                     vec![(o * 7 + c * 3 + marked.len()) % expr.len()]
                 };
                 for node in nodes {
-                    let out = fm.cursor(node, x, row, width, window);
+                    let out = fm.cursor(node as u8);
                     assert_eq!((out.status(), count(out)), (0, 0), "{label}: cursor {node}");
-                    let marked = fm.frame();
+                    fm.clear();
+                    assert_eq!(fm.draw(x, row, width, window).status(), 0, "{label}: draw");
                     let mask = model_frame_of(expr, folds, width, place, Some(node));
-                    same_frame(&format!("{label}, cursor on {node}"), &marked, &mask);
+                    same_frame(&format!("{label}, cursor on {node}"), &fm.frame(), &mask);
                     tally.cursors += 1;
                     tally.hidden_cursors += usize::from(hidden(expr, folds, node));
                     let rects = laid.cursor(expr, node);
                     tally.to_edge += usize::from(rects.iter().any(|r| x + r.x + r.width >= 95));
-                    fm.cursor(node, x, row, width, window);
+                    let in_window = |r: &mcui::fold::Rect| {
+                        (isize::from(window.0)..isize::from(window.1))
+                            .contains(&(isize::from(row) + r.row as isize))
+                    };
+                    tally.wide_first += usize::from(
+                        rects
+                            .iter()
+                            .any(|r| in_window(r) && laid.lines[r.row].tokens[0].width > width),
+                    );
+                    assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
+                    fm.clear();
+                    fm.draw(x, row, width, window);
                     same_frame(
-                        &format!("{label}, cursor on {node} twice"),
+                        &format!("{label}, cursor on {node} then cleared"),
                         &fm.frame(),
                         &drawn,
                     );
@@ -291,7 +306,7 @@ fn fixture_part(part: usize) {
     let tally = run_library(&fixture::nodes_library(), 4, part, FIXTURE_DEPTH);
     println!(
         "fixture part {part}: {} row counts, {} fold bit sets, {} frames, {} cursors, {} folded \
-         nodes, {} of them nested, {} cursors on hidden nodes, {} cursors to the last column",
+         nodes, {} of them nested, {} cursors on hidden nodes, {} cursors to the last column, {} on a line led by a token wider than it",
         tally.rows,
         tally.bits,
         tally.frames,
@@ -299,10 +314,15 @@ fn fixture_part(part: usize) {
         tally.folded,
         tally.nested,
         tally.hidden_cursors,
-        tally.to_edge
+        tally.to_edge,
+        tally.wide_first
     );
     assert!(tally.rows > 400 && tally.frames > 200 && tally.cursors > 500);
     assert!(tally.nested > 5 && tally.hidden_cursors > 5 && tally.to_edge > 2);
+    assert!(
+        tally.wide_first > 0,
+        "no cursor on a line led by a token wider than it"
+    );
 }
 
 #[test]

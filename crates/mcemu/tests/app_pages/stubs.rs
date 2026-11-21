@@ -159,7 +159,8 @@ fn the_far_entries_the_shell_never_calls_reach_their_routines_by_a_ram_driver() 
 }
 
 /// A fold set and a cursor asked for from the entry page: fm_fold and fm_folded answer for the
-/// node in E, and fm_cursor inverts the node in A, which the far call carries across the pages.
+/// node in E, and fm_cursor takes the node in A, which the far call carries across the pages, for
+/// the draw that follows.
 #[test]
 fn a_fold_and_a_cursor_asked_for_from_the_entry_page_draw_as_the_model_does() {
     let built = with_library();
@@ -215,17 +216,18 @@ fn a_fold_and_a_cursor_asked_for_from_the_entry_page_draw_as_the_model_does() {
         bc: (1 << 8) | 7,
         ..In::default()
     };
-    app.far("far_ui_clear", In::default());
-    assert_eq!(app.far("far_fm_draw", place).status(), 0);
     let cursor = app.far(
         "far_fm_cursor",
         In {
             a: node as u8,
-            ..place
+            ..In::default()
         },
     );
     assert_eq!(cursor.status(), 0);
     assert_eq!(cursor.page, BASE);
+    app.far("far_ui_clear", In::default());
+    assert_eq!(app.far("far_fm_draw", place).status(), 0);
+    let marked = app.frame();
 
     let laid = layout(&expr, &folds, STATEMENT_WIDTH);
     let mut bare = Canvas::default();
@@ -236,5 +238,17 @@ fn a_fold_and_a_cursor_asked_for_from_the_entry_page_draw_as_the_model_does() {
     canvas.cursor(&laid.cursor(&expr, node), GUTTER, 1, 1..7);
     let want = pack(&canvas.into_bitmap());
     assert_ne!(want, plain, "the cursor of node {node} shows in the window");
-    same_frame("the folded statement and its cursor", &app.frame(), &want);
+    same_frame("the folded statement and its cursor", &marked, &want);
+
+    let none = app.far(
+        "far_fm_cursor",
+        In {
+            a: 0xFF,
+            ..In::default()
+        },
+    );
+    assert_eq!(none.status(), 0);
+    app.far("far_ui_clear", In::default());
+    assert_eq!(app.far("far_fm_draw", place).status(), 0);
+    same_frame("the folded statement with no cursor", &app.frame(), &plain);
 }
