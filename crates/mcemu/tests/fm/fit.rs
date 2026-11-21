@@ -7,6 +7,7 @@ use mcpack::library::{Hypothesis, Library};
 use mcui::canvas::{CONTENT_ROWS, Canvas, GUTTER, STATEMENT_WIDTH, TEXT_WIDTH, text_width};
 use mcui::expr::Expr;
 use mcui::fold::{Fit, Folds, fit, fit_one, layout};
+use mcui::{Installed, Key, State, Status, Statuses, Ui};
 
 impl Fm {
     /// fm_fit for `rows` lines, `hyp` pixels for a hypothesis and `concl` for the conclusion; the
@@ -344,4 +345,89 @@ fn fixture_fits_match_the_model_in_part_2_of_4() {
 #[test]
 fn fixture_fits_match_the_model_in_part_3_of_4() {
     fixture_part(3);
+}
+
+/// The frame the real theorem screen draws for `label` and the scroll it opens at.
+fn on_screen(bytes: &[u8], label: &str) -> (mcglyph::Bitmap, usize) {
+    let status = vec![Status::Unchecked; decoded(bytes).assertions.len()];
+    let installed = Installed {
+        name: "library".into(),
+        bytes: bytes.to_vec(),
+    };
+    let mut ui = Ui::new(
+        vec![installed],
+        Statuses {
+            libraries: vec![status],
+            my_proofs: 0,
+        },
+    )
+    .expect("the screen loads the library");
+    for key in [Key::Enter, Key::F2] {
+        ui.press(key);
+    }
+    for c in label.chars() {
+        ui.press(Key::Letter(c));
+    }
+    for _ in 0..2000 {
+        if matches!(ui.state(), State::List { label: Some(ref l), .. } if l == label) {
+            break;
+        }
+        ui.press(Key::Down);
+    }
+    ui.press(Key::Enter);
+    match ui.state() {
+        State::Theorem { scroll, .. } => (ui.frame(), scroll),
+        other => panic!("{label}: not a theorem screen: {other:?}"),
+    }
+}
+
+/// fm's statements against the theorem screen's own frame: the pixels right of each statement's
+/// first column on every text row it takes, which leaves out the numbers and the marker.
+fn same_as_screen(bytes: &[u8], labels: &[&str]) -> usize {
+    let (model, library) = (Model::new(bytes), decoded(bytes));
+    let mut fm = Fm::new(bytes);
+    let mut compared = 0;
+    for label in labels {
+        let n = library
+            .assertions
+            .iter()
+            .position(|a| a.label == *label)
+            .unwrap_or_else(|| panic!("no assertion {label}")) as u16;
+        let hyps = essentials(&library, n);
+        let (screen, scroll) = on_screen(bytes, label);
+        assert_eq!(fm.assertion(n).status(), 0);
+        let (hyp, concl) = widths_of(hyps, STATEMENT_WIDTH);
+        assert_eq!(fm.fit(CONTENT_ROWS, hyp, concl).status(), 0);
+        let o = oracle(&model, n, hyps, CONTENT_ROWS, STATEMENT_WIDTH);
+        let drawn = o.drawn_by_fm(&mut fm, scroll);
+        let starts = o.starts();
+        for s in 0..=hyps {
+            for line in 0..o.rows_of(s) {
+                let row = (starts[s] + line) as isize - scroll as isize;
+                if !(1..1 + CONTENT_ROWS as isize).contains(&row) {
+                    continue;
+                }
+                for y in 8 * row as usize..8 * row as usize + 8 {
+                    for x in o.xs[s]..96 {
+                        let ink = drawn[y * 12 + x / 8] & (0x80 >> (x % 8)) != 0;
+                        assert_eq!(
+                            ink,
+                            screen.get(x, y),
+                            "{label}: statement {s} at ({x}, {y})"
+                        );
+                        compared += 1;
+                    }
+                }
+            }
+        }
+    }
+    compared
+}
+
+#[test]
+fn the_statements_fm_draws_are_the_ones_the_theorem_screen_draws() {
+    let fixture_labels = ["ax-2", "syl3", "many", "longest", "deep", "alimi"];
+    let mut compared = same_as_screen(&fixture::nodes_library(), &fixture_labels);
+    compared += same_as_screen(&crate::fitcases::cases_library(), &["e8", "f1", "f2", "g1"]);
+    assert!(compared > 10_000, "{compared} pixels");
 }

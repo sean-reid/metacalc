@@ -52,7 +52,7 @@ fn cases_source() -> String {
     src
 }
 
-fn cases_library() -> Vec<u8> {
+pub fn cases_library() -> Vec<u8> {
     fixture::custom(&cases_source())
 }
 
