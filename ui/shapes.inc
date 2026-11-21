@@ -111,8 +111,8 @@ ir_loop:
 ; ui_invert   in:  B = x, C = y, D = width, E = height, in pixels
 ;             flips the rectangle, clipped to the screen; nothing when width or height is 0. Each
 ;             scanline is flipped a byte at a time, the bytes between the edge ones with cpl and
-;             the edge ones through a mask. A rectangle that reaches both sides of the screen is
-;             one run of bytes from its first scanline to its last
+;             the edge ones through a mask. A rectangle that starts in the first byte column and
+;             ends in the last is one run of bytes from its first scanline to its last
 ;             destroys AF BC DE HL
 ui_invert:
 	ld a,d

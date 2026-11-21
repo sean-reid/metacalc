@@ -203,9 +203,9 @@
 ;   fm_cursor     in:  A = node of the selected statement, FFh for none
 ;                 out: A = status. Stores the node, which the draws that follow show as the
 ;                      cursor, until fm_open, fm_assertion, fm_statement or a fm_select that
-;                      selects clears it; a fold change keeps it. Draws nothing. FFh always
-;                      succeeds. FM_ERR_INDEX: the table is not built or has no node A, and the
-;                      cursor stays as it was.
+;                      selects clears it; a fold change keeps it. Draws nothing. FFh succeeds
+;                      on an open fm. FM_ERR_INDEX: the table is not built or has no node A,
+;                      and the cursor stays as it was.
 ; Other statuses: FM_ERR_NOT_OPEN, from every routine but fm_open.
 
 #ifndef FM_EMBEDDED

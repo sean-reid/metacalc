@@ -232,21 +232,3 @@ fn applying_folds_and_fm_fold_stay_within_their_ceilings_on_ring() {
     let disjoint = crate::foldspeed::apply_costs("ring", &bytes, &crate::foldspeed::RING);
     assert!(disjoint > 1, "{disjoint} folds of one depth");
 }
-
-#[test]
-fn zz_tmp() {
-    let bytes = fixture::library();
-    let (n, k) = heaviest_six_row_statements(&bytes, 1)[0];
-    let mut fm = Fm::new(&bytes);
-    let zero = fm.rig.call("CALL_NOP", Regs::default()).tstates;
-    fm.built(n, k);
-    for node in [0xFFu8, 0, 1, 2, 3] {
-        fm.cursor(node);
-        fm.clear();
-        let t = fm
-            .draw(GUTTER, CONTENT_ROW, STATEMENT_WIDTH, (1, 7))
-            .tstates
-            - zero;
-        println!("ZZ node {node}: {t}");
-    }
-}
