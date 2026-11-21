@@ -1,7 +1,7 @@
 use crate::support::*;
 use crate::ui_support::pack;
 use mcpack::library::{Hypothesis, Library};
-use mcui::canvas::Canvas;
+use mcui::canvas::{Canvas, GUTTER, STATEMENT_WIDTH};
 use mcui::expr::Expr;
 use mcui::fold::{Folds, layout};
 use std::ops::Range;
@@ -53,6 +53,9 @@ pub const STATUSES: [(&str, u8); 10] = [
 ];
 
 pub const SPARE_BASE: u16 = 0xC000;
+
+/// The node that means no cursor.
+pub const NO_CURSOR: u8 = 0xFF;
 
 /// A status of fm by its name, or a constant of the image, such as the kernel's ST_MALFORMED.
 pub fn code(name: &str) -> u8 {
@@ -192,20 +195,11 @@ impl Fm {
         self.rig.call("FM_FOLDED", regs)
     }
 
-    /// Inverts the runs of `node`, drawn with the arguments of `draw`.
-    pub fn cursor(
-        &mut self,
-        node: usize,
-        x: usize,
-        row: i16,
-        width: usize,
-        window: (u8, u8),
-    ) -> Out {
+    /// Makes `node` of the selected statement the cursor the next `draw` inverts, `NO_CURSOR`
+    /// for none.
+    pub fn cursor(&mut self, node: u8) -> Out {
         let regs = Regs {
-            a: node as u8,
-            hl: row as u16,
-            de: ((width as u16) << 8) | x as u16,
-            bc: (u16::from(window.0) << 8) | u16::from(window.1),
+            a: node,
             ..Regs::default()
         };
         self.rig.call("FM_CURSOR", regs)
@@ -408,4 +402,43 @@ pub fn assert_header_agrees(after: &str, measured: u32) {
         (low..=high).contains(&said),
         "the header says {said} after {after:?}, measured {measured}"
     );
+}
+
+/// The `count` statements of six lines or more at the statement width whose fm_draw of the six
+/// content rows costs most, dearest first, as (assertion, statement).
+pub fn heaviest_six_row_statements(bytes: &[u8], count: usize) -> Vec<(u16, u8)> {
+    let mut fm = Fm::new(bytes);
+    let mut all = Vec::new();
+    for (n, k, tokens) in statements(&decoded(bytes)) {
+        if model_rows(&tokens, STATEMENT_WIDTH) < 6 {
+            continue;
+        }
+        assert_eq!(fm.statement(n, k).status(), 0);
+        let spent = fm.draw(GUTTER, 1, STATEMENT_WIDTH, (1, 7)).tstates;
+        all.push((spent, n, k));
+    }
+    all.sort_by(|a, b| b.cmp(a));
+    all.into_iter()
+        .take(count)
+        .map(|(_, n, k)| (n, k))
+        .collect()
+}
+
+/// fm_draw of the six content rows of the loaded statement with the cursor on every node in turn:
+/// the node that costs most and what the draw cost there.
+pub fn worst_cursor(fm: &mut Fm, n: u16, k: u8) -> (u8, u32) {
+    assert_eq!(fm.statement(n, k).status(), 0);
+    let nodes = count(fm.nodes());
+    let zero = fm.rig.call("CALL_NOP", Regs::default()).tstates;
+    let mut worst = (0, 0);
+    for node in 0..nodes {
+        assert_eq!(fm.cursor(node as u8).status(), 0);
+        fm.clear();
+        let spent = fm.draw(GUTTER, 1, STATEMENT_WIDTH, (1, 7)).tstates - zero;
+        if spent > worst.1 {
+            worst = (node as u8, spent);
+        }
+    }
+    assert_eq!(fm.cursor(NO_CURSOR).status(), 0);
+    worst
 }

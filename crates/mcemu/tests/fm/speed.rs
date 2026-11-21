@@ -195,7 +195,7 @@ fn heaviest_frame(name: &str, bytes: &[u8], folds: &crate::foldspeed::Ceilings) 
     let (ones, threes) = joins(&mut fm, &all[worst.4].2);
     println!("{name}: in its six lines {ones} joins one column apart and {threes} three apart");
     report(name, &best);
-    crate::foldspeed::cursor_costs(name, bytes, (worst.1, worst.2), best.total(), folds);
+    crate::foldspeed::cursor_costs(name, bytes, (best.total(), best.draw), folds);
     best
 }
 
