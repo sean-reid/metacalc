@@ -23,8 +23,13 @@ const RAM_BASE: u16 = 0x8000;
 /// cmdShadow and smallEditRAM, and the byte on each side of them.
 const STACK: (u16, usize) = (0x966E, 128);
 const VARS: (u16, usize) = (0x90D3, 108);
-const NEIGHBOURS: [u16; 4] = [0x966D, 0x96EE, 0x90D2, 0x913F];
+const NEIGHBOURS: [u16; 4] = [0x966D, 0x96F0, 0x90D2, 0x913F];
+/// cmdShadCur, the two bytes after cmdShadow that the home screen restores its cursor from.
+const CMD_CUR: u16 = 0x96EE;
 const TEXT_SHADOW: u16 = 0x8508;
+const CUR_ROW: u16 = 0x844B;
+const CUR_COL: u16 = 0x844C;
+const SCAN_ENTER: u8 = 0x09;
 const SCAN_2ND: u8 = 0x36;
 const SCAN_MODE: u8 = 0x37;
 const SCAN_5: u8 = 0x1B;
@@ -118,9 +123,23 @@ fn context(os: &mut RealOs) -> Vec<Vec<u8>> {
 /// The app waiting for a key on the reference OS, entered from a cleared home screen after a
 /// graph was drawn, and what `context` and the text shadow held before the launch.
 fn launched(app: &[u8], start: Option<&[bool]>) -> (RealOs, Vec<Vec<u8>>, Vec<u8>) {
+    launched_after(app, start, 0)
+}
+
+/// `launched` with `entries` lines of `5` and ENTER typed on the cleared home screen first, which
+/// leaves the cursor `2 * entries` rows down.
+fn launched_after(
+    app: &[u8],
+    start: Option<&[bool]>,
+    entries: u32,
+) -> (RealOs, Vec<Vec<u8>>, Vec<u8>) {
     let mut os = RealOs::boot(app);
     os.tap(KEY_GRAPH, 150, 2500);
     os.tap(KEY_CLEAR, 150, 800);
+    for _ in 0..entries {
+        os.tap(SCAN_5, 150, 300);
+        os.tap(SCAN_ENTER, 150, 600);
+    }
     assert_eq!(
         os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW,
         0,
@@ -296,6 +315,62 @@ fn every_way_out_leaves_a_blank_home_screen_and_the_os_as_it_was() {
                 "{name}: only the cursor cell of the text shadow may differ: {changed:?}"
             );
             assert_home(&mut os, &name);
+        }
+    }
+}
+
+fn cursor(os: &mut RealOs) -> (u8, u8) {
+    (read(os, CUR_ROW, 1)[0], read(os, CUR_COL, 1)[0])
+}
+
+/// Rows of text, 0 to 7, that have a lit pixel at some moment in a second and a half.
+fn lit_text_rows(os: &mut RealOs) -> Vec<usize> {
+    let mut rows = std::collections::BTreeSet::new();
+    for _ in 0..30 {
+        let lcd = os.screen();
+        rows.extend((0..lcd.len()).filter(|&i| lcd[i]).map(|i| i / 96 / 8));
+        os.run_ms(50);
+    }
+    rows.into_iter().collect()
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn every_way_out_homes_the_cursor_from_a_lower_row() {
+    for (kind, app) in [
+        ("no library", shell()),
+        ("library", with_library()),
+        ("refused library", refused()),
+    ] {
+        for (way, exit, _) in EXITS {
+            let name = format!("{kind}, {way}");
+            let (mut os, ..) = launched_after(&app.file, Some(&app.start), 3);
+            assert_eq!(
+                cursor(&mut os),
+                (6, 0),
+                "{name}: the cursor starts on row 6"
+            );
+            assert_ne!(
+                read(&mut os, TEXT_SHADOW, 1),
+                *b" ",
+                "{name}: with entries above"
+            );
+            exit(&mut os);
+            println!("{name}: curRow, curCol {:?}", cursor(&mut os));
+            assert_eq!(cursor(&mut os), (0, 0), "{name}: curRow and curCol");
+            assert_blank_home(&mut os, &name);
+            os.tap(SCAN_5, 150, 500);
+            assert_eq!(
+                read(&mut os, TEXT_SHADOW, 1),
+                *b"5",
+                "{name}: the digit is in cell 0"
+            );
+            assert_eq!(
+                cursor(&mut os),
+                (0, 1),
+                "{name}: the cursor follows the digit"
+            );
+            assert_eq!(lit_text_rows(&mut os), [0], "{name}: the digit is on row 0");
         }
     }
 }
@@ -526,5 +601,24 @@ fn on_the_stub_both_exits_fill_the_two_regions_and_touch_nothing_beside_them() {
         assert_eq!(m.read_ram(VARS.0, VARS.1), [0; 108], "{name}: smallEditRAM");
         let after: Vec<u8> = NEIGHBOURS.iter().map(|&a| m.read_ram(a, 1)[0]).collect();
         assert_eq!(after, sentinels, "{name}: the bytes beside the regions");
+    }
+}
+
+#[test]
+fn on_the_stub_both_exits_zero_the_cursor() {
+    for (name, quit) in [("CLEAR", false), ("2nd+QUIT", true)] {
+        let mut m = waiting_on_the_stub();
+        m.load_ram(CUR_ROW, &[5]);
+        m.load_ram(CUR_COL, &[9]);
+        m.load_ram(CMD_CUR, &[4, 7]);
+        if quit {
+            stub_tap(&mut m, SCAN_2ND);
+            m.press_key(SCAN_MODE);
+        } else {
+            m.press_key(KEY_CLEAR);
+        }
+        assert_eq!(m.run_app(LIMIT).stop, Stop::Exited, "{name}");
+        assert_eq!(m.read_ram(CUR_ROW, 2), [0, 0], "{name}: curRow and curCol");
+        assert_eq!(m.read_ram(CMD_CUR, 2), [0, 0], "{name}: cmdShadCur");
     }
 }
