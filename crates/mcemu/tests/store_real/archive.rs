@@ -18,7 +18,7 @@ fn archived(t: &Table, script: &[Cmd]) -> Pair {
         layout::encode(t)
     );
     p.leave();
-    p.toggle_archive();
+    p.archive(SIZE);
     assert_eq!(
         table(&mut p.os),
         Some((layout::encode(t), true)),

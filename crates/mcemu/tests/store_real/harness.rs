@@ -3,18 +3,42 @@
 
 use crate::realos::*;
 use crate::rig::*;
+use std::sync::OnceLock;
 
-/// The probe's regions, from probe/storeram.inc, and the frame it draws into.
-pub const SCRIPT: (u16, u16) = (0x86EC, 640);
-pub const STATE: (u16, u16) = (0x8A3A, 99);
-pub const LOG_AREA: (u16, u16) = (0x9872, 766);
-pub const FRAME: (u16, u16) = (0x9340, 768);
+/// The probe's regions as (address, length), from the symbols of the build under test: its
+/// script, state and log from probe/storeram.inc and the frame it draws into from ram_map.inc.
+pub struct Probe {
+    pub script: (u16, u16),
+    pub state: (u16, u16),
+    pub log: (u16, u16),
+    pub frame: (u16, u16),
+}
+
+const ROUTINE: &str = "store_real.z80";
+
+/// The address of a symbol of the probe as assembled for these tests.
+pub fn symbol(name: &str) -> u16 {
+    label_in(&routine_labels(ROUTINE), name)
+}
+
+pub fn probe() -> &'static Probe {
+    static PROBE: OnceLock<Probe> = OnceLock::new();
+    PROBE.get_or_init(|| {
+        let region = |at: &str, len: &str| (symbol(at), symbol(len));
+        Probe {
+            script: region("SCRIPT", "SCRIPT_MAX"),
+            state: region("STATE", "STATE_SIZE"),
+            log: region("LOG", "LOG_SIZE"),
+            frame: region("UI_FRAME", "UI_FRAME_SIZE"),
+        }
+    })
+}
+
 /// The OS's pointers, from ti83plus.inc. Creating an AppVar with a six-letter name moves pTemp,
 /// OPBase and OPS down by its 13-byte entry and leaves progPtr; tempMem is the end of the
 /// variables' data while an app runs.
 pub const TEMP_MEM: u16 = 0x9820;
 pub const FPS: u16 = 0x9824;
-pub const OP_BASE: u16 = 0x9826;
 pub const OPS: u16 = 0x9828;
 pub const P_TEMP: u16 = 0x982E;
 pub const PROG_PTR: u16 = 0x9830;
@@ -39,7 +63,7 @@ const KEY_1: u8 = 0x22;
 pub const PROGRAM: u8 = 0x05;
 
 pub fn boot() -> RealOs {
-    RealOs::boot(&assemble_routine("store_real.z80"))
+    RealOs::boot(&assemble_routine(ROUTINE))
 }
 
 /// The RAM page and offset of an address in the OS's map, whatever is paged in when the emulator
@@ -149,17 +173,24 @@ pub fn poke_table(os: &mut RealOs, offset: usize, bytes: &[u8]) {
 }
 
 pub fn log(os: &mut RealOs) -> Vec<Rec> {
-    let end = word(os, LOG_AREA.0);
-    if end <= LOG_AREA.0 + 2 {
+    let end = word(os, probe().log.0);
+    if end <= probe().log.0 + 2 {
         return Vec::new();
     }
-    parse_log(&ram(os, LOG_AREA.0 + 2, usize::from(end - LOG_AREA.0 - 2)))
+    parse_log(&ram(
+        os,
+        probe().log.0 + 2,
+        usize::from(end - probe().log.0 - 2),
+    ))
 }
 
 pub fn script_bytes(cmds: &[Cmd]) -> Vec<u8> {
     let mut bytes: Vec<u8> = cmds.iter().flat_map(|c| c.bytes()).collect();
     bytes.extend([CMD_WAIT, 0]);
-    assert!(bytes.len() <= usize::from(SCRIPT.1), "the script fits");
+    assert!(
+        bytes.len() <= usize::from(probe().script.1),
+        "the script fits"
+    );
     bytes
 }
 
@@ -168,8 +199,8 @@ pub const CMD_WAIT: u8 = 13;
 /// Runs `cmds` in the app, started from the APPS menu, and returns their records. The app is left
 /// waiting for CLEAR.
 pub fn launch(os: &mut RealOs, cmds: &[Cmd]) -> Vec<Rec> {
-    poke(os, SCRIPT.0, &script_bytes(cmds));
-    poke(os, LOG_AREA.0, &[0, 0]);
+    poke(os, probe().script.0, &script_bytes(cmds));
+    poke(os, probe().log.0, &[0, 0]);
     os.start_from_menu();
     os.run_ms(LAUNCH_MS);
     let mut records = log(os);
@@ -189,34 +220,19 @@ pub fn launch(os: &mut RealOs, cmds: &[Cmd]) -> Vec<Rec> {
     records
 }
 
-/// As `launch`, with the T-states from each record to the next: the log is read every
-/// `STEP_US` while the script runs, so each figure is good to `STEP_US` at 6 MHz, 30 T-states.
-pub fn launch_timed(os: &mut RealOs, cmds: &[Cmd]) -> Vec<u32> {
-    const STEP_US: u32 = 5;
-    poke(os, SCRIPT.0, &script_bytes(cmds));
-    poke(os, LOG_AREA.0, &[0, 0]);
+/// Runs `cmds` as `launch` does and returns the T-states of the `skip + 1`th call of the store
+/// routine `entry`: the window of `call_window`.
+pub fn launch_window(os: &mut RealOs, cmds: &[Cmd], entry: &str, skip: usize) -> u32 {
+    poke(os, probe().script.0, &script_bytes(cmds));
+    poke(os, probe().log.0, &[0, 0]);
     os.tap(KEY_APPS, 150, 600);
     os.m.press_key(KEY_2);
-    let wanted = cmds.iter().filter(|c| !matches!(c, Cmd::Repeat(_))).count() + 1;
-    let (mut seen, mut at, mut steps) = (0, 0, 0u32);
-    let mut times = vec![];
-    while times.len() < wanted {
-        assert!(steps < 4_000_000, "the script did not finish");
-        os.run_us(STEP_US);
-        steps += 1;
-        let end = word(os, LOG_AREA.0);
-        if end != seen {
-            let now = os.m.clock();
-            if seen != 0 {
-                times.push(now.wrapping_sub(at));
-            }
-            (seen, at) = (end, now);
-        }
-    }
+    let took = call_window(&mut os.m, crate::realos::BASE, symbol(entry), skip);
     os.m.release_key(KEY_2);
-    os.run_ms(500);
-    assert_eq!(log(os).len(), wanted, "one record a command");
-    times
+    os.run_ms(LAUNCH_MS);
+    let wanted = cmds.iter().filter(|c| !matches!(c, Cmd::Repeat(_))).count() + 1;
+    assert_eq!(log(os).len(), wanted, "the script ran to its end");
+    took
 }
 
 /// CLEAR, which ends the app's wait.
