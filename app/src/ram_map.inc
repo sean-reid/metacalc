@@ -36,8 +36,9 @@
 ;   FM_SCRATCH        B     fm's 256 byte buffer for the reader's accessors, in saveSScreen after
 ;                           UI_VARS; it holds nothing across calls
 ;   APP_BUF           B     the shell's 256 byte buffer for the reader's scratch and the strings it draws, in
-;                           saveSScreen after FM_SCRATCH; it holds nothing across a key wait, since the
-;                           OS writes the screen's pixels into saveSScreen at an auto power down
+;                           saveSScreen after FM_SCRATCH; it holds only what the top screen's enter or
+;                           draw builds again, since the OS writes the screen's pixels into saveSScreen
+;                           at an auto power down
 ;   APP_SENTINEL      B     the shell's one byte, in saveSScreen after APP_BUF, the last byte of it: the
 ;                           complement of the byte of UI_FRAME at the same offset, stored after every
 ;                           blit, so that a pixel copy over saveSScreen is told from the screen

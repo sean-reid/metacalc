@@ -26,6 +26,9 @@
 ; app_key returns and the byte is not that complement, scr_refresh builds the top screen again
 ; before scr_key, and the screen is drawn again even when scr_key ignores the key. A refresh that
 ; fails is SCR_RES_FAILED.
+; Failure. SCR_RES_FAILED pushes the error notice, and one that comes while the error notice is on
+; top, from popping it or from refreshing under it, leaves by app_exit, so a screen whose enter
+; keeps failing cannot hold the user. When the push of the error notice fails the shell leaves too.
 ; Exit. CLEAR on the start screen, SCR_RES_LEAVE, and 2nd+QUIT leave through app_exit; 2nd+OFF is
 ; the OS's. Every way out runs app_putaway, which fills SCR_STACK with spaces and SCR_VARS with
 ; zeros, the state the home screen draws as blank, clears appRunning and appLaunched in iy+28h and
@@ -105,27 +108,34 @@ app_wait:
 	cpl
 	ld hl, APP_SENTINEL
 	cp (hl)
-	jr z, app_intact
+	ld d, 0
+	jr z, app_keyed
 	call scr_refresh
 	or a
 	jr nz, app_refresh_failed
+	ld d, 1
+app_keyed:
 	pop bc
+	call app_error_open
+	ld e, a
+	push de
 	ld a, c
 	call scr_key
+	pop de
 	or a
 	jr nz, app_result
-	jr app_draw
-app_intact:
-	pop bc
-	ld a, c
-	call scr_key
+	ld a, d
 	or a
 	jr z, app_wait
+	jr app_draw
 app_result:
 	cp SCR_RES_REDRAW
 	jr z, app_draw
 	cp SCR_RES_LEAVE
 	jr z, app_exit
+	ld a, e
+	or a
+	jr nz, app_exit
 app_failed:
 	ld a, KIND_NOTICE
 	ld c, b
@@ -143,7 +153,25 @@ app_exit:
 app_refresh_failed:
 	pop bc
 	ld b, a
+	call app_error_open
+	or a
+	jr nz, app_exit
 	jr app_failed
+
+; Out: A = 1 when the top screen is the error notice, else 0. Destroys HL.
+app_error_open:
+	call scr_top
+	ld a, (hl)
+	cp KIND_NOTICE
+	jr nz, app_error_closed
+	inc hl
+	ld a, (hl)
+	cp NOTICE_ERROR
+	ld a, 1
+	ret z
+app_error_closed:
+	xor a
+	ret
 
 ; Stores the complement of the frame's byte at APP_SENTINEL_FRAME in APP_SENTINEL.
 app_arm:

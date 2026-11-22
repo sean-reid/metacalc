@@ -121,57 +121,185 @@ fn the_keys_open_and_close_screens_as_the_model_does() {
     }
 }
 
+/// One key the app can produce, the scancodes that make it (the last is the key itself), and the
+/// model's key for it, if the model has one.
+struct Probe {
+    name: &'static str,
+    scans: &'static [u8],
+    model: Option<Key>,
+}
+
+const PROBES: [Probe; 14] = [
+    Probe {
+        name: "up",
+        scans: &[UP],
+        model: Some(Key::Up),
+    },
+    Probe {
+        name: "down",
+        scans: &[DOWN],
+        model: Some(Key::Down),
+    },
+    Probe {
+        name: "left",
+        scans: &[LEFT],
+        model: Some(Key::Left),
+    },
+    Probe {
+        name: "right",
+        scans: &[RIGHT],
+        model: Some(Key::Right),
+    },
+    Probe {
+        name: "enter",
+        scans: &[ENTER],
+        model: Some(Key::Enter),
+    },
+    Probe {
+        name: "clear",
+        scans: &[CLEAR],
+        model: Some(Key::Clear),
+    },
+    Probe {
+        name: "f1",
+        scans: &[F1],
+        model: Some(Key::F1),
+    },
+    Probe {
+        name: "f2",
+        scans: &[F2],
+        model: Some(Key::F2),
+    },
+    Probe {
+        name: "f3",
+        scans: &[F3],
+        model: Some(Key::F3),
+    },
+    Probe {
+        name: "f4",
+        scans: &[F4],
+        model: Some(Key::F4),
+    },
+    Probe {
+        name: "f5",
+        scans: &[F5],
+        model: Some(Key::F5),
+    },
+    Probe {
+        name: "a letter",
+        scans: &[LETTER],
+        model: Some(Key::Letter('A')),
+    },
+    Probe {
+        name: "2nd and 1, no key",
+        scans: &[SECOND, ONE],
+        model: None,
+    },
+    Probe {
+        name: "a digit",
+        scans: &[ONE],
+        model: Some(Key::Letter('1')),
+    },
+];
+
+/// What each key does on the start screen, which the model does not have (its first screen is the
+/// libraries list): the table in screens.inc's header. F1 and ENTER open the notice of the
+/// theorems, F2 the notice of the verifier, F3 About, and CLEAR leaves; the rest stay.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Start {
+    Stay,
+    About,
+    Theorems,
+    Verify,
+    Leaves,
+}
+
+fn on_start(probe: &Probe) -> Start {
+    match probe.name {
+        "f3" => Start::About,
+        "f1" | "enter" => Start::Theorems,
+        "f2" => Start::Verify,
+        "clear" => Start::Leaves,
+        _ => Start::Stay,
+    }
+}
+
+fn opens(shown: Start, n: usize) -> (Vec<u8>, u8) {
+    match shown {
+        Start::About => (model::about(n), KIND_ABOUT),
+        Start::Theorems => (model::unavailable("Theorems"), KIND_NOTICE),
+        Start::Verify => (model::unavailable("Verify"), KIND_NOTICE),
+        _ => unreachable!(),
+    }
+}
+
 #[test]
-fn a_key_a_screen_ignores_changes_nothing_and_blits_nothing() {
-    let on_start = [DOWN, UP, LEFT, F4, F5, LETTER];
-    let on_about = [DOWN, F1, F2, F3, F4, F5, LETTER];
-    let on_notice = [DOWN, F2, F3, F4, F5, LETTER];
+fn every_key_the_app_can_produce_does_on_each_screen_what_the_model_does() {
     for (built, n) in builds() {
-        let mut shell = booted(built, Enter::Real);
         let start = start_of(built);
-        for (open, keys, want) in [
-            (None, &on_start[..], start.clone()),
-            (Some(F3), &on_about[..], model::about(n)),
-            (Some(F1), &on_notice[..], model::unavailable("Theorems")),
-            (Some(F2), &on_notice[..], model::unavailable("Verify")),
-        ] {
-            let mut ui = model::ui(n);
-            if let Some(open) = open {
-                shell.tap(open);
-                ui.press(key_of(open));
+        let mut shell = booted(built, Enter::Real);
+        // The start screen, from the table; CLEAR is run apart, since it ends the app.
+        for probe in &PROBES {
+            let want = on_start(probe);
+            if want == Start::Leaves {
+                continue;
             }
-            let (blits, depth, frames) = (shell.blits(), shell.depth(), shell.frames());
-            for &key in keys {
-                shell.tap(key);
-                assert_eq!(
-                    shell.blits(),
-                    blits,
-                    "key {key:02X} on a screen of depth {depth}"
-                );
-                assert_eq!(shell.depth(), depth, "key {key:02X}");
-                assert_eq!(shell.frames(), frames, "key {key:02X}");
-                shell.shows(&format!("after {key:02X}"), &want);
-                if open.is_some() {
-                    let key = match key {
-                        F1 => Key::F1,
-                        F2 => Key::F2,
-                        F3 => Key::F3,
-                        F4 => Key::F4,
-                        F5 => Key::F5,
-                        DOWN => Key::Down,
-                        _ => Key::Letter('A'),
-                    };
-                    let state = ui.state();
+            let at = format!("{n} libraries, {} on the start screen", probe.name);
+            let blits = shell.blits();
+            for &scan in &probe.scans[..probe.scans.len() - 1] {
+                shell.tap_modifier(scan);
+            }
+            shell.tap(*probe.scans.last().unwrap());
+            if want == Start::Stay {
+                assert_eq!((shell.depth(), shell.blits()), (1, blits), "{at}");
+                shell.shows(&at, &start);
+            } else {
+                let (frame, kind) = opens(want, n);
+                assert_eq!((shell.depth(), shell.blits()), (2, blits + 1), "{at}");
+                assert_eq!(shell.top_kind(), kind, "{at}");
+                shell.shows(&at, &frame);
+                shell.tap(CLEAR);
+            }
+        }
+        // About and both notices, from the model.
+        for (open, scan, shown) in [
+            (Key::F3, F3, Start::About),
+            (Key::F1, F1, Start::Theorems),
+            (Key::F2, F2, Start::Verify),
+        ] {
+            for probe in &PROBES {
+                let at = format!("{n} libraries, {} on {shown:?}", probe.name);
+                let mut ui = model::ui(n);
+                ui.press(open);
+                let state = ui.state();
+                if let Some(key) = probe.model {
                     ui.press(key);
+                }
+                let popped = ui.depth() == 1;
+                if !popped {
                     assert_eq!(
                         (ui.depth(), ui.state()),
                         (2, state),
-                        "the model ignores {key:?}"
+                        "{at}: the model stays"
                     );
                 }
-            }
-            if open.is_some() {
-                shell.tap(CLEAR);
+                shell.tap(scan);
+                let (frame, _) = opens(shown, n);
+                shell.shows(&at, &frame);
+                let blits = shell.blits();
+                for &s in &probe.scans[..probe.scans.len() - 1] {
+                    shell.tap_modifier(s);
+                }
+                shell.tap(*probe.scans.last().unwrap());
+                if popped {
+                    assert_eq!((shell.depth(), shell.blits()), (1, blits + 1), "{at}");
+                    shell.shows(&at, &start);
+                } else {
+                    assert_eq!((shell.depth(), shell.blits()), (2, blits), "{at}");
+                    shell.shows(&at, &frame);
+                    shell.tap(CLEAR);
+                }
+                assert_eq!(shell.depth(), 1, "{at}");
             }
         }
     }
@@ -180,7 +308,7 @@ fn a_key_a_screen_ignores_changes_nothing_and_blits_nothing() {
 #[test]
 fn second_then_a_key_the_app_ignores_blits_nothing() {
     let mut shell = booted(plain(), Enter::Real);
-    shell.tap(SECOND);
+    shell.tap_modifier(SECOND);
     shell.tap(ONE);
     assert_eq!((shell.blits(), shell.depth()), (1, 1));
 }
@@ -189,22 +317,14 @@ fn second_then_a_key_the_app_ignores_blits_nothing() {
 fn clear_on_the_start_screen_leaves() {
     for (built, _) in builds() {
         let mut shell = booted(built, Enter::Real);
+        shell.dirty_dead();
         shell.leave(CLEAR);
         assert_regions_blank(&mut shell);
     }
 }
 
 fn assert_regions_blank(shell: &mut Shell) {
-    let (stack, vars) = (shell.app.label("SCR_STACK"), shell.app.label("SCR_VARS"));
-    let (stack_size, vars_size) = (
-        shell.app.label("SCR_STACK_SIZE"),
-        shell.app.label("SCR_VARS_SIZE"),
-    );
-    assert_eq!(
-        shell.app.m.read_ram(stack, usize::from(stack_size)),
-        [0x20; 128]
-    );
-    assert_eq!(shell.app.m.read_ram(vars, usize::from(vars_size)), [0; 108]);
+    shell.assert_regions_put_away();
 }
 
 #[test]
@@ -214,9 +334,10 @@ fn quit_leaves_from_depth_2_and_fills_the_two_regions_as_it_does_from_depth_1() 
             let mut shell = booted(built, Enter::Real);
             if let Some(open) = open {
                 shell.tap(open);
-                assert_eq!(shell.depth(), 2);
             }
-            shell.tap(SECOND);
+            assert_eq!(shell.depth(), if open.is_some() { 2 } else { 1 });
+            shell.tap_modifier(SECOND);
+            shell.dirty_dead();
             let (neighbour_low, neighbour_high) = {
                 let stack = shell.app.label("SCR_STACK");
                 (stack - 1, stack + 128)
@@ -276,4 +397,44 @@ fn the_version_is_the_one_the_build_gives() {
         "the model's version is not the one built"
     );
     shell.shows("About with version 100.10.5", &want);
+}
+
+#[test]
+fn clear_on_the_error_notice_leaves_when_the_screen_under_it_fails_again() {
+    let mut shell = booted(plain(), Enter::FailAboutWhenFlagged(0x77));
+    shell.tap(F3);
+    shell.flag(true);
+    shell.power_down();
+    shell.tap_lost(F4);
+    shell.shows("the error over About", &model::error(0x77));
+    assert_eq!(shell.depth(), 3);
+    shell.dirty_dead();
+    shell.leave(CLEAR);
+    shell.assert_regions_put_away();
+}
+
+#[test]
+fn a_refresh_that_fails_under_the_error_notice_leaves() {
+    let mut shell = booted(plain(), Enter::FailNoticeOnce(0x41));
+    shell.flag(true);
+    shell.tap(F1);
+    shell.shows("the error notice", &model::error(0x41));
+    assert_eq!(shell.depth(), 2);
+    shell.flag(true);
+    shell.power_down();
+    shell.dirty_dead();
+    shell.leave(F4);
+    shell.assert_regions_put_away();
+}
+
+#[test]
+fn the_app_leaves_when_the_error_notices_own_push_fails() {
+    for (built, _) in builds() {
+        for open in [F1, F2] {
+            let mut shell = booted(built, Enter::FailAll(0x5A));
+            shell.dirty_dead();
+            shell.leave(open);
+            shell.assert_regions_put_away();
+        }
+    }
 }

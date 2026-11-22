@@ -57,8 +57,10 @@ screen_push:
 	ld a, SCR_PUSH
 	ret
 
-; In: A = the key. F3 pushes About, F1 and ENTER the notice of the theorems, F2 the notice of the
-; verifier, and CLEAR pops: the last screen leaves the app. Every other key stays.
+; In: A = the key. The keys of the start screen, the table crates/mcemu/tests/app_pages/screens.rs
+; checks for every key the app can produce: F3 pushes About, F1 and ENTER the notice of the
+; theorems, F2 the notice of the verifier, and CLEAR pops, which leaves the app from the last
+; screen. UP, DOWN, LEFT, RIGHT, F4, F5, the letters and KEY_NONE stay.
 start_key:
 	cp KEY_F3
 	jr z, start_about

@@ -22,13 +22,23 @@ pub use list::Kind;
 /// notice with the model's.
 #[doc(hidden)]
 pub fn notice_frame(title: &str, lines: &[&str]) -> mcglyph::Bitmap {
+    frame_of(notice::Notice::screen(title, lines))
+}
+
+/// The frame of the notice for a feature that is not built yet, as `Notice::unavailable` has it.
+#[doc(hidden)]
+pub fn unavailable_frame(title: &str) -> mcglyph::Bitmap {
+    frame_of(notice::Notice::unavailable(title))
+}
+
+fn frame_of(screen: Screen) -> mcglyph::Bitmap {
     let proofs = Proofs::new(0);
     let ctx = Ctx {
         libs: &[],
         proofs: &proofs,
     };
     let mut canvas = Canvas::default();
-    notice::Notice::screen(title, lines).draw(&ctx, &mut canvas);
+    screen.draw(&ctx, &mut canvas);
     canvas.into_bitmap()
 }
 

@@ -125,10 +125,7 @@ fn a_power_down_destroys_the_error_notices_line_and_the_next_key_builds_it_again
         let mut shell = booted(plain(), Enter::FailNotices(status));
         shell.tap(F1);
         shell.shows("the error notice", &model::error(status));
-        let (buf, size) = (
-            shell.app.label("APP_BUF"),
-            usize::from(shell.app.label("APP_BUF_SIZE")),
-        );
+        let buf = shell.app.label("APP_BUF");
         let line = shell.app.m.read_ram(buf, 9);
         shell.power_down();
         assert_ne!(
@@ -136,7 +133,6 @@ fn a_power_down_destroys_the_error_notices_line_and_the_next_key_builds_it_again
             line,
             "the power down wrote over the line"
         );
-        assert!(size >= 9);
         let blits = shell.blits();
         shell.tap(F4);
         assert_eq!(shell.blits(), blits + 1);
@@ -184,7 +180,7 @@ fn a_refresh_that_fails_after_a_power_down_pushes_the_error_notice() {
     let about = shell.frames();
     shell.flag(true);
     shell.power_down();
-    shell.tap(F4);
+    shell.tap_lost(F4);
     shell.flag(false);
     shell.shows("the error over About", &model::error(0x77));
     let frames = shell.frames();
@@ -195,4 +191,17 @@ fn a_refresh_that_fails_after_a_power_down_pushes_the_error_notice() {
     shell.shows("About again", &model::about(0));
     assert_eq!(shell.frames(), about);
     same_frame("the LCD", &shell.lcd_bytes(), &model::about(0));
+}
+
+#[test]
+fn a_notice_number_past_the_tables_draws_the_error_notice() {
+    let mut shell = booted(plain(), Enter::Real);
+    shell.tap(F1);
+    let at = shell.app.label("SCR_STACK") + 16 + 1;
+    shell.app.m.load_ram(at, &[9]);
+    let blits = shell.blits();
+    shell.power_down();
+    shell.tap(F4);
+    assert_eq!(shell.blits(), blits + 1);
+    shell.shows("a notice numbered 9", &model::error(0));
 }

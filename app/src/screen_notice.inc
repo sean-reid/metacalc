@@ -4,7 +4,7 @@
 ;   NOTICE_VERIFY    "Verify", "Not available yet"
 ;   NOTICE_ERROR     "Error", "Status " and the parameter as two hex digits, built in APP_BUF by
 ;                    notice_enter, since the OS overwrites saveSScreen at an auto power down
-; F1, CLEAR and ENTER pop; every other key stays.
+; A number past NOTICE_ERROR draws the error notice. F1, CLEAR and ENTER pop; every other key stays.
 
 NOTICE_THEOREMS	.equ 0
 NOTICE_VERIFY	.equ 1
@@ -15,16 +15,23 @@ notice_titles:
 	.dw str_theorems, str_verify, str_error
 notice_lines:
 	.dw str_unavailable, str_unavailable, APP_BUF
+#if (notice_lines - notice_titles) != (2 * (NOTICE_ERROR + 1))
+ .error "notice_titles needs a title for every NOTICE_ number"
+#endif
+#if ($ - notice_lines) != (2 * (NOTICE_ERROR + 1))
+ .error "notice_lines needs a line for every NOTICE_ number"
+#endif
 
 notice_status:
 	.db UI_FONT_CH_53, UI_FONT_CH_74, UI_FONT_CH_61, UI_FONT_CH_74, UI_FONT_CH_75, UI_FONT_CH_73, UI_FONT_CH_20
 
-; In: HL = a frame. Builds the error notice's line. Out: A = 0.
+; In: HL = a frame. Builds the error notice's line, which a number past the notices also shows.
+; Out: A = 0.
 notice_enter:
 	inc hl
 	ld a, (hl)
 	cp NOTICE_ERROR
-	jr nz, notice_built
+	jr c, notice_built
 	inc hl
 	ld a, (hl)
 	push af
@@ -46,6 +53,10 @@ notice_draw:
 	pop hl
 	inc hl
 	ld a, (hl)
+	cp NOTICE_ERROR + 1
+	jr c, notice_known
+	ld a, NOTICE_ERROR
+notice_known:
 	add a, a
 	ld c, a
 	ld b, 0

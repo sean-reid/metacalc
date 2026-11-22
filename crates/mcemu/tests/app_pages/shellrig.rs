@@ -14,8 +14,9 @@ pub const F5: u8 = 0x31;
 pub const ENTER: u8 = 0x09;
 pub const CLEAR: u8 = 0x0F;
 pub const DOWN: u8 = 0x01;
-pub const UP: u8 = 0x03;
 pub const LEFT: u8 = 0x02;
+pub const RIGHT: u8 = 0x03;
+pub const UP: u8 = 0x04;
 pub const SECOND: u8 = 0x36;
 pub const MODE: u8 = 0x37;
 /// The key that carries the letter A, and 2nd+1, which the app ignores.
@@ -31,6 +32,8 @@ const TAP: u32 = 120_000;
 const BLITS: u16 = 0xA700;
 const ENTERS: u16 = 0xA710;
 const FLAG: u16 = 0xA720;
+const SCR_KEYS: u16 = 0xA730;
+const KEY_HOOK: u16 = 0xA6C0;
 const BLIT_HOOK: u16 = 0xA640;
 const ENTER_HOOK: u16 = 0xA660;
 const SAVE_SCREEN: u16 = 0x86EC;
@@ -69,9 +72,28 @@ fn failing_while_flagged(status: u8, real: u16) -> Vec<u8> {
     vec![0x3A, f0, f1, 0xB7, 0xCA, r0, r1, 0x3E, status, 0xC9]
 }
 
+/// An enter that fails once with `status` when the byte at `FLAG` is not 0 and clears it, and is
+/// `real` otherwise: `ld a,(FLAG)`, `or a`, `jp z,real`, `xor a`, `ld (FLAG),a`, `ld a,status`, `ret`.
+fn failing_once(status: u8, real: u16) -> Vec<u8> {
+    let [f0, f1] = FLAG.to_le_bytes();
+    let [r0, r1] = real.to_le_bytes();
+    vec![
+        0x3A, f0, f1, 0xB7, 0xCA, r0, r1, 0xAF, 0x32, f0, f1, 0x3E, status, 0xC9,
+    ]
+}
+
+/// An enter that fails with `status`: `ld a,status`, `ret`.
+fn failing_all(status: u8) -> Vec<u8> {
+    vec![0x3E, status, 0xC9]
+}
+
 #[derive(Clone, Copy)]
 pub enum Enter {
     Real,
+    /// Every notice, the error notice included, fails with this status.
+    FailAll(u8),
+    /// The next notice enter after `Shell::flag` is set fails with this status, once.
+    FailNoticeOnce(u8),
     /// Every notice but the error notice fails with this status.
     FailNotices(u8),
     /// The About screen's enter fails with this status while `Shell::flag` is set.
@@ -91,7 +113,19 @@ impl Shell {
     /// The app booted to its first key wait with a counter on the blit and on every kind's enter.
     pub fn boot(built: &'static Built, enter: Enter) -> Shell {
         let app = App::boot_with(built, |m| {
-            m.load_ram(BLITS, &[0; 0x30]);
+            m.load_ram(BLITS, &[0; 0x40]);
+            // scr_key starts `ld c,SCR_AT_KEY`, `call scr_on_top`: five bytes the hook runs itself.
+            let key = built.label("scr_key");
+            let [c0, c1] = SCR_KEYS.to_le_bytes();
+            let [o0, o1] = built.label("scr_on_top").to_le_bytes();
+            let [r0, r1] = (key + 5).to_le_bytes();
+            let hook = [
+                0xE5, 0x2A, c0, c1, 0x23, 0x22, c0, c1, 0xE1, 0x0E, 0x04, 0xCD, o0, o1, 0xC3, r0,
+                r1,
+            ];
+            m.load_ram(KEY_HOOK, &hook);
+            let [h0, h1] = KEY_HOOK.to_le_bytes();
+            m.load_flash(BASE, usize::from(key - 0x4000), &[0xC3, h0, h1]);
             let far = built.label("far_page1");
             m.load_ram(BLIT_HOOK, &counting_hook(BLITS, far));
             hook_stub(m, built, "far_ui_blit", BLIT_HOOK);
@@ -105,6 +139,18 @@ impl Shell {
                         let mut code = counting_hook(counter, 0);
                         code.truncate(9);
                         code.extend(failing_notices(status, real));
+                        code
+                    }
+                    (Enter::FailNoticeOnce(status), KIND_NOTICE) => {
+                        let mut code = counting_hook(counter, 0);
+                        code.truncate(9);
+                        code.extend(failing_once(status, real));
+                        code
+                    }
+                    (Enter::FailAll(status), KIND_NOTICE) => {
+                        let mut code = counting_hook(counter, 0);
+                        code.truncate(9);
+                        code.extend(failing_all(status));
                         code
                     }
                     (Enter::FailAboutWhenFlagged(status), KIND_ABOUT) => {
@@ -137,6 +183,11 @@ impl Shell {
         self.word(ENTERS + 2 * u16::from(kind - 1))
     }
 
+    /// Times the app has called scr_key since the boot.
+    pub fn scr_keys(&mut self) -> u16 {
+        self.word(SCR_KEYS)
+    }
+
     pub fn flag(&mut self, on: bool) {
         self.app.m.load_ram(FLAG, &[u8::from(on)]);
     }
@@ -158,15 +209,77 @@ impl Shell {
             .collect()
     }
 
+    /// Fills every byte of SCR_STACK and SCR_VARS that holds nothing at rest with a pattern: the
+    /// framework's count and table, and the frames of the open screens, stay as they are.
+    pub fn dirty_dead(&mut self) {
+        use crate::realos::varied;
+        let depth = self.depth();
+        let (vars, stack) = (self.app.label("SCR_VARS"), self.app.label("SCR_STACK"));
+        let (vars_size, stack_size) = (
+            usize::from(self.app.label("SCR_VARS_SIZE")),
+            usize::from(self.app.label("SCR_STACK_SIZE")),
+        );
+        self.app.m.load_ram(vars + 1, &varied(2, 0xC3));
+        self.app.m.load_ram(vars + 5, &varied(vars_size - 5, 0xC4));
+        let live = 16 * depth;
+        self.app
+            .m
+            .load_ram(stack + live as u16, &varied(stack_size - live, 0x5A));
+    }
+
     pub fn top_kind(&mut self) -> u8 {
         self.frames().last().unwrap()[0]
     }
 
+    /// Taps a key the app turns into a key code, which reaches scr_key exactly once.
     pub fn tap(&mut self, scan: u8) {
+        let before = self.scr_keys();
+        self.press(scan);
+        assert_eq!(
+            self.scr_keys(),
+            before + 1,
+            "scancode {scan:02X} reached scr_key once"
+        );
+    }
+
+    /// Taps 2nd, which gives the app no key code.
+    pub fn tap_modifier(&mut self, scan: u8) {
+        let before = self.scr_keys();
+        self.press(scan);
+        assert_eq!(self.scr_keys(), before, "scancode {scan:02X} is no key");
+    }
+
+    /// Taps a key while a refresh fails, which the shell answers with the error notice: the key
+    /// never reaches scr_key.
+    pub fn tap_lost(&mut self, scan: u8) {
+        let before = self.scr_keys();
+        self.press(scan);
+        assert_eq!(
+            self.scr_keys(),
+            before,
+            "scancode {scan:02X} was lost to the failure"
+        );
+    }
+
+    fn press(&mut self, scan: u8) {
         self.app.m.press_key(scan);
         assert_eq!(self.app.m.run_app(TAP).stop, Stop::Limit);
         self.app.m.release_key(scan);
         assert_eq!(self.app.m.run_app(4 * TAP).stop, Stop::Limit);
+    }
+
+    /// The regions' bytes after the app left: every one of both is filled as the home screen has it.
+    pub fn assert_regions_put_away(&mut self) {
+        let (stack, vars) = (self.app.label("SCR_STACK"), self.app.label("SCR_VARS"));
+        let (stack_size, vars_size) = (
+            usize::from(self.app.label("SCR_STACK_SIZE")),
+            usize::from(self.app.label("SCR_VARS_SIZE")),
+        );
+        assert_eq!(
+            self.app.m.read_ram(stack, stack_size),
+            vec![0x20; stack_size]
+        );
+        assert_eq!(self.app.m.read_ram(vars, vars_size), vec![0; vars_size]);
     }
 
     /// Presses `scan` and runs until the app leaves.
@@ -224,10 +337,13 @@ pub mod model {
         pack(&mcui::notice_frame(title, &[line]))
     }
 
+    /// The model's own notice for a feature that is not built yet.
     pub fn unavailable(title: &str) -> Vec<u8> {
-        notice(title, "Not available yet")
+        pack(&mcui::unavailable_frame(title))
     }
 
+    /// The error notice has no model: the title and the line are the app's, drawn by the model's
+    /// Notice.
     pub fn error(status: u8) -> Vec<u8> {
         notice("Error", &format!("Status {status:02X}"))
     }
