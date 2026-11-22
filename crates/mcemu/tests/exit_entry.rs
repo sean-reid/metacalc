@@ -25,6 +25,9 @@ const SCAN_ALPHA: u8 = 0x30;
 const SCAN_MATH: u8 = 0x2F;
 const SCAN_PLUS: u8 = 0x0A;
 const SCAN_DEL: u8 = 0x38;
+const SCAN_LEFT: u8 = 0x02;
+/// What the text shadow holds in the cursor's cell while it is lit, so a blink does not show.
+const CURSOR_GLYPH: u8 = 0xE0;
 /// The OS's free-memory pointers, tempMem to newDataPtr, and the home edit buffer's four.
 const MEMORY: (u16, usize) = (0x9820, 20);
 const EDIT_POINTERS: (u16, usize) = (EDIT_TOP, 8);
@@ -51,6 +54,7 @@ struct Home {
     memory: Vec<u8>,
     cursor: (u8, u8),
     cmd_cursor: Vec<u8>,
+    shad_cur: Vec<u8>,
     shadow: Vec<u8>,
 }
 
@@ -60,7 +64,11 @@ fn home(os: &mut RealOs) -> Home {
         memory: read(os, MEMORY.0, MEMORY.1),
         cursor: cursor(os),
         cmd_cursor: read(os, CMD_CURSOR, 2),
-        shadow: read(os, TEXT_SHADOW, 128),
+        shad_cur: read(os, CMD_CUR, 2),
+        shadow: read(os, TEXT_SHADOW, 128)
+            .into_iter()
+            .map(|b| if b == CURSOR_GLYPH { b' ' } else { b })
+            .collect(),
     }
 }
 
@@ -82,15 +90,12 @@ fn plain() -> Vec<u8> {
     assemble_routine("wait_app.z80")
 }
 
-#[test]
-#[ignore = "needs the reference ROM image"]
-fn an_open_entry_ends_as_the_os_leaves_it_on_every_way_out() {
-    for (start, keys) in OPEN_STARTS {
-        for (kind, app) in [
-            ("no library", shell()),
-            ("library", with_library()),
-            ("refused library", refused()),
-        ] {
+/// Leaves the app by every way out from each of `starts` and compares the home screen with the
+/// plain app's. The three exits through app_exit end as the plain app does after a CLEAR key,
+/// with the cursor on the row the entry was on; the OS's two end as the plain app does.
+fn check_open_entries(starts: &[(&str, Vec<u8>)], builds: &[(&str, &Build)]) {
+    for (start, keys) in starts {
+        for (kind, app) in builds {
             for (i, (way, exit, plain_exit)) in EXITS.into_iter().enumerate() {
                 let name = format!("{start}, {kind}, {way}");
                 let (mut os, ..) = launched_after(&app.file, Some(&app.start), keys);
@@ -98,18 +103,15 @@ fn an_open_entry_ends_as_the_os_leaves_it_on_every_way_out() {
                 let (mut control, ..) = launched_after(&plain(), None, keys);
                 plain_exit(&mut control);
                 let (mut got, mut want) = (home(&mut os), home(&mut control));
-                let history = start == "lower row and 5";
+                let history = start.starts_with("lower row");
                 if HANDS_CLEAR[i] {
                     assert_eq!(got.edit[..2], got.edit[2..4], "{name}: the entry is gone");
-                    assert_eq!(shadow_text(&got.shadow), "", "{name}: the screen is blank");
+                    assert_eq!(seen(&got.shadow), "", "{name}: the screen is blank");
                     let row = if history { 6 } else { 0 };
-                    assert_eq!(got.cursor, (row, 0), "{name}: the cursor");
-                    let screen = os.screen();
-                    assert!(
-                        (0..screen.len())
-                            .filter(|&p| screen[p])
-                            .all(|p| p / 96 / 8 == usize::from(row) && p % 96 < 6),
-                        "{name}: nothing is lit but the cursor cell"
+                    assert_eq!(
+                        got.cursor,
+                        (row, 0),
+                        "{name}: the cursor is on the entry's row"
                     );
                 }
                 if !HANDS_CLEAR[i] || history {
@@ -125,6 +127,97 @@ fn an_open_entry_ends_as_the_os_leaves_it_on_every_way_out() {
                     );
                 }
             }
+        }
+    }
+}
+
+fn owned(starts: &[(&'static str, &[u8])]) -> Vec<(&'static str, Vec<u8>)> {
+    starts.iter().map(|&(n, k)| (n, k.to_vec())).collect()
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn an_open_entry_ends_as_the_os_leaves_it_on_every_way_out() {
+    check_open_entries(
+        &owned(&OPEN_STARTS),
+        &[
+            ("no library", shell()),
+            ("library", with_library()),
+            ("refused library", refused()),
+        ],
+    );
+}
+
+/// Entries of 255, 256 and 300 characters, and an entry of 5 with the cursor moved to its start
+/// and to its middle with LEFT.
+fn long_and_moved_starts() -> Vec<(&'static str, Vec<u8>)> {
+    let typed = |n: usize| vec![SCAN_5; n];
+    let moved = |left: usize| [typed(5), vec![SCAN_LEFT; left]].concat();
+    vec![
+        ("255 characters", typed(255)),
+        ("256 characters", typed(256)),
+        ("300 characters", typed(300)),
+        ("5 characters, cursor at the start", moved(5)),
+        ("5 characters, cursor in the middle", moved(2)),
+        (
+            "lower row, 2 characters, cursor at the start",
+            [THREE_ENTRIES.to_vec(), typed(2), vec![SCAN_LEFT; 2]].concat(),
+        ),
+    ]
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn a_long_entry_or_a_moved_cursor_ends_as_the_os_leaves_it_on_every_way_out() {
+    check_open_entries(&long_and_moved_starts(), &[("no library", shell())]);
+}
+
+/// While the app runs the OS holds the whole entry before editCursor, and cmdCursor, a word, is the
+/// cursor's offset in it: the entry's length is editCursor - editTop.
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn cmd_cursor_is_the_cursors_offset_in_the_entry_and_its_length_is_edit_cursor_minus_edit_top() {
+    let offsets = [255, 256, 300, 0, 3, 0];
+    let lengths = [255, 256, 300, 5, 5, 2];
+    for (((start, keys), offset), length) in long_and_moved_starts()
+        .into_iter()
+        .zip(offsets)
+        .zip(lengths)
+    {
+        let (mut os, ..) = launched_after(&plain(), None, &keys);
+        let word = |os: &mut RealOs, at: u16| {
+            let b = read(os, at, 2);
+            usize::from(u16::from_le_bytes([b[0], b[1]]))
+        };
+        assert_eq!(word(&mut os, CMD_CURSOR), offset, "{start}: cmdCursor");
+        assert_eq!(
+            word(&mut os, EDIT_CURSOR) - word(&mut os, EDIT_TOP),
+            length,
+            "{start}: editCursor - editTop"
+        );
+    }
+}
+
+/// A typed digit after the app's own exits lands in the top left cell, from every start.
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn after_the_apps_own_exits_a_typed_digit_lands_in_the_top_left_cell() {
+    let app = shell();
+    let mut starts = owned(&OPEN_STARTS[..2]);
+    starts.push(("empty", vec![]));
+    starts.push(("lower row, closed", THREE_ENTRIES.to_vec()));
+    for (start, keys) in starts {
+        for (i, (way, exit, _)) in EXITS.into_iter().enumerate() {
+            if !HANDS_CLEAR[i] {
+                continue;
+            }
+            let name = format!("{start}, {way}");
+            let (mut os, ..) = launched_after(&app.file, Some(&app.start), &keys);
+            exit(&mut os);
+            os.tap(SCAN_5, 150, 500);
+            assert_eq!(read(&mut os, TEXT_SHADOW, 1), *b"5", "{name}: cell 0");
+            assert_eq!(cursor(&mut os), (0, 1), "{name}: the cursor follows the 5");
+            assert_eq!(lit_text_rows(&mut os), [0], "{name}: the 5 is on row 0");
         }
     }
 }
@@ -392,19 +485,60 @@ fn on_the_stub_the_edit_buffer_is_never_written_for_any_edit_top() {
 }
 
 #[test]
-fn on_the_stub_cmd_shad_cur_is_zeroed_only_when_no_entry_text_is_pending() {
-    for (pending, homed) in [(0u16, true), (3, false), (0x100, false), (0x8000, false)] {
+fn on_the_stub_cmd_shad_cur_is_zeroed_only_while_editcursor_equals_edittop() {
+    for (edit_cursor, homed) in [
+        (0x9DB7u16, true),
+        (0x9DB8, false),
+        (0x9DB6, false),
+        (0x0100, false),
+    ] {
         for quit in [false, true] {
             let mut m = waiting_on_the_stub();
             m.load_ram(CUR_ROW, &[5, 9]);
             m.load_ram(CMD_CUR, &[4, 7]);
-            m.load_ram(CMD_CURSOR, &pending.to_le_bytes());
+            m.load_ram(EDIT_TOP, &0x9DB7u16.to_le_bytes());
+            m.load_ram(EDIT_CURSOR, &edit_cursor.to_le_bytes());
             stub_exit(&mut m, quit);
-            let name = format!("pending {pending}, quit {quit}");
+            let name = format!("editCursor {edit_cursor:04X}, quit {quit}");
             let shadow = if homed { [0, 0] } else { [4, 7] };
             assert_eq!(m.read_ram(CUR_ROW, 2), [5, 9], "{name}: curRow and curCol");
             assert_eq!(m.read_ram(CMD_CUR, 2), shadow, "{name}: cmdShadCur");
         }
+    }
+}
+
+/// From the lower-row start with a pending entry the app's own exits leave the cursor on that row
+/// of a blank screen, as a plain app followed by CLEAR does; zeroing cmdShadCur in app_exit to
+/// bring it to the top left put the cursor at the wrong column and lost the next digit.
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn known_limit_a_pending_entry_on_a_lower_row_leaves_the_cursor_on_that_row_after_the_apps_exits() {
+    let app = shell();
+    for (i, (way, exit, plain_exit)) in EXITS.into_iter().enumerate() {
+        if !HANDS_CLEAR[i] {
+            continue;
+        }
+        let (mut os, ..) = launched_after(&app.file, Some(&app.start), &LOWER_ROW_AND_5);
+        exit(&mut os);
+        let (mut control, ..) = launched_after(&plain(), None, &LOWER_ROW_AND_5);
+        plain_exit(&mut control);
+        assert_eq!(cursor(&mut os), (6, 0), "{way}: the cursor stays on row 6");
+        assert_eq!(
+            cursor(&mut control),
+            (6, 0),
+            "{way}: as after a plain app and CLEAR"
+        );
+        assert_eq!(
+            seen(&read(&mut os, TEXT_SHADOW, 128)),
+            "",
+            "{way}: the screen is blank"
+        );
+        os.tap(SCAN_5, 150, 500);
+        assert_eq!(
+            read(&mut os, TEXT_SHADOW + 6 * 16, 1),
+            *b"5",
+            "{way}: a digit lands there"
+        );
     }
 }
 

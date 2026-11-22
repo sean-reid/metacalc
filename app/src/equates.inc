@@ -40,7 +40,8 @@ smallEditRAM     = 90D3h
 XFact            = 913Fh
 cmdShadow        = 966Eh
 cmdShadCur       = 96EEh
-cmdCursor        = 96F2h
+editTop          = 96F4h
+editCursor       = 96F6h
 #if (smallEditRAM < SCR_VARS) || (smallEditRAM > SCR_VARS)
  .error "SCR_VARS in ram_map.inc must be smallEditRAM"
 #endif
@@ -56,11 +57,11 @@ cmdCursor        = 96F2h
 #if (cmdShadCur < HOME_STATE) || (cmdShadCur > HOME_STATE)
  .error "HOME_STATE in ram_map.inc must start at cmdShadCur"
 #endif
-#if (cmdCursor < HOME_PENDING) || (cmdCursor > HOME_PENDING)
- .error "HOME_PENDING in ram_map.inc must start at cmdCursor"
+#if (editTop < HOME_PENDING) || (editTop > HOME_PENDING)
+ .error "HOME_PENDING in ram_map.inc must start at editTop"
 #endif
-#if (HOME_PENDING_LEN < 2) || (HOME_PENDING_LEN > 2)
- .error "HOME_PENDING_LEN in ram_map.inc must be 2, the width of cmdCursor"
+#if ((editCursor + 2) < (HOME_PENDING + HOME_PENDING_LEN)) || ((editCursor + 2) > (HOME_PENDING + HOME_PENDING_LEN))
+ .error "HOME_PENDING_LEN in ram_map.inc must cover editTop and editCursor, 4 bytes"
 #endif
 #if ((cmdShadCur + 2) < (HOME_STATE + HOME_STATE_SIZE)) || ((cmdShadCur + 2) > (HOME_STATE + HOME_STATE_SIZE))
  .error "HOME_STATE in ram_map.inc must be the two bytes of cmdShadCur"

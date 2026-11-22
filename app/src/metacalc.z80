@@ -14,7 +14,8 @@
 ; Exit. CLEAR and 2nd+QUIT leave through app_exit; 2nd+OFF is the OS's. Every way out runs
 ; app_putaway, which fills SCR_STACK with spaces and SCR_VARS with zeros, the state the home screen
 ; draws as blank, zeroes cmdShadCur, the copy the home screen restores the cursor from, while
-; cmdCursor, the entry's length, is 0, clears appRunning and appLaunched in iy+28h and
+; editCursor equals editTop, that is while no entry text is pending (cmdCursor is the cursor's
+; offset in the entry, not its length), clears appRunning and appLaunched in iy+28h and
 ; onInterrupt, and sets graphDraw. It never writes the entry line's buffer. app_exit then hands the
 ; OS a CLEAR key with _JForceCmd, which empties an unentered entry the way a key press does;
 ; 2nd+OFF and 1:Quit leave one as it was, with the screen blank.
@@ -109,9 +110,10 @@ app_putaway:
 	ld bc, SCR_VARS_SIZE - 1
 	ld (hl), 0
 	ldir
-	ld hl, (cmdCursor)
-	ld a, h
-	or l
+	ld hl, (editTop)
+	ld de, (editCursor)
+	or a
+	sbc hl, de
 	jr nz, app_putaway_flags
 	ld (cmdShadCur), hl
 app_putaway_flags:

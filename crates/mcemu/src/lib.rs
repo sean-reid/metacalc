@@ -46,12 +46,13 @@ pub enum Stop {
     /// reset one: `read_ram` reads flash, nothing loaded is where it was, and the machine
     /// is not to be used again.
     Fault,
-    /// The app left through `_JForceCmdNoChar` with the machine as the OS needs it: port 5 at
-    /// 0, port 7 at 81h, 6 MHz and interrupt mode 1.
+    /// The app left to the home screen through `_JForceCmd` or `_JForceCmdNoChar`, the two the
+    /// stub takes as an exit, with the machine as the OS needs it: port 5 at 0, port 7 at 81h,
+    /// 6 MHz and interrupt mode 1.
     Exited,
-    /// The app left through `_JForceCmdNoChar` with the machine in another state.
+    /// The app left to the home screen with the machine in another state.
     BadExit(ExitState),
-    /// The app returned from its entry point instead of leaving through `_JForceCmdNoChar`.
+    /// The app returned from its entry point instead of leaving to the home screen.
     Returned,
     /// The stub's LCD wait polled its limit without the controller becoming ready.
     LcdStuck,

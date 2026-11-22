@@ -4,7 +4,7 @@ const BASE: u8 = 0x30;
 const ENTRY: usize = 0x80;
 const LIMIT: u32 = 100_000;
 
-/// `bjump(_JForceCmdNoChar)`.
+/// `bjump(_JForceCmdNoChar)`, which the stub takes as an exit as it does `_JForceCmd`.
 const LEAVE: [u8; 5] = [0xCD, 0x50, 0x00, 0x27, 0x40];
 
 fn run_app(code: &[u8]) -> Stop {

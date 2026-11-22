@@ -25,8 +25,9 @@
 ;                           cmdShadCur follows
 ;   HOME_STATE        B     the OS's home screen state that app_putaway writes, 2 bytes: cmdShadCur, 96EEh;
 ;                           no region may overlap it
-;   HOME_PENDING      B     the OS's entry length that app_putaway reads, 2 bytes: cmdCursor, 96F2h; no
-;                           region may overlap it, and it is not declared as a region the tests mask
+;   HOME_PENDING      B     the OS's entry line pointers that app_putaway reads, 4 bytes: editTop, 96F4h, and
+;                           editCursor; no region may overlap it, and it is not declared as a region
+;                           the tests mask
 ;   KD_SCRATCH        B     the kernel driver's scratch, from libPage, in appBackUpScreen. The app's own
 ;                           two bytes are libPage (offset 0) and appStatus (offset 1), checked in
 ;                           equates.inc; probe/kerndriver.inc lays out its own variables over the same
@@ -74,10 +75,10 @@ SCR_STACK_SIZE      .equ 128
 HOME_STATE          .equ $96EE
 #endif
 #ifndef HOME_PENDING
-HOME_PENDING        .equ $96F2
+HOME_PENDING        .equ $96F4
 #endif
 #ifndef HOME_PENDING_LEN
-HOME_PENDING_LEN    .equ 2
+HOME_PENDING_LEN    .equ 4
 #endif
 #ifndef HOME_STATE_SIZE
 HOME_STATE_SIZE     .equ 2
