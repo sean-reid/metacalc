@@ -273,7 +273,7 @@ get_base_ver:
 	ld b,$2B
 	ret
 
-; The app has left. The machine stops here.
+; The app has left. The machine stops here, BC holding the bjump target and A as the app set it.
 force_cmd_no_char:
 	di
 app_exit:

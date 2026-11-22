@@ -217,6 +217,11 @@ fn the_app_leaves_banks_b_and_c_as_a_plain_waiting_app_does_but_for_what_it_decl
         plain_exit(&mut plain);
         let theirs = banks(&mut plain);
         let stack = (sp.saturating_sub(STACK_BELOW), APP_STACK_TOP);
+        let edit_btm = u16::from_le_bytes(read(&mut os, EDIT_TOP + 6, 2).try_into().unwrap());
+        assert!(
+            edit_btm < stack.0,
+            "{way}: the stack mask {stack:04X?} stays above the edit buffer's tail at {edit_btm:04X}"
+        );
         masks.push(stack);
         let mut strays = vec![];
         for i in 0..ours.len() {
@@ -345,43 +350,4 @@ fn on_the_stub_both_exits_fill_the_two_regions_and_touch_nothing_beside_them() {
         let after: Vec<u8> = NEIGHBOURS.iter().map(|&a| m.read_ram(a, 1)[0]).collect();
         assert_eq!(after, sentinels, "{name}: the bytes beside the regions");
     }
-}
-
-#[test]
-#[ignore = "probe"]
-fn probe_noise() {
-    let run = |keys: &[u8]| {
-        let (mut os, ..) = launched_after(&assemble_routine("wait_app.z80"), None, keys);
-        clear_twice(&mut os);
-        banks(&mut os)
-    };
-    for keys in [&[][..], &[SCAN_5][..]] {
-        let (a, b) = (run(keys), run(keys));
-        let d: Vec<String> = (0..a.len())
-            .filter(|&i| a[i] != b[i])
-            .map(|i| format!("{:04X} {:02X}/{:02X}", 0x8000 + i, a[i], b[i]))
-            .collect();
-        println!("NOISE {keys:?}: {d:?}");
-    }
-}
-
-#[test]
-#[ignore = "probe"]
-fn probe_sp() {
-    let app = shell();
-    let (mut os, ..) = launched(&app.file, Some(&app.start));
-    println!("SP at wait {:04X}", os.m.regs().sp);
-    clear(&mut os);
-    println!(
-        "SP after ours {:04X}; FFD0..FFF0 {:02X?}",
-        os.m.regs().sp,
-        os.m.read_ram(0xFFD0, 32)
-    );
-    let (mut p, ..) = launched(&assemble_routine("wait_app.z80"), None);
-    clear_twice(&mut p);
-    println!(
-        "SP after plain {:04X}; FFD0..FFF0 {:02X?}",
-        p.m.regs().sp,
-        p.m.read_ram(0xFFD0, 32)
-    );
 }

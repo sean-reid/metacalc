@@ -56,8 +56,14 @@ cmdCursor        = 96F2h
 #if (cmdShadCur < HOME_STATE) || (cmdShadCur > HOME_STATE)
  .error "HOME_STATE in ram_map.inc must start at cmdShadCur"
 #endif
-#if (cmdCursor + 1) > (HOME_STATE + HOME_STATE_SIZE)
- .error "HOME_STATE in ram_map.inc must cover cmdCursor"
+#if (cmdCursor < HOME_PENDING) || (cmdCursor > HOME_PENDING)
+ .error "HOME_PENDING in ram_map.inc must start at cmdCursor"
+#endif
+#if (HOME_PENDING_LEN < 2) || (HOME_PENDING_LEN > 2)
+ .error "HOME_PENDING_LEN in ram_map.inc must be 2, the width of cmdCursor"
+#endif
+#if ((cmdShadCur + 2) < (HOME_STATE + HOME_STATE_SIZE)) || ((cmdShadCur + 2) > (HOME_STATE + HOME_STATE_SIZE))
+ .error "HOME_STATE in ram_map.inc must be the two bytes of cmdShadCur"
 #endif
 libPage          = KD_SCRATCH
 appStatus        = KD_SCRATCH + 1

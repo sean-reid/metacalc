@@ -50,7 +50,7 @@ struct Home {
     edit: Vec<u8>,
     memory: Vec<u8>,
     cursor: (u8, u8),
-    cmd_cursor: u8,
+    cmd_cursor: Vec<u8>,
     shadow: Vec<u8>,
 }
 
@@ -59,7 +59,7 @@ fn home(os: &mut RealOs) -> Home {
         edit: read(os, EDIT_POINTERS.0, EDIT_POINTERS.1),
         memory: read(os, MEMORY.0, MEMORY.1),
         cursor: cursor(os),
-        cmd_cursor: read(os, CMD_CURSOR, 1)[0],
+        cmd_cursor: read(os, CMD_CURSOR, 2),
         shadow: read(os, TEXT_SHADOW, 128),
     }
 }
@@ -71,6 +71,11 @@ fn pointers(os: &mut RealOs) -> (Vec<u8>, Vec<u8>) {
         read(os, EDIT_POINTERS.0, EDIT_POINTERS.1),
         read(os, MEMORY.0, MEMORY.1),
     )
+}
+
+/// The text on the screen without the cursor, which blinks and which an error screen removes.
+fn seen(shadow: &[u8]) -> String {
+    shadow_text(shadow).trim_end_matches('.').to_string()
 }
 
 fn plain() -> Vec<u8> {
@@ -96,6 +101,16 @@ fn an_open_entry_ends_as_the_os_leaves_it_on_every_way_out() {
                 let history = start == "lower row and 5";
                 if HANDS_CLEAR[i] {
                     assert_eq!(got.edit[..2], got.edit[2..4], "{name}: the entry is gone");
+                    assert_eq!(shadow_text(&got.shadow), "", "{name}: the screen is blank");
+                    let row = if history { 6 } else { 0 };
+                    assert_eq!(got.cursor, (row, 0), "{name}: the cursor");
+                    let screen = os.screen();
+                    assert!(
+                        (0..screen.len())
+                            .filter(|&p| screen[p])
+                            .all(|p| p / 96 / 8 == usize::from(row) && p % 96 < 6),
+                        "{name}: nothing is lit but the cursor cell"
+                    );
                 }
                 if !HANDS_CLEAR[i] || history {
                     got.shadow.clear();
@@ -109,6 +124,63 @@ fn an_open_entry_ends_as_the_os_leaves_it_on_every_way_out() {
                         "{name}: ENTER"
                     );
                 }
+            }
+        }
+    }
+}
+
+/// What 2nd+OFF and the error screen's 1:Quit leave when an entry is pending: the OS's own exits,
+/// which the app cannot follow with a CLEAR key. The entry stays in the buffer with the cursor after
+/// it, the screen is blank where a plain app shows it, and the next ENTER evaluates it unseen.
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn known_limit_2nd_off_and_1_quit_keep_an_unentered_entry_the_screen_cannot_show() {
+    for (start, keys) in &OPEN_STARTS[..2] {
+        let shown = if *start == "5" { "5" } else { "55555222" };
+        for (kind, app) in [("no library", shell()), ("library", with_library())] {
+            for index in [2, 3] {
+                let (way, exit, plain_exit) = EXITS[index];
+                let name = format!("{start}, {kind}, {way}");
+                let (mut os, ..) = launched_after(&app.file, Some(&app.start), keys);
+                exit(&mut os);
+                let (mut control, ..) = launched_after(&plain(), None, keys);
+                plain_exit(&mut control);
+                let (got, want) = (home(&mut os), home(&mut control));
+                assert_eq!(
+                    seen(&want.shadow),
+                    shown,
+                    "{name}: a plain app shows the entry"
+                );
+                assert_eq!(
+                    seen(&got.shadow),
+                    "",
+                    "{name}: the app's screen is blank but for the cursor"
+                );
+                assert_eq!(
+                    got.cursor, want.cursor,
+                    "{name}: the cursor stays after the entry"
+                );
+                assert_eq!(
+                    got.cmd_cursor, want.cmd_cursor,
+                    "{name}: the entry's length"
+                );
+                assert_ne!(got.cmd_cursor, [0, 0], "{name}: and it is still pending");
+                let (got, want) = (
+                    after_enter_with(&mut os, &[0x24]),
+                    after_enter_with(&mut control, &[0x24]),
+                );
+                let gap = " ".repeat(32 - 2 * (shown.len() + 1));
+                assert_eq!(got.0, want.0, "{name}: the cursor after ENTER");
+                assert_eq!(
+                    seen(&want.1),
+                    format!("{shown}7{gap}{shown}7"),
+                    "{name}: a plain app echoes the entry and shows its value"
+                );
+                assert_eq!(
+                    seen(&got.1),
+                    format!("7{gap}{shown}7"),
+                    "{name}: the app's screen lost the entry's echo but ENTER used it"
+                );
             }
         }
     }
@@ -187,8 +259,14 @@ fn create_and_delete_a_variable(os: &mut RealOs) -> [(Vec<u8>, Vec<u8>); 3] {
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn three_launches_with_an_entry_leave_the_pointers_as_the_os_does_and_memory_stays_usable() {
-    let app = shell();
+    for (kind, app) in [("no library", shell()), ("library", with_library())] {
+        three_launches(kind, app);
+    }
+}
+
+fn three_launches(kind: &str, app: &Build) {
     for (way_index, (way, exit, plain_exit)) in EXITS.into_iter().enumerate() {
+        let way = &format!("{kind}, {way}");
         let mut control = RealOs::boot(&plain());
         let mut ours = RealOs::boot(&app.file);
         for os in [&mut control, &mut ours] {
@@ -267,6 +345,7 @@ fn on_the_stub_both_exits_hand_the_os_a_clear_key() {
     for quit in [false, true] {
         let mut m = waiting_on_the_stub();
         stub_exit(&mut m, quit);
+        assert_eq!(m.regs().bc, 0x402A, "the app left through _JForceCmd");
         assert_eq!(m.regs().af >> 8, 0x09, "A holds the OS's CLEAR key code");
     }
 }
@@ -284,7 +363,7 @@ fn on_the_stub_the_edit_buffer_is_never_written_for_any_edit_top() {
             let marks = [0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8];
             m.load_ram(EDIT_TOP, &marks);
             m.load_ram(EDIT_TOP, &edit_top.to_le_bytes());
-            m.load_ram(CMD_CURSOR, &[3]);
+            m.load_ram(CMD_CURSOR, &[3, 1]);
             let around = |m: &mut Machine| {
                 let at = edit_top.wrapping_sub(2);
                 (0..SIZE_WORD_BYTES as u16)
@@ -296,7 +375,7 @@ fn on_the_stub_the_edit_buffer_is_never_written_for_any_edit_top() {
             }
             let (pointers, cursor_len, bytes) = (
                 m.read_ram(EDIT_TOP, 8),
-                m.read_ram(CMD_CURSOR, 1),
+                m.read_ram(CMD_CURSOR, 2),
                 around(&mut m),
             );
             stub_exit(&mut m, quit);
@@ -306,28 +385,24 @@ fn on_the_stub_the_edit_buffer_is_never_written_for_any_edit_top() {
                 pointers,
                 "{name}: the edit pointers"
             );
-            assert_eq!(m.read_ram(CMD_CURSOR, 1), cursor_len, "{name}: cmdCursor");
+            assert_eq!(m.read_ram(CMD_CURSOR, 2), cursor_len, "{name}: cmdCursor");
             assert_eq!(around(&mut m), bytes, "{name}: the bytes around editTop");
         }
     }
 }
 
 #[test]
-fn on_the_stub_the_cursor_is_homed_only_when_no_entry_text_is_pending() {
-    for (pending, homed) in [(0u8, true), (3, false)] {
+fn on_the_stub_cmd_shad_cur_is_zeroed_only_when_no_entry_text_is_pending() {
+    for (pending, homed) in [(0u16, true), (3, false), (0x100, false), (0x8000, false)] {
         for quit in [false, true] {
             let mut m = waiting_on_the_stub();
             m.load_ram(CUR_ROW, &[5, 9]);
             m.load_ram(CMD_CUR, &[4, 7]);
-            m.load_ram(CMD_CURSOR, &[pending]);
+            m.load_ram(CMD_CURSOR, &pending.to_le_bytes());
             stub_exit(&mut m, quit);
             let name = format!("pending {pending}, quit {quit}");
-            let (cur, shadow) = if homed {
-                ([0, 0], [0, 0])
-            } else {
-                ([5, 9], [4, 7])
-            };
-            assert_eq!(m.read_ram(CUR_ROW, 2), cur, "{name}: curRow and curCol");
+            let shadow = if homed { [0, 0] } else { [4, 7] };
+            assert_eq!(m.read_ram(CUR_ROW, 2), [5, 9], "{name}: curRow and curCol");
             assert_eq!(m.read_ram(CMD_CUR, 2), shadow, "{name}: cmdShadCur");
         }
     }
@@ -336,10 +411,10 @@ fn on_the_stub_the_cursor_is_homed_only_when_no_entry_text_is_pending() {
 /// The Y= editor owns the edit buffer when the app starts: its editTop is not the home screen's.
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn started_from_the_y_editor_every_way_out_leaves_the_pointers_as_a_plain_app_does() {
+fn started_from_the_y_editor_every_way_out_leaves_the_home_screen_as_a_plain_app_does() {
     let y_equals = [0x35u8];
     let app = shell();
-    for (way, exit, plain_exit) in EXITS {
+    for (i, (way, exit, plain_exit)) in EXITS.into_iter().enumerate() {
         let (mut os, ..) = launched_after(&app.file, Some(&app.start), &y_equals);
         let owner = read(&mut os, EDIT_TOP, 2);
         assert_ne!(
@@ -350,11 +425,17 @@ fn started_from_the_y_editor_every_way_out_leaves_the_pointers_as_a_plain_app_do
         exit(&mut os);
         let (mut control, ..) = launched_after(&plain(), None, &y_equals);
         plain_exit(&mut control);
-        assert_eq!(pointers(&mut os), pointers(&mut control), "{way}: pointers");
-        assert_eq!(
-            read(&mut os, CMD_CURSOR, 1),
-            read(&mut control, CMD_CURSOR, 1),
-            "{way}: cmdCursor"
-        );
+        let (mut got, mut want) = (home(&mut os), home(&mut control));
+        if !HANDS_CLEAR[i] {
+            got.shadow.clear();
+            want.shadow.clear();
+        }
+        assert_eq!(got, want, "{way}: pointers, cursor and the home screen");
+        let (mut got, mut want) = (after_enter(&mut os), after_enter(&mut control));
+        if !HANDS_CLEAR[i] {
+            got.1.clear();
+            want.1.clear();
+        }
+        assert_eq!(got, want, "{way}: ENTER");
     }
 }

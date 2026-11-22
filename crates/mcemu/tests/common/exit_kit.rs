@@ -34,7 +34,8 @@ pub const SCAN_MODE: u8 = 0x37;
 pub const SCAN_5: u8 = 0x1B;
 pub const KEY_1: u8 = 0x22;
 pub const ERROR_CALL: u16 = 0xA800;
-pub const STACK_BELOW: u16 = 0x100;
+/// How far below the OS's SP at the wait the stack mask reaches: the deepest byte that differs is 4Bh below.
+pub const STACK_BELOW: u16 = 0x60;
 /// The OS's SP at its idle after either exit: the slots below it are dead.
 pub const APP_STACK_TOP: u16 = 0xFFE5;
 pub const SCAN_DOWN: u8 = 0x01;
@@ -162,7 +163,7 @@ pub fn clear(os: &mut RealOs) {
 /// Milliseconds to wait after 2nd: with an entry line open, or another context's buffer in use, the
 /// OS redraws first and drops the next key if it comes within about a second.
 pub fn second_gap(os: &mut RealOs) -> u32 {
-    if read(os, CMD_CURSOR, 1)[0] == 0 && read(os, EDIT_TOP, 2) == [0xB7, 0x9D] {
+    if read(os, CMD_CURSOR, 2) == [0, 0] && read(os, EDIT_TOP, 2) == [0xB7, 0x9D] {
         300
     } else {
         1500
