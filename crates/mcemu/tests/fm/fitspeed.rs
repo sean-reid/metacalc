@@ -141,7 +141,7 @@ fn library_pass(name: &str, bytes: &[u8], frames_every: usize) -> Tally {
     tally
 }
 
-const SHIPPED: [(&str, Ceilings, usize); 3] = [
+const SHIPPED: [(&str, Ceilings, usize, (usize, usize)); 3] = [
     (
         "prop",
         Ceilings {
@@ -151,6 +151,7 @@ const SHIPPED: [(&str, Ceilings, usize); 3] = [
             warm_worst: 65600,
         },
         5,
+        (3, 1),
     ),
     (
         "pred",
@@ -161,6 +162,7 @@ const SHIPPED: [(&str, Ceilings, usize); 3] = [
             warm_worst: 67500,
         },
         10,
+        (7, 3),
     ),
     (
         "ring",
@@ -171,6 +173,7 @@ const SHIPPED: [(&str, Ceilings, usize); 3] = [
             warm_worst: 516000,
         },
         25,
+        (300, 40),
     ),
 ];
 
@@ -178,11 +181,11 @@ const SHIPPED: [(&str, Ceilings, usize); 3] = [
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn the_shipped_libraries_fit_as_the_model_does_and_within_the_budget() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
-    for (name, ceilings, frames_every) in SHIPPED {
+    for (name, ceilings, frames_every, (nodes, fitted)) in SHIPPED {
         let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
         let tally = library_pass(name, &bytes, frames_every);
         assert!(
-            tally.fitted + tally.alone > 0 && tally.frames > 20,
+            tally.folded_nodes >= nodes && tally.fitted >= fitted && tally.frames > 20,
             "{name}: {tally:?}"
         );
         let got = costs(name, &bytes);

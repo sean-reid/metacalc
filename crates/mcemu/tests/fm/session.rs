@@ -516,6 +516,12 @@ fn a_session_reaches_a_stack_depth_the_header_states() {
                 assert_eq!(fm.draw(1, -2, 94, (0, 8)).status(), 0);
                 assert_eq!(fm.draw(0, 0, 20, (0, 8)).status(), 0);
             }
+            for n in 0..decoded(&bytes).assertions.len() as u16 {
+                assert_eq!(fm.assertion(n).status(), 0);
+                for (rows, hyp, concl) in [(6, 84, 92), (1, 60, 60)] {
+                    assert_eq!(fm.fit(rows, hyp, concl).status(), 0);
+                }
+            }
             let page = fm.rig.m.ram_page(SPARE_PAGE);
             let unused = page[low..low + size].iter().take_while(|&&b| b == mark);
             size - unused.count()

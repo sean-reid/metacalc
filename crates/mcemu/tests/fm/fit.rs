@@ -145,9 +145,12 @@ pub struct Tally {
     pub refused_at_load: usize,
     pub unfolded: usize,
     pub fitted: usize,
+    /// Assertions where the fit-alone fallback runs.
     pub alone: usize,
-    pub several: usize,
-    pub skipped_one_line: usize,
+    /// Assertions with more statements than rows, whose conclusion is refitted.
+    pub refit: usize,
+    /// Assertions where a statement at one line was left alone while a later depth folded another.
+    pub skip_mattered: usize,
     pub folded_nodes: usize,
     pub frames: usize,
 }
@@ -220,7 +223,6 @@ pub fn compare(
         (0, want.rows_of(last)),
         "{what}: the conclusion is selected"
     );
-    let mut one_line_skipped = false;
     let mut folded_statements = 0;
     for s in 0..=hyps {
         let k = if s == last { 0xFF } else { s as u8 };
@@ -256,20 +258,20 @@ pub fn compare(
         );
         tally.folded_nodes += flags.iter().filter(|&&f| f).count();
         folded_statements += usize::from(flags.iter().any(|&f| f));
-        one_line_skipped |= want.rows_of(s) == 1 && flags.iter().all(|&f| !f) && expr.foldable(0);
     }
     if check.frame {
         let got = want.drawn_by_fm(fm, 0);
         same_frame(&what, &got, &pack(&want.bitmap(0)));
         tally.frames += 1;
     }
-    tally.several += usize::from(folded_statements > 1);
-    tally.skipped_one_line += usize::from(one_line_skipped && folded_statements > 0);
+    let walked = walk(&want, rows);
+    tally.refit += usize::from(hyps + 1 > rows);
+    tally.alone += usize::from(hyps + 1 > rows || !walked.fits);
+    tally.skip_mattered += usize::from(walked.skip_mattered);
     if folded_statements == 0 {
         tally.unfolded += 1;
         Outcome::Unfolded
     } else if hyps + 1 > rows {
-        tally.alone += 1;
         Outcome::Alone
     } else {
         tally.fitted += 1;
@@ -316,8 +318,8 @@ fn fixture_part(part: usize) {
             total.unfolded += t.unfolded;
             total.fitted += t.fitted;
             total.alone += t.alone;
-            total.several += t.several;
-            total.skipped_one_line += t.skipped_one_line;
+            total.refit += t.refit;
+            total.skip_mattered += t.skip_mattered;
             total.folded_nodes += t.folded_nodes;
             total.frames += t.frames;
         }
@@ -326,6 +328,113 @@ fn fixture_part(part: usize) {
     assert!(total.fitted > 20 && total.unfolded > 20);
     assert!(total.folded_nodes > 200 && total.frames > 50);
 }
+
+/// The model's fold_levels over the statements of `o`, noting whether the rule that leaves a
+/// statement of one line alone held one back from a fold while a later depth went on folding.
+pub struct Walk {
+    pub fits: bool,
+    pub skip_mattered: bool,
+}
+
+pub fn walk(o: &Oracle, rows: usize) -> Walk {
+    let lay = |s: usize, f: &Folds| layout(&o.exprs[s], f, o.widths[s]).rows();
+    let mut folds: Vec<Folds> = o.exprs.iter().map(Folds::none).collect();
+    let total = |f: &[Folds]| (0..f.len()).map(|s| lay(s, &f[s])).sum::<usize>();
+    if total(&folds) <= rows {
+        return Walk {
+            fits: true,
+            skip_mattered: false,
+        };
+    }
+    let deepest = o
+        .exprs
+        .iter()
+        .flat_map(|e| (0..e.len()).map(|n| e.depth(n)))
+        .max()
+        .unwrap_or(0);
+    let (mut skipped_at, mut mattered) = (None, false);
+    for depth in (0..=deepest).rev() {
+        for s in 0..o.exprs.len() {
+            let expr = &o.exprs[s];
+            let nodes: Vec<usize> = (0..expr.len())
+                .filter(|&n| expr.depth(n) == depth)
+                .collect();
+            if lay(s, &folds[s]) <= 1 {
+                let open = nodes
+                    .iter()
+                    .any(|&n| expr.foldable(n) && !folds[s].is_folded(n));
+                if open {
+                    skipped_at.get_or_insert(depth);
+                }
+                continue;
+            }
+            let mut changed = false;
+            for n in nodes {
+                if !folds[s].is_folded(n) {
+                    changed |= folds[s].toggle(expr, n);
+                }
+            }
+            mattered |= changed && skipped_at.is_some_and(|d| depth < d);
+            if changed && total(&folds) <= rows {
+                return Walk {
+                    fits: true,
+                    skip_mattered: mattered,
+                };
+            }
+        }
+    }
+    Walk {
+        fits: false,
+        skip_mattered: mattered,
+    }
+}
+
+#[test]
+fn the_fixture_sweeps_reach_every_branch_of_the_rule() {
+    let (mut refit, mut fallback, mut skip, mut fitted) = (0, 0, 0, 0);
+    let mut skip_in_fixture = 0;
+    for (which, bytes) in [fixture::nodes_library(), crate::fitcases::cases_library()]
+        .iter()
+        .enumerate()
+    {
+        let (model, library) = (Model::new(bytes), decoded(bytes));
+        for rows in ROW_COUNTS {
+            for width in WIDTHS {
+                for n in 0..library.assertions.len() as u16 {
+                    if !model.within(n) {
+                        continue;
+                    }
+                    let hyps = essentials(&library, n);
+                    let o = oracle(&model, n, hyps, rows, width);
+                    let walked = walk(&o, rows);
+                    refit += usize::from(hyps + 1 > rows);
+                    fallback += usize::from(hyps + 1 > rows || !walked.fits);
+                    skip += usize::from(walked.skip_mattered);
+                    skip_in_fixture += usize::from(walked.skip_mattered && which == 0);
+                    fitted += usize::from(
+                        hyps + 1 <= rows && walked.fits && o.folds.iter().any(|f| f.count() > 0),
+                    );
+                }
+            }
+        }
+    }
+    println!(
+        "sweeps: {fitted} fitted, {fallback} fit-alone fallbacks, {refit} conclusion refits, {skip} skips that mattered ({skip_in_fixture} in the nodes fixture)"
+    );
+    assert!(
+        refit >= FLOOR_REFIT && fallback >= FLOOR_FALLBACK,
+        "{refit} {fallback}"
+    );
+    assert!(
+        skip >= FLOOR_SKIP && fitted >= FLOOR_FITTED,
+        "{skip} {fitted}"
+    );
+}
+
+const FLOOR_REFIT: usize = 150;
+const FLOOR_FALLBACK: usize = 250;
+const FLOOR_SKIP: usize = 10;
+const FLOOR_FITTED: usize = 380;
 
 #[test]
 fn fixture_fits_match_the_model_in_part_0_of_4() {
@@ -383,10 +492,10 @@ fn on_screen(bytes: &[u8], label: &str) -> (mcglyph::Bitmap, usize) {
 
 /// fm's statements against the theorem screen's own frame: the pixels right of each statement's
 /// first column on every text row it takes, which leaves out the numbers and the marker.
-fn same_as_screen(bytes: &[u8], labels: &[&str]) -> usize {
+fn same_as_screen(bytes: &[u8], labels: &[&str]) -> (usize, Vec<String>) {
     let (model, library) = (Model::new(bytes), decoded(bytes));
     let mut fm = Fm::new(bytes);
-    let mut compared = 0;
+    let (mut compared, mut bad) = (0, Vec::new());
     for label in labels {
         let n = library
             .assertions
@@ -410,24 +519,26 @@ fn same_as_screen(bytes: &[u8], labels: &[&str]) -> usize {
                 for y in 8 * row as usize..8 * row as usize + 8 {
                     for x in o.xs[s]..96 {
                         let ink = drawn[y * 12 + x / 8] & (0x80 >> (x % 8)) != 0;
-                        assert_eq!(
-                            ink,
-                            screen.get(x, y),
-                            "{label}: statement {s} at ({x}, {y})"
-                        );
                         compared += 1;
+                        if ink != screen.get(x, y) && !bad.contains(&label.to_string()) {
+                            bad.push(label.to_string());
+                        }
                     }
                 }
             }
         }
     }
-    compared
+    (compared, bad)
 }
 
 #[test]
 fn the_statements_fm_draws_are_the_ones_the_theorem_screen_draws() {
     let fixture_labels = ["ax-2", "syl3", "many", "longest", "deep", "alimi"];
-    let mut compared = same_as_screen(&fixture::nodes_library(), &fixture_labels);
-    compared += same_as_screen(&crate::fitcases::cases_library(), &["e8", "f1", "f2", "g1"]);
+    let (mut compared, mut bad) = same_as_screen(&fixture::nodes_library(), &fixture_labels);
+    let (more, worse) =
+        same_as_screen(&crate::fitcases::cases_library(), &["e8", "f1", "f2", "g1"]);
+    compared += more;
+    bad.extend(worse);
     assert!(compared > 10_000, "{compared} pixels");
+    assert!(bad.is_empty(), "the screen and fm differ for {bad:?}");
 }

@@ -22,6 +22,8 @@ fit_body:
 	inc a
 	ld a,FM_ERR_INDEX
 	jp z,fm_fail
+	ld a,$FF
+	ld (fv_curn),a
 	xor a
 	ld (fv_fs),a
 ft_build:

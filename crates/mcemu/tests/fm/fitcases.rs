@@ -42,6 +42,31 @@ fn cases_source() -> String {
     }
     src += &format!("e8 $a |- {} $.\n$}}\n", nested(14));
     src += "${\nflatone.1 $e |- ph $.\nflatone $a |- ( ph -> ps ) $.\n$}\n";
+    let flat: Vec<String> = (0..30).map(|i| format!("Q{i}")).collect();
+    let flat = flat.join(" ");
+    src += &format!("$c {flat} $.\nwflat $a wff {flat} $.\n");
+    src += &format!(
+        "${{\nm9.1 $e |- {flat} $.\nm9 $a |- {} $.\n$}}\n",
+        nested(8)
+    );
+    src += &format!(
+        "${{\nm9b.1 $e |- {flat} $.\nm9b.2 $e |- {0} $.\nm9b $a |- {0} $.\n$}}\n",
+        nested(10)
+    );
+    let x = "( ph -> ps )";
+    let wides = [
+        format!("( {x} /\\ ( {x} /\\ ( {x} /\\ {x} ) ) )"),
+        format!("( ( {x} /\\ {x} ) /\\ ( {x} /\\ {x} ) )"),
+        format!("( ( {x} /\\ ( {x} /\\ {x} ) ) /\\ ( {x} /\\ ( {x} /\\ {x} ) ) )"),
+    ];
+    for (a, size) in [5, 6, 8].into_iter().enumerate() {
+        for (b, wide) in wides.iter().enumerate() {
+            src += &format!(
+                "${{\npk{a}{b}.1 $e |- {} $.\npk{a}{b}.2 $e |- {wide} $.\npk{a}{b} $a |- ph $.\n$}}\n",
+                nested(size)
+            );
+        }
+    }
     for (label, hyps, size) in [("big3", 3, 130), ("big2", 2, 100)] {
         src += "${\n";
         for h in 1..=hyps {
@@ -282,9 +307,85 @@ fn the_too_large_assertions_are_refused_with_no_fold_changed() {
             );
             let rows = named.fm.rows(concl);
             assert_eq!(count(rows), 1, "and the statement still shows it");
+            // The call built the first hypothesis's table before the limit stopped it at the
+            // second: a table built has every flag clear, and the one it stopped at has no table.
+            assert_eq!(named.fm.select(0).status(), 0);
+            let built = named.fm.header().nodes;
+            assert!(built > 0, "hypothesis 0 has its table");
+            assert_eq!(named.fm.flags(), vec![false; usize::from(built)]);
+            assert_eq!(named.fm.select(1).status(), 0);
+            assert_eq!(
+                named.fm.header().nodes,
+                0,
+                "hypothesis 1 is where it stopped"
+            );
         }
     }
     assert_eq!(refused, 1, "big3 is past the 384 nodes and big2 is not");
+    let (outcome, _) = named.at("big2", CONTENT_ROWS);
+    assert_ne!(
+        outcome,
+        Outcome::TooLarge,
+        "big2 goes through the whole comparison"
+    );
+}
+
+#[test]
+fn a_statement_that_reaches_one_line_part_way_is_left_alone_while_a_later_one_folds_on() {
+    let mut named = Named::new(&cases_library());
+    let mut found = Vec::new();
+    for a in 0..3 {
+        for b in 0..3 {
+            let n = index_of(&named.library, &format!("pk{a}{b}"));
+            let o = oracle(&named.model, n, 2, 3, STATEMENT_WIDTH);
+            let top = |s: usize| {
+                (0..o.exprs[s].len())
+                    .filter(|&i| o.folds[s].is_folded(i))
+                    .map(|i| o.exprs[s].depth(i))
+                    .min()
+            };
+            let (ra, rb) = (o.rows_of(0), o.rows_of(1));
+            if let (Some(da), Some(db)) = (top(0), top(1))
+                && (ra, rb) == (1, 1)
+                && db < da
+            {
+                found.push((format!("pk{a}{b}"), da, db));
+            }
+        }
+    }
+    println!("reaches one line first, then left alone: {found:?}");
+    let (label, da, _) = found
+        .first()
+        .expect("a pair where the first statement stops first")
+        .clone();
+    let (outcome, o) = named.at(&label, 3);
+    assert_eq!(outcome, Outcome::Fitted);
+    let expr = &o.exprs[0];
+    for i in 0..expr.len() {
+        let want = expr.foldable(i) && expr.depth(i) >= da;
+        assert_eq!(
+            o.folds[0].is_folded(i),
+            want,
+            "node {i} of the first statement"
+        );
+    }
+}
+
+#[test]
+fn statements_that_cannot_fit_each_end_at_one_line_and_the_fit_alone_branch_adds_nothing() {
+    let mut named = Named::new(&cases_library());
+    for (label, rows) in [("m9", 2), ("m9b", 3), ("m9b", 4)] {
+        let (outcome, o) = named.at(label, rows);
+        assert_eq!(outcome, Outcome::Fitted, "{label}");
+        assert!(o.exprs.len() <= rows);
+        assert!(!walk(&o, rows).fits, "{label}: no depth makes them fit");
+        assert!(
+            o.rows_of(0) >= 3,
+            "{label}: the flat statement keeps its lines"
+        );
+        let last = o.exprs.len() - 1;
+        assert_eq!(o.rows_of(last), 1, "{label}: the nested one ends at a line");
+    }
 }
 
 /// The model's fold_levels with the rule that skips a statement of one line taken out.
