@@ -286,7 +286,7 @@ fn next_zero_refuses_a_range_that_is_not_in_the_table() {
     assert_eq!(got[4], (ST_OK, 10));
 }
 
-/// Every single-bit change of the key: each bit of the CRC and of the count.
+/// The keys that differ from the table's in one bit of the CRC or of the count.
 fn flipped_keys() -> Vec<(u32, u16)> {
     let crcs = (0..32).map(|bit| (CRC ^ (1 << bit), COUNT));
     let counts = (0..16).map(|bit| (CRC, COUNT ^ (1 << bit)));
