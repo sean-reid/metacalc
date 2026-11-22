@@ -524,6 +524,7 @@ fn main() {
     );
     for f in [
         "../../probe/storecheck.z80",
+        "../../probe/storescript.inc",
         "../../probe/storedraw.inc",
         "../../app/src/store.inc",
         "../../app/src/store_count.inc",
