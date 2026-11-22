@@ -53,6 +53,8 @@ pub enum Cmd {
     Drop,
     /// Creates the list named Q of this many elements, which the OS keeps below every AppVar.
     List(u16),
+    /// Asks _EnoughMem for this many bytes: 0 when they are free, 1 when not.
+    Room(u16),
 }
 
 impl Cmd {
@@ -75,6 +77,7 @@ impl Cmd {
             Cmd::Locate => vec![10],
             Cmd::Nop => vec![11],
             Cmd::Repeat(n) => [&[12][..], &n.to_le_bytes()].concat(),
+            Cmd::Room(n) => [&[15][..], &n.to_le_bytes()].concat(),
             Cmd::List(n) => [&[16][..], &n.to_le_bytes()].concat(),
             Cmd::CountTo(n) => [&[17][..], &n.to_le_bytes()].concat(),
             Cmd::CountEnds(ends) => {
@@ -214,6 +217,17 @@ impl Rig {
     /// As `run`, with the T-states the whole run took.
     pub fn run_timed(&mut self, cmds: &[Cmd], free: Option<usize>) -> (Vec<Rec>, u32) {
         self.run_script(Some(cmds), free)
+    }
+
+    /// T-states of one `cmd` after `setup`, from a run of it a hundred times against a run of
+    /// nothing a hundred times.
+    pub fn cost(&mut self, cmd: Cmd, setup: &[Cmd]) -> u32 {
+        let run = |rig: &mut Rig, cmd: Cmd| {
+            let script = [setup, &[Cmd::Repeat(100), cmd]].concat();
+            rig.run_timed(&script, None).1
+        };
+        let base = run(self, Cmd::Nop);
+        (run(self, cmd) - base) / 100
     }
 
     /// Launches the app with no MCCMD, which runs its default script.
