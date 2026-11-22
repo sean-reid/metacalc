@@ -75,10 +75,20 @@ fn another_library_or_another_count_is_replaced_by_a_zeroed_table() {
     assert_eq!((log[1].b(), log[2].word(0)), (0, 0));
     assert_eq!(p.only_the_table("another CRC", SIZE), fresh(CRC ^ 1, COUNT));
     p.leave();
-    let log = p.launch(&[Cmd::Open(CRC ^ 1, 100), Cmd::Open(CRC ^ 1, 100)]);
+    // 3327 differs from 3326 in the low byte and needs the same 842 bytes; 255 differs from 3327
+    // in the high byte.
+    let log = p.launch(&[Cmd::Set(5, 1), Cmd::Open(CRC ^ 1, COUNT + 1), Cmd::Get(5)]);
+    assert_eq!((log[1].a, log[1].b()), (ST_OK, ST_OTHER_LIBRARY), "count");
+    assert_eq!(log[2].b(), 0);
+    assert_eq!(
+        p.only_the_table("another count", SIZE),
+        fresh(CRC ^ 1, COUNT + 1)
+    );
+    p.leave();
+    let log = p.launch(&[Cmd::Open(CRC ^ 1, 255), Cmd::Open(CRC ^ 1, 255)]);
     assert_eq!((log[0].a, log[0].b()), (ST_OK, ST_OTHER_LIBRARY), "count");
     assert_eq!((log[1].a, log[1].b()), (ST_OK, 0));
-    assert_eq!(p.only_the_table("another count", 35), fresh(CRC ^ 1, 100));
+    assert_eq!(p.only_the_table("a smaller count", 74), fresh(CRC ^ 1, 255));
     p.leave();
     p.finish("replace");
 }
