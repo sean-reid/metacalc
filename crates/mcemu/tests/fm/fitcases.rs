@@ -372,13 +372,13 @@ fn a_statement_that_reaches_one_line_part_way_is_left_alone_while_a_later_one_fo
 }
 
 #[test]
-fn statements_that_cannot_fit_each_end_at_one_line_and_the_fit_alone_branch_adds_nothing() {
+fn statements_no_depth_fits_keep_a_flat_one_and_fold_a_nested_one_to_a_line() {
     let mut named = Named::new(&cases_library());
     for (label, rows) in [("m9", 2), ("m9b", 3), ("m9b", 4)] {
         let (outcome, o) = named.at(label, rows);
         assert_eq!(outcome, Outcome::Fitted, "{label}");
         assert!(o.exprs.len() <= rows);
-        assert!(!walk(&o, rows).fits, "{label}: no depth makes them fit");
+        assert!(o.total() > rows, "{label}: no depth makes them fit");
         assert!(
             o.rows_of(0) >= 3,
             "{label}: the flat statement keeps its lines"

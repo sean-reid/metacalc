@@ -309,16 +309,15 @@ fn a_fold_drops_only_its_own_statements_count_and_a_reload_drops_every_count() {
     let mut fm = Fm::new(&bytes);
     let zero = fm.rig.call("CALL_NOP", Regs::default()).tstates;
     let order: [(usize, u8); 3] = [(0, 0), (1, 1), (2, 0xFF)];
-    let rows_of = |fm: &mut Fm, s: usize, k: u8, width: usize| {
+    let rows_of = |fm: &mut Fm, k: u8, width: usize| {
         assert_eq!(fm.select(k).status(), 0);
         let out = fm.rows(width);
         assert_eq!(out.status(), 0);
-        let _ = s;
         (count(out), out.tstates - zero)
     };
     assert_eq!(fit_at(&mut fm, n, 2, CONTENT_ROWS).status(), 0);
     for (s, k) in order {
-        let (rows, spent) = rows_of(&mut fm, s, k, o.widths[s]);
+        let (rows, spent) = rows_of(&mut fm, k, o.widths[s]);
         assert_eq!(rows, o.rows_of(s), "statement {s} read back");
         assert!(spent <= READ_BACK, "statement {s} read back in {spent}");
     }
@@ -334,7 +333,7 @@ fn a_fold_drops_only_its_own_statements_count_and_a_reload_drops_every_count() {
     assert_eq!(fm.select(1).status(), 0);
     let flag = fm.fold(node, 2);
     assert_eq!((flag.status(), count(flag)), (0, 1));
-    let (rows, spent) = rows_of(&mut fm, 1, 1, o.widths[1]);
+    let (rows, spent) = rows_of(&mut fm, 1, o.widths[1]);
     assert_eq!(
         rows,
         rows_with(node),
@@ -342,7 +341,7 @@ fn a_fold_drops_only_its_own_statements_count_and_a_reload_drops_every_count() {
     );
     assert!(spent > 3 * READ_BACK, "and it cost {spent}");
     for (s, k) in [order[0], order[2]] {
-        let (rows, spent) = rows_of(&mut fm, s, k, o.widths[s]);
+        let (rows, spent) = rows_of(&mut fm, k, o.widths[s]);
         assert_eq!(rows, o.rows_of(s), "statement {s} still read back");
         assert!(spent <= READ_BACK, "statement {s} read back in {spent}");
     }
@@ -352,10 +351,10 @@ fn a_fold_drops_only_its_own_statements_count_and_a_reload_drops_every_count() {
         unfolded_at(0, o.widths[0]),
         "the widths give different counts"
     );
-    let (rows, spent) = rows_of(&mut fm, 0, 0, 60);
+    let (rows, spent) = rows_of(&mut fm, 0, 60);
     assert_eq!(rows, unfolded_at(0, 60));
     assert!(spent > 3 * READ_BACK, "another width is laid out: {spent}");
-    let (rows, spent) = rows_of(&mut fm, 0, 0, o.widths[0]);
+    let (rows, spent) = rows_of(&mut fm, 0, o.widths[0]);
     assert_eq!(
         (rows, spent <= READ_BACK),
         (o.rows_of(0), true),
@@ -368,19 +367,16 @@ fn a_fold_drops_only_its_own_statements_count_and_a_reload_drops_every_count() {
         if s < 2 {
             assert_ne!(bare, o.rows_of(s), "statement {s} takes fewer lines fitted");
         }
-        let (rows, spent) = rows_of(&mut fm, s, k, o.widths[s]);
+        let (rows, spent) = rows_of(&mut fm, k, o.widths[s]);
         assert_eq!(
             rows, bare,
             "statement {s} after the same assertion is loaded again"
         );
-        assert!(
-            spent > 3 * READ_BACK || bare == 1,
-            "and it is laid out: {spent}"
-        );
+        assert!(spent > READ_BACK, "and it is laid out: {spent}");
     }
     assert_eq!(fit_at(&mut fm, n, 2, CONTENT_ROWS).hl as usize, o.total());
     for (s, k) in order {
-        let (rows, spent) = rows_of(&mut fm, s, k, o.widths[s]);
+        let (rows, spent) = rows_of(&mut fm, k, o.widths[s]);
         assert_eq!(
             (rows, spent <= READ_BACK),
             (o.rows_of(s), true),
@@ -438,3 +434,36 @@ fn fm_rows_on_a_statement_with_no_count_costs_what_the_ceiling_allows() {
 
 /// A little above what fm_rows costs on the fixture's longest statement with no count kept.
 const UNCACHED_ROWS: u32 = 33_500;
+
+fn cursor_of(fm: &mut Fm) -> u8 {
+    fm.memory("FV_CURN", 1)[0]
+}
+
+#[test]
+fn fm_fit_refusals_clear_the_cursor_except_the_one_for_a_closed_fm() {
+    let bytes = fixture::nodes_library();
+    let library = decoded(&bytes);
+    let syl3 = label_at(&library, "syl3");
+    let mut fm = Fm::new(&bytes);
+    assert_eq!(fm.statement(syl3, 0).status(), 0);
+    assert_eq!(fm.nodes().status(), 0);
+    assert_eq!(fm.cursor(0).status(), 0);
+    assert_eq!(cursor_of(&mut fm), 0);
+    let out = fm.fit(6, 90, 92);
+    assert_eq!(out.status(), code("FM_ERR_INDEX"), "a hypothesis alone");
+    assert_eq!(cursor_of(&mut fm), NO_CURSOR, "refused with INDEX");
+
+    assert_eq!(fm.assertion(syl3).status(), 0);
+    assert_eq!(fm.nodes().status(), 0);
+    assert_eq!(fm.cursor(0).status(), 0);
+    fm.rig.load(&fixture::other());
+    fm.rig.open_ok();
+    assert_eq!(fm.fit(6, 90, 92).status(), code("FM_ERR_NOT_OPEN"));
+    assert_eq!(cursor_of(&mut fm), NO_CURSOR, "refused for another library");
+
+    let mut closed = Fm::bare(&bytes);
+    let at = usize::from(closed.rig.label("FV_CURN") - SPARE_BASE);
+    closed.rig.m.ram_page(SPARE_PAGE)[at] = 7;
+    assert_eq!(closed.fit(6, 90, 92).status(), code("FM_ERR_NOT_OPEN"));
+    assert_eq!(cursor_of(&mut closed), 7, "a closed fm is not written");
+}

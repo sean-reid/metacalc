@@ -145,14 +145,33 @@ pub struct Tally {
     pub refused_at_load: usize,
     pub unfolded: usize,
     pub fitted: usize,
-    /// Assertions where the fit-alone fallback runs.
+    /// Assertions with more statements than rows, where fm_fit fits each statement alone.
     pub alone: usize,
-    /// Assertions with more statements than rows, whose conclusion is refitted.
+    /// Of those, the ones whose conclusion keeps more than one line after the refit.
     pub refit: usize,
-    /// Assertions where a statement at one line was left alone while a later depth folded another.
+    /// Assertions that end with a statement at one line holding an unfolded foldable node while
+    /// another statement has a folded node of a shallower depth.
     pub skip_mattered: usize,
     pub folded_nodes: usize,
     pub frames: usize,
+    /// A sum over the compared runs of a hash of fm's flags and total, to see two builds agree.
+    pub digest: u64,
+}
+
+impl Tally {
+    pub fn add(&mut self, t: &Tally) {
+        self.assertions += t.assertions;
+        self.too_large += t.too_large;
+        self.refused_at_load += t.refused_at_load;
+        self.unfolded += t.unfolded;
+        self.fitted += t.fitted;
+        self.alone += t.alone;
+        self.refit += t.refit;
+        self.skip_mattered += t.skip_mattered;
+        self.folded_nodes += t.folded_nodes;
+        self.frames += t.frames;
+        self.digest = self.digest.wrapping_add(t.digest);
+    }
 }
 
 pub fn essentials(library: &Library, n: u16) -> usize {
@@ -224,6 +243,7 @@ pub fn compare(
         "{what}: the conclusion is selected"
     );
     let mut folded_statements = 0;
+    let (mut all_flags, mut all_rows) = (Vec::new(), Vec::new());
     for s in 0..=hyps {
         let k = if s == last { 0xFF } else { s as u8 };
         assert_eq!(fm.select(k).status(), 0, "{what}: select {s}");
@@ -258,20 +278,30 @@ pub fn compare(
         );
         tally.folded_nodes += flags.iter().filter(|&&f| f).count();
         folded_statements += usize::from(flags.iter().any(|&f| f));
+        all_flags.push(flags);
+        all_rows.push(count(counted));
     }
     if check.frame {
         let got = want.drawn_by_fm(fm, 0);
         same_frame(&what, &got, &pack(&want.bitmap(0)));
         tally.frames += 1;
     }
-    let walked = walk(&want, rows);
-    tally.refit += usize::from(hyps + 1 > rows);
-    tally.alone += usize::from(hyps + 1 > rows || !walked.fits);
-    tally.skip_mattered += usize::from(walked.skip_mattered);
+    let mut hasher = std::hash::DefaultHasher::new();
+    std::hash::Hash::hash(
+        &(n, rows, width, out.hl, &all_flags, &all_rows),
+        &mut hasher,
+    );
+    tally.digest = tally
+        .digest
+        .wrapping_add(std::hash::Hasher::finish(&hasher));
+    let alone = count(loaded) > rows;
+    tally.alone += usize::from(alone);
+    tally.refit += usize::from(alone && all_rows[last] > 1);
+    tally.skip_mattered += usize::from(skip_mattered(&want, &all_flags, &all_rows));
     if folded_statements == 0 {
         tally.unfolded += 1;
         Outcome::Unfolded
-    } else if hyps + 1 > rows {
+    } else if alone {
         Outcome::Alone
     } else {
         tally.fitted += 1;
@@ -313,15 +343,7 @@ fn fixture_part(part: usize) {
                 FLAGS
             };
             let t = sweep(&bytes, rows, width, (part, 4), check);
-            total.assertions += t.assertions;
-            total.too_large += t.too_large;
-            total.unfolded += t.unfolded;
-            total.fitted += t.fitted;
-            total.alone += t.alone;
-            total.refit += t.refit;
-            total.skip_mattered += t.skip_mattered;
-            total.folded_nodes += t.folded_nodes;
-            total.frames += t.frames;
+            total.add(&t);
         }
     }
     println!("fixture part {part}: {total:?}");
@@ -329,112 +351,61 @@ fn fixture_part(part: usize) {
     assert!(total.folded_nodes > 200 && total.frames > 50);
 }
 
-/// The model's fold_levels over the statements of `o`, noting whether the rule that leaves a
-/// statement of one line alone held one back from a fold while a later depth went on folding.
-pub struct Walk {
-    pub fits: bool,
-    pub skip_mattered: bool,
-}
-
-pub fn walk(o: &Oracle, rows: usize) -> Walk {
-    let lay = |s: usize, f: &Folds| layout(&o.exprs[s], f, o.widths[s]).rows();
-    let mut folds: Vec<Folds> = o.exprs.iter().map(Folds::none).collect();
-    let total = |f: &[Folds]| (0..f.len()).map(|s| lay(s, &f[s])).sum::<usize>();
-    if total(&folds) <= rows {
-        return Walk {
-            fits: true,
-            skip_mattered: false,
-        };
-    }
-    let deepest = o
-        .exprs
-        .iter()
-        .flat_map(|e| (0..e.len()).map(|n| e.depth(n)))
-        .max()
-        .unwrap_or(0);
-    let (mut skipped_at, mut mattered) = (None, false);
-    for depth in (0..=deepest).rev() {
-        for s in 0..o.exprs.len() {
-            let expr = &o.exprs[s];
-            let nodes: Vec<usize> = (0..expr.len())
-                .filter(|&n| expr.depth(n) == depth)
-                .collect();
-            if lay(s, &folds[s]) <= 1 {
-                let open = nodes
-                    .iter()
-                    .any(|&n| expr.foldable(n) && !folds[s].is_folded(n));
-                if open {
-                    skipped_at.get_or_insert(depth);
-                }
-                continue;
-            }
-            let mut changed = false;
-            for n in nodes {
-                if !folds[s].is_folded(n) {
-                    changed |= folds[s].toggle(expr, n);
-                }
-            }
-            mattered |= changed && skipped_at.is_some_and(|d| depth < d);
-            if changed && total(&folds) <= rows {
-                return Walk {
-                    fits: true,
-                    skip_mattered: mattered,
-                };
-            }
-        }
-    }
-    Walk {
-        fits: false,
-        skip_mattered: mattered,
-    }
+/// Whether fm left a statement at one line with an unfolded foldable node while another
+/// statement has a folded node of a shallower depth: the flags and rows are fm's.
+fn skip_mattered(o: &Oracle, flags: &[Vec<bool>], rows: &[usize]) -> bool {
+    (0..o.exprs.len()).any(|s| {
+        let expr = &o.exprs[s];
+        let open = (0..expr.len())
+            .filter(|&n| expr.foldable(n) && !flags[s][n])
+            .map(|n| expr.depth(n))
+            .max();
+        rows[s] == 1
+            && open.is_some_and(|depth| {
+                (0..o.exprs.len()).filter(|&t| t != s).any(|t| {
+                    (0..o.exprs[t].len()).any(|n| flags[t][n] && o.exprs[t].depth(n) < depth)
+                })
+            })
+    })
 }
 
 #[test]
-fn the_fixture_sweeps_reach_every_branch_of_the_rule() {
-    let (mut refit, mut fallback, mut skip, mut fitted) = (0, 0, 0, 0);
-    let mut skip_in_fixture = 0;
-    for (which, bytes) in [fixture::nodes_library(), crate::fitcases::cases_library()]
-        .iter()
-        .enumerate()
-    {
-        let (model, library) = (Model::new(bytes), decoded(bytes));
-        for rows in ROW_COUNTS {
-            for width in WIDTHS {
-                for n in 0..library.assertions.len() as u16 {
-                    if !model.within(n) {
-                        continue;
-                    }
-                    let hyps = essentials(&library, n);
-                    let o = oracle(&model, n, hyps, rows, width);
-                    let walked = walk(&o, rows);
-                    refit += usize::from(hyps + 1 > rows);
-                    fallback += usize::from(hyps + 1 > rows || !walked.fits);
-                    skip += usize::from(walked.skip_mattered);
-                    skip_in_fixture += usize::from(walked.skip_mattered && which == 0);
-                    fitted += usize::from(
-                        hyps < rows && walked.fits && o.folds.iter().any(|f| f.count() > 0),
-                    );
-                }
-            }
+fn the_cases_library_through_the_z80_reaches_every_branch_of_the_rule() {
+    let bytes = crate::fitcases::cases_library();
+    let started = std::time::Instant::now();
+    let mut total = Tally::default();
+    let mut pairs = 0;
+    for rows in ROW_COUNTS {
+        for width in WIDTHS {
+            total.add(&sweep(&bytes, rows, width, (0, 1), FLAGS));
+            pairs += 1;
         }
     }
     println!(
-        "sweeps: {fitted} fitted, {fallback} fit-alone fallbacks, {refit} conclusion refits, {skip} skips that mattered ({skip_in_fixture} in the nodes fixture)"
+        "cases sweep: {pairs} row and width pairs, {} runs of fm_fit compared with the model ({} refused as too large), digest {:x}, {} fitted, {} fitting each statement alone, {} with the conclusion refitted, {} skips that mattered, in {:?}",
+        total.assertions,
+        total.too_large,
+        total.digest,
+        total.fitted,
+        total.alone,
+        total.refit,
+        total.skip_mattered,
+        started.elapsed()
     );
     assert!(
-        refit >= FLOOR_REFIT && fallback >= FLOOR_FALLBACK,
-        "{refit} {fallback}"
+        total.refit >= FLOOR_REFIT && total.alone >= FLOOR_ALONE,
+        "{total:?}"
     );
     assert!(
-        skip >= FLOOR_SKIP && fitted >= FLOOR_FITTED,
-        "{skip} {fitted}"
+        total.skip_mattered >= FLOOR_SKIP && total.fitted >= FLOOR_FITTED,
+        "{total:?}"
     );
 }
 
-const FLOOR_REFIT: usize = 150;
-const FLOOR_FALLBACK: usize = 250;
-const FLOOR_SKIP: usize = 10;
-const FLOOR_FITTED: usize = 380;
+const FLOOR_REFIT: usize = 18;
+const FLOOR_ALONE: usize = 125;
+const FLOOR_SKIP: usize = 14;
+const FLOOR_FITTED: usize = 140;
 
 #[test]
 fn fixture_fits_match_the_model_in_part_0_of_4() {

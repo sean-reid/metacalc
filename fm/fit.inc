@@ -10,6 +10,8 @@
 fit_body:
 	call fm_need
 	jp nz,fm_fail
+	ld a,$FF
+	ld (fv_curn),a
 	ld a,b
 	ld (fv_frows),a
 	ld a,d
@@ -22,8 +24,6 @@ fit_body:
 	inc a
 	ld a,FM_ERR_INDEX
 	jp z,fm_fail
-	ld a,$FF
-	ld (fv_curn),a
 	xor a
 	ld (fv_fs),a
 ft_build:
@@ -56,7 +56,7 @@ ft_init:
 	cp (hl)
 	jr c,ft_alone
 	call ft_levels
-	jr nc,ft_done
+	jr ft_done
 ft_alone:
 	xor a
 	ld (fv_fo),a
@@ -76,10 +76,6 @@ ft_one:
 	ld a,(fv_nw)
 	cp (hl)
 	jr nz,ft_one
-	ld hl,fv_nw
-	ld a,(fv_frows)
-	cp (hl)
-	jr nc,ft_done
 	ld a,(fv_last)
 	ld (fv_fs),a
 	ld (fv_f0),a
@@ -105,8 +101,6 @@ ft_done:
 	push hl
 	ld a,(fv_last)
 	call sel_index
-	ld a,$FF
-	ld (fv_curn),a
 	pop hl
 	xor a
 	ld b,a

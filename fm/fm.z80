@@ -222,16 +222,16 @@
 ;                      and fit_one exactly: when the statements already fit nothing is folded;
 ;                      else for each depth from the deepest down, each statement in order that
 ;                      takes more than one line has every unfolded foldable node of that depth
-;                      folded, and the search stops at the first fold after which they fit. When
-;                      no depth fits, or there are more statements than lines, each statement is
-;                      fitted alone to one line the same way, and with more statements than lines
-;                      the conclusion is then fitted again alone to B lines. A statement is
-;                      laid out again once for each depth that folded something in it. The
-;                      conclusion is selected after the call. The cursor is cleared before any
-;                      table is built, so every exit, a refusal included, leaves it cleared. Every
-;                      statement's records are fresh and its line count is kept for fm_rows. A
-;                      store of one statement, loaded by fm_statement, is fitted too when it is a
-;                      conclusion.
+;                      folded, and the search stops at the first fold after which they fit.
+;                      When there are more statements than lines, each statement is fitted alone to
+;                      one line the same way and the conclusion is then fitted again alone to B
+;                      lines. A statement is laid out again once for each depth that folded
+;                      something in it. The conclusion is selected after the call. The cursor is
+;                      cleared as soon as fm is known to be open, so every exit leaves it cleared
+;                      but a refusal because fm is closed, which writes nothing, as fm's memory
+;                      may not be fm's then. Every statement's records are fresh and its line
+;                      count is kept for fm_rows. A store of one statement, loaded by
+;                      fm_statement, is fitted too when it is a conclusion.
 ;                      FM_ERR_LIMIT: more than 384 nodes in the tables of the assertion or
 ;                      more than 255 in one statement, the cases the host model calls too large
 ;                      with its caps; no flag of a table that was built before the call is
@@ -240,10 +240,10 @@
 ;                      and FM_ERR_READ as fm_nodes gives them.
 ;   fm_cursor     in:  A = node of the selected statement, FFh for none
 ;                 out: A = status. Stores the node, which the draws that follow show as the
-;                      cursor, until fm_open, fm_assertion, fm_statement or a fm_select that
-;                      selects clears it; a fold change keeps it. Draws nothing. FFh succeeds
-;                      on an open fm. FM_ERR_INDEX: the table is not built or has no node A,
-;                      and the cursor stays as it was.
+;                      cursor, until fm_open, fm_assertion, fm_statement, fm_fit or a
+;                      fm_select that selects clears it; a fold change keeps it. Draws nothing.
+;                      FFh succeeds on an open fm. FM_ERR_INDEX: the table is not built or has no
+;                      node A, and the cursor stays as it was.
 ; Other statuses: FM_ERR_NOT_OPEN, from every routine but fm_open.
 
 #ifndef FM_EMBEDDED
