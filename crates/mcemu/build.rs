@@ -524,6 +524,7 @@ fn main() {
     );
     for f in [
         "../../probe/storecheck.z80",
+        "../../probe/storescript.inc",
         "../../probe/storedraw.inc",
         "../../app/src/store.inc",
         "../../app/src/store_count.inc",
@@ -1136,6 +1137,54 @@ fn assemble_ui(out: &Path) {
         (
             &["FM_RAM=$EA00"][..],
             Some("FM_RAM runs outside the kernel's high region"),
+        ),
+        (&["APP_SENTINEL=$8000"][..], None),
+        (&["APP_SENTINEL=$BFFF"][..], None),
+        (&["APP_SENTINEL=$86EB"][..], None),
+        (&["APP_SENTINEL=$8906"][..], None),
+        (
+            &["APP_SENTINEL=$7FFF"][..],
+            Some("APP_SENTINEL runs past bank B"),
+        ),
+        (
+            &["APP_SENTINEL=$C000"][..],
+            Some("APP_SENTINEL runs past bank B"),
+        ),
+        (
+            &["APP_SENTINEL=$86EC"][..],
+            Some("APP_SENTINEL and UI_VARS overlap"),
+        ),
+        (
+            &["APP_SENTINEL=$8706"][..],
+            Some("APP_SENTINEL and FM_SCRATCH overlap"),
+        ),
+        (
+            &["APP_SENTINEL=$8806"][..],
+            Some("APP_SENTINEL and APP_BUF overlap"),
+        ),
+        (
+            &["APP_SENTINEL=$9340"][..],
+            Some("APP_SENTINEL and UI_FRAME overlap"),
+        ),
+        (
+            &["APP_SENTINEL=$90D3"][..],
+            Some("APP_SENTINEL and SCR_VARS overlap"),
+        ),
+        (
+            &["APP_SENTINEL=$966E"][..],
+            Some("APP_SENTINEL and SCR_STACK overlap"),
+        ),
+        (
+            &["APP_SENTINEL=$9872"][..],
+            Some("APP_SENTINEL and KD_SCRATCH overlap"),
+        ),
+        (
+            &["APP_SENTINEL=$9896"][..],
+            Some("APP_SENTINEL and FAR_VARS overlap"),
+        ),
+        (
+            &["APP_SENTINEL=$989C"][..],
+            Some("APP_SENTINEL and LIB_STATE overlap"),
         ),
         (&["UI_VARS_SIZE=$30"][..], None),
         (

@@ -75,10 +75,22 @@ fn every_way_out_leaves_a_blank_home_screen_and_the_os_as_it_was() {
         ("library", with_library()),
         ("refused library", refused()),
     ] {
-        for (way, exit, plain_exit) in EXITS {
-            let name = format!("{kind}, {way}");
+        for (way, exit, plain_exit, depth) in EXITS
+            .iter()
+            .flat_map(|&(w, e, p)| [(w, e, p, 1), (w, e, p, 2)])
+            .filter(|&(way, _, _, depth)| depth == 1 || way != "CLEAR")
+        {
+            let name = format!("{kind}, {way}, depth {depth}");
             let (mut os, before, text) = launched(&app.file, Some(&app.start));
-            dirty(&mut os);
+            if depth == 2 {
+                os.tap(SCAN_F3, 150, 500);
+            }
+            assert_eq!(
+                read(&mut os, VARS.0, 1),
+                [depth as u8],
+                "{name}: screens open"
+            );
+            dirty(&mut os, depth);
             exit(&mut os);
             assert_eq!(
                 neighbours(&mut os),
@@ -114,7 +126,7 @@ fn dirty_regions_are_the_only_thing_that_changes_the_ram_after_2nd_off() {
     let run = |dirt: bool| {
         let (mut os, ..) = launched(&app.file, Some(&app.start));
         if dirt {
-            dirty(&mut os);
+            dirty(&mut os, 1);
         }
         off(&mut os);
         os.m.ram_page(1).to_vec()
@@ -247,14 +259,8 @@ fn the_app_leaves_banks_b_and_c_as_a_plain_waiting_app_does_but_for_what_it_decl
     }
 }
 
-#[test]
-#[ignore = "needs the reference ROM image"]
-fn an_auto_power_down_is_not_a_way_out_and_the_state_survives_the_wake() {
-    let app = shell();
-    let (mut os, before, _) = launched(&app.file, Some(&app.start));
-    dirty(&mut os);
-    let theirs = context(&mut os);
-    assert_ne!(theirs[0], before[0], "the app's context is installed");
+/// Runs the reference OS until the auto power down fires, then wakes it with ON.
+fn power_down_and_wake(os: &mut RealOs) {
     let mut seconds = 0;
     while os.m.in_port(3) & POWER_DOWN == 0 {
         assert!(seconds < 600, "no auto power down in 600 s");
@@ -262,6 +268,18 @@ fn an_auto_power_down_is_not_a_way_out_and_the_state_survives_the_wake() {
         seconds += 5;
     }
     os.tap(Machine::KEY_ON, 150, 3000);
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn an_auto_power_down_is_not_a_way_out_and_the_state_survives_the_wake() {
+    let app = shell();
+    let (mut os, before, _) = launched(&app.file, Some(&app.start));
+    dirty(&mut os, 1);
+    let held = live(&mut os, 1);
+    let theirs = context(&mut os);
+    assert_ne!(theirs[0], before[0], "the app's context is installed");
+    power_down_and_wake(&mut os);
     assert_eq!(context(&mut os), theirs, "the app's context after the wake");
     for when in ["wake", "key"] {
         if when == "key" {
@@ -274,14 +292,104 @@ fn an_auto_power_down_is_not_a_way_out_and_the_state_survives_the_wake() {
                 "the app answered the key and drew its frame again"
             );
         }
-        for (addr, bytes) in dirt() {
-            assert_eq!(
-                read(&mut os, addr, bytes.len()),
-                bytes,
-                "{addr:04X} after the {when}"
-            );
+        assert_eq!(live(&mut os, 1), held, "the live bytes after the {when}");
+        if when == "wake" {
+            for (addr, bytes) in dirt(1) {
+                assert_eq!(
+                    read(&mut os, addr, bytes.len()),
+                    bytes,
+                    "{addr:04X} after the wake"
+                );
+            }
         }
     }
+}
+
+fn packed(bitmap: &mcglyph::Bitmap) -> Vec<u8> {
+    let mut out = vec![0u8; 768];
+    for y in 0..64 {
+        for x in 0..96 {
+            if bitmap.get(x, y) {
+                out[y * 12 + x / 8] |= 0x80 >> (x % 8);
+            }
+        }
+    }
+    out
+}
+
+fn pixels(bitmap: &mcglyph::Bitmap) -> Vec<bool> {
+    (0..64)
+        .flat_map(|y| (0..96).map(move |x| (x, y)))
+        .map(|(x, y)| bitmap.get(x, y))
+        .collect()
+}
+
+/// A real auto power down with the screen `shown` open after the keys `open`: after the wake the
+/// pixels sit over the sentinel, and the next key, which the screen ignores, enters the screen
+/// again and draws its whole frame over a frame that was written over with a pattern.
+fn power_down_with(app: &Build, open: &[u8], depth: u8, shown: &mcglyph::Bitmap) {
+    let (mut os, ..) = launched(&app.file, Some(&app.start));
+    for &key in open {
+        os.tap(key, 150, 500);
+    }
+    assert_eq!(read(&mut os, VARS.0, 1), [depth], "screens open");
+    assert!(os.screen() == pixels(shown), "the screen is open");
+    dirty(&mut os, usize::from(depth));
+    let held = live(&mut os, usize::from(depth));
+    power_down_and_wake(&mut os);
+    let sentinel = label_in(&app.labels, "APP_SENTINEL");
+    let frame_byte = label_in(&app.labels, "APP_SENTINEL_FRAME");
+    assert_ne!(
+        read(&mut os, sentinel, 1)[0],
+        !read(&mut os, frame_byte, 1)[0],
+        "the power down wrote the pixels over the sentinel"
+    );
+    os.m.load_ram(UI_FRAME, &[0xAA; 768]);
+    os.tap(SCAN_DOWN, 150, 400);
+    assert_eq!(
+        read(&mut os, UI_FRAME, 768),
+        packed(shown),
+        "the frame after the key"
+    );
+    assert!(os.screen() == pixels(shown), "the screen after the key");
+    assert_eq!(live(&mut os, usize::from(depth)), held, "the live bytes");
+    assert_eq!(
+        read(&mut os, sentinel, 1)[0],
+        !read(&mut os, frame_byte, 1)[0],
+        "the sentinel is stored again"
+    );
+}
+
+fn about() -> mcglyph::Bitmap {
+    let mut ui = mcui::Ui::new(
+        vec![],
+        mcui::Statuses {
+            libraries: vec![],
+            my_proofs: 0,
+        },
+    )
+    .expect("the model loads");
+    ui.press(mcui::Key::F3);
+    ui.frame()
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn an_auto_power_down_with_about_open_leaves_it_open_and_the_next_key_draws_it_whole() {
+    power_down_with(shell(), &[SCAN_F3], 2, &about());
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn an_auto_power_down_with_a_notice_open_leaves_it_open_and_the_next_key_draws_it_whole() {
+    power_down_with(shell(), &[SCAN_F1], 2, &mcui::unavailable_frame("Theorems"));
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn an_auto_power_down_on_the_start_screen_of_a_library_build_draws_it_whole_on_the_next_key() {
+    let start = start_model(Some(&fixture::library()), 0);
+    power_down_with(with_library(), &[], 1, &start);
 }
 
 fn waiting_on_the_stub() -> Machine {
@@ -331,7 +439,7 @@ fn on_the_stub_both_exits_fill_the_two_regions_and_touch_nothing_beside_them() {
         for (&addr, &byte) in NEIGHBOURS.iter().zip(&sentinels) {
             m.load_ram(addr, &[byte]);
         }
-        for (addr, bytes) in dirt() {
+        for (addr, bytes) in dirt(1) {
             m.load_ram(addr, &bytes);
         }
         if quit {

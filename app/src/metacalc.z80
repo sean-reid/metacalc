@@ -4,28 +4,47 @@
 ;
 ; Start. far_init, the canvas font (fm_open needs it), then with LIBRARY: app_find_library,
 ; kernel_reset, lib_open on the library's chunk 0 and fm_open; the first status that is not 0 is kept
-; in appStatus.
-; Screen, drawn again after every key but CLEAR and QUIT, which leave:
-;   with LIBRARY  row 0 the title, row 1 the label of the library's first assertion, rows 2 to 6 its
-;                 conclusion from fm_assertion and fm_draw, row 7 the hint; the label is drawn
-;                 once both have returned 0, and a refused call leaves everything under the title
-;                 out and shows its status as two hex digits on row 7 in place of the hint
-;   without       row 0 the title, row 3 the hint
-; Exit. CLEAR and 2nd+QUIT leave through app_exit; 2nd+OFF is the OS's. Every way out runs
-; app_putaway, which fills SCR_STACK with spaces and SCR_VARS with zeros, the state the home screen
-; draws as blank, zeroes cmdShadCur, the copy the home screen restores the cursor from, while
-; editCursor equals editTop, that is while no entry text is pending (cmdCursor is the cursor's
-; offset in the entry, not its length), clears appRunning and appLaunched in iy+28h and
-; onInterrupt, and sets graphDraw. It never writes the entry line's buffer. app_exit then hands the
-; OS a CLEAR key with _JForceCmd, which empties an unentered entry the way a key press does;
-; 2nd+OFF and 1:Quit leave one as it was, with the screen blank.
+; in appStatus. Then scr_init opens the start screen.
+; Loop. The shell runs the screen stack of scr/scr.z80: scr_draw, ui_blit, the sentinel, app_key, the
+; sentinel check, scr_key, and then what scr_key returns. SCR_RES_IDLE waits for the next key with
+; no draw and no blit, SCR_RES_REDRAW draws and blits, SCR_RES_LEAVE leaves, and SCR_RES_FAILED,
+; with B the status of an enter that failed, pushes the error notice with scr_push_frame.
+; 2nd+QUIT leaves from any depth before the stack sees it.
+; Kinds, in screens.inc, screen_notice.inc and screen_about.inc, on this page:
+;   1 start   with LIBRARY row 0 the title, row 1 the label of the library's first assertion, rows
+;             2 to 6 its conclusion from fm_assertion and fm_draw, row 7 the hint; start_enter
+;             builds the assertion, start_draw draws, and a refused call leaves everything under
+;             the title out and shows its status as two hex digits on row 7 in place of the hint;
+;             without, row 0 the title and row 3 the hint. F3 opens About, F1 and ENTER and F2 a
+;             notice, CLEAR leaves.
+;   2 notice  a title and a line; F1, CLEAR and ENTER go back
+;   3 about   the version, two lines and the count of libraries; CLEAR and ENTER go back
+; Sentinel. The OS writes the screen's pixels over saveSScreen when auto power down fires in
+; _GetKey, which destroys what the top screen built in saveSScreen. After every blit the shell stores
+; in APP_SENTINEL, a byte of saveSScreen's tail, the complement of the frame's byte at the same
+; offset. A pixel copy over it makes the two bytes equal, which no complement is, so when
+; app_key returns and the byte is not that complement, scr_refresh builds the top screen again
+; before scr_key, and the screen is drawn again even when scr_key ignores the key. A refresh that
+; fails is SCR_RES_FAILED.
+; Failure. SCR_RES_FAILED pushes the error notice, and one that comes while the error notice is on
+; top, from popping it or from refreshing it, leaves by app_exit, so a screen whose enter
+; keeps failing cannot hold the user. When the push of the error notice fails the shell leaves too.
+; Exit. CLEAR on the start screen, SCR_RES_LEAVE, and 2nd+QUIT leave through app_exit; 2nd+OFF is
+; the OS's. Every way out runs app_putaway, which fills SCR_STACK with spaces and SCR_VARS with
+; zeros, the state the home screen draws as blank, zeroes cmdShadCur, the copy the home screen
+; restores the cursor from, while editCursor equals editTop, that is while no entry text is pending
+; (cmdCursor is the cursor's offset in the entry, not its length), clears appRunning and
+; appLaunched in iy+28h and onInterrupt, and sets graphDraw. It never writes the entry line's
+; buffer. app_exit then hands the OS a CLEAR key with _JForceCmd, which empties an unentered entry
+; the way a key press does; 2nd+OFF and 1:Quit leave one as it was, with the screen blank.
 ; start installs a context with _AppInit for that: the OS calls cxPPutAway and cxPutAway at 2nd+OFF
 ; and at _JForceCmd, and cxPPutAway alone when an OS call raises an error. On that error
 ; screen 1:Quit returns to the home screen through the OS and 2:Goto through cxErrorEP, which
 ; leaves by app_exit. An auto power down calls none of them.
 ; RAM: the canvas's, fm's and the kernel's blocks in ram_map.inc, libPage (the flash page of
 ; library chunk 0) and appStatus after it, and APP_BUF, which holds the reader's scratch and the
-; strings in glyph codes. The strings the canvas reads from the draw page are in strings.inc.
+; strings in glyph codes, APP_FRAME in its upper half. The strings the canvas reads from the draw
+; page are in strings.inc.
 
 #include "equates.inc"
 
@@ -42,6 +61,9 @@ far_table_end .equ $
 #include "far_draw.inc"
 #include "far_kernel.inc"
 #include "libpage.inc"
+
+#define SCR_EMBEDDED
+#include "scr/scr.z80"
 
 HINT_ROW = 3
 HINT_COL = 1
@@ -68,35 +90,100 @@ app_start:
 	call far_lib_open
 	ld (appStatus), a
 	or a
-	jr nz, app_screen
+	jr nz, app_open
 	call far_fm_open
 	ld (appStatus), a
 #endif
-app_screen:
-	call far_ui_clear
-	ld hl, str_title
-	ld de, str_none
-	call far_ui_title
-#ifdef LIBRARY
-	call app_library_rows
-#else
-	ld hl, str_hint
-	ld de, HINT_COL
-	ld b, HINT_ROW
-	call far_ui_text
-#endif
+app_open:
+	ld hl, screen_kinds
+	ld de, screen_first
+	call scr_init
+app_draw:
+	call scr_draw
 	call far_ui_blit
+	call app_arm
+app_wait:
 	call app_key
-	cp KEY_CLEAR
-	jr z, app_exit
 	cp KEY_QUIT
 	jr z, app_exit
-	jr app_screen
+	ld c, a
+	push bc
+	ld a, (APP_SENTINEL_FRAME)
+	cpl
+	ld hl, APP_SENTINEL
+	cp (hl)
+	ld d, 0
+	jr z, app_keyed
+	call scr_refresh
+	or a
+	jr nz, app_refresh_failed
+	ld d, 1
+app_keyed:
+	pop bc
+	call app_error_open
+	ld e, a
+	push de
+	ld a, c
+	call scr_key
+	pop de
+	or a
+	jr nz, app_result
+	ld a, d
+	or a
+	jr z, app_wait
+	jr app_draw
+app_result:
+	cp SCR_RES_REDRAW
+	jr z, app_draw
+	cp SCR_RES_LEAVE
+	jr z, app_exit
+	ld a, e
+	or a
+	jr nz, app_exit
+app_failed:
+	ld a, KIND_NOTICE
+	ld c, b
+	ld b, NOTICE_ERROR
+	ld hl, APP_FRAME
+	call screen_make
+	call scr_push_frame
+	cp SCR_RES_REDRAW
+	jr z, app_draw
 app_exit:
 	di
 	call app_putaway
 	ld a, kClear
 	bjump(_JForceCmd)
+
+app_refresh_failed:
+	pop bc
+	ld b, a
+	call app_error_open
+	or a
+	jr nz, app_exit
+	jr app_failed
+
+; Out: A = 1 when the top screen is the error notice, else 0. Destroys HL.
+app_error_open:
+	call scr_top
+	ld a, (hl)
+	cp KIND_NOTICE
+	jr nz, app_error_closed
+	inc hl
+	ld a, (hl)
+	cp NOTICE_ERROR
+	ld a, 1
+	ret z
+app_error_closed:
+	xor a
+	ret
+
+; Stores the complement of the frame's byte at APP_SENTINEL_FRAME in APP_SENTINEL.
+app_arm:
+	ld a, (APP_SENTINEL_FRAME)
+	cpl
+	ld (APP_SENTINEL), a
+	ret
 
 ; Puts the home screen's RAM back as the header says. The OS calls it with iy at the flags.
 app_putaway:
@@ -133,116 +220,10 @@ app_vectors:
 app_ret:
 	ret
 
-#ifdef LIBRARY
-; Draws rows 1 to 7 of the library screen.
-app_library_rows:
-	ld a, (appStatus)
-	or a
-	jr nz, app_refused
-	ld hl, 0
-	ld de, APP_BUF
-	call far_lib_label
-	or a
-	jr nz, app_kept
-	ld hl, APP_BUF
-	call app_codes
-	ld hl, 0
-	call far_fm_assertion
-	or a
-	jr nz, app_kept
-	ld hl, FORMULA_ROW
-	ld d, FORMULA_WIDTH
-	ld e, FORMULA_X
-	ld b, FORMULA_ROW
-	ld c, FORMULA_END
-	call far_fm_draw
-	or a
-	jr nz, app_kept
-	ld hl, APP_BUF
-	ld de, HINT_COL
-	ld b, LABEL_ROW
-	call far_ui_text
-	ld hl, str_hint
-	ld de, HINT_COL
-	ld b, LIBRARY_HINT_ROW
-	jp far_ui_text
-app_kept:
-	ld (appStatus), a
-; Shows appStatus as two hex digits on the hint row.
-app_refused:
-	ld a, (appStatus)
-	ld b, a
-	rrca
-	rrca
-	rrca
-	rrca
-	call app_digit
-	ld (APP_BUF), a
-	ld a, b
-	call app_digit
-	ld (APP_BUF + 1), a
-	xor a
-	ld (APP_BUF + 2), a
-	ld hl, APP_BUF
-	ld de, HINT_COL
-	ld b, LIBRARY_HINT_ROW
-	jp far_ui_text
-
-; In: A, low nibble. Out: A = the glyph code of its hex digit. Keeps B.
-app_digit:
-	and 0Fh
-	ld e, a
-	ld d, 0
-	ld hl, app_hex
-	add hl, de
-	ld a, (hl)
-	ret
-
-; In: B = the length of the ASCII text at HL. Writes the glyph codes of the characters over it and a
-; zero after them. A character with no glyph in the table is a question mark.
-app_codes:
-	ld a, b
-	or a
-	jr z, app_codes_end
-app_code:
-	ld a, (hl)
-	sub 20h
-	cp 95
-	jr c, app_code_in
-	ld a, 3Fh - 20h
-app_code_in:
-	push hl
-	ld e, a
-	ld d, 0
-	ld hl, app_ascii
-	add hl, de
-	ld a, (hl)
-	pop hl
-	ld (hl), a
-	inc hl
-	djnz app_code
-app_codes_end:
-	ld (hl), 0
-	ret
-
-app_hex:
-	.db UI_FONT_CH_30, UI_FONT_CH_31, UI_FONT_CH_32, UI_FONT_CH_33, UI_FONT_CH_34, UI_FONT_CH_35, UI_FONT_CH_36, UI_FONT_CH_37, UI_FONT_CH_38, UI_FONT_CH_39, UI_FONT_CH_41, UI_FONT_CH_42, UI_FONT_CH_43, UI_FONT_CH_44, UI_FONT_CH_45, UI_FONT_CH_46
-
-; The glyph code of each character from the space to the tilde.
-app_ascii:
-	.db UI_FONT_CH_20, UI_FONT_CH_21, UI_FONT_CH_22, UI_FONT_CH_23, UI_FONT_CH_24, UI_FONT_CH_25, UI_FONT_CH_26, UI_FONT_CH_27
-	.db UI_FONT_CH_28, UI_FONT_CH_29, UI_FONT_CH_2A, UI_FONT_CH_2B, UI_FONT_CH_2C, UI_FONT_CH_2D, UI_FONT_CH_2E, UI_FONT_CH_2F
-	.db UI_FONT_CH_30, UI_FONT_CH_31, UI_FONT_CH_32, UI_FONT_CH_33, UI_FONT_CH_34, UI_FONT_CH_35, UI_FONT_CH_36, UI_FONT_CH_37
-	.db UI_FONT_CH_38, UI_FONT_CH_39, UI_FONT_CH_3A, UI_FONT_CH_3B, UI_FONT_CH_3C, UI_FONT_CH_3D, UI_FONT_CH_3E, UI_FONT_CH_3F
-	.db UI_FONT_CH_40, UI_FONT_CH_41, UI_FONT_CH_42, UI_FONT_CH_43, UI_FONT_CH_44, UI_FONT_CH_45, UI_FONT_CH_46, UI_FONT_CH_47
-	.db UI_FONT_CH_48, UI_FONT_CH_49, UI_FONT_CH_4A, UI_FONT_CH_4B, UI_FONT_CH_4C, UI_FONT_CH_4D, UI_FONT_CH_4E, UI_FONT_CH_4F
-	.db UI_FONT_CH_50, UI_FONT_CH_51, UI_FONT_CH_52, UI_FONT_CH_53, UI_FONT_CH_54, UI_FONT_CH_55, UI_FONT_CH_56, UI_FONT_CH_57
-	.db UI_FONT_CH_58, UI_FONT_CH_59, UI_FONT_CH_5A, UI_FONT_CH_5B, UI_FONT_CH_5C, UI_FONT_CH_5D, UI_FONT_CH_5E, UI_FONT_CH_5F
-	.db UI_FONT_CH_60, UI_FONT_CH_61, UI_FONT_CH_62, UI_FONT_CH_63, UI_FONT_CH_64, UI_FONT_CH_65, UI_FONT_CH_66, UI_FONT_CH_67
-	.db UI_FONT_CH_68, UI_FONT_CH_69, UI_FONT_CH_6A, UI_FONT_CH_6B, UI_FONT_CH_6C, UI_FONT_CH_6D, UI_FONT_CH_6E, UI_FONT_CH_6F
-	.db UI_FONT_CH_70, UI_FONT_CH_71, UI_FONT_CH_72, UI_FONT_CH_73, UI_FONT_CH_74, UI_FONT_CH_75, UI_FONT_CH_76, UI_FONT_CH_77
-	.db UI_FONT_CH_78, UI_FONT_CH_79, UI_FONT_CH_7A, UI_FONT_CH_7B, UI_FONT_CH_7C, UI_FONT_CH_7D, UI_FONT_CH_7E
-#endif
+#include "text.inc"
+#include "screens.inc"
+#include "screen_notice.inc"
+#include "screen_about.inc"
 
 #define KEYS_SET_FONT far_ui_set_font
 #include "keys.inc"

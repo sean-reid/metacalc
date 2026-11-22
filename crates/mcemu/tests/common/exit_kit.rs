@@ -39,6 +39,8 @@ pub const STACK_BELOW: u16 = 0x60;
 /// The OS's SP at its idle after either exit: the slots below it are dead.
 pub const APP_STACK_TOP: u16 = 0xFFE5;
 pub const SCAN_DOWN: u8 = 0x01;
+pub const SCAN_F3: u8 = 0x33;
+pub const SCAN_F1: u8 = 0x35;
 pub const POWER_DOWN: u8 = 0x10;
 pub const KEY_GRAPH: u8 = 0x31;
 pub const GRAPH_DRAW: u8 = 0x01;
@@ -85,10 +87,23 @@ pub fn refused() -> &'static Build {
     })
 }
 
-pub fn dirt() -> [(u16, Vec<u8>); 2] {
-    [
-        (STACK.0, varied(STACK.1, 0x5A)),
-        (VARS.0, varied(VARS.1, 0xC3)),
+/// The bytes of the two regions that hold nothing while the shell waits at `depth`: all of both but
+/// the framework's count and table, SCR_VARS offsets 0, 3 and 4, and the frames of the open screens.
+pub fn dirt(depth: usize) -> Vec<(u16, Vec<u8>)> {
+    let live = 16 * depth;
+    vec![
+        (VARS.0 + 1, varied(2, 0xC3)),
+        (VARS.0 + 5, varied(VARS.1 - 5, 0xC4)),
+        (STACK.0 + live as u16, varied(STACK.1 - live, 0x5A)),
+    ]
+}
+
+/// What the framework holds at rest: its count and table, and the frames of the open screens.
+pub fn live(os: &mut RealOs, depth: usize) -> Vec<Vec<u8>> {
+    vec![
+        read(os, VARS.0, 1),
+        read(os, VARS.0 + 3, 2),
+        read(os, STACK.0, 16 * depth),
     ]
 }
 
@@ -101,8 +116,8 @@ pub fn poke(os: &mut RealOs, addr: u16, bytes: &[u8]) {
     os.m.ram_page(1)[at..at + bytes.len()].copy_from_slice(bytes);
 }
 
-pub fn dirty(os: &mut RealOs) {
-    for (addr, bytes) in dirt() {
+pub fn dirty(os: &mut RealOs, depth: usize) {
+    for (addr, bytes) in dirt(depth) {
         poke(os, addr, &bytes);
     }
 }

@@ -8,6 +8,8 @@ mod failing;
 mod guards;
 #[path = "scr/model.rs"]
 mod model;
+#[path = "scr/push.rs"]
+mod push;
 #[path = "scr/random.rs"]
 mod random;
 #[path = "scr/real_ui.rs"]

@@ -84,6 +84,16 @@ impl ExitState {
     };
 }
 
+/// What ended a `run_to`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reached {
+    Target,
+    /// 0038h is the next instruction: an interrupt in mode 1 was taken, or an RST 38h ran. The
+    /// target was not reached; another `run_to` goes on from there.
+    Vector38,
+    Limit,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Run {
     pub stop: Stop,
@@ -193,6 +203,44 @@ impl Machine {
             "flash page out of range"
         );
         self.calc.mem_mut()[start..start + bytes.len()].copy_from_slice(bytes);
+    }
+
+    /// `len` bytes of flash page `page` from `offset`.
+    pub fn read_flash(&mut self, page: u8, offset: usize, len: usize) -> Vec<u8> {
+        let start = usize::from(page) * FLASH_PAGE_SIZE + offset;
+        assert!(
+            offset + len <= FLASH_PAGE_SIZE,
+            "read crosses the flash page"
+        );
+        assert!(
+            start + len <= self.calc.rom_size(),
+            "flash page out of range"
+        );
+        self.calc.mem_mut()[start..start + len].to_vec()
+    }
+
+    /// Runs on, interrupts as the code left them, until the instruction at `addr` of flash page
+    /// `page` is the next to execute, and says what ended the run. `addr` is where the page is
+    /// mapped in bank A, 4000h to 7FFFh; the same address on another page does not stop the run.
+    pub fn run_to(&mut self, page: u8, addr: u16, limit: u32) -> Reached {
+        assert!((0x4000..0x8000).contains(&addr), "the address is in bank A");
+        assert!(
+            usize::from(page) < self.calc.rom_size() / FLASH_PAGE_SIZE,
+            "flash page out of range"
+        );
+        let physical = usize::from(page) * FLASH_PAGE_SIZE + usize::from(addr - 0x4000);
+        let limit = i32::try_from(limit).expect("limit fits in i32");
+        match self.calc.run_to(physical as u32, limit) {
+            1 => Reached::Target,
+            2 => Reached::Vector38,
+            _ => Reached::Limit,
+        }
+    }
+
+    /// The CPU's clock in T-states. It wraps at 32 bits, so two readings are compared with
+    /// `wrapping_sub`.
+    pub fn clock(&self) -> u32 {
+        self.calc.clock()
     }
 
     pub fn load_ram(&mut self, addr: u16, bytes: &[u8]) {

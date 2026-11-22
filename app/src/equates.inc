@@ -92,3 +92,7 @@ statVars         = 8A3Ah
 STAT_VARS_SIZE   = 531
 prevData         = 9198h
 PREV_DATA_SIZE   = 283
+#if (APP_SENTINEL < saveSScreen) || (APP_SENTINEL >= (saveSScreen + SAVE_SCREEN_SIZE))
+ .error "APP_SENTINEL in ram_map.inc must lie inside saveSScreen"
+#endif
+APP_SENTINEL_FRAME = UI_FRAME + (APP_SENTINEL - saveSScreen)
