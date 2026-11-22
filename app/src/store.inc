@@ -12,14 +12,14 @@
 ; so the size is 10 + ceil(count / 4); 842 bytes for 3,326 assertions.
 ;
 ; The module keeps no state and no pointer. The table moves whenever the OS creates or deletes
-; a variable, so every routine but store_open finds MCSTAT again through store_data, the one
-; routine that returns the data pointer, and uses that pointer only until its next OS call;
-; store_open calls _ChkFindSym itself because it has to deal with a variable that is absent,
-; archived or not this library's. Callers hold no pointer into the table either. Each routine
-; but store_open checks the size, magic and version it finds.
+; a variable, so every routine but store_open and store_has finds MCSTAT again through
+; store_data, the one routine that returns the data pointer, and uses that pointer only until its
+; next OS call; store_open and store_has call _ChkFindSym themselves because they have to deal
+; with a variable that is absent, archived or not this library's, and store_has returns no
+; pointer. Callers hold no pointer into the table either. Each routine but store_open checks the
+; size, magic and version it finds.
 ;
-; Status, in A, for every routine:
-ST_OK            = 0
+; Status, in A, for every routine: 0 is ok, and ST_OK is the kernel's name for it. The others:
 ST_NO_RAM        = 1    ; open: not enough RAM for the table, nothing created
 ST_ARCHIVED      = 2    ; the variable is archived and could not be unarchived
 ST_BAD_MAGIC     = 3    ; wrong magic or version
@@ -60,6 +60,24 @@ ST_ABSENT        = 7    ; no variable: open was not called, or the user deleted 
 ;              must not exceed the count; otherwise ST_RANGE, with the results untouched.
 ;              store_count is the list of the count, store_count_to a list of N.
 ; store_reset  out: A = status; every assertion unchecked and the next number 0
+; store_has    in:  DE:HL = the library's CRC-32 (DE the high 16 bits), BC = assertion count
+;              out: A = 0 when MCSTAT is in RAM with the right magic, version and size and this
+;                   CRC and count; else ST_ABSENT, ST_ARCHIVED, ST_BAD_MAGIC, ST_OTHER_LIBRARY or
+;                   ST_BAD_SIZE as store_open would find it. It writes nothing and makes no OS
+;                   call but _ChkFindSym, so it never creates, deletes or unarchives anything.
+; store_all_ones  in:  HL = a list of BC 16-bit little-endian entries outside the table and OP1
+;              to OP3, BC = the entry count, 0 allowed
+;              out: A = status; with 0, B = 1 when every entry with bit 15 clear names an
+;                   assertion of value 1 and B = 0 at the first that does not, the rest unread.
+;                   Entries with bit 15 set are skipped, a dummy variable in a reference list.
+;                   An entry with bit 15 clear that is not below the count gives ST_RANGE and
+;                   B = 0. The table is found once and no OS call follows, so the list is read
+;                   against one table.
+; store_next_zero  in:  HL = from, DE = end, from at most end and end at most the count
+;              out: A = status; HL = the number of the first assertion from `from` below `end`
+;                   whose value is 0, or `end` when there is none. ST_RANGE otherwise. Whole table
+;                   bytes with no 0 in them are passed four assertions at a time. It destroys OP1
+;                   to OP3.
 ; Padding: the unused bits of the last table byte are never read. store_set changes only the two
 ; bits it is given and leaves the padding as it is; store_reset and a newly
 ; created table zero it; store_count ignores it.
@@ -212,17 +230,22 @@ store_get:
 	call store_locate
 	or a
 	ret nz
+	call store_unpack
+	ld b, a
+	xor a
+	ret
+
+; In: HL = the table byte store_locate gave, C = its shift. Out: A = the value, 0 to 3. Destroys B.
+store_unpack:
 	ld a, (hl)
 	ld b, c
 	inc b
-	jr sg_first
-sg_shift:
+	jr su_first
+su_shift:
 	rrca
-sg_first:
-	djnz sg_shift
+su_first:
+	djnz su_shift
 	and 3
-	ld b, a
-	xor a
 	ret
 
 store_set:
@@ -328,4 +351,5 @@ store_reset:
 	ret
 
 #include "store_count.inc"
+#include "store_marks.inc"
 #include "store_open.inc"

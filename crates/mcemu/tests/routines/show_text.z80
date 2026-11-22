@@ -1,0 +1,25 @@
+#include "equates.inc"
+#define APP_NAME "showtext"
+#include "header.inc"
+
+; Draws the lines of text.inc with the OS's own font, as the job probe draws its result, and waits
+; for a key. The test writes text.inc: .db lines separated by 0Ah, then a 0.
+start:
+	ld a, 0Ch
+	call putchar
+	ld hl, text
+show:
+	ld a, (hl)
+	or a
+	jr z, shown
+	inc hl
+	push hl
+	call putchar
+	pop hl
+	jr show
+shown:
+	bcall(_GetKey)
+	bjump(_JForceCmdNoChar)
+
+#include "putchar.inc"
+#include "text.inc"

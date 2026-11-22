@@ -11,6 +11,8 @@ mod bare;
 mod fixture;
 #[path = "store/layout.rs"]
 mod layout;
+#[path = "store/marks.rs"]
+mod marks;
 #[path = "store/open.rs"]
 mod open;
 #[path = "store/prefix.rs"]

@@ -251,3 +251,24 @@ so_frame_below:
 	ld hl, 6
 	add hl, sp
 	ret
+
+store_has:
+	push de
+	push hl
+	push bc
+	call store_name
+	bcall(_ChkFindSym)
+	ld a, ST_ABSENT
+	jr c, sh_end
+	ld a, b
+	or a
+	ld a, ST_ARCHIVED
+	jr nz, sh_end
+	ld hl, 0
+	add hl, sp
+	call so_check
+sh_end:
+	pop bc
+	pop hl
+	pop de
+	ret

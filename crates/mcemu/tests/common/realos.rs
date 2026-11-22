@@ -41,13 +41,20 @@ impl RealOs {
     /// Boots the reference OS with `app` installed on `BASE`, turns it on, and returns at the
     /// home screen.
     pub fn boot(app: &[u8]) -> RealOs {
+        RealOs::boot_apps(&[(app, BASE)])
+    }
+
+    /// `boot` with several apps installed, each on its own base page.
+    pub fn boot_apps(apps: &[(&[u8], u8)]) -> RealOs {
         let Some(rom) = rom() else {
             panic!(
                 "the reference ROM is not at $HOME/ti84-rom/84PSE_v243.rom, which this test needs"
             );
         };
         let mut m = Machine::new_os(&rom).expect("the reference ROM boots");
-        m.install_app(app, BASE).expect("the app installs");
+        for &(app, base) in apps {
+            m.install_app(app, base).expect("the app installs");
+        }
         let mut os = RealOs { m };
         os.run_ms(2000);
         os.tap(Machine::KEY_ON, 150, 250);

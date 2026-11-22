@@ -95,6 +95,12 @@ pub enum Cmd {
     Drop,
     /// Creates the list named Q of this many elements, which the OS keeps below every AppVar.
     List(u16),
+    /// Whether a table of this CRC and count is in RAM.
+    Has(u32, u16),
+    /// Whether every assertion in the list has value 1.
+    AllOnes(&'static [u16]),
+    /// The first 0 from here below this end.
+    NextZero(u16, u16),
     /// Asks _EnoughMem for this many bytes: 0 when they are free, 1 when not.
     Room(u16),
 }
@@ -128,6 +134,20 @@ impl Cmd {
                 b
             }
             Cmd::Drop => vec![19],
+            Cmd::Has(crc, count) => {
+                let mut b = vec![20];
+                b.extend(crc.to_le_bytes());
+                b.extend(count.to_le_bytes());
+                b
+            }
+            Cmd::AllOnes(list) => {
+                let mut b = vec![21, list.len() as u8];
+                b.extend(list.iter().flat_map(|e| e.to_le_bytes()));
+                b
+            }
+            Cmd::NextZero(from, end) => {
+                [&[22][..], &from.to_le_bytes(), &end.to_le_bytes()].concat()
+            }
         }
     }
 }
@@ -179,8 +199,8 @@ impl Rec {
 fn record_len(at: &[u8]) -> usize {
     let (cmd, a) = (at[0], at[1]);
     match cmd {
-        1 | 2 => 3,
-        4 => 4,
+        1 | 2 | 21 => 3,
+        4 | 22 => 4,
         6 | 17 => 10,
         10 if a == 0 => 6,
         18 => 67,

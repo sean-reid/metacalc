@@ -522,6 +522,33 @@ fn main() {
         &[],
         &["-I", "../../app/src", "-I", "../../probe", "-L"],
     );
+    spasm(
+        &Path::new("tests/routines").join("check_test.z80"),
+        &out.join("check_test.8xk"),
+        &[],
+        &[
+            "-I",
+            "../../app/src",
+            "-I",
+            "../../probe",
+            "-I",
+            "../../kernel",
+            "-I",
+            "../..",
+            "-L",
+        ],
+    );
+    for f in [
+        "../../app/src/check.inc",
+        "../../app/src/check_ram.inc",
+        "../../app/src/check_step.inc",
+        "../../app/src/store_marks.inc",
+        "../../probe/jobhead.inc",
+        "../../probe/jobtail.inc",
+        "../../probe/putchar.inc",
+    ] {
+        println!("cargo:rerun-if-changed={f}");
+    }
     for f in [
         "../../probe/storecheck.z80",
         "../../probe/storescript.inc",

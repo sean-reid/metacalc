@@ -23,6 +23,9 @@
 ;     CMD_DELETE     letter                log: 0 deleted, 1 absent
 ;     CMD_LOCATE                           log: 0 in RAM, 1 absent, 2 archived; data pointer (2), size (2)
 ;     CMD_DROP                             deletes the table; log: 0 deleted, 1 absent
+;     CMD_HAS        crc (4), count (2)    log: A
+;     CMD_ALL_ONES   k (1), k words        log: A, B
+;     CMD_NEXT_ZERO  from (2), end (2)     log: A, the answer (2)
 ;     CMD_LIST       dim (2)               creates the list named Q, which sorts below every AppVar; log: 0
 ;     CMD_ROOM       n (2)                 log: 0 if _EnoughMem accepts n bytes, 1 if not
 ;     CMD_NOP                              log: 0
@@ -53,6 +56,9 @@ CMD_LIST     = 16
 CMD_COUNT_TO   = 17
 CMD_COUNT_ENDS = 18
 CMD_DROP       = 19
+CMD_HAS        = 20
+CMD_ALL_ONES   = 21
+CMD_NEXT_ZERO  = 22
 SCRIPT_ARCHIVED = 0FFh
 
 #include "storeram.inc"
@@ -190,6 +196,12 @@ dispatch:
 	jp z, do_count_ends
 	cp CMD_DROP
 	jp z, do_drop
+	cp CMD_HAS
+	jp z, do_has
+	cp CMD_ALL_ONES
+	jp z, do_all_ones
+	cp CMD_NEXT_ZERO
+	jp z, do_next_zero
 	cp CMD_LIST
 	jp z, do_list
 	cp CMD_ROOM
@@ -222,6 +234,48 @@ do_open:
 	ld a, b
 	ld (S_RES + 2), a
 	ld a, 3
+	jp result_len
+
+do_has:
+	call fetch_word
+	ld (S_TMP), hl
+	call fetch_word
+	ld (S_TMP + 2), hl
+	call fetch_word
+	ld b, h
+	ld c, l
+	ld hl, (S_TMP)
+	ld de, (S_TMP + 2)
+	call store_has
+	jp result_a
+
+do_all_ones:
+	call fetch
+	ld c, a
+	ld b, 0
+	ld hl, (S_PTR)
+	push hl
+	add hl, bc
+	add hl, bc
+	ld (S_PTR), hl
+	pop hl
+	call store_all_ones
+	ld (S_RES + 1), a
+	ld a, b
+	ld (S_RES + 2), a
+	ld a, 3
+	jp result_len
+
+do_next_zero:
+	call fetch_word
+	push hl
+	call fetch_word
+	ex de, hl
+	pop hl
+	call store_next_zero
+	ld (S_RES + 1), a
+	ld (S_RES + 2), hl
+	ld a, 4
 	jp result_len
 
 do_get:
