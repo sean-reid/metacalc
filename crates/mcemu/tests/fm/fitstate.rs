@@ -372,7 +372,8 @@ fn a_fold_drops_only_its_own_statements_count_and_a_reload_drops_every_count() {
             rows, bare,
             "statement {s} after the same assertion is loaded again"
         );
-        assert!(spent > READ_BACK, "and it is laid out: {spent}");
+        let floor = if bare == 1 { READ_BACK } else { 3 * READ_BACK };
+        assert!(spent > floor, "and it is laid out: {spent}");
     }
     assert_eq!(fit_at(&mut fm, n, 2, CONTENT_ROWS).hl as usize, o.total());
     for (s, k) in order {

@@ -149,8 +149,8 @@ pub struct Tally {
     pub alone: usize,
     /// Of those, the ones whose conclusion keeps more than one line after the refit.
     pub refit: usize,
-    /// Assertions that end with a statement at one line holding an unfolded foldable node while
-    /// another statement has a folded node of a shallower depth.
+    /// Assertions whose statements fit the rows and that end with a statement at one line holding
+    /// an unfolded foldable node while another statement has a folded node of a shallower depth.
     pub skip_mattered: usize,
     pub folded_nodes: usize,
     pub frames: usize,
@@ -297,7 +297,7 @@ pub fn compare(
     let alone = count(loaded) > rows;
     tally.alone += usize::from(alone);
     tally.refit += usize::from(alone && all_rows[last] > 1);
-    tally.skip_mattered += usize::from(skip_mattered(&want, &all_flags, &all_rows));
+    tally.skip_mattered += usize::from(!alone && skip_mattered(&want, &all_flags, &all_rows));
     if folded_statements == 0 {
         tally.unfolded += 1;
         Outcome::Unfolded
@@ -392,6 +392,7 @@ fn the_cases_library_through_the_z80_reaches_every_branch_of_the_rule() {
         total.skip_mattered,
         started.elapsed()
     );
+    assert_eq!((total.assertions, total.too_large), (640, 20), "{total:?}");
     assert!(
         total.refit >= FLOOR_REFIT && total.alone >= FLOOR_ALONE,
         "{total:?}"
@@ -404,7 +405,7 @@ fn the_cases_library_through_the_z80_reaches_every_branch_of_the_rule() {
 
 const FLOOR_REFIT: usize = 18;
 const FLOOR_ALONE: usize = 125;
-const FLOOR_SKIP: usize = 14;
+const FLOOR_SKIP: usize = 5;
 const FLOOR_FITTED: usize = 140;
 
 #[test]
