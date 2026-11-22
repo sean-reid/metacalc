@@ -12,11 +12,12 @@
 ; so the size is 10 + ceil(count / 4); 842 bytes for 3,326 assertions.
 ;
 ; The module keeps no state and no pointer. The table moves whenever the OS creates or deletes
-; a variable, so every routine but store_open finds MCSTAT again through store_data, the one
-; routine that returns the data pointer, and uses that pointer only until its next OS call;
-; store_open calls _ChkFindSym itself because it has to deal with a variable that is absent,
-; archived or not this library's. Callers hold no pointer into the table either. Each routine
-; but store_open checks the size, magic and version it finds.
+; a variable, so every routine but store_open and store_has finds MCSTAT again through
+; store_data, the one routine that returns the data pointer, and uses that pointer only until its
+; next OS call; store_open and store_has call _ChkFindSym themselves because they have to deal
+; with a variable that is absent, archived or not this library's, and store_has returns no
+; pointer. Callers hold no pointer into the table either. Each routine but store_open checks the
+; size, magic and version it finds.
 ;
 ; Status, in A, for every routine: 0 is ok, and ST_OK is the kernel's name for it. The others:
 ST_NO_RAM        = 1    ; open: not enough RAM for the table, nothing created
