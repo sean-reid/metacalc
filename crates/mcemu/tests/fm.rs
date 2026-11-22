@@ -2,6 +2,14 @@
 mod damaged;
 #[path = "fm/errors.rs"]
 mod errors;
+#[path = "fm/fit.rs"]
+mod fit;
+#[path = "fm/fitcases.rs"]
+mod fitcases;
+#[path = "fm/fitspeed.rs"]
+mod fitspeed;
+#[path = "fm/fitstate.rs"]
+mod fitstate;
 #[path = "fm/fixture.rs"]
 mod fixture;
 #[path = "fm/folds.rs"]

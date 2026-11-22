@@ -7,14 +7,82 @@ rows_body:
 	jp nz,fm_fail
 	ld a,d
 	ld (fv_limit),a
+	call fm_cached
+	jr c,rb_done
 	call fo_fresh
 	xor a
 	ld (fv_draw),a
 	call fm_lay
 	ld a,(fv_line)
+rb_done:
 	ld b,a
 	xor a
 	jp fm_leave
+
+; in: fv_limit = the width. out: C and A = the line count fm_count kept for the selected statement
+; when it is current and was counted at that width, else NC. Destroys AF DE HL.
+fm_cached:
+	ld a,(fv_count)
+	or a
+	ret z
+	ld hl,(fv_hdr)
+	ld de,7
+	add hl,de
+	bit FM_COUNTED,(hl)
+	jr z,fc_no
+	call ct_slot
+	ld de,FM_MAX_STMTS
+	add hl,de
+	ld a,(fv_limit)
+	cp (hl)
+	jr nz,fc_no
+	or a
+	sbc hl,de
+	ld a,(hl)
+	scf
+	ret
+fc_no:
+	or a
+	ret
+
+; in: fv_limit = the width. out: A = the lines the selected statement takes at that width with its
+; folds applied. The count is kept in fv_rows with its width in fv_rwid, one byte for each loaded
+; statement, and bit 1 of the header's last byte says it is current: a call with the same width
+; reads it back, and fm_rows reads it too. A load starts the byte at 0, and fm_fold and the pass
+; that applies folds clear the bit. Destroys all but IX and IY.
+fm_count:
+	call fm_cached
+	ret c
+	call fo_fresh
+	xor a
+	ld (fv_draw),a
+	call fm_lay
+	call ct_slot
+	ld a,(fv_line)
+	ld (hl),a
+	ld de,FM_MAX_STMTS
+	add hl,de
+	ld a,(fv_limit)
+	ld (hl),a
+	ld hl,(fv_hdr)
+	ld de,7
+	add hl,de
+	set FM_COUNTED,(hl)
+	ld a,(fv_line)
+	ret
+
+; out: HL = the selected statement's byte in fv_rows. Destroys AF DE.
+ct_slot:
+	ld a,(fv_hdr)
+	rrca
+	rrca
+	rrca
+	and $1F
+	ld e,a
+	ld d,0
+	ld hl,fv_rows
+	add hl,de
+	ret
 
 ; in: HL = the text row of the first line, signed, from -16384 to 16383; D = width in pixels,
 ; E = x of the first column, B = the window's first text row, C = one past its last

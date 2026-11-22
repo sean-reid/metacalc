@@ -34,6 +34,10 @@ fm_folded:
 	ld ix,folded_body
 	jr fm_enter
 
+fm_fit:
+	ld ix,fit_body
+	jr fm_enter
+
 ; fm_cursor takes the node in A, which fm_enter's interrupt reads destroy: the stub moves it to E,
 ; which an interrupt leaves alone, as it leaves the other routines' arguments.
 fm_cursor:
