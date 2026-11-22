@@ -1,0 +1,3 @@
+; The status store's probe for the reference OS: it runs the script the test leaves at SCRIPT.
+#define SCRIPT_IN_RAM
+#include "storecheck.z80"
