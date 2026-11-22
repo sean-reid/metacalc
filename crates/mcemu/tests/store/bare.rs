@@ -14,6 +14,7 @@ fn expected_log() -> Vec<u8> {
     for w in [[1, 1, 1, 0], [2, 2, 1, 1], [4, 2, 2, 2]] {
         log.extend(words(w));
     }
+    log.extend(sentinel(40));
     log.extend([0x06, 0x00]);
     log.extend(words([4, 2, 2, 2]));
     log.extend([0x11, 0x00]);
@@ -21,7 +22,7 @@ fn expected_log() -> Vec<u8> {
     log.extend([0x11, 0x06]);
     log.extend(sentinel(8));
     log.extend([0x12, 0x06, 0x02]);
-    log.extend(sentinel(16));
+    log.extend(sentinel(64));
     log.extend([0x13, 0x00]);
     log
 }
@@ -65,7 +66,8 @@ fn screen_of(log: &[u8]) -> Vec<bool> {
 fn a_bare_run_logs_the_default_script_and_draws_it() {
     let mut rig = Rig::new();
     let want = expected_log();
-    assert_eq!(want.len(), 98);
+    assert_eq!(want.len(), 186);
+    assert!(want.len() > 120, "the log is longer than the screen shows");
     let log = rig.run_bare();
     let bytes: Vec<u8> = log
         .iter()
@@ -99,4 +101,19 @@ fn a_bare_run_does_not_touch_an_mcstat_that_is_there() {
     rig.m.create_var("MCSTAT", &real).unwrap();
     rig.run_bare();
     assert_eq!(rig.m.read_var("MCSTAT").unwrap().data, real);
+}
+
+#[test]
+fn a_script_in_the_archive_runs_nothing_and_says_so() {
+    let mut rig = Rig::new();
+    let junk = [0x4D, 0x01, 9, 9, 9, 9, 1, 0, 0, 0, 0xE4, 0x01];
+    rig.m.create_var(VAR, &junk).unwrap();
+    rig.archive_script = true;
+    let log = rig.run(&[Cmd::Open(CRC, COUNT), Cmd::Drop]);
+    assert_eq!(log.len(), 1);
+    assert_eq!((log[0].cmd, log[0].a, log[0].rest.len()), (0xFF, 2, 0));
+    assert_eq!(rig.m.read_var(VAR).unwrap().data, junk, "no default script");
+    let lcd = rig.m.lcd();
+    let lcd: Vec<bool> = (0..64).flat_map(|y| lcd.row(y).to_vec()).collect();
+    assert!(lcd == screen_of(&[0xFF, 0x02]), "the screen shows the log");
 }

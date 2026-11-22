@@ -51,12 +51,8 @@ pub enum Cmd {
     CountEnds(&'static [u16]),
     /// Deletes the table.
     Drop,
-    /// Moves the table to the archive, or back.
-    Archive,
     /// Holds the screen until CLEAR after the last command.
     Wait,
-    /// Creates MCFILL so that this many bytes of RAM stay free, on the reference OS only.
-    Leave(u16),
     /// Creates the list named Q of this many elements, which the OS keeps below every AppVar.
     List(u16),
 }
@@ -89,9 +85,7 @@ impl Cmd {
                 b
             }
             Cmd::Drop => vec![19],
-            Cmd::Archive => vec![20],
             Cmd::Wait => vec![13],
-            Cmd::Leave(n) => [&[21][..], &n.to_le_bytes()].concat(),
         }
     }
 }
@@ -121,16 +115,21 @@ impl Rec {
         [0, 2, 4, 6].map(|i| self.word(at + i))
     }
 
-    /// A `CountEnds` record: the four counts of each result slot the log holds, at most 8.
+    /// A `CountEnds` record: the four counts of each of the K results, at most 8.
     pub fn ends(&self) -> Vec<[u16; 4]> {
-        (0..self.rest.len() / 8)
+        (0..usize::from(self.rest[0]).min(8))
             .map(|i| self.counts_at(1 + 8 * i))
             .collect()
     }
 
-    /// Every byte of a `CountEnds` result slot is the probe's fill, which nothing wrote.
+    /// Every byte of a `CountEnds` record's 64-byte result area is the probe's fill.
     pub fn untouched(&self) -> bool {
         self.rest[1..].iter().all(|&b| b == 0xA5)
+    }
+
+    /// The bytes of a `CountEnds` result area from the end of result K on are the probe's fill.
+    pub fn untouched_past(&self, k: usize) -> bool {
+        self.rest[1 + 8 * k..].iter().all(|&b| b == 0xA5)
     }
 }
 
@@ -141,9 +140,8 @@ fn record_len(at: &[u8]) -> usize {
         1 | 2 => 3,
         4 => 4,
         6 | 17 => 10,
-        10 if a == 0 => 8,
-        21 if a == 0 => 6,
-        18 => 3 + 8 * usize::from(at[2]).min(8),
+        10 if a == 0 => 6,
+        18 => 67,
         _ => 2,
     }
 }
@@ -176,6 +174,8 @@ struct Guards {
 
 pub struct Rig {
     pub m: Machine,
+    /// Moves MCCMD to the archive before the app launches.
+    pub archive_script: bool,
 }
 
 impl Rig {
@@ -183,7 +183,10 @@ impl Rig {
         let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
         m.install_app(APP, BASE).expect("the app installs");
         m.create_var("GUARDA", &[0xA7; 61]).unwrap();
-        Rig { m }
+        Rig {
+            m,
+            archive_script: false,
+        }
     }
 
     fn guards(&mut self) -> Guards {
@@ -229,6 +232,9 @@ impl Rig {
             self.m
                 .create_var("MCCMD", &script)
                 .expect("room for the script");
+            if self.archive_script {
+                self.m.archive_var("MCCMD");
+            }
         }
         if self.m.read_var(VAR).is_some() && self.m.read_var("GUARDZ").is_none() {
             self.m.create_var("GUARDZ", &[0x5E; 37]).unwrap();

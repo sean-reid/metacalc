@@ -52,8 +52,9 @@ ST_ABSENT        = 7    ; no variable: open was not called, or the user deleted 
 ; store_count_to  in:  HL = the buffer, DE = N    out: A = status; n0 to n3 over the first N
 ;              assertions only, a last partial byte counted up to N. ST_RANGE when N is above
 ;              the count, with the buffer untouched.
-; store_count_ends  in:  HL = a list, DE = results outside the table and OP1 to OP5; the list is
-;              a count byte K, 1 to 8, then K little-endian words, the ends
+; store_count_ends  in:  HL = a list, DE = results; both outside the table and OP1 to OP5, and
+;              the list outside the results; the list is a count byte K, 1 to 8, then K
+;              little-endian words, the ends, of which the first may be 0
 ;              out: A = status; K buffers of 8 bytes, the end's n0 to n3 over the first `end`
 ;              assertions, in one pass over the table. The ends must rise strictly and the last
 ;              must not exceed the count; otherwise ST_RANGE, with the results untouched.
