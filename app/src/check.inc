@@ -31,9 +31,11 @@
 ; CK_BAD_STATE   9  the routine does not fit the job's state
 ;
 ; check_begin     in:  A = the library's flash page, DE = the end N, at most the library's count
-;                 out: A = status. Resets and initialises the kernel, then reads the count and the
-;                      CRC-32 from the library's header. With CK_RANGE, N is
-;                      above the count. With CK_REFUSED, B = the kernel's status; kernel_init stopped
+;                 out: A = status. Zeroes all of the job's variables first, so on every return,
+;                      whatever the status, the counters, the first-failure record and the chunk
+;                      count are 0 unless the table was counted (CK_READY). Resets and initialises
+;                      the kernel, then reads the count and the CRC-32 from the library's header.
+;                      With CK_RANGE, N is above the count. With CK_REFUSED, B = the kernel's status; kernel_init stopped
 ;                      by ON is CK_PAUSED. Then asks the store (store_has) for a table with this CRC
 ;                      and count: found, it is counted over the first N assertions and the job is
 ;                      CK_READY without a CRC run; not found, the job is CK_NEED_CRC and nothing is
@@ -78,6 +80,12 @@
 ;                      job found failing, or A = 0. Kept in RAM, never stored.
 ; check_chunks    out: A = the chunks the CRC run has read.
 ;
+; Between steps the job detects a table that is deleted, archived or damaged (size, magic or
+; version), and does not detect one replaced by another library's table of at least N entries: the
+; store checks that a table is whole, not whose it is, and telling would take a lookup of the CRC in
+; every step. It cannot happen while the app runs, since only the caller's own code and the OS's
+; key wait run between steps, and neither replaces the variable.
+;
 ; A mark of 3 can go stale if an assertion it rests on is checked again later; nothing repairs it.
 
 
@@ -105,6 +113,15 @@ CK_S_READY     = 3
 CK_S_STOPPED   = 4
 
 check_begin:
+	push de
+	ld hl, ck_params
+	ld d, h
+	ld e, l
+	inc de
+	ld (hl), 0
+	ld bc, CK_USED - 1
+	ldir
+	pop de
 	ld (ck_params), a
 	ld (ck_n), de
 	ld hl, ck_params + 1
@@ -114,13 +131,6 @@ check_begin:
 	inc de
 	ld bc, 7
 	ldir
-	xor a
-	ld (ck_state), a
-	ld (ck_have_first), a
-	ld (ck_chunks), a
-	ld h, a
-	ld l, a
-	ld (ck_i), hl
 	call ck_fast
 	call far_kernel_reset
 	ld hl, ck_params
