@@ -4,8 +4,9 @@
 ; of its symbol from the library's glyph map, placed in lines by mcglyph's place and drawn with
 ; ui_text on the text row of its line, only on rows inside a window. It also builds the
 ; subexpression table of each statement, the nodes of the model's Expr, folds nodes behind an
-; ellipsis and inverts a node's pieces on each line as it draws, as a cursor. Fitting a statement
-; to a number of lines is not here.
+; ellipsis and inverts a node's pieces on each line as it draws, as a cursor. fm_fit folds the
+; statements of the loaded assertion deepest level first until together they fit a number of
+; lines, as the host model's fit does.
 ;
 ; Code runs from flash in bank A and is position dependent. An including file defines FM_EMBEDDED
 ; first and places the code itself, after the reader (lib/) and the canvas (ui/) it calls, with -I
@@ -16,7 +17,9 @@
 ; Memory, placed by app/src/ram_map.inc. FM_RAM is in bank C of the kernel's spare page
 ; KERNEL_RAM_PAGE, from KERNEL_RAM_HIGH, $1E00 bytes, which the kernel uses only inside a kernel
 ; call; fm maps the page in every public routine and keeps everything there:
-;   +$000 $100  variables (fm/ram.inc)
+;   +$000 $100  variables (fm/ram.inc), among them fv_rows and fv_rwid, 32 bytes each: the line
+;               count of each loaded statement and the width it was counted at, current when bit
+;               1 of the statement's header byte 7 is set
 ;   +$100 $100  fm's private stack, FM_STACK_TOP at +$200
 ;   +$200 $800  FM_GLYPHS, the library's glyph map section as lib_glyphs finds it
 ;   +$A00 $800  FM_SECOND, the library's shapes section as lib_shapes finds it
@@ -37,8 +40,8 @@
 ;   +$000 $100  FM_HDR, a header of eight bytes for each loaded statement, at most 32: the address
 ;               of its first token record, its token count, its node count (0 until fm_nodes has
 ;               built its table), the first row of its table in the node planes, its number for
-;               lib_tree, and a byte that is 1 when a fold has changed since the records were
-;               last rewritten
+;               lib_tree, and a byte whose bit 0 is set when a fold has changed since the records
+;               were last rewritten and bit 1 while its line count in fv_rows is current
 ;   +$100 $100  FM_TLEN, FM_TCNT at +$200 and FM_TSIZE at +$300: what fm_nodes keeps for each node
 ;               of the stored tree, at most 255 (nodes.inc)
 ;   +$400 $200  FM_PILE, fm_nodes' explicit stack: 255 pairs of two bytes, one for each tree
@@ -64,10 +67,15 @@
 ; measured is fm_open on the ring library, 484,449 T-states (81 ms at 6 MHz), then fm_nodes of its
 ; largest statement, 358,365, fm_assertion of its largest assertion, 187,619, and fm_draw of a full
 ; window, at most 180,804; fm_fold repeats fm_nodes with 3,300 more when the table is not built,
-; fm_cursor alone takes 726. fm_rows and fm_draw first run the pass that applies folds when the
-; statement is stale, so the call after an fm_fold costs its figure plus the pass, up to 128,000 on
-; the fixture and 50,000 on ring. The six-row frame of the ring statement takes 266,746 T-states
-; and with the cursor on the node that costs most 290,183, within the 50 ms budget of 300,000: the
+; fm_cursor alone takes 726. fm_fit takes 1,273,426 T-states (212 ms) at worst over ring, 76,212 at
+; the median, and 27,285,530 (4.5 s) on the fixture's statement of 253 nested operators, whose every
+; level takes a pass over 255 tokens; interrupts stay off throughout. fm_rows first asks whether a
+; line count is kept for the statement and its width, which costs 136 T-states when none is: 33,154
+; before and 33,290 after on the fixture's longest statement. fm_rows and fm_draw first run the
+; pass that applies folds when the statement is stale, so the call after an fm_fold costs its figure
+; plus the pass, up to 128,000 on the fixture and 50,000 on ring. The six-row frame of the ring
+; statement takes 266,746 T-states and with the cursor on the node that costs most 290,183, within
+; the 50 ms budget of 300,000: the
 ; cursor adds one ui_invert for each line, at most 3,203 for a line as wide as the window. The reader
 ; and the canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
@@ -97,9 +105,9 @@
 ; Calling. Status comes back in A, 0 meaning ok, with the zero flag set exactly when A is 0. Every
 ; routine destroys all registers but IY and keeps the reader's rule for ports 5 and 7 and for the
 ; interrupt state, which are the caller's again on every exit. The private stack is 256 bytes, FM_STACK
-; to FM_STACK_TOP, and the fm variables lie right below it. The tests measure 14 bytes pushed, the
-; deepest of any session they run; that is a measurement and not a bound, since the reader alone may
-; push 16 bytes below its return address.
+; to FM_STACK_TOP, and the fm variables lie right below it. The tests measure 14 bytes pushed,
+; fm_fit included, the deepest of any session they run; that is a measurement and not a bound,
+; since the reader alone may push 16 bytes below its return address.
 ;
 ;   fm_open       in:  the reader open with lib_open
 ;                 out: A = status. Copies the whole glyph section into FM_GLYPHS and checks that
@@ -147,7 +155,11 @@
 ;                      refused after the open check.
 ;   fm_rows       in:  D = width in pixels, 0 to 255
 ;                 out: A = status, B = the number of lines the selected statement takes, with its
-;                      folds applied. A token wider than the width sits alone on its line.
+;                      folds applied. A token wider than the width sits alone on its line. A line
+;                      count that fm_fit kept for the statement and its width is read back, 932
+;                      T-states against 32,522 laid out for the fixture's longest statement;
+;                      fm_rows itself keeps none. fm_fold on the statement and the pass that
+;                      applies folds drop it; fm_open and every load start without one.
 ;   fm_draw       in:  HL = text row of the statement's first line, signed, -16384 to 16383;
 ;                      D = width in pixels; E = x of the statement's first column; B = the first
 ;                      text row of the window, C = one past its last
@@ -200,12 +212,38 @@
 ;                 out: A = status, B = bit 0 its flag, bit 1 set when it is foldable, bit 2 set
 ;                      when it is hidden inside a folded node. FM_ERR_INDEX: the table is not
 ;                      built or has no node E.
+;   fm_fit        in:  B = the lines to fit, D = the width in pixels of a hypothesis, E = the width
+;                      of the conclusion; the widths the theorem screen lays them out at, which
+;                      are the screen's width less the number's indent for a hypothesis
+;                 out: A = status, HL = the lines all the statements take after fitting (HL is
+;                      not set on an error). Works on the loaded statements, the last being the
+;                      conclusion, and builds every node table that is not built. Clears every
+;                      fold flag as the model starts from no folds, then follows the model's fit
+;                      and fit_one exactly: when the statements already fit nothing is folded;
+;                      else for each depth from the deepest down, each statement in order that
+;                      takes more than one line has every unfolded foldable node of that depth
+;                      folded, and the search stops at the first fold after which they fit.
+;                      When there are more statements than lines, each statement is fitted alone to
+;                      one line the same way and the conclusion is then fitted again alone to B
+;                      lines. A statement is laid out again once for each depth that folded
+;                      something in it. The conclusion is selected after the call. The cursor is
+;                      cleared as soon as fm is known to be open, so every exit leaves it cleared
+;                      but a refusal because fm is closed, which writes nothing, as fm's memory
+;                      may not be fm's then. Every statement's records are fresh and its line
+;                      count is kept for fm_rows. A store of one statement, loaded by
+;                      fm_statement, is fitted too when it is a conclusion.
+;                      FM_ERR_LIMIT: more than 384 nodes in the tables of the assertion or
+;                      more than 255 in one statement, the cases the host model calls too large
+;                      with its caps; no flag of a table that was built before the call is
+;                      touched, and the statement fm_nodes refused is the selected one.
+;                      FM_ERR_INDEX: nothing loaded, or a hypothesis loaded alone. FM_ERR_TREE
+;                      and FM_ERR_READ as fm_nodes gives them.
 ;   fm_cursor     in:  A = node of the selected statement, FFh for none
 ;                 out: A = status. Stores the node, which the draws that follow show as the
-;                      cursor, until fm_open, fm_assertion, fm_statement or a fm_select that
-;                      selects clears it; a fold change keeps it. Draws nothing. FFh succeeds
-;                      on an open fm. FM_ERR_INDEX: the table is not built or has no node A,
-;                      and the cursor stays as it was.
+;                      cursor, until fm_open, fm_assertion, fm_statement, fm_fit or a
+;                      fm_select that selects clears it; a fold change keeps it. Draws nothing.
+;                      FFh succeeds on an open fm. FM_ERR_INDEX: the table is not built or has no
+;                      node A, and the cursor stays as it was.
 ; Other statuses: FM_ERR_NOT_OPEN, from every routine but fm_open.
 
 #ifndef FM_EMBEDDED
@@ -220,6 +258,7 @@
 #include "fm/store.inc"
 #include "fm/layout.inc"
 #include "fm/fold.inc"
+#include "fm/fit.inc"
 #include "fm/cursor.inc"
 #include "fm/nodes.inc"
 #include "fm/tree.inc"

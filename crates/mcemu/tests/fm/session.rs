@@ -125,7 +125,7 @@ fn a_routine_on_a_closed_fm_returns_not_open_and_hands_the_state_back_too() {
 
 /// T-states from the start of a driver call to fm's first instruction and to the driver's code
 /// after fm's return, found by stepping the call.
-fn span(fm: &mut Fm, target: &str, regs: Regs) -> (u32, u32) {
+pub fn span(fm: &mut Fm, target: &str, regs: Regs) -> (u32, u32) {
     fm.rig.prepare(target, regs);
     let (entry, done) = (fm.rig.label(target), fm.rig.label("CALL_DONE"));
     let (mut spent, mut start) = (0, None);
@@ -515,6 +515,12 @@ fn a_session_reaches_a_stack_depth_the_header_states() {
                 assert_eq!(fm.cursor(0).status(), 0);
                 assert_eq!(fm.draw(1, -2, 94, (0, 8)).status(), 0);
                 assert_eq!(fm.draw(0, 0, 20, (0, 8)).status(), 0);
+            }
+            for n in 0..decoded(&bytes).assertions.len() as u16 {
+                assert_eq!(fm.assertion(n).status(), 0);
+                for (rows, hyp, concl) in [(6, 84, 92), (1, 60, 60)] {
+                    assert_eq!(fm.fit(rows, hyp, concl).status(), 0);
+                }
             }
             let page = fm.rig.m.ram_page(SPARE_PAGE);
             let unused = page[low..low + size].iter().take_while(|&&b| b == mark);
