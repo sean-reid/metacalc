@@ -319,6 +319,8 @@ uint8_t mcemu_in(TilemCalc *calc, uint8_t port)
 	return calc->hw.z80_in(calc, port);
 }
 
+/* The CPU clock in T-states, which wraps at 32 bits. */
+uint32_t mcemu_clock(const TilemCalc *calc) { return calc->z80.clock; }
 int mcemu_khz(const TilemCalc *calc) { return calc->z80.clockspeed; }
 /* Writes a port with the flash protection open, as the OS does for the protected ones. */
 void mcemu_out_unlocked(TilemCalc *calc, uint8_t port, uint8_t value)

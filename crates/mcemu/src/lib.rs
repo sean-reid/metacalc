@@ -194,6 +194,26 @@ impl Machine {
         self.calc.mem_mut()[start..start + bytes.len()].copy_from_slice(bytes);
     }
 
+    /// `len` bytes of flash page `page` from `offset`.
+    pub fn read_flash(&mut self, page: u8, offset: usize, len: usize) -> Vec<u8> {
+        let start = usize::from(page) * FLASH_PAGE_SIZE + offset;
+        assert!(
+            offset + len <= FLASH_PAGE_SIZE,
+            "read crosses the flash page"
+        );
+        assert!(
+            start + len <= self.calc.rom_size(),
+            "flash page out of range"
+        );
+        self.calc.mem_mut()[start..start + len].to_vec()
+    }
+
+    /// The CPU's clock in T-states. It wraps at 32 bits, so two readings are compared with
+    /// `wrapping_sub`.
+    pub fn clock(&self) -> u32 {
+        self.calc.clock()
+    }
+
     pub fn load_ram(&mut self, addr: u16, bytes: &[u8]) {
         assert!(
             usize::from(addr) + bytes.len() <= 0x1_0000,
