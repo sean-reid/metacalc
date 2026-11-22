@@ -34,6 +34,7 @@ kv_work             .equ KERNEL_RAM_LOW+$B0
 kv_charge           .equ KERNEL_RAM_LOW+$B4
 kv_next             .equ KERNEL_RAM_LOW+$B6
 kv_saved_free       .equ KERNEL_RAM_LOW+$B8
+kv_listed           .equ KERNEL_RAM_LOW+$BA
 kv_crc_state        .equ KERNEL_RAM_LOW+$A2
 kv_crc_chunk        .equ KERNEL_RAM_LOW+$A4
 kv_crc_last         .equ KERNEL_RAM_LOW+$A5
@@ -142,6 +143,7 @@ ST_WORK_LIMIT       .equ 13
 ST_INTERRUPTED      .equ 14
 ST_LOOSE_REF        .equ 15
 ST_BAD_SYMBOL       .equ 16
+ST_NO_REFS          .equ 17
 ST_CRC_MORE         .equ $FF
 
 ; the differential tests build the default value only
