@@ -176,7 +176,7 @@ fn a_bad_list_is_refused_and_writes_nothing() {
     let before = rig.raw();
     for lists in LISTS.chunks(4) {
         let mut script = vec![Cmd::Open(CRC, 3326)];
-        script.extend(lists.iter().map(|l| Cmd::CountEnds(*l)));
+        script.extend(lists.iter().map(|l| Cmd::CountEnds(l)));
         let log = rig.run(&script);
         for (rec, ends) in log[1..].iter().zip(lists) {
             assert_eq!(rec.a, ST_RANGE, "ends {ends:?}");

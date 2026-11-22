@@ -51,8 +51,6 @@ pub enum Cmd {
     CountEnds(&'static [u16]),
     /// Deletes the table.
     Drop,
-    /// Holds the screen until CLEAR after the last command.
-    Wait,
     /// Creates the list named Q of this many elements, which the OS keeps below every AppVar.
     List(u16),
 }
@@ -85,7 +83,6 @@ impl Cmd {
                 b
             }
             Cmd::Drop => vec![19],
-            Cmd::Wait => vec![13],
         }
     }
 }
