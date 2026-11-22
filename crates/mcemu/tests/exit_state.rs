@@ -13,209 +13,12 @@ mod realos;
 #[path = "reader/support.rs"]
 mod support;
 
-use mcemu::{Machine, Regs, STUB_ROM, Stop};
+#[path = "common/exit_kit.rs"]
+mod kit;
+
+use kit::*;
+use mcemu::{Machine, STUB_ROM, Stop};
 use realos::*;
-use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
-
-const STUB_BASE: u8 = 0x30;
-const RAM_BASE: u16 = 0x8000;
-/// cmdShadow and smallEditRAM, and the byte on each side of them.
-const STACK: (u16, usize) = (0x966E, 128);
-const VARS: (u16, usize) = (0x90D3, 108);
-const NEIGHBOURS: [u16; 4] = [0x966D, 0x96EE, 0x90D2, 0x913F];
-const TEXT_SHADOW: u16 = 0x8508;
-const SCAN_2ND: u8 = 0x36;
-const SCAN_MODE: u8 = 0x37;
-const SCAN_5: u8 = 0x1B;
-const KEY_1: u8 = 0x22;
-const ERROR_CALL: u16 = 0xA800;
-const STACK_BELOW: u16 = 0x100;
-const APP_STACK_TOP: u16 = 0xFFE4;
-const SCAN_DOWN: u8 = 0x01;
-const SCAN_F3: u8 = 0x33;
-const SCAN_F1: u8 = 0x35;
-const POWER_DOWN: u8 = 0x10;
-const KEY_GRAPH: u8 = 0x31;
-const GRAPH_DRAW: u8 = 0x01;
-const UI_FRAME: u16 = 0x9340;
-const LIMIT: u32 = 20_000_000;
-
-/// A build of the app, the labels it was assembled with and the screen it draws first.
-struct Build {
-    file: Vec<u8>,
-    labels: PathBuf,
-    start: Vec<bool>,
-}
-
-fn build(name: &str, library: Option<&[u8]>, status: u8) -> Build {
-    let mut args = vec![];
-    if let Some(bytes) = library {
-        let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.mclib"));
-        std::fs::write(&path, bytes).unwrap();
-        args.push(format!("LIBRARY={}", path.display()));
-    }
-    let dir = make_app("app", name, &args);
-    Build {
-        file: std::fs::read(dir.join("metacalc.8xk")).unwrap(),
-        labels: dir.join("metacalc.lab"),
-        start: start_pixels(library, status),
-    }
-}
-
-fn shell() -> &'static Build {
-    static BUILD: OnceLock<Build> = OnceLock::new();
-    BUILD.get_or_init(|| build("exit-app", None, 0))
-}
-
-fn with_library() -> &'static Build {
-    static BUILD: OnceLock<Build> = OnceLock::new();
-    BUILD.get_or_init(|| build("exit-app-lib", Some(&fixture::library()), 0))
-}
-
-fn refused() -> &'static Build {
-    static BUILD: OnceLock<Build> = OnceLock::new();
-    BUILD.get_or_init(|| {
-        let bad = fixture::with(&fixture::library(), |b| b[0] ^= 0xFF);
-        build("exit-app-bad", Some(&bad), 3)
-    })
-}
-
-/// The bytes of the two regions that hold nothing while the shell waits at `depth`: all of both but
-/// the framework's count and table, SCR_VARS offsets 0, 3 and 4, and the frames of the open screens.
-fn dirt(depth: usize) -> Vec<(u16, Vec<u8>)> {
-    let live = 16 * depth;
-    vec![
-        (VARS.0 + 1, varied(2, 0xC3)),
-        (VARS.0 + 5, varied(VARS.1 - 5, 0xC4)),
-        (STACK.0 + live as u16, varied(STACK.1 - live, 0x5A)),
-    ]
-}
-
-/// What the framework holds at rest: its count and table, and the frames of the open screens.
-fn live(os: &mut RealOs, depth: usize) -> Vec<Vec<u8>> {
-    vec![
-        read(os, VARS.0, 1),
-        read(os, VARS.0 + 3, 2),
-        read(os, STACK.0, 16 * depth),
-    ]
-}
-
-fn read(os: &mut RealOs, addr: u16, len: usize) -> Vec<u8> {
-    os.ram(usize::from(addr - RAM_BASE), len)
-}
-
-fn poke(os: &mut RealOs, addr: u16, bytes: &[u8]) {
-    let at = usize::from(addr - RAM_BASE);
-    os.m.ram_page(1)[at..at + bytes.len()].copy_from_slice(bytes);
-}
-
-fn dirty(os: &mut RealOs, depth: usize) {
-    for (addr, bytes) in dirt(depth) {
-        poke(os, addr, &bytes);
-    }
-}
-
-fn neighbours(os: &mut RealOs) -> Vec<u8> {
-    NEIGHBOURS.iter().map(|&a| read(os, a, 1)[0]).collect()
-}
-
-/// What the OS holds that an app could leave changed: cxMain to cxCurApp, iy+28h, iy+33h to iy+36h, and the hook pointers.
-fn context(os: &mut RealOs) -> Vec<Vec<u8>> {
-    vec![
-        read(os, 0x858D, 14),
-        read(os, 0x89F0 + 0x28, 1),
-        read(os, 0x89F0 + 0x33, 4),
-        read(os, 0x9B7C, 40),
-    ]
-}
-
-/// The app waiting for a key on the reference OS, entered from a cleared home screen after a
-/// graph was drawn, and what `context` and the text shadow held before the launch.
-fn launched(app: &[u8], start: Option<&[bool]>) -> (RealOs, Vec<Vec<u8>>, Vec<u8>) {
-    let mut os = RealOs::boot(app);
-    os.tap(KEY_GRAPH, 150, 2500);
-    os.tap(KEY_CLEAR, 150, 800);
-    assert_eq!(
-        os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW,
-        0,
-        "a valid graph to start from"
-    );
-    let before = context(&mut os);
-    let text = read(&mut os, TEXT_SHADOW, 128);
-    match start {
-        Some(screen) => os.launch_in_key_wait(screen),
-        None => {
-            os.start_from_menu();
-            os.run_ms(300);
-        }
-    }
-    (os, before, text)
-}
-
-fn clear(os: &mut RealOs) {
-    os.tap(KEY_CLEAR, 150, 1500);
-}
-
-fn quit(os: &mut RealOs) {
-    os.tap(SCAN_2ND, 150, 300);
-    os.tap(SCAN_MODE, 150, 1500);
-}
-
-fn off(os: &mut RealOs) {
-    os.tap(SCAN_2ND, 150, 300);
-    os.m.press_key(Machine::KEY_ON);
-    os.run_ms(300);
-    os.m.release_key(Machine::KEY_ON);
-    os.run_ms(2000);
-    assert_ne!(os.m.in_port(3) & POWER_DOWN, 0, "2nd+OFF powered down");
-    os.tap(Machine::KEY_ON, 150, 3000);
-}
-
-/// Runs `bcall(_ErrMemory)` where the OS waits in `_GetKey`, with the registers and the stack it
-/// has there, from three bytes in free RAM, and gives the error screen time to draw.
-fn raise_error(os: &mut RealOs) {
-    let regs = os.m.regs();
-    os.m.load_ram(ERROR_CALL, &[0xEF, 0xB9, 0x44]);
-    os.m.set_regs(&Regs {
-        pc: ERROR_CALL,
-        ..regs
-    });
-    os.run_ms(1500);
-}
-
-fn lit_rows(os: &mut RealOs, rows: std::ops::Range<usize>) -> bool {
-    os.screen()[rows.start * 96 * 8..rows.end * 96 * 8]
-        .iter()
-        .any(|&p| p)
-}
-
-/// The error screen draws its title and 1:Quit and nothing below row 2.
-fn assert_error_screen(os: &mut RealOs, name: &str) {
-    assert!(
-        lit_rows(os, 0..2),
-        "{name}: the error screen's title and 1:Quit"
-    );
-    assert!(
-        !lit_rows(os, 3..8),
-        "{name}: nothing below the error screen's choices"
-    );
-}
-
-/// The error screen's 1:Quit.
-fn error_quit(os: &mut RealOs) {
-    raise_error(os);
-    assert_error_screen(os, "1:Quit");
-    os.tap(KEY_1, 150, 1500);
-}
-
-/// The error screen's 2:Goto, which only an app with a context of its own gets.
-fn error_goto(os: &mut RealOs) {
-    raise_error(os);
-    assert_error_screen(os, "2:Goto");
-    assert!(lit_rows(os, 2..3), "2:Goto is drawn");
-    os.tap(KEY_2, 150, 1500);
-}
 
 #[test]
 #[ignore = "needs the reference ROM image"]
@@ -245,17 +48,6 @@ fn the_error_screen_offers_goto_to_the_app_and_only_quit_to_a_plain_app() {
         );
     }
 }
-
-type Exit = fn(&mut RealOs);
-/// Each way out, and the way out of a plain app that leaves the same way: 1:Quit is the only
-/// choice a plain app's error screen has.
-const EXITS: [(&str, Exit, Exit); 5] = [
-    ("CLEAR", clear, clear),
-    ("2nd+QUIT", quit, clear),
-    ("2nd+OFF", off, off),
-    ("error 1:Quit", error_quit, error_quit),
-    ("error 2:Goto", error_goto, error_quit),
-];
 
 /// The home screen is the OS's: the state is what it holds at rest, the screen is blank but for
 /// its cursor, and a key echoes there.
@@ -359,6 +151,12 @@ fn dirty_regions_are_the_only_thing_that_changes_the_ram_after_2nd_off() {
 /// way, which the OS does and the app does not: the base, the end and why.
 #[rustfmt::skip]
 const OS_OWN: &[(u16, u16, &str)] = &[
+    (0x8448, 0x844B, "apdSubTimer, apdTimer and curTime: the time since the last key, which the extra CLEAR key resets at another moment"),
+    (0x85E2, 0x85E7, "the error menu's state: the app's error screen has two choices and a plain app's one"),
+    (0x9D76, 0x9D8B, "the error menu's text and its length, as 85E2h"),
+    (0x8476, 0x8477, "indicCounter, the run indicator's counter: it counts time"),
+    (0x8A2F, 0x8A30, "clockFlags: displayClock is set once a second, so it depends on the moment of the read"),
+    (0x8508, 0x8588, "textShadow: the app leaves the blank screen the header promises where a plain app leaves the earlier lines and an unentered entry"),
     (0x838D, 0x8390, "OS bookkeeping of the launched app: the same in identical runs, not timing"),
     (0x83E8, 0x83E9, "OS bookkeeping of the launched app, as 838Dh"),
     (0x8445, 0x8446, "kbdKey: MODE after 2nd for the app's 2nd+QUIT, CLEAR for the plain app"),
@@ -404,28 +202,38 @@ fn declared(app: &Build) -> Vec<(u16, u16)> {
 }
 
 /// Banks B and C as the OS has them mapped at its idle, 8000h to FFFFh.
-fn banks(os: &mut RealOs) -> Vec<u8> {
-    os.m.read_ram(0x8000, 0x8000)
-}
-
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn the_app_leaves_banks_b_and_c_as_a_plain_waiting_app_does_but_for_what_it_declares() {
     let app = shell();
     let mut masks = declared(app);
     let mut allowed_seen = std::collections::BTreeSet::new();
-    for (way, exit, plain_exit) in &EXITS[..3] {
-        let (mut os, ..) = launched(&app.file, Some(&app.start));
+    let starts: [(&str, &[u8]); 3] = [
+        ("empty line", &[]),
+        ("an unentered 5", &[SCAN_5]),
+        ("a lower row and an unentered 5", &LOWER_ROW_AND_5),
+    ];
+    for ((start, keys), (way, exit, plain_exit)) in starts
+        .into_iter()
+        .flat_map(|s| EXITS.iter().map(move |e| (s, e)))
+    {
+        let way = &format!("{start}, {way}");
+        let (mut os, ..) = launched_after(&app.file, Some(&app.start), keys);
         // the app's frames above the OS's SP at the wait and the stack the OS uses below it
         let sp = os.m.regs().sp;
         let ours = {
             exit(&mut os);
             banks(&mut os)
         };
-        let (mut plain, ..) = launched(&assemble_routine("wait_app.z80"), None);
+        let (mut plain, ..) = launched_after(&assemble_routine("wait_app.z80"), None, keys);
         plain_exit(&mut plain);
         let theirs = banks(&mut plain);
         let stack = (sp.saturating_sub(STACK_BELOW), APP_STACK_TOP);
+        let edit_btm = u16::from_le_bytes(read(&mut os, EDIT_TOP + 6, 2).try_into().unwrap());
+        assert!(
+            edit_btm < stack.0,
+            "{way}: the stack mask {stack:04X?} stays above the edit buffer's tail at {edit_btm:04X}"
+        );
         masks.push(stack);
         let mut strays = vec![];
         for i in 0..ours.len() {

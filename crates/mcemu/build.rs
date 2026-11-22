@@ -734,7 +734,11 @@ fn assemble_ui(out: &Path) {
             None,
         ),
         (&["UI_VARS=$9640", "FM_SCRATCH=$A000"][..], None),
-        (&["UI_FRAME=$9572", "SCR_STACK=$9000"][..], None),
+        (&["UI_FRAME=$93EE", "SCR_STACK=$9000"][..], None),
+        (
+            &["UI_FRAME=$93EF", "SCR_STACK=$9000"][..],
+            Some("HOME_STATE and UI_FRAME overlap"),
+        ),
         (&["APP_BUF=$8000"][..], None),
         (&["APP_BUF=$7FFF"][..], Some("APP_BUF runs past bank B")),
         (&["APP_BUF=$BF00"][..], None),
@@ -748,7 +752,15 @@ fn assemble_ui(out: &Path) {
         ),
         (&["APP_BUF=$9240"][..], None),
         (&["APP_BUF=$9241"][..], Some("APP_BUF and UI_FRAME overlap")),
-        (&["APP_BUF=$9640", "SCR_STACK=$A000"][..], None),
+        (
+            &[
+                "APP_BUF=$9640",
+                "SCR_STACK=$A000",
+                "HOME_STATE=$A100",
+                "HOME_PENDING=$A180",
+            ][..],
+            None,
+        ),
         (
             &["APP_BUF=$963F", "SCR_STACK=$A000"][..],
             Some("APP_BUF and UI_FRAME overlap"),
@@ -811,7 +823,15 @@ fn assemble_ui(out: &Path) {
         (&["KERNEL_RAM_HIGH=$D700"][..], None),
         (&["SCR_VARS=$9100"][..], None),
         (&["SCR_STACK=$9700"][..], None),
-        (&["SCR_VARS_SIZE=$80", "SCR_STACK_SIZE=$100"][..], None),
+        (
+            &[
+                "SCR_VARS_SIZE=$80",
+                "SCR_STACK_SIZE=$100",
+                "HOME_STATE=$A100",
+                "HOME_PENDING=$A200",
+            ][..],
+            None,
+        ),
         (&["SCR_VARS=$8000"][..], None),
         (&["SCR_VARS=$7FFF"][..], Some("SCR_VARS runs past bank B")),
         (&["SCR_VARS=$BF94"][..], None),
@@ -957,7 +977,56 @@ fn assemble_ui(out: &Path) {
             &["FM_SCRATCH=$956F", "UI_FRAME=$A000"][..],
             Some("FM_SCRATCH and SCR_STACK overlap"),
         ),
-        (&["FM_SCRATCH=$96EE"][..], None),
+        (
+            &["FM_SCRATCH=$96EE"][..],
+            Some("HOME_STATE and FM_SCRATCH overlap"),
+        ),
+        (&["FM_SCRATCH=$96F8"][..], None),
+        (
+            &["FM_SCRATCH=$96F7"][..],
+            Some("HOME_PENDING and FM_SCRATCH overlap"),
+        ),
+        (
+            &["FM_SCRATCH=$96F4"][..],
+            Some("HOME_PENDING and FM_SCRATCH overlap"),
+        ),
+        (
+            &["APP_BUF=$96F7"][..],
+            Some("HOME_PENDING and APP_BUF overlap"),
+        ),
+        (
+            &["APP_BUF=$96F4"][..],
+            Some("HOME_PENDING and APP_BUF overlap"),
+        ),
+        (&["APP_BUF=$96F8"][..], None),
+        (
+            &["SCR_STACK=$9670"][..],
+            Some("HOME_STATE and SCR_STACK overlap"),
+        ),
+        (
+            &["SCR_VARS=$96EF"][..],
+            Some("HOME_STATE and SCR_VARS overlap"),
+        ),
+        (
+            &["SCR_VARS=$96F7"][..],
+            Some("HOME_PENDING and SCR_VARS overlap"),
+        ),
+        (&["SCR_VARS=$96F8"][..], None),
+        (&["HOME_STATE=$BFFE"][..], None),
+        (
+            &["HOME_STATE=$BFFF"][..],
+            Some("HOME_STATE runs past bank B"),
+        ),
+        (&["HOME_PENDING=$BFFC"][..], None),
+        (
+            &["HOME_PENDING=$BFFD"][..],
+            Some("HOME_PENDING runs past bank B"),
+        ),
+        (&["HOME_STATE=$96F2"][..], None),
+        (
+            &["HOME_STATE=$96F3"][..],
+            Some("HOME_STATE and HOME_PENDING overlap"),
+        ),
         (
             &["FM_SCRATCH=$96ED"][..],
             Some("FM_SCRATCH and SCR_STACK overlap"),
@@ -1633,6 +1702,30 @@ fn assemble_layout_probes(out: &Path) {
         (
             &["SCR_STACK_SIZE=129"][..],
             "SCR_STACK in ram_map.inc must end where cmdShadCur starts",
+        ),
+        (
+            &["HOME_STATE=$96F0"][..],
+            "HOME_STATE in ram_map.inc must start at cmdShadCur",
+        ),
+        (
+            &["HOME_STATE_SIZE=1"][..],
+            "HOME_STATE in ram_map.inc must be the two bytes of cmdShadCur",
+        ),
+        (
+            &["HOME_STATE_SIZE=3"][..],
+            "HOME_STATE in ram_map.inc must be the two bytes of cmdShadCur",
+        ),
+        (
+            &["HOME_PENDING=$96F5"][..],
+            "HOME_PENDING in ram_map.inc must start at editTop",
+        ),
+        (
+            &["HOME_PENDING_LEN=3"][..],
+            "HOME_PENDING_LEN in ram_map.inc must cover editTop and editCursor",
+        ),
+        (
+            &["HOME_PENDING_LEN=5"][..],
+            "HOME_PENDING_LEN in ram_map.inc must cover editTop and editCursor",
         ),
     ] {
         expect(

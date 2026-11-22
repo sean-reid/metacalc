@@ -13,6 +13,7 @@ _DelVarArc       = 4FC6h
 _Arc_Unarc       = 4FD8h
 _LoadDEIndPaged  = 501Ah
 _JForceCmdNoChar = 4027h
+_JForceCmd      = 402Ah
 _AppInit         = 404Bh
 _PutC            = 4504h
 _ClrLCDFull      = 4540h
@@ -39,6 +40,8 @@ smallEditRAM     = 90D3h
 XFact            = 913Fh
 cmdShadow        = 966Eh
 cmdShadCur       = 96EEh
+editTop          = 96F4h
+editCursor       = 96F6h
 #if (smallEditRAM < SCR_VARS) || (smallEditRAM > SCR_VARS)
  .error "SCR_VARS in ram_map.inc must be smallEditRAM"
 #endif
@@ -50,6 +53,18 @@ cmdShadCur       = 96EEh
 #endif
 #if (cmdShadCur < (SCR_STACK + SCR_STACK_SIZE)) || (cmdShadCur > (SCR_STACK + SCR_STACK_SIZE))
  .error "SCR_STACK in ram_map.inc must end where cmdShadCur starts"
+#endif
+#if (cmdShadCur < HOME_STATE) || (cmdShadCur > HOME_STATE)
+ .error "HOME_STATE in ram_map.inc must start at cmdShadCur"
+#endif
+#if (editTop < HOME_PENDING) || (editTop > HOME_PENDING)
+ .error "HOME_PENDING in ram_map.inc must start at editTop"
+#endif
+#if ((editCursor + 2) < (HOME_PENDING + HOME_PENDING_LEN)) || ((editCursor + 2) > (HOME_PENDING + HOME_PENDING_LEN))
+ .error "HOME_PENDING_LEN in ram_map.inc must cover editTop and editCursor, 4 bytes"
+#endif
+#if ((cmdShadCur + 2) < (HOME_STATE + HOME_STATE_SIZE)) || ((cmdShadCur + 2) > (HOME_STATE + HOME_STATE_SIZE))
+ .error "HOME_STATE in ram_map.inc must be the two bytes of cmdShadCur"
 #endif
 libPage          = KD_SCRATCH
 appStatus        = KD_SCRATCH + 1
