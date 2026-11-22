@@ -276,6 +276,33 @@ fn a_table_of_one_value_counts_the_same_through_lists_of_ends() {
     }
 }
 
+#[test]
+fn a_tail_that_carries_a_tally_past_255_reaches_the_high_byte() {
+    let mut seed = 0x0303_0303;
+    for others in [1usize, 2, 3] {
+        let mut t = Table::new(CRC, 3326);
+        t.values = vec![1; 3326];
+        for i in 0..others {
+            t.values[17 + 40 * i] = 2;
+        }
+        let mut rig = Rig::new();
+        let pad = xorshift(&mut seed) as u8;
+        rig.m
+            .create_var(VAR, &layout::encode_padded(&t, pad))
+            .unwrap();
+        let ns = [256u16, 257, 258, 259];
+        let mut script = vec![Cmd::Open(CRC, 3326), Cmd::CountEnds(&[256, 257, 258, 259])];
+        script.extend(ns.map(Cmd::CountTo));
+        let log = rig.run(&script);
+        let want: Vec<[u16; 4]> = ns.iter().map(|&n| by_hand(&t.values, n.into())).collect();
+        assert!(want.iter().any(|c| c[1] > 255), "the table reaches 256");
+        assert_eq!(log[1].ends(), want, "{others} other entries, by one pass");
+        for (rec, want) in log[2..].iter().zip(&want) {
+            assert_eq!(rec.counts(), *want, "{others} other entries, by prefix");
+        }
+    }
+}
+
 /// What the host model calls checked, failed and settled over a prefix, and the prefix's length,
 /// from the four counts alone.
 fn model_of(c: [u16; 4]) -> (usize, usize, usize, usize) {
