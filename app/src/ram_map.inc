@@ -49,7 +49,7 @@
 ;                           touch APP_BUF, where the strings built at run time are. The OS writes the
 ;                           screen's pixels over it at an auto power down: the shell clears the tag
 ;                           before the refresh that follows, and the next draw copies the block again
-;   APP_SENTINEL      B     the shell's one byte, in saveSScreen after APP_BUF, the last byte of it: the
+;   APP_SENTINEL      B     the shell's one byte, in saveSScreen after APP_STAGE, the last byte of it: the
 ;                           complement of the byte of UI_FRAME at the same offset, stored after every
 ;                           blit, so that a pixel copy over saveSScreen is told from the screen
 ;                           being intact (metacalc.z80)

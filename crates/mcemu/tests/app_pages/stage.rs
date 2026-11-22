@@ -135,15 +135,13 @@ fn rom(shell: &mut Shell, at: u16, len: usize) -> Vec<u8> {
 fn a_screen_draws_from_a_copy_of_its_own_block_and_nothing_else() {
     let mut shell = Shell::boot(plain(), Enter::Real);
     for (open, block, size) in [
-        (None, "start_block", "START_BLOCK_SIZE"),
-        (Some(F3), "about_block", "ABOUT_BLOCK_SIZE"),
-        (Some(CLEAR), "start_block", "START_BLOCK_SIZE"),
-        (Some(F1), "notice_block", "NOTICE_BLOCK_SIZE"),
+        (F3, "about_block", "ABOUT_BLOCK_SIZE"),
+        (CLEAR, "start_block", "START_BLOCK_SIZE"),
+        (F1, "notice_block", "NOTICE_BLOCK_SIZE"),
     ] {
-        if let Some(open) = open {
-            shell.tap(open);
-        }
-        let (stage, _) = region(&mut shell);
+        let (stage, area) = region(&mut shell);
+        shell.app.m.load_ram(stage, &vec![0xEE; area]);
+        shell.tap(open);
         let (at, len) = (shell.app.label(block), usize::from(shell.app.label(size)));
         let tag = shell.app.m.read_ram(stage, 2);
         assert_eq!(tag, at.to_le_bytes(), "{block}: the tag");
@@ -156,13 +154,14 @@ fn a_screen_draws_from_a_copy_of_its_own_block_and_nothing_else() {
     }
 }
 
-/// `app_stage_block` called with port 6 on the entry page, the area filled with 0xEE first.
-fn staged(shell: &mut Shell, from: u16, len: u16) -> Vec<u8> {
+/// `app_stage_block` called with port 6 on the entry page, the area filled with 0xEE first and the
+/// tag set to `tag`. Returns the area and the 16 bytes after it, and whether the call refused.
+fn staged(shell: &mut Shell, tag: u16, from: u16, len: u16) -> (Vec<u8>, bool) {
     let (stage, size) = region(shell);
     let at = shell.app.label("app_stage_block");
     shell.app.m.load_ram(stage, &vec![0xEE; size + 16]);
-    shell.app.m.load_ram(stage, &[0, 0]);
-    shell.app.call(
+    shell.app.m.load_ram(stage, &tag.to_le_bytes());
+    let done = shell.app.call(
         BASE,
         at,
         In {
@@ -171,33 +170,53 @@ fn staged(shell: &mut Shell, from: u16, len: u16) -> Vec<u8> {
             ..In::default()
         },
     );
-    shell.app.m.read_ram(stage, size + 16)
+    (
+        shell.app.m.read_ram(stage, size + 16),
+        done.regs.af & 1 == 1,
+    )
 }
 
 #[test]
-fn a_block_of_the_areas_length_is_copied_whole_and_one_byte_more_is_cut() {
+fn a_block_of_the_areas_length_is_copied_whole_and_a_longer_one_is_refused_whole() {
     let mut shell = Shell::boot(plain(), Enter::Real);
     let (_, size) = region(&mut shell);
     let data = size - 2;
     let from = shell.app.label("app_stage_block");
     let source = rom(&mut shell, from, data + 300);
-    for len in [data as u16, data as u16 + 1, 0x0200 + data as u16, 0xFFFF] {
-        let after = staged(&mut shell, from, len);
-        assert_eq!(after[..2], from.to_le_bytes(), "len {len}: the tag");
+    let (after, refused) = staged(&mut shell, 0x1234, from, data as u16);
+    assert!(!refused);
+    assert_eq!(after[..2], from.to_le_bytes(), "the tag");
+    assert_eq!(
+        after[2..size],
+        source[..data],
+        "the area's length is copied"
+    );
+    assert_eq!(after[size..], [0xEE; 16], "nothing past the area");
+    for len in [data as u16 + 1, 0x0100, 0x0200 + data as u16, 0xFFFF] {
+        let (after, refused) = staged(&mut shell, from, from, len);
+        assert!(refused, "len {len}: refused");
+        assert_eq!(after[..2], [0, 0], "len {len}: the tag is cleared");
         assert_eq!(
-            after[2..size],
-            source[..data],
-            "len {len}: the copy is the area's length"
-        );
-        assert_eq!(
-            after[size..],
-            [0xEE; 16],
-            "len {len}: nothing past the area"
+            after[2..],
+            vec![0xEE; size + 14],
+            "len {len}: nothing copied"
         );
     }
-    let after = staged(&mut shell, from, 3);
+    let (after, refused) = staged(&mut shell, 0x1234, from, 3);
+    assert!(!refused);
     assert_eq!(after[2..5], source[..3]);
     assert_eq!(after[5], 0xEE, "a short block copies its own length");
+}
+
+#[test]
+fn a_block_of_length_zero_writes_nothing_and_keeps_the_tag() {
+    let mut shell = Shell::boot(plain(), Enter::Real);
+    let from = shell.app.label("app_stage_block");
+    let (_, size) = region(&mut shell);
+    let (after, refused) = staged(&mut shell, 0x1234, from, 0);
+    assert!(!refused);
+    assert_eq!(after[..2], 0x1234u16.to_le_bytes(), "the tag is unchanged");
+    assert_eq!(after[2..], vec![0xEE; size + 14], "nothing written");
 }
 
 #[test]
@@ -206,7 +225,7 @@ fn a_block_the_area_already_holds_is_not_copied_again() {
     let from = shell.app.label("app_stage_block");
     let (stage, size) = region(&mut shell);
     let at = shell.app.label("app_stage_block");
-    staged(&mut shell, from, 8);
+    staged(&mut shell, 0, from, 8);
     shell.app.m.load_ram(stage + 2, &[0xEE; 8]);
     shell.app.call(
         BASE,

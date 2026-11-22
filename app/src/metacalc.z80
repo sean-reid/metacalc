@@ -41,7 +41,8 @@
 ; library chunk 0) and appStatus after it, and APP_BUF, which holds the reader's scratch and the
 ; strings in glyph codes, APP_FRAME in its upper half, and APP_STAGE after it, which holds the
 ; copy of the constant strings (strings.inc) of the screen last drawn, since the canvas cannot read
-; the entry page. The tag at its start is cleared at start and before every refresh.
+; the entry page. The tag at its start is cleared at start and before the refresh that follows an
+; auto power down.
 
 #include "equates.inc"
 
