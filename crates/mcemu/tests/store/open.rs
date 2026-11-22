@@ -214,3 +214,23 @@ fn the_probes_room_command_reports_what_enough_mem_accepts() {
     let log = rig.run_free(&[Cmd::Room(100), Cmd::Room(101)], 100);
     assert_eq!((log[0].a, log[1].a), (0, 1));
 }
+
+#[test]
+fn open_replaces_a_table_whose_key_differs_by_one_bit_of_any_byte() {
+    let mut old = Table::new(CRC, COUNT);
+    old.values.fill(3);
+    let mut rig = Rig::new();
+    let crcs = (0..32).map(|bit| (CRC ^ (1 << bit), COUNT));
+    let counts = (0..16).map(|bit| (CRC, COUNT ^ (1 << bit)));
+    for (crc, count) in crcs.chain(counts) {
+        rig.m.delete_var(VAR);
+        rig.m.create_var(VAR, &layout::encode(&old)).unwrap();
+        let log = rig.run(&[Cmd::Open(crc, count)]);
+        assert_eq!(
+            (log[0].a, log[0].b()),
+            (ST_OK, ST_OTHER_LIBRARY),
+            "key {crc:08x} {count}"
+        );
+        assert_eq!(rig.table().unwrap(), Table::new(crc, count));
+    }
+}

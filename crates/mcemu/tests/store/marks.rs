@@ -285,3 +285,29 @@ fn next_zero_refuses_a_range_that_is_not_in_the_table() {
     assert_eq!(got[3].0, ST_RANGE);
     assert_eq!(got[4], (ST_OK, 10));
 }
+
+/// Every single-bit change of the key: each bit of the CRC and of the count.
+fn flipped_keys() -> Vec<(u32, u16)> {
+    let crcs = (0..32).map(|bit| (CRC ^ (1 << bit), COUNT));
+    let counts = (0..16).map(|bit| (CRC, COUNT ^ (1 << bit)));
+    crcs.chain(counts).collect()
+}
+
+#[test]
+fn has_notices_a_single_bit_change_in_any_byte_of_the_crc_or_the_count() {
+    let mut rig = Rig::new();
+    rig.m
+        .create_var(VAR, &layout::encode(&Table::new(CRC, COUNT)))
+        .unwrap();
+    let before = rig.raw();
+    let keys = flipped_keys();
+    assert_eq!(keys.len(), 48);
+    for part in keys.chunks(12) {
+        let cmds: Vec<Cmd> = part.iter().map(|&(crc, n)| Cmd::Has(crc, n)).collect();
+        for (key, rec) in part.iter().zip(rig.run(&cmds)) {
+            assert_eq!(rec.a, ST_OTHER_LIBRARY, "key {key:x?}");
+        }
+    }
+    assert_eq!(rig.run(&[Cmd::Has(CRC, COUNT)])[0].a, ST_OK);
+    assert_eq!(rig.raw(), before);
+}
