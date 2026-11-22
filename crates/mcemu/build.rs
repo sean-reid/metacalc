@@ -1171,6 +1171,24 @@ fn assemble_ui(out: &Path) {
             Some("APP_STAGE and UI_FRAME overlap"),
         ),
         (
+            &["APP_STAGE=$96EE"][..],
+            Some("APP_STAGE and HOME_STATE overlap"),
+        ),
+        (
+            &["APP_STAGE=$96F4"][..],
+            Some("APP_STAGE and HOME_PENDING overlap"),
+        ),
+        (
+            &["HOME_STATE=$8906"][..],
+            Some("APP_STAGE and HOME_STATE overlap"),
+        ),
+        (&["HOME_STATE=$8986"][..], None),
+        (
+            &["HOME_PENDING=$8985"][..],
+            Some("APP_STAGE and HOME_PENDING overlap"),
+        ),
+        (&["HOME_PENDING=$8986"][..], None),
+        (
             &["APP_SENTINEL=$7FFF"][..],
             Some("APP_SENTINEL runs past bank B"),
         ),
