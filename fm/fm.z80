@@ -67,8 +67,8 @@
 ; measured is fm_open on the ring library, 484,449 T-states (81 ms at 6 MHz), then fm_nodes of its
 ; largest statement, 358,365, fm_assertion of its largest assertion, 187,619, and fm_draw of a full
 ; window, at most 180,804; fm_fold repeats fm_nodes with 3,300 more when the table is not built,
-; fm_cursor alone takes 726. fm_fit takes 1,274,554 T-states (212 ms) at worst over ring, 77,000 at
-; the median, and 27,285,553 (4.5 s) on the fixture's statement of 253 nested operators, whose every
+; fm_cursor alone takes 726. fm_fit takes 1,273,426 T-states (212 ms) at worst over ring, 76,000 at
+; the median, and 27,285,530 (4.5 s) on the fixture's statement of 253 nested operators, whose every
 ; level takes a pass over 255 tokens; interrupts stay off throughout. fm_rows first asks whether a
 ; line count is kept for the statement and its width, which costs 136 T-states when none is: 33,154
 ; before and 33,290 after on the fixture's longest statement. fm_rows and fm_draw first run the
