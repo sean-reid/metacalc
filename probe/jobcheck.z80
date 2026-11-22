@@ -1,0 +1,344 @@
+#include "equates.inc"
+
+; Runs the check job (app/src/check.inc) on the library appended to this app, and shows what it did.
+; It checks the whole library: the CRC-32 run first, a progress line per chunk, then every
+; assertion the table does not hold yet, a progress line every 16 assertions. ON pauses the job
+; wherever it is. The table keeps what was checked, so starting the app again after a pause
+; skips the CRC run and carries on from the first assertion not yet checked. At the end a screen
+; gives the run's result: whether the table was kept or made, the counts, the first failure and the
+; reason the run stopped. Any key leaves.
+;
+; The table is the AppVar MCJOBT, never MCSTAT. It is the only variable the app creates, once the
+; CRC run has passed, and it deletes nothing but a table of another library under that name. The
+; user removes it from 2nd MEM, Mem Mgmt/Del, AppVars; removing the app itself is under Apps.
+;
+; The app is three code pages and the library, as app/src/pages.inc lays them out; the kernel and
+; the reader are on page 2 and everything that calls the OS is on page 0. It runs the job with
+; interrupts off, as probe/kerndriver.inc does, so that a tap on ON between two steps is reported
+; by the next kernel call and not taken by the OS.
+
+#define STORE_VAR "MCJOBT"
+VERSION = 1
+
+#include "jobhead.inc"
+#include "scr/ram.inc"
+#include "check_ram.inc"
+
+#define J_NEXT 2
+#macro J_VAR(name, offset, size)
+RAM_VAR(name, KD_SCRATCH, offset, size, KD_SCRATCH_SIZE, J_NEXT, "the probe's scratch overlaps, leaves a gap, or runs past KD_SCRATCH_SIZE in ram_map.inc")
+#define J_NEXT eval(offset + size)
+#endmacro
+
+J_VAR(P_TMP, $02, 2)
+J_VAR(P_TMP2, $04, 1)
+J_VAR(P_STR, $05, 2)
+J_VAR(J_KEPT, $07, 1)
+J_VAR(J_STOP, $08, 1)
+J_VAR(J_STATUS, $09, 1)
+J_VAR(J_DETAIL, $0A, 1)
+J_VAR(J_TICK, $0B, 1)
+J_VAR(J_CHUNKS, $0C, 1)
+J_VAR(J_LEN, $0D, 3)
+
+KEPT_NONE    = 0
+KEPT_KEPT    = 1
+KEPT_MADE    = 2
+STOP_DONE    = 0
+STOP_ON      = 1
+STOP_REFUSED = 2
+TICK_EVERY   = 16
+CHUNK_BYTES  = 16384
+
+job_start:
+	call far_init
+	call app_find_library
+	call far_kernel_reset
+	ld hl, KD_SCRATCH + 2
+	ld de, KD_SCRATCH + 3
+	ld bc, KD_SCRATCH_SIZE - 3
+	xor a
+	ld (hl), a
+	ldir
+	ld (ck_state), a
+	ld a, (libPage)
+	ld de, FM_SCRATCH
+	call far_lib_open
+	ld (J_DETAIL), a
+	or a
+	ld a, STOP_REFUSED
+	jr z, j_open_ok
+	ld a, CK_READER
+	ld (J_STATUS), a
+	ld a, STOP_REFUSED
+	jr j_opened
+j_open_ok:
+	call j_count_chunks
+	ld a, 0Ch
+	call putchar
+	ld hl, s_title
+	call putstr
+	call j_newline
+	call far_lib_assertion_count
+	ex de, hl
+	ld a, (libPage)
+	di
+	call j_run
+j_opened:
+	ld (J_STOP), a
+	call check_end
+	call on_release_and_clear
+	call j_report
+	bcall(_GetKey)
+	bjump(_JForceCmdNoChar)
+
+; The library's length from its header, 3 bytes at offset 8, as a count of 16 KB chunks.
+j_count_chunks:
+	ld bc, 3
+	ld de, J_LEN
+	ld hl, 8
+	xor a
+	call far_lib_read
+	ld hl, (J_LEN)
+	ld de, CHUNK_BYTES - 1
+	add hl, de
+	ld a, (J_LEN + 2)
+	adc a, 0
+	add a, a
+	add a, a
+	ld b, a
+	ld a, h
+	rlca
+	rlca
+	and 3
+	or b
+	ld (J_CHUNKS), a
+	ret
+
+; In: A = the library's page, DE = the number of assertions. Out: A = STOP_DONE, STOP_ON or
+; STOP_REFUSED, with J_STATUS and J_DETAIL holding a refusal's status and B.
+j_run:
+	call check_begin
+	cp CK_READY
+	jr z, j_found
+	cp CK_NEED_CRC
+	jr z, j_crc
+	jr j_ended
+j_found:
+	ld a, KEPT_KEPT
+	ld (J_KEPT), a
+	jr j_steps
+j_crc:
+	call j_show_crc
+j_crc_next:
+	call check_crc_step
+	cp CK_MORE
+	jr nz, j_crc_end
+	call j_show_crc
+	jr j_crc_next
+j_crc_end:
+	cp CK_READY
+	jr nz, j_ended
+	ld a, KEPT_MADE
+	ld (J_KEPT), a
+j_steps:
+	call j_show_check
+j_step_next:
+	call check_step
+	cp CK_MORE
+	jr nz, j_ended
+	ld hl, J_TICK
+	inc (hl)
+	ld a, (hl)
+	and TICK_EVERY - 1
+	call z, j_show_check
+	jr j_step_next
+j_ended:
+	ld (J_STATUS), a
+	ld c, a
+	ld a, b
+	ld (J_DETAIL), a
+	ld a, c
+	cp CK_DONE
+	jr nz, j_not_done
+	call j_show_check
+	ld a, STOP_DONE
+	ret
+j_not_done:
+	cp CK_PAUSED
+	ld a, STOP_ON
+	ret z
+	ld a, STOP_REFUSED
+	ret
+
+j_newline:
+	ld a, 0Ah
+	jp putchar
+
+; Rewrites the current line as the chunks done of those in the library.
+j_show_crc:
+	ld a, 0Dh
+	call putchar
+	ld hl, s_crc
+	call putstr
+	call check_chunks
+	ld l, a
+	ld h, 0
+	call putdec
+	ld a, '/'
+	call putchar
+	ld a, (J_CHUNKS)
+	ld l, a
+	ld h, 0
+	jp putdec
+
+; Rewrites the current line as the assertions settled of the library's count.
+j_show_check:
+	ld a, 0Dh
+	call putchar
+	ld hl, s_check
+	call putstr
+	call check_counts
+	ld e, (hl)
+	inc hl
+	ld d, (hl)
+	ld hl, (ck_n)
+	or a
+	sbc hl, de
+	call putdec
+	ld a, '/'
+	call putchar
+	ld hl, (ck_n)
+	jp putdec
+
+; The result screen.
+j_report:
+	ld a, 0Ch
+	call putchar
+	ld hl, s_title
+	call putstr
+	call j_newline
+	ld hl, s_table
+	call putstr
+	ld a, (J_KEPT)
+	ld hl, s_none
+	or a
+	jr z, j_report_table
+	ld hl, s_kept
+	dec a
+	jr z, j_report_table
+	ld hl, s_made
+j_report_table:
+	call putstr
+	call j_newline
+	call check_counts
+	push hl
+	inc hl
+	inc hl
+	ld de, s_checked
+	call j_count_line
+	pop hl
+	push hl
+	ld de, 4
+	add hl, de
+	ld de, s_failed
+	call j_count_line
+	pop hl
+	ld de, 6
+	add hl, de
+	ld de, s_resting
+	call j_count_line
+	call check_first
+	or a
+	jr z, j_report_stop
+	push bc
+	ld hl, s_first
+	call putstr
+	ex de, hl
+	call putdec
+	call j_newline
+	ld hl, s_status
+	call putstr
+	pop bc
+	ld l, b
+	ld h, 0
+	call putdec
+	call j_newline
+j_report_stop:
+	ld a, (J_STOP)
+	ld hl, s_done
+	or a
+	jr z, j_report_end
+	ld hl, s_paused
+	dec a
+	jr z, j_report_end
+	ld hl, s_refused
+	call putstr
+	ld a, (J_STATUS)
+	ld l, a
+	ld h, 0
+	call putdec
+	ld a, ' '
+	call putchar
+	ld a, (J_DETAIL)
+	ld l, a
+	ld h, 0
+	jp putdec
+j_report_end:
+	jp putstr
+
+; In: HL = a count word, DE = its label. Prints the label, the count and a new line.
+j_count_line:
+	push hl
+	ex de, hl
+	call putstr
+	pop hl
+	ld e, (hl)
+	inc hl
+	ld d, (hl)
+	ex de, hl
+	call putdec
+	jp j_newline
+
+s_title:
+	.db "jobchk v", '0' + VERSION, 0
+s_table:
+	.db "table ", 0
+s_none:
+	.db "none", 0
+s_kept:
+	.db "kept", 0
+s_made:
+	.db "made", 0
+s_crc:
+	.db "crc ", 0
+s_check:
+	.db "chk ", 0
+s_checked:
+	.db "checked ", 0
+s_failed:
+	.db "failed ", 0
+s_resting:
+	.db "resting ", 0
+s_first:
+	.db "first ", 0
+s_status:
+	.db "status ", 0
+s_done:
+	.db "done", 0
+s_paused:
+	.db "paused", 0
+s_refused:
+	.db "refused ", 0
+
+#include "putchar.inc"
+#include "printnum.inc"
+#include "onbreak.inc"
+#include "store.inc"
+#include "check.inc"
+
+#include "jobtail.inc"
+#ifdef LIBRARY
+.fill 8000h - $, 0
+#include "library.inc"
+#endif

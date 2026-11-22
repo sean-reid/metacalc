@@ -39,10 +39,34 @@ ifneq ($(LIBRARY),)
 	sh ../app/scripts/test-check-8xk.sh -l "$(LIBRARY)" "$(BUILD)/kernchk.8xk" kernchk
 endif
 
+# The job probe is three code pages and, when given a library, the library after them. Without one it
+# is only checked as an app.
+jobchk:
+	mkdir -p "$(BUILD)"
+ifneq ($(LIBRARY),)
+	sh ../app/scripts/library-include.sh "$(LIBRARY)" > "$(BUILD)/library.inc"
+	$(ASM) -L -DLIBRARY -I ../app/src -I ../kernel -I .. -I . -I "$(BUILD)" jobcheck.z80 "$(BUILD)/jobchk.8xk"
+else
+	$(ASM) -L -I ../app/src -I ../kernel -I .. -I . jobcheck.z80 "$(BUILD)/jobchk.8xk"
+endif
+
+all: jobchk
+
+check-jobchk: jobchk
+ifneq ($(LIBRARY),)
+	sh ../app/scripts/check-8xk.sh -p 3 -l "$(LIBRARY)" "$(BUILD)/jobchk.8xk" jobchk
+	sh ../app/scripts/test-check-8xk.sh -p 3 -l "$(LIBRARY)" "$(BUILD)/jobchk.8xk" jobchk
+else
+	sh ../app/scripts/check-8xk.sh -p 3 "$(BUILD)/jobchk.8xk" jobchk
+	sh ../app/scripts/test-check-8xk.sh -p 3 "$(BUILD)/jobchk.8xk" jobchk
+endif
+
+check: check-jobchk
+
 clean:
 	rm -rf "$(BUILD)"
 
-.PHONY: all check clean kernchk
+.PHONY: all check clean kernchk jobchk check-jobchk
 
 all: $(BUILD)/pagecheck.8xk
 
