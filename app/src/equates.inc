@@ -6,6 +6,7 @@
 _GetCSC          = 4018h
 _ChkFindSym      = 42F1h
 _EnoughMem       = 42FDh
+_MemChk          = 42E5h
 _CreateAppVar    = 4E6Ah
 _CreateRList     = 4315h
 _DelVarArc       = 4FC6h
@@ -24,6 +25,8 @@ _NewLine         = 452Eh
 OP1              = 8478h
 OP2              = 8483h
 OP3              = 848Eh
+OP4              = 8499h
+OP5              = 84A4h
 appVarObj        = 15h
 plotSScreen      = 9340h
 appBackUpScreen  = 9872h

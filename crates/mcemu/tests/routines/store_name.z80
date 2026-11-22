@@ -1,0 +1,3 @@
+#include "equates.inc"
+.org 0
+#include "store.inc"

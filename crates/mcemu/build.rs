@@ -1527,7 +1527,7 @@ fn assemble_probe_ram_probes(out: &Path) {
     let past = |what: &str| format!("storecheck's {what} runs past bank B");
     let top = |size: u32| format!("${:X}", 0xC000 - size);
     let over = |size: u32| format!("${:X}", 0xC000 - size + 1);
-    for (name, size) in [("SCRIPT", 640), ("STATE", 47), ("LOG", 709)] {
+    for (name, size) in [("SCRIPT", 640), ("STATE", 99), ("LOG", 766)] {
         let ok = [format!("{name}={}", top(size)), format!("{name}=$8000")];
         let bad = [format!("{name}={}", over(size)), format!("{name}=$7FFF")];
         for d in &ok {
@@ -1643,8 +1643,8 @@ fn assemble_layout_probes(out: &Path) {
             "FM",
             "#include \"fm/ram.inc\"\n".to_string(),
             &ui_args[..],
-            "FM_VARS_SIZE=$89",
-            0x86,
+            "FM_VARS_SIZE=$D3",
+            0xD0,
             "the fm variables overlap, leave a gap, or run past FM_VARS_SIZE",
         ),
         (
