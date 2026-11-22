@@ -38,7 +38,7 @@ ft_built:
 	ld a,(fv_nw)
 	cp (hl)
 	jr nz,ft_build
-		xor a
+	xor a
 	ld (fv_fs),a
 ft_init:
 	call ft_reset
