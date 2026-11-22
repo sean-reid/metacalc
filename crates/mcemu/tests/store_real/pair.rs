@@ -149,11 +149,11 @@ const POINTERS: [(u16, &str, Move); 10] = [
     (0x9832, "newDataPtr", Move::Data),
 ];
 /// sp while the app waits in its HALT, and when the emulator stops it inside the OS's key scan,
-/// which it does after an unarchive has put the OS's timers out of step.
+/// which is accepted once the scenario has archived.
 const APP_SP: u16 = 0xFFE3;
 const KEY_SCAN_SP: u16 = 0xFFD3;
 /// The two register pairs the key scan's entry saved, 2 bytes above its sp. They hold what the
-/// probe's drawing left in them, which follows the log's length.
+/// probe's drawing left in them.
 const KEY_SCAN_SAVED: std::ops::Range<u16> = 0xFFD5..0xFFD9;
 /// The lowest address at which dead stack was measured to differ from the control: 38 bytes
 /// below the app's sp from a script's calls, and FF80h after the OS's archive code. A byte

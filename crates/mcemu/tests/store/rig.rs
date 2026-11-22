@@ -30,10 +30,14 @@ pub fn label(name: &str) -> u16 {
 pub fn call_window(m: &mut Machine, page: u8, entry: u16, skip: usize) -> u32 {
     for _ in 0..=skip {
         // Before the window the OS's interrupt runs freely, while its menu starts the app.
+        let began = m.clock();
         loop {
             match m.run_to(page, entry, LIMIT) {
                 Reached::Target => break,
-                Reached::Vector38 => {}
+                Reached::Vector38 => assert!(
+                    m.clock().wrapping_sub(began) < LIMIT,
+                    "the routine is not called"
+                ),
                 Reached::Limit => panic!("the routine is not called"),
             }
         }
