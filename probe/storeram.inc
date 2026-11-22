@@ -7,12 +7,12 @@ SCRIPT_MAX      .equ 640
 #ifndef STATE
 STATE           .equ $8A3A
 #endif
-STATE_SIZE      .equ 47
+STATE_SIZE      .equ 99
 #ifndef LOG
 LOG             .equ appBackUpScreen
 #endif
 LOG_LIMIT_OFF   .equ 700
-LOG_RECORD_MAX  .equ 10
+LOG_RECORD_MAX  .equ 67
 LOG_SIZE        .equ LOG_LIMIT_OFF - 1 + LOG_RECORD_MAX
 
 RAM_WITHIN(SCRIPT, SCRIPT_MAX, $8000, $C000, "storecheck's SCRIPT runs past bank B")

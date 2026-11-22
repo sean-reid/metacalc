@@ -12,7 +12,7 @@ fn every_value_reads_back_at_the_edges_and_at_byte_boundaries() {
             let mut want = Table::new(CRC, COUNT);
             want.values[usize::from(n)] = v;
             assert_eq!(rig.raw().unwrap(), layout::encode(&want), "n {n} v {v}");
-            rig.m.delete_var("MCSTAT");
+            rig.m.delete_var(VAR);
         }
     }
 }
@@ -27,7 +27,7 @@ fn a_set_leaves_every_neighbour_alone() {
         .collect();
     let padding = 0b1011_0000 | xorshift(&mut seed) as u8;
     rig.m
-        .create_var("MCSTAT", &layout::encode_padded(&model, padding))
+        .create_var(VAR, &layout::encode_padded(&model, padding))
         .unwrap();
     for n in [0u16, 3, 4, 7, 8, 1000, 1001, 1002, 1003, 3324, 3325] {
         let v = (xorshift(&mut seed) & 3) as u8;
@@ -47,7 +47,7 @@ fn numbers_and_values_out_of_range_are_refused_and_change_nothing() {
     let mut rig = Rig::new();
     let mut t = Table::new(CRC, COUNT);
     t.values.iter_mut().step_by(7).for_each(|v| *v = 2);
-    rig.m.create_var("MCSTAT", &layout::encode(&t)).unwrap();
+    rig.m.create_var(VAR, &layout::encode(&t)).unwrap();
     let log = rig.run(&[
         Cmd::Open(CRC, COUNT),
         Cmd::Get(COUNT),
@@ -84,7 +84,7 @@ fn a_table_of_no_assertions_refuses_every_number() {
     assert_eq!((log[1].a, log[2].a), (ST_RANGE, ST_RANGE));
     assert_eq!(log[3].a, ST_OK);
     assert_eq!(log[4].counts(), [0; 4]);
-    assert_eq!(rig.m.read_var("MCSTAT").unwrap().data.len(), 10);
+    assert_eq!(rig.m.read_var(VAR).unwrap().data.len(), 10);
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn reset_marks_everything_unchecked_zeroes_the_padding_and_keeps_the_header() {
         .collect();
     t.next = 900;
     rig.m
-        .create_var("MCSTAT", &layout::encode_padded(&t, 0xFF))
+        .create_var(VAR, &layout::encode_padded(&t, 0xFF))
         .unwrap();
     let log = rig.run(&[
         Cmd::Open(CRC, COUNT),
@@ -135,8 +135,8 @@ fn a_next_number_above_the_count_is_refused() {
         (0, ST_OK),
     ] {
         bytes[8..10].copy_from_slice(&next.to_le_bytes());
-        rig.m.delete_var("MCSTAT");
-        rig.m.create_var("MCSTAT", &bytes).unwrap();
+        rig.m.delete_var(VAR);
+        rig.m.create_var(VAR, &bytes).unwrap();
         let log = rig.run(&[Cmd::GetNext]);
         assert_eq!(log[0].a, want, "next {next}");
         if want == ST_OK {
@@ -169,9 +169,9 @@ fn the_count_pass_agrees_with_a_recount_over_random_tables() {
             .map(|_| (xorshift(&mut seed) & 3) as u8)
             .collect();
         let padding = xorshift(&mut seed) as u8;
-        rig.m.delete_var("MCSTAT");
+        rig.m.delete_var(VAR);
         rig.m
-            .create_var("MCSTAT", &layout::encode_padded(&t, padding))
+            .create_var(VAR, &layout::encode_padded(&t, padding))
             .unwrap();
         let log = rig.run(&[Cmd::Open(CRC, count), Cmd::Count]);
         assert_eq!((log[1].a, log[0].b()), (ST_OK, 0), "count {count}");
@@ -189,8 +189,8 @@ fn the_count_pass_of_a_uniform_table_has_one_full_counter() {
     for v in 0..4u8 {
         let mut t = Table::new(CRC, COUNT);
         t.values.fill(v);
-        rig.m.delete_var("MCSTAT");
-        rig.m.create_var("MCSTAT", &layout::encode(&t)).unwrap();
+        rig.m.delete_var(VAR);
+        rig.m.create_var(VAR, &layout::encode(&t)).unwrap();
         let log = rig.run(&[Cmd::Open(CRC, COUNT), Cmd::Count]);
         let mut want = [0; 4];
         want[usize::from(v)] = COUNT;
@@ -328,7 +328,7 @@ fn many_moves_never_corrupt_the_neighbours() {
 fn a_table_the_user_deleted_is_absent_and_open_makes_a_new_one() {
     let mut rig = Rig::new();
     rig.run(&[Cmd::Open(CRC, COUNT), Cmd::Set(1, 1)]);
-    rig.m.delete_var("MCSTAT");
+    rig.m.delete_var(VAR);
     let log = rig.run(&[Cmd::Get(1), Cmd::Set(1, 1), Cmd::Count, Cmd::Reset]);
     assert!(log.iter().all(|r| r.a == ST_ABSENT));
     let log = rig.run(&[Cmd::Open(CRC, COUNT), Cmd::Get(1)]);
@@ -348,16 +348,16 @@ fn a_ram_clear_loses_the_table_and_open_starts_over() {
 fn a_table_edited_under_the_module_is_noticed_on_the_next_access() {
     let mut rig = Rig::new();
     rig.run(&[Cmd::Open(CRC, COUNT)]);
-    let mut bytes = rig.m.read_var("MCSTAT").unwrap().data;
+    let mut bytes = rig.m.read_var(VAR).unwrap().data;
     bytes[0] = 0;
-    rig.m.delete_var("MCSTAT");
-    rig.m.create_var("MCSTAT", &bytes).unwrap();
+    rig.m.delete_var(VAR);
+    rig.m.create_var(VAR, &bytes).unwrap();
     let log = rig.run(&[Cmd::Get(1), Cmd::Set(1, 1), Cmd::Count]);
     assert!(log.iter().all(|r| r.a == ST_BAD_MAGIC));
     bytes[0] = 0x4D;
     bytes.pop();
-    rig.m.delete_var("MCSTAT");
-    rig.m.create_var("MCSTAT", &bytes).unwrap();
+    rig.m.delete_var(VAR);
+    rig.m.create_var(VAR, &bytes).unwrap();
     let log = rig.run(&[Cmd::Get(1), Cmd::Reset]);
     assert!(log.iter().all(|r| r.a == ST_BAD_SIZE));
 }
