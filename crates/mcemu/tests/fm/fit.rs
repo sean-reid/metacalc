@@ -412,7 +412,7 @@ fn the_fixture_sweeps_reach_every_branch_of_the_rule() {
                     skip += usize::from(walked.skip_mattered);
                     skip_in_fixture += usize::from(walked.skip_mattered && which == 0);
                     fitted += usize::from(
-                        hyps + 1 <= rows && walked.fits && o.folds.iter().any(|f| f.count() > 0),
+                        hyps < rows && walked.fits && o.folds.iter().any(|f| f.count() > 0),
                     );
                 }
             }
