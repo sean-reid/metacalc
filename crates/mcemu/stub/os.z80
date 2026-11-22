@@ -5,6 +5,7 @@ TEST_PAGE .equ $20
 _GetCSC           .equ $4018
 _GetKey           .equ $4972
 _JForceCmdNoChar  .equ $4027
+_JForceCmd        .equ $402A
 _ClrLCDFull       .equ $4540
 _GrBufCpy         .equ $486A
 _PutC             .equ $4504
@@ -205,8 +206,9 @@ fault_bcall:
 	halt
 	jr fault_bcall
 
-; call 50h: the same, and the service never returns.
+; call 50h: the same, and the service never returns. A reaches the service as the caller left it.
 bjump:
+	ex af,af'
 	pop hl
 	ld c,(hl)
 	inc hl
@@ -230,6 +232,7 @@ bjump_next:
 	inc hl
 	ld d,(hl)
 	ex de,hl
+	ex af,af'
 	jp (hl)
 bjump_skip:
 	inc hl
@@ -261,6 +264,7 @@ bcall_table:
 
 bjump_table:
 	.dw _JForceCmdNoChar, force_cmd_no_char
+	.dw _JForceCmd, force_cmd_no_char
 	.dw 0
 
 ; A and B are the OS version bytes of the reference image, 2 and 2Bh, and the other registers are kept.

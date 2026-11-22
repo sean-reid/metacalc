@@ -13,229 +13,12 @@ mod realos;
 #[path = "reader/support.rs"]
 mod support;
 
-use mcemu::{Machine, Regs, STUB_ROM, Stop};
+#[path = "common/exit_kit.rs"]
+mod kit;
+
+use kit::*;
+use mcemu::{Machine, STUB_ROM, Stop};
 use realos::*;
-use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
-
-const STUB_BASE: u8 = 0x30;
-const RAM_BASE: u16 = 0x8000;
-/// cmdShadow and smallEditRAM, and the byte on each side of them.
-const STACK: (u16, usize) = (0x966E, 128);
-const VARS: (u16, usize) = (0x90D3, 108);
-const NEIGHBOURS: [u16; 4] = [0x966D, 0x96F0, 0x90D2, 0x913F];
-/// cmdShadCur, the two bytes after cmdShadow that the home screen restores its cursor from.
-const CMD_CUR: u16 = 0x96EE;
-/// The home entry line's buffer start and cursor pointers, and the first byte of the buffer.
-const EDIT_TOP: u16 = 0x96F4;
-const EDIT_CURSOR: u16 = 0x96F6;
-const CMD_CURSOR: u16 = 0x96F2;
-const EDIT_BUF: u16 = 0x9DB7;
-const TEXT_SHADOW: u16 = 0x8508;
-const CUR_ROW: u16 = 0x844B;
-const CUR_COL: u16 = 0x844C;
-const SCAN_ENTER: u8 = 0x09;
-const THREE_ENTRIES: [u8; 6] = [SCAN_5, SCAN_ENTER, SCAN_5, SCAN_ENTER, SCAN_5, SCAN_ENTER];
-const SCAN_2ND: u8 = 0x36;
-const SCAN_MODE: u8 = 0x37;
-const SCAN_5: u8 = 0x1B;
-const KEY_1: u8 = 0x22;
-const ERROR_CALL: u16 = 0xA800;
-const STACK_BELOW: u16 = 0x100;
-const APP_STACK_TOP: u16 = 0xFFE4;
-const SCAN_DOWN: u8 = 0x01;
-const POWER_DOWN: u8 = 0x10;
-const KEY_GRAPH: u8 = 0x31;
-const GRAPH_DRAW: u8 = 0x01;
-const UI_FRAME: u16 = 0x9340;
-const LIMIT: u32 = 20_000_000;
-
-/// A build of the app, the labels it was assembled with and the screen it draws first.
-struct Build {
-    file: Vec<u8>,
-    labels: PathBuf,
-    start: Vec<bool>,
-}
-
-fn build(name: &str, library: Option<&[u8]>, status: u8) -> Build {
-    let mut args = vec![];
-    if let Some(bytes) = library {
-        let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.mclib"));
-        std::fs::write(&path, bytes).unwrap();
-        args.push(format!("LIBRARY={}", path.display()));
-    }
-    let dir = make_app("app", name, &args);
-    Build {
-        file: std::fs::read(dir.join("metacalc.8xk")).unwrap(),
-        labels: dir.join("metacalc.lab"),
-        start: start_pixels(library, status),
-    }
-}
-
-fn shell() -> &'static Build {
-    static BUILD: OnceLock<Build> = OnceLock::new();
-    BUILD.get_or_init(|| build("exit-app", None, 0))
-}
-
-fn with_library() -> &'static Build {
-    static BUILD: OnceLock<Build> = OnceLock::new();
-    BUILD.get_or_init(|| build("exit-app-lib", Some(&fixture::library()), 0))
-}
-
-fn refused() -> &'static Build {
-    static BUILD: OnceLock<Build> = OnceLock::new();
-    BUILD.get_or_init(|| {
-        let bad = fixture::with(&fixture::library(), |b| b[0] ^= 0xFF);
-        build("exit-app-bad", Some(&bad), 3)
-    })
-}
-
-fn dirt() -> [(u16, Vec<u8>); 2] {
-    [
-        (STACK.0, varied(STACK.1, 0x5A)),
-        (VARS.0, varied(VARS.1, 0xC3)),
-    ]
-}
-
-fn read(os: &mut RealOs, addr: u16, len: usize) -> Vec<u8> {
-    os.ram(usize::from(addr - RAM_BASE), len)
-}
-
-fn poke(os: &mut RealOs, addr: u16, bytes: &[u8]) {
-    let at = usize::from(addr - RAM_BASE);
-    os.m.ram_page(1)[at..at + bytes.len()].copy_from_slice(bytes);
-}
-
-fn dirty(os: &mut RealOs) {
-    for (addr, bytes) in dirt() {
-        poke(os, addr, &bytes);
-    }
-}
-
-fn neighbours(os: &mut RealOs) -> Vec<u8> {
-    NEIGHBOURS.iter().map(|&a| read(os, a, 1)[0]).collect()
-}
-
-/// What the OS holds that an app could leave changed: cxMain to cxCurApp, iy+28h, iy+33h to iy+36h, and the hook pointers.
-fn context(os: &mut RealOs) -> Vec<Vec<u8>> {
-    vec![
-        read(os, 0x858D, 14),
-        read(os, 0x89F0 + 0x28, 1),
-        read(os, 0x89F0 + 0x33, 4),
-        read(os, 0x9B7C, 40),
-    ]
-}
-
-/// The app waiting for a key on the reference OS, entered from a cleared home screen after a
-/// graph was drawn, and what `context` and the text shadow held before the launch.
-fn launched(app: &[u8], start: Option<&[bool]>) -> (RealOs, Vec<Vec<u8>>, Vec<u8>) {
-    launched_after(app, start, &[])
-}
-
-/// `launched` with `keys` tapped on the cleared home screen first.
-fn launched_after(
-    app: &[u8],
-    start: Option<&[bool]>,
-    keys: &[u8],
-) -> (RealOs, Vec<Vec<u8>>, Vec<u8>) {
-    let mut os = RealOs::boot(app);
-    os.tap(KEY_GRAPH, 150, 2500);
-    os.tap(KEY_CLEAR, 150, 800);
-    for &key in keys {
-        os.tap(key, 150, 600);
-    }
-    assert_eq!(
-        os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW,
-        0,
-        "a valid graph to start from"
-    );
-    let before = context(&mut os);
-    let text = read(&mut os, TEXT_SHADOW, 128);
-    match start {
-        Some(screen) => os.launch_in_key_wait(screen),
-        None => {
-            os.start_from_menu();
-            os.run_ms(300);
-        }
-    }
-    (os, before, text)
-}
-
-fn clear(os: &mut RealOs) {
-    os.tap(KEY_CLEAR, 150, 1500);
-}
-
-/// Milliseconds to wait after 2nd: with an entry line open the OS redraws it first and drops the
-/// next key if it comes within about a second.
-fn second_gap(os: &mut RealOs) -> u32 {
-    if read(os, CMD_CURSOR, 1)[0] == 0 {
-        300
-    } else {
-        1500
-    }
-}
-
-fn quit(os: &mut RealOs) {
-    let gap = second_gap(os);
-    os.tap(SCAN_2ND, 150, gap);
-    os.tap(SCAN_MODE, 150, 1500);
-}
-
-fn off(os: &mut RealOs) {
-    let gap = second_gap(os);
-    os.tap(SCAN_2ND, 150, gap);
-    os.m.press_key(Machine::KEY_ON);
-    os.run_ms(300);
-    os.m.release_key(Machine::KEY_ON);
-    os.run_ms(2000);
-    assert_ne!(os.m.in_port(3) & POWER_DOWN, 0, "2nd+OFF powered down");
-    os.tap(Machine::KEY_ON, 150, 3000);
-}
-
-/// Runs `bcall(_ErrMemory)` where the OS waits in `_GetKey`, with the registers and the stack it
-/// has there, from three bytes in free RAM, and gives the error screen time to draw.
-fn raise_error(os: &mut RealOs) {
-    let regs = os.m.regs();
-    os.m.load_ram(ERROR_CALL, &[0xEF, 0xB9, 0x44]);
-    os.m.set_regs(&Regs {
-        pc: ERROR_CALL,
-        ..regs
-    });
-    os.run_ms(1500);
-}
-
-fn lit_rows(os: &mut RealOs, rows: std::ops::Range<usize>) -> bool {
-    os.screen()[rows.start * 96 * 8..rows.end * 96 * 8]
-        .iter()
-        .any(|&p| p)
-}
-
-/// The error screen draws its title and 1:Quit and nothing below row 2.
-fn assert_error_screen(os: &mut RealOs, name: &str) {
-    assert!(
-        lit_rows(os, 0..2),
-        "{name}: the error screen's title and 1:Quit"
-    );
-    assert!(
-        !lit_rows(os, 3..8),
-        "{name}: nothing below the error screen's choices"
-    );
-}
-
-/// The error screen's 1:Quit.
-fn error_quit(os: &mut RealOs) {
-    raise_error(os);
-    assert_error_screen(os, "1:Quit");
-    os.tap(KEY_1, 150, 1500);
-}
-
-/// The error screen's 2:Goto, which only an app with a context of its own gets.
-fn error_goto(os: &mut RealOs) {
-    raise_error(os);
-    assert_error_screen(os, "2:Goto");
-    assert!(lit_rows(os, 2..3), "2:Goto is drawn");
-    os.tap(KEY_2, 150, 1500);
-}
 
 #[test]
 #[ignore = "needs the reference ROM image"]
@@ -265,17 +48,6 @@ fn the_error_screen_offers_goto_to_the_app_and_only_quit_to_a_plain_app() {
         );
     }
 }
-
-type Exit = fn(&mut RealOs);
-/// Each way out, and the way out of a plain app that leaves the same way: 1:Quit is the only
-/// choice a plain app's error screen has.
-const EXITS: [(&str, Exit, Exit); 5] = [
-    ("CLEAR", clear, clear),
-    ("2nd+QUIT", quit, clear),
-    ("2nd+OFF", off, off),
-    ("error 1:Quit", error_quit, error_quit),
-    ("error 2:Goto", error_goto, error_quit),
-];
 
 /// The home screen is the OS's: the state is what it holds at rest, the screen is blank but for
 /// its cursor, and a key echoes there.
@@ -335,132 +107,6 @@ fn every_way_out_leaves_a_blank_home_screen_and_the_os_as_it_was() {
     }
 }
 
-fn cursor(os: &mut RealOs) -> (u8, u8) {
-    (read(os, CUR_ROW, 1)[0], read(os, CUR_COL, 1)[0])
-}
-
-/// Rows of text, 0 to 7, that have a lit pixel at some moment in a second and a half.
-fn lit_text_rows(os: &mut RealOs) -> Vec<usize> {
-    let mut rows = std::collections::BTreeSet::new();
-    for _ in 0..30 {
-        let lcd = os.screen();
-        rows.extend((0..lcd.len()).filter(|&i| lcd[i]).map(|i| i / 96 / 8));
-        os.run_ms(50);
-    }
-    rows.into_iter().collect()
-}
-
-/// Where the home cursor and entry line are when the app starts: the cursor part way down the
-/// screen with a closed entry, and in column 1 of row 0 with an unentered 5 on the entry line.
-const STARTS: [(&str, &[u8], (u8, u8)); 2] = [
-    ("lower row", &THREE_ENTRIES, (6, 0)),
-    ("open entry", &[SCAN_5], (0, 1)),
-];
-
-#[test]
-#[ignore = "needs the reference ROM image"]
-fn every_way_out_homes_the_cursor_from_a_lower_row_and_from_a_column() {
-    for (start, keys, at) in STARTS {
-        for (kind, app) in [
-            ("no library", shell()),
-            ("library", with_library()),
-            ("refused library", refused()),
-        ] {
-            for (way, exit, _) in EXITS {
-                let name = format!("{start}, {kind}, {way}");
-                let (mut os, ..) = launched_after(&app.file, Some(&app.start), keys);
-                assert_eq!(cursor(&mut os), at, "{name}: where the cursor starts");
-                assert_eq!(
-                    read(&mut os, CMD_CUR, 2),
-                    [at.0, at.1],
-                    "{name}: cmdShadCur starts as the cursor"
-                );
-                println!(
-                    "{name}: before the exit curRow, curCol {at:?}, cmdShadCur {:02X?}, 96F0..96F2 {:02X?}, editTop {:02X?}, editCursor {:02X?}, buffer {:02X?}",
-                    read(&mut os, CMD_CUR, 2),
-                    read(&mut os, CMD_CUR + 2, 3),
-                    read(&mut os, EDIT_TOP, 2),
-                    read(&mut os, EDIT_CURSOR, 2),
-                    read(&mut os, EDIT_BUF, 3)
-                );
-                exit(&mut os);
-                assert_eq!(cursor(&mut os), (0, 0), "{name}: curRow and curCol");
-                assert_eq!(read(&mut os, CMD_CUR, 2), [0, 0], "{name}: cmdShadCur");
-                assert_blank_home(&mut os, &name);
-                os.tap(SCAN_5, 150, 500);
-                assert_eq!(
-                    read(&mut os, TEXT_SHADOW, 1),
-                    *b"5",
-                    "{name}: the digit is in cell 0"
-                );
-                assert_eq!(
-                    cursor(&mut os),
-                    (0, 1),
-                    "{name}: the cursor follows the digit"
-                );
-                assert_eq!(lit_text_rows(&mut os), [0], "{name}: the digit is on row 0");
-            }
-        }
-    }
-}
-
-/// What the home screen shows after ENTER: the cursor, the text shadow and the rows with ink.
-fn after_enter(os: &mut RealOs) -> ((u8, u8), Vec<u8>, Vec<usize>) {
-    os.tap(SCAN_ENTER, 150, 800);
-    (cursor(os), read(os, TEXT_SHADOW, 128), lit_text_rows(os))
-}
-
-fn shadow_text(shadow: &[u8]) -> String {
-    let text: String = shadow
-        .iter()
-        .map(|&b| {
-            if (0x20..0x7F).contains(&b) {
-                b as char
-            } else {
-                '.'
-            }
-        })
-        .collect();
-    text.trim().to_string()
-}
-
-#[test]
-#[ignore = "needs the reference ROM image"]
-fn an_unentered_line_is_gone_after_every_way_out() {
-    let mut wrong = vec![];
-    for (kind, app) in [
-        ("no library", shell()),
-        ("library", with_library()),
-        ("refused library", refused()),
-    ] {
-        for (way, exit, _) in EXITS {
-            let name = format!("{kind}, {way}");
-            let (mut clean, ..) = launched(&app.file, Some(&app.start));
-            exit(&mut clean);
-            let want = after_enter(&mut clean);
-            let (mut os, ..) = launched_after(&app.file, Some(&app.start), &[SCAN_5]);
-            exit(&mut os);
-            let left = (read(&mut os, EDIT_CURSOR, 2), read(&mut os, EDIT_TOP, 2));
-            let got = after_enter(&mut os);
-            println!(
-                "{name}: after the exit editCursor {:02X?} editTop {:02X?}; ENTER leaves curRow, curCol {:?}, rows {:?}, shadow '{}'",
-                left.0,
-                left.1,
-                got.0,
-                got.2,
-                shadow_text(&got.1)
-            );
-            if left.0 != left.1 || got.1.contains(&b'5') || got != want {
-                wrong.push(name);
-            }
-        }
-    }
-    assert!(
-        wrong.is_empty(),
-        "an entry line the user did not enter comes back, or ENTER differs from a home screen left clean: {wrong:?}"
-    );
-}
-
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn dirty_regions_are_the_only_thing_that_changes_the_ram_after_2nd_off() {
@@ -493,6 +139,12 @@ fn dirty_regions_are_the_only_thing_that_changes_the_ram_after_2nd_off() {
 /// way, which the OS does and the app does not: the base, the end and why.
 #[rustfmt::skip]
 const OS_OWN: &[(u16, u16, &str)] = &[
+    (0x8448, 0x844B, "apdSubTimer, apdTimer and curTime: the time since the last key, which the extra CLEAR key resets at another moment"),
+    (0x85E2, 0x85E7, "the error menu's state: the app's error screen has two choices and a plain app's one"),
+    (0x9D76, 0x9D8B, "the error menu's text and its length, as 85E2h"),
+    (0x8476, 0x8477, "indicCounter, the run indicator's counter: it counts time"),
+    (0x8A2F, 0x8A30, "clockFlags: displayClock is set once a second, so it depends on the moment of the read"),
+    (0x8508, 0x8588, "textShadow: the app leaves the blank screen the header promises where a plain app leaves the earlier lines and an unentered entry"),
     (0x838D, 0x8390, "OS bookkeeping of the launched app: the same in identical runs, not timing"),
     (0x83E8, 0x83E9, "OS bookkeeping of the launched app, as 838Dh"),
     (0x8445, 0x8446, "kbdKey: MODE after 2nd for the app's 2nd+QUIT, CLEAR for the plain app"),
@@ -538,25 +190,30 @@ fn declared(app: &Build) -> Vec<(u16, u16)> {
 }
 
 /// Banks B and C as the OS has them mapped at its idle, 8000h to FFFFh.
-fn banks(os: &mut RealOs) -> Vec<u8> {
-    os.m.read_ram(0x8000, 0x8000)
-}
-
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn the_app_leaves_banks_b_and_c_as_a_plain_waiting_app_does_but_for_what_it_declares() {
     let app = shell();
     let mut masks = declared(app);
     let mut allowed_seen = std::collections::BTreeSet::new();
-    for (way, exit, plain_exit) in &EXITS[..3] {
-        let (mut os, ..) = launched(&app.file, Some(&app.start));
+    let starts: [(&str, &[u8]); 3] = [
+        ("empty line", &[]),
+        ("an unentered 5", &[SCAN_5]),
+        ("a lower row and an unentered 5", &LOWER_ROW_AND_5),
+    ];
+    for ((start, keys), (way, exit, plain_exit)) in starts
+        .into_iter()
+        .flat_map(|s| EXITS.iter().map(move |e| (s, e)))
+    {
+        let way = &format!("{start}, {way}");
+        let (mut os, ..) = launched_after(&app.file, Some(&app.start), keys);
         // the app's frames above the OS's SP at the wait and the stack the OS uses below it
         let sp = os.m.regs().sp;
         let ours = {
             exit(&mut os);
             banks(&mut os)
         };
-        let (mut plain, ..) = launched(&assemble_routine("wait_app.z80"), None);
+        let (mut plain, ..) = launched_after(&assemble_routine("wait_app.z80"), None, keys);
         plain_exit(&mut plain);
         let theirs = banks(&mut plain);
         let stack = (sp.saturating_sub(STACK_BELOW), APP_STACK_TOP);
@@ -691,34 +348,40 @@ fn on_the_stub_both_exits_fill_the_two_regions_and_touch_nothing_beside_them() {
 }
 
 #[test]
-fn on_the_stub_both_exits_zero_the_cursor() {
-    for (name, quit) in [("CLEAR", false), ("2nd+QUIT", true)] {
-        let mut m = waiting_on_the_stub();
-        m.load_ram(CUR_ROW, &[5]);
-        m.load_ram(CUR_COL, &[9]);
-        m.load_ram(CMD_CUR, &[4, 7]);
-        m.load_ram(EDIT_TOP, &[0xB7, 0x9D]);
-        m.load_ram(EDIT_TOP - 2, &[3, 0]);
-        m.load_ram(CMD_CURSOR, &[3]);
-        if quit {
-            stub_tap(&mut m, SCAN_2ND);
-            m.press_key(SCAN_MODE);
-        } else {
-            m.press_key(KEY_CLEAR);
-        }
-        assert_eq!(m.run_app(LIMIT).stop, Stop::Exited, "{name}");
-        assert_eq!(m.read_ram(CUR_ROW, 2), [0, 0], "{name}: curRow and curCol");
-        assert_eq!(m.read_ram(CMD_CUR, 2), [0, 0], "{name}: cmdShadCur");
-        assert_eq!(
-            m.read_ram(EDIT_TOP - 2, 2),
-            [0, 0],
-            "{name}: the entry line's length"
-        );
-        assert_eq!(m.read_ram(CMD_CURSOR, 1), [0], "{name}: cmdCursor");
-        assert_eq!(
-            m.read_ram(EDIT_TOP, 2),
-            [0xB7, 0x9D],
-            "{name}: editTop is kept"
-        );
+#[ignore = "probe"]
+fn probe_noise() {
+    let run = |keys: &[u8]| {
+        let (mut os, ..) = launched_after(&assemble_routine("wait_app.z80"), None, keys);
+        clear_twice(&mut os);
+        banks(&mut os)
+    };
+    for keys in [&[][..], &[SCAN_5][..]] {
+        let (a, b) = (run(keys), run(keys));
+        let d: Vec<String> = (0..a.len())
+            .filter(|&i| a[i] != b[i])
+            .map(|i| format!("{:04X} {:02X}/{:02X}", 0x8000 + i, a[i], b[i]))
+            .collect();
+        println!("NOISE {keys:?}: {d:?}");
     }
+}
+
+#[test]
+#[ignore = "probe"]
+fn probe_sp() {
+    let app = shell();
+    let (mut os, ..) = launched(&app.file, Some(&app.start));
+    println!("SP at wait {:04X}", os.m.regs().sp);
+    clear(&mut os);
+    println!(
+        "SP after ours {:04X}; FFD0..FFF0 {:02X?}",
+        os.m.regs().sp,
+        os.m.read_ram(0xFFD0, 32)
+    );
+    let (mut p, ..) = launched(&assemble_routine("wait_app.z80"), None);
+    clear_twice(&mut p);
+    println!(
+        "SP after plain {:04X}; FFD0..FFF0 {:02X?}",
+        p.m.regs().sp,
+        p.m.read_ram(0xFFD0, 32)
+    );
 }

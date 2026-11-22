@@ -12,6 +12,7 @@ _DelVarArc       = 4FC6h
 _Arc_Unarc       = 4FD8h
 _LoadDEIndPaged  = 501Ah
 _JForceCmdNoChar = 4027h
+_JForceCmd      = 402Ah
 _AppInit         = 404Bh
 _PutC            = 4504h
 _ClrLCDFull      = 4540h
@@ -37,7 +38,6 @@ XFact            = 913Fh
 cmdShadow        = 966Eh
 cmdShadCur       = 96EEh
 cmdCursor        = 96F2h
-editTop          = 96F4h
 #if (smallEditRAM < SCR_VARS) || (smallEditRAM > SCR_VARS)
  .error "SCR_VARS in ram_map.inc must be smallEditRAM"
 #endif
