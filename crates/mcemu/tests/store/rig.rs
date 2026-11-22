@@ -10,6 +10,37 @@ const LIMIT: u32 = 2_000_000_000;
 pub const CRC: u32 = 0xCBF4_3926;
 pub const COUNT: u16 = 3326;
 
+/// The address of a symbol of the probe as the stub's build assembled it.
+pub fn label(name: &str) -> u16 {
+    const LABELS: &str = include_str!(concat!(env!("OUT_DIR"), "/storecheck.lab"));
+    LABELS
+        .lines()
+        .find_map(|line| {
+            let (key, value) = line.split_once(" = ")?;
+            (key == name).then(|| u16::from_str_radix(&value[1..], 16).unwrap())
+        })
+        .unwrap_or_else(|| panic!("no label {name}"))
+}
+
+/// T-states from the first instruction of the routine at `entry` on flash page `page` to the
+/// instruction it returns to, at its `skip + 1`th call from where the machine is. The window
+/// holds the routine and the OS calls it makes, and nothing of the probe: not the dispatch, the
+/// argument fetch, the CALL or the log. Interrupts are off at both ends, so no interrupt is in it.
+pub fn call_window(m: &mut Machine, page: u8, entry: u16, skip: usize) -> u32 {
+    for _ in 0..=skip {
+        assert!(m.run_to(page, entry, LIMIT), "the routine is called");
+    }
+    let regs = m.regs();
+    let back = m.read_ram(regs.sp, 2);
+    let start = m.clock();
+    assert!(
+        m.run_to(page, u16::from_le_bytes([back[0], back[1]]), LIMIT),
+        "the routine returns"
+    );
+    assert_eq!((regs.iff1, m.regs().iff1), (0, 0), "interrupts stay off");
+    m.clock().wrapping_sub(start)
+}
+
 pub fn xorshift(seed: &mut u32) -> u32 {
     *seed ^= *seed << 13;
     *seed ^= *seed >> 17;
@@ -235,7 +266,26 @@ impl Rig {
         self.run_script(None, None).0
     }
 
+    /// T-states the routine at `entry` takes at its `skip + 1`th call in a run of `cmds`.
+    pub fn window(&mut self, cmds: &[Cmd], entry: u16, skip: usize) -> u32 {
+        let mut took = 0;
+        self.run_script_with(Some(cmds), None, |m| {
+            took = call_window(m, BASE, entry, skip)
+        });
+        took
+    }
+
     fn run_script(&mut self, cmds: Option<&[Cmd]>, free: Option<usize>) -> (Vec<Rec>, u32) {
+        self.run_script_with(cmds, free, |_| ())
+    }
+
+    /// `run_script` with `first` given the machine at the app's first instruction.
+    fn run_script_with(
+        &mut self,
+        cmds: Option<&[Cmd]>,
+        free: Option<usize>,
+        first: impl FnOnce(&mut Machine),
+    ) -> (Vec<Rec>, u32) {
         self.m.delete_var("MCCMD");
         if let Some(cmds) = cmds {
             let mut script: Vec<u8> = cmds.iter().flat_map(|c| c.bytes()).collect();
@@ -256,6 +306,7 @@ impl Rig {
         }
         let before = self.guards();
         self.m.launch(BASE).expect("the app launches");
+        first(&mut self.m);
         let run = self.m.run_app(LIMIT);
         assert_eq!(run.stop, Stop::Exited);
         let after = self.guards();

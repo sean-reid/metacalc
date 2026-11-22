@@ -29,3 +29,15 @@ fn timings_stay_inside_their_budgets() {
         "one pass {pass} against three calls {three}"
     );
 }
+
+#[test]
+fn the_routines_alone_cost_less_than_five_thousand_t_states() {
+    let open = Cmd::Open(CRC, COUNT);
+    let found = Rig::new().window(&[open, open], label("STORE_OPEN"), 1);
+    let get = Rig::new().window(&[open, Cmd::Get(1663)], label("STORE_GET"), 0);
+    eprintln!(
+        "T-states on the stub from a routine's first instruction to its return: open found {found}, get {get}"
+    );
+    assert!(found < 5_000, "{found}");
+    assert!(get < 5_000, "{get}");
+}
