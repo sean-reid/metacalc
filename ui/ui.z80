@@ -48,7 +48,6 @@
 #include "glyph.inc"
 #include "shapes.inc"
 #include "bars.inc"
-#include "progress.inc"
 #include "blit.inc"
 #include "font.inc"
 #include "fit.inc"
