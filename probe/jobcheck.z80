@@ -251,6 +251,7 @@ j_report_table:
 	ld d, (hl)
 	inc hl
 	inc hl
+	inc hl
 	ld a, (hl)
 	inc hl
 	ld h, (hl)

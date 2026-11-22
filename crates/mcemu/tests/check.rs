@@ -14,10 +14,14 @@ mod layout;
 mod loss;
 #[path = "check/marks.rs"]
 mod marks;
+#[path = "check/paths.rs"]
+mod paths;
 #[path = "check/prefix.rs"]
 mod prefix;
 #[path = "check/probe.rs"]
 mod probe;
+#[path = "check/probe_real.rs"]
+mod probe_real;
 #[path = "common/realos.rs"]
 mod realos;
 #[path = "check/refs.rs"]
@@ -26,5 +30,7 @@ mod refs;
 mod rig;
 #[path = "check/shipped.rs"]
 mod shipped;
+#[path = "check/speed.rs"]
+mod speed;
 #[path = "check/stop.rs"]
 mod stop;

@@ -3,6 +3,7 @@
 use crate::rig::*;
 
 const NAMES: [&str; 3] = ["prop", "pred", "ring"];
+const COUNTS: [u16; 3] = [779, 1171, 3326];
 
 // T-states of a whole job (begin, CRC run, every step) and of its work beyond the kernel's own
 // run, a little above what the stub measures.
@@ -20,6 +21,7 @@ fn a_whole_job_over_each_shipped_library_leaves_every_assertion_checked() {
     for (k, name) in NAMES.iter().enumerate() {
         let bytes = library(name);
         let count = count_of(&bytes);
+        assert_eq!(count, COUNTS[k], "{name}: the shipped library's assertions");
         let mut bare = Job::new(&bytes);
         bare.arg(LIB_PAGE, count, 0);
         let bare = bare.call("t_bare").tstates;
@@ -58,6 +60,7 @@ fn median(v: &mut [u32]) -> u32 {
 fn a_steps_own_work_beyond_the_verify_is_measured_on_ring() {
     let bytes = library("ring");
     let count = count_of(&bytes);
+    assert_eq!(count, COUNTS[2], "ring's assertions");
     let refs = references(&bytes);
     let mut job = Job::new(&bytes);
     assert_eq!(job.begin(count).a, NEED_CRC);

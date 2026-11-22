@@ -1,82 +1,134 @@
-//! ON stops a job at an assertion boundary or inside a verify, and a resumed job finishes with
-//! the table an uninterrupted job leaves.
+//! ON stops a job at every assertion boundary and at a spread of points inside a verify, and a
+//! job that goes on from there ends with the table an uninterrupted job leaves.
 
-use crate::damage::{big, libraries};
+use crate::damage::{big, named};
 use crate::rig::*;
 
-/// Steps `k` assertions, so that the table and the counters are in the state a pause finds them.
-fn at_step(bytes: &[u8], k: u16) -> Job {
+/// A job past begin and the CRC run, ready to step.
+fn ready(bytes: &[u8], n: u16) -> Job {
     let mut job = Job::new(bytes);
-    let out = job.job(count_of(bytes), k);
-    assert!(out.a == MORE || out.a == DONE, "{out:?}");
+    let mut out = job.begin(n);
+    if out.a == NEED_CRC {
+        out = job.run_crc(1000);
+    }
+    assert_eq!(out.a, READY, "{out:?}");
     job
 }
 
-fn finish(job: &mut Job, bytes: &[u8]) -> Vec<u8> {
-    job.end();
-    let out = job.job(count_of(bytes), 65535);
-    assert_eq!(out.a, DONE);
+/// The table a job that is never interrupted leaves.
+fn uninterrupted(bytes: &[u8]) -> Vec<u8> {
+    let mut job = Job::new(bytes);
+    assert_eq!(job.job(count_of(bytes), 65535).a, DONE);
     job.table().unwrap().values
 }
 
-#[test]
-fn on_at_every_assertion_boundary_writes_nothing_and_a_resumed_job_finishes_the_table() {
-    let mut taken = 0;
-    for (name, bytes, passes) in libraries() {
-        let want = marks(&bytes, &passes);
-        let count = count_of(&bytes);
-        let stride = (count / 12).max(1);
-        for k in (1..count).step_by(usize::from(stride)) {
-            let mut job = at_step(&bytes, k);
-            let before = job.raw();
-            let counts = job.counts();
-            let calls = job.kernel_calls();
-            let (out, pressed) = job.call_with_on("t_step", 0);
-            assert!(pressed);
-            assert_eq!(out.a, PAUSED, "{name} at {k}");
-            assert_eq!(job.raw(), before, "{name} at {k}: nothing is written");
-            assert_eq!(job.counts(), counts, "{name} at {k}: the counters stand");
-            assert!(job.kernel_calls()[4] > calls[4], "{name}: the verify ran");
-            job.release_on();
-            assert_eq!(finish(&mut job, &bytes), want, "{name} resumed at {k}");
-            taken += 1;
-        }
-    }
-    assert!(taken > 20);
+/// The counters must be the tally of the first `n` values of the table.
+fn assert_counts_are_the_tally(job: &mut Job, n: u16, what: &str) {
+    let values = job.table().unwrap().values;
+    let tally = |v: u8| values[..usize::from(n)].iter().filter(|&&w| w == v).count() as u16;
+    assert_eq!(
+        job.counts(),
+        [tally(0), tally(1), tally(2), tally(3)],
+        "{what}"
+    );
+}
+
+/// Presses ON before the step, so that the first kernel poll sees it, and checks that the pause
+/// wrote nothing and left the counters.
+fn pause_at_the_boundary(job: &mut Job, name: &str, at: u16) {
+    let before = job.raw();
+    let counts = job.counts();
+    let calls = job.kernel_calls();
+    let (out, pressed) = job.call_with_on("t_step", 0);
+    assert!(pressed);
+    assert_eq!(out.a, PAUSED, "{name} at {at}");
+    assert_eq!(job.raw(), before, "{name} at {at}: nothing is written");
+    assert_eq!(job.counts(), counts, "{name} at {at}: the counters stand");
+    assert_eq!(
+        job.kernel_calls()[5],
+        calls[5],
+        "{name} at {at}: no list is read for a paused verify"
+    );
+    assert!(job.kernel_calls()[4] > calls[4], "{name}: the verify ran");
+    job.release_on();
 }
 
 #[test]
-fn on_inside_a_verify_writes_nothing_for_that_assertion_and_a_resumed_job_finishes() {
-    let mut inside = 0;
-    for (name, bytes, passes) in libraries() {
+fn on_at_every_assertion_boundary_writes_nothing_and_the_resumed_job_ends_with_the_same_table() {
+    for (name, bytes, passes) in [big(), named("anatomy-bad1.mm")] {
         let want = marks(&bytes, &passes);
         let count = count_of(&bytes);
-        for k in (1..count).step_by(usize::from((count / 6).max(1))) {
-            for after in [300, 3_000, 30_000] {
-                let mut job = at_step(&bytes, k);
-                let before = job.raw();
-                let counts = job.counts();
-                let (out, pressed) = job.call_with_on("t_step", after);
-                if !pressed {
-                    continue;
-                }
-                if out.a == PAUSED {
-                    assert_eq!(job.raw(), before, "{name} at {k}: nothing is written");
-                    assert_eq!(job.counts(), counts);
-                    inside += 1;
-                } else {
-                    assert!(out.a == MORE || out.a == DONE, "{name} at {k}: {out:?}");
-                }
-                job.release_on();
-                assert_eq!(
-                    finish(&mut job, &bytes),
-                    want,
-                    "{name} at {k} after {after}"
-                );
-            }
+        let mut job = ready(&bytes, count);
+        let mut boundaries = 0;
+        while job.counts()[0] > 0 {
+            let at = boundaries as u16;
+            pause_at_the_boundary(&mut job, &name, at);
+            assert_eq!(job.end().a, 0);
+            assert_eq!(job.begin(count).a, READY, "{name} resumes at {at}");
+            assert_counts_are_the_tally(&mut job, count, &format!("{name} resumed at {at}"));
+            let out = job.step();
+            assert!(out.a == MORE || out.a == DONE, "{name} at {at}: {out:?}");
+            boundaries += 1;
         }
+        assert_eq!(boundaries, want.len(), "{name}: one boundary per assertion");
+        job.end();
+        let got = job.table().unwrap().values;
+        assert_eq!(
+            got,
+            uninterrupted(&bytes),
+            "{name}: an uninterrupted job's table"
+        );
+        assert_eq!(got, want, "{name}: the host model's marks");
+        assert_counts_are_the_tally(&mut job, count, &name);
     }
-    assert!(inside > 20, "{inside} presses landed inside a step");
+}
+
+#[test]
+fn on_inside_a_verify_writes_nothing_for_that_assertion_and_the_job_goes_on() {
+    const AFTER: [u32; 7] = [50, 400, 5_000, 40_000, 150_000, 400_000, 1_200_000];
+    let (name, bytes, passes) = named("demo0.mm");
+    let want = marks(&bytes, &passes);
+    let count = count_of(&bytes);
+    let mut job = ready(&bytes, count);
+    let (mut inside, mut late, mut at) = (0, 0, 0);
+    while job.counts()[0] > 0 {
+        let mut advanced = false;
+        for after in AFTER {
+            let before = job.raw();
+            let counts = job.counts();
+            let (out, pressed) = job.call_with_on("t_step", after);
+            if !pressed {
+                assert!(out.a == MORE || out.a == DONE, "{out:?}");
+                advanced = true;
+                break;
+            }
+            if out.a != PAUSED {
+                late += 1;
+                assert_ne!(job.raw(), before, "{name} at {at}: the step wrote its mark");
+                job.release_on();
+                advanced = true;
+                break;
+            }
+            inside += 1;
+            assert_eq!(job.raw(), before, "{name} at {at} after {after}: written");
+            assert_eq!(job.counts(), counts, "{name} at {at} after {after}");
+            job.release_on();
+        }
+        if !advanced {
+            let out = job.step();
+            assert!(out.a == MORE || out.a == DONE, "{out:?}");
+        }
+        at += 1;
+    }
+    assert!(
+        inside >= usize::from(count),
+        "{inside} presses landed inside a verify, {late} too late"
+    );
+    job.end();
+    let got = job.table().unwrap().values;
+    assert_eq!(got, uninterrupted(&bytes), "{name}");
+    assert_eq!(got, want, "{name}");
+    assert_counts_are_the_tally(&mut job, count, &name);
 }
 
 #[test]
@@ -84,7 +136,8 @@ fn two_pauses_in_one_job_still_finish_the_same_table() {
     let (name, bytes, passes) = big();
     let want = marks(&bytes, &passes);
     let count = count_of(&bytes);
-    let mut job = at_step(&bytes, 3);
+    let mut job = Job::new(&bytes);
+    assert_eq!(job.job(count, 3).a, MORE);
     job.call_with_on("t_step", 0);
     job.release_on();
     job.end();
@@ -93,5 +146,8 @@ fn two_pauses_in_one_job_still_finish_the_same_table() {
     assert_eq!(out.a, MORE, "{name}");
     job.call_with_on("t_step", 0);
     job.release_on();
-    assert_eq!(finish(&mut job, &bytes), want);
+    job.end();
+    let out = job.job(count, 65535);
+    assert_eq!(out.a, DONE);
+    assert_eq!(job.table().unwrap().values, want);
 }

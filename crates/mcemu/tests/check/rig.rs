@@ -2,8 +2,8 @@
 //! is in the flash pages after the app's three, as it is on the calculator.
 
 use crate::layout::{self, Table};
-use mcemu::{Machine, STUB_ROM, Stop};
-use mcpack::library::{Kernel, Limits, crc32, decode, pack};
+use mcemu::{Machine, Reached, STUB_ROM, Stop};
+use mcpack::library::{Kernel, KernelError, Limits, crc32, decode, pack};
 use mcpack::mm::{self, StmtId};
 use mcui::data::{Installed, Lib};
 use mcui::{Mark, Status};
@@ -14,6 +14,10 @@ const LABELS: &str = include_str!(concat!(env!("OUT_DIR"), "/check_test.lab"));
 pub const BASE: u8 = 0x6F;
 /// The page of library chunk 0: the app has three code pages.
 pub const LIB_PAGE: u8 = BASE - 3;
+/// The flash page of the kernel and the reader, the third code page.
+pub const KERNEL_PAGE: u8 = BASE - 2;
+/// T-states one slice of a run to a label may take.
+const SLICE: u32 = 4_000_000;
 pub const VAR: &str = "MCJOBT";
 const LIMIT: u32 = 2_000_000_000;
 const PAGE: usize = 1 << 14;
@@ -26,6 +30,7 @@ pub const PAUSED: u8 = 4;
 pub const REFUSED: u8 = 5;
 pub const STORE: u8 = 6;
 pub const RANGE: u8 = 7;
+pub const READER: u8 = 8;
 pub const BAD_STATE: u8 = 9;
 
 pub const ST_ABSENT: u8 = 7;
@@ -49,6 +54,9 @@ pub struct Out {
     pub de: u16,
     pub hl: u16,
     pub tstates: u32,
+    /// The speed port and the interrupt state (1 on) the routine returned with.
+    pub speed: u8,
+    pub iff: u8,
 }
 
 impl Out {
@@ -75,11 +83,17 @@ impl Job {
         assert_eq!(run.stop, Stop::Halted, "the app halts at its start");
         let mut job = Job { m };
         assert_eq!(job.byte("T_OPEN"), 0, "the reader opens the library");
+        job.enter_as(0, false);
         job
     }
 
     pub fn byte(&mut self, name: &str) -> u8 {
         self.m.read_ram(label(name), 1)[0]
+    }
+
+    /// An equate of the app, as the label file gives it, as a byte.
+    pub fn label_byte(&self, name: &str) -> u8 {
+        u8::try_from(label(name)).expect("the equate is a byte")
     }
 
     pub fn word(&mut self, name: &str) -> u16 {
@@ -107,16 +121,31 @@ impl Job {
 
     /// How many real calls the job has made to each kernel routine, in the order reset, init,
     /// crc_begin, crc_chunk, verify, refs.
-    pub fn kernel_calls(&mut self) -> [u8; 6] {
-        self.bytes("T_COUNTERS", 6).try_into().unwrap()
+    pub fn kernel_calls(&mut self) -> [u16; 6] {
+        let b = self.bytes("T_COUNTERS", 12);
+        std::array::from_fn(|i| u16::from_le_bytes([b[2 * i], b[2 * i + 1]]))
     }
 
     pub fn clear_kernel_calls(&mut self) {
-        self.poke("T_COUNTERS", &[0; 6]);
+        self.poke("T_COUNTERS", &[0; 12]);
+        self.poke("T_SEEN", &[0; 6]);
+    }
+
+    /// The speed port each kernel entry last saw on a call, in the order of `kernel_calls`:
+    /// None when it was not called.
+    pub fn kernel_speeds(&mut self) -> [Option<u8>; 6] {
+        let b = self.bytes("T_SEEN", 6);
+        std::array::from_fn(|i| b[i].checked_sub(1))
+    }
+
+    /// The speed port (0 for 6 MHz, 1 for 15 MHz) and the interrupt state the next entries are
+    /// called in.
+    pub fn enter_as(&mut self, speed: u8, interrupts: bool) {
+        self.poke("T_IN_SPEED", &[speed, u8::from(interrupts)]);
     }
 
     fn out(&mut self, tstates: u32) -> Out {
-        let b = self.bytes("T_OUT_A", 9);
+        let b = self.bytes("T_OUT_A", 11);
         let word = |at: usize| u16::from_le_bytes([b[at], b[at + 1]]);
         Out {
             a: b[0],
@@ -124,6 +153,8 @@ impl Job {
             de: word(3),
             hl: word(5),
             tstates,
+            speed: b[9],
+            iff: b[10],
         }
     }
 
@@ -152,6 +183,77 @@ impl Job {
         let rest = self.m.resume(LIMIT);
         assert_eq!(rest.stop, Stop::Halted, "{entry} did not halt");
         (self.out(first.tstates + rest.tstates), true)
+    }
+
+    /// Runs `entry` until the instruction at `at` of flash `page` is next, calls `hook` there,
+    /// and runs on to the halt.
+    pub fn call_hooked(
+        &mut self,
+        entry: &str,
+        page: u8,
+        at: &str,
+        hook: impl FnOnce(&mut Machine),
+    ) -> Out {
+        assert_eq!(self.m.run(label(entry), 1).stop, Stop::Limit);
+        self.reach(page, at);
+        hook(&mut self.m);
+        let rest = self.m.resume(LIMIT);
+        assert_eq!(rest.stop, Stop::Halted, "{entry} did not halt");
+        self.out(0)
+    }
+
+    fn reach(&mut self, page: u8, at: &str) {
+        for _ in 0..5_000 {
+            match self.m.run_to(page, label(at), SLICE) {
+                Reached::Target => return,
+                Reached::Vector38 => {}
+                Reached::Limit => assert_ne!(
+                    self.m.resume(1).stop,
+                    Stop::Halted,
+                    "the entry ended before {at}"
+                ),
+            }
+        }
+        panic!("never reached {at}");
+    }
+
+    /// Runs `entry` to its halt and returns what the speed port read each time the instruction
+    /// at `at` of the entry page was about to run.
+    pub fn speeds_at(&mut self, entry: &str, at: &str) -> Vec<u8> {
+        assert_eq!(self.m.run(label(entry), 1).stop, Stop::Limit);
+        let mut seen = Vec::new();
+        for _ in 0..5_000 {
+            match self.m.run_to(BASE, label(at), SLICE) {
+                Reached::Target => {
+                    seen.push(self.m.in_port(0x20));
+                    self.m.resume(1);
+                }
+                Reached::Vector38 => {}
+                Reached::Limit => {
+                    if self.m.resume(1).stop == Stop::Halted {
+                        return seen;
+                    }
+                }
+            }
+        }
+        panic!("{entry} never halted");
+    }
+
+    /// Calls `entry` with ON tapped for `hold` T-states once the kernel has turned interrupts off
+    /// in the call of `kernel_entry`.
+    pub fn tap_in_kernel(&mut self, entry: &str, kernel_entry: &str, hold: u32) -> Out {
+        self.call_hooked(entry, KERNEL_PAGE, kernel_entry, |m| {
+            for _ in 0..200 {
+                if m.regs().iff1 == 0 {
+                    break;
+                }
+                m.resume(1);
+            }
+            assert_eq!(m.regs().iff1, 0, "the kernel turned interrupts off");
+            m.press_key(Machine::KEY_ON);
+            m.resume(hold);
+            m.release_key(Machine::KEY_ON);
+        })
     }
 
     /// Lets go of ON and takes the interrupt it latched, as a caller does after a pause.
@@ -194,6 +296,12 @@ impl Job {
     pub fn job(&mut self, n: u16, limit: u16) -> Out {
         self.arg(LIB_PAGE, n, limit);
         self.call("t_job")
+    }
+
+    /// Calls check_step until it stops saying more, at most `limit` times.
+    pub fn run_steps(&mut self, limit: u16) -> Out {
+        self.poke("T_IN_N", &limit.to_le_bytes());
+        self.call("t_run_steps")
     }
 
     pub fn run_crc(&mut self, limit: u16) -> Out {
@@ -303,6 +411,48 @@ pub fn references(bytes: &[u8]) -> Vec<Vec<usize>> {
                 .collect()
         })
         .collect()
+}
+
+/// The status the kernel documents for a refusal of the model.
+fn code(error: KernelError) -> u8 {
+    match error {
+        KernelError::Malformed => 1,
+        KernelError::BadRecord => 2,
+        KernelError::NotATheorem => 3,
+        KernelError::ForwardReference => 4,
+        KernelError::OutOfMemory => 5,
+        KernelError::StackUnderflow => 6,
+        KernelError::BadBackReference => 7,
+        KernelError::TypecodeMismatch => 8,
+        KernelError::HypothesisMismatch => 9,
+        KernelError::DisjointViolation => 10,
+        KernelError::StackNotSingleton => 11,
+        KernelError::WrongConclusion => 12,
+        KernelError::WorkLimit => 13,
+        KernelError::LooseReference => 15,
+        KernelError::BadSymbol => 16,
+    }
+}
+
+/// The assertions the model refuses, in order, each with the status the kernel documents.
+pub fn failures(bytes: &[u8]) -> Vec<(u16, u8)> {
+    let mut kernel = Kernel::new(bytes, device_limits()).expect("the model loads the library");
+    (0..kernel.assertions())
+        .filter_map(|id| Some((id as u16, code(kernel.verify(id).err()?))))
+        .collect()
+}
+
+/// `count` axioms and `names` more constants whose names share a prefix of 30 bytes, so that
+/// kernel_init spends about 100,000 T-states between two reads of the ON key.
+pub fn long_name_axioms(count: usize, names: usize) -> Vec<u8> {
+    let extra: Vec<String> = (0..names)
+        .map(|i| format!("{}{i:03}", "n".repeat(30)))
+        .collect();
+    let mut src = format!("$c T wff |- $.\n$c {} $.\n", extra.join(" "));
+    for i in 0..count {
+        src += &format!("a-long-label-to-fill-the-page-{i} $a |- T $.\n");
+    }
+    pack_source(&src)
 }
 
 pub fn xorshift(seed: &mut u32) -> u32 {

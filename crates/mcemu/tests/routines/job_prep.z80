@@ -1,0 +1,52 @@
+#include "equates.inc"
+#define APP_NAME "jobsetup"
+#include "header.inc"
+#include "prep_defs.inc"
+
+; Sets up what the job probe finds when it starts, then returns to the home screen: an AppVar
+; MCJOBT holding prep_data, archived or not, and a filler AppVar that leaves 20 bytes of RAM.
+; The test writes prep_defs.inc (PREP_LEN, PREP_ARCHIVE, PREP_FILL) and prep_data.inc.
+start:
+#if PREP_LEN > 0
+	call set_name
+	ld hl, PREP_LEN
+	bcall(_CreateAppVar)
+	inc de
+	inc de
+	ld hl, prep_data
+	ld bc, PREP_LEN
+	ldir
+#if PREP_ARCHIVE
+	call set_name
+	bcall(_Arc_Unarc)
+#endif
+#endif
+#if PREP_FILL
+	bcall(_MemChk)
+	ld de, 15 + 20
+	or a
+	sbc hl, de
+	jr c, done
+	push hl
+	ld hl, filler_name
+	ld de, OP1
+	ld bc, 9
+	ldir
+	pop hl
+	bcall(_CreateAppVar)
+#endif
+done:
+	bjump(_JForceCmdNoChar)
+
+set_name:
+	ld hl, table_name
+	ld de, OP1
+	ld bc, 9
+	ldir
+	ret
+
+table_name:
+	.db appVarObj, "MCJOBT", 0, 0
+filler_name:
+	.db appVarObj, "FILLER", 0, 0
+#include "prep_data.inc"

@@ -1,7 +1,6 @@
 //! Jobs below an end N, over tables a job left half done, and the "next" number in the header.
 
 use crate::damage::{big, libraries};
-use crate::layout::Table;
 use crate::rig::*;
 
 /// A table a real job could have left: the final marks of a random set of assertions closed under
@@ -43,15 +42,17 @@ fn a_job_over_a_half_done_table_finishes_with_the_host_models_marks() {
 #[test]
 fn a_job_below_n_leaves_everything_at_and_above_n_alone() {
     let mut seed = 0xFACE_0002;
+    let mut zeros_above_n = 0;
     for (name, bytes, passes) in libraries() {
         let want = marks(&bytes, &passes);
         let count = count_of(&bytes);
         for n in [0, 1, count / 3, count / 2, count - 1, count] {
             let mut values = prior(&bytes, &want, &mut seed, 20);
             let junk = xorshift(&mut seed) as usize;
-            for v in &mut values[usize::from(n)..] {
-                *v = (junk % 4) as u8;
+            for (k, v) in values[usize::from(n)..].iter_mut().enumerate() {
+                *v = ((junk + k) % 4) as u8;
             }
+            zeros_above_n += values[usize::from(n)..].iter().filter(|&&v| v == 0).count();
             let table = table_for(&bytes, values.clone());
             let mut job = Job::new(&bytes);
             job.put_table(&table, 0);
@@ -77,6 +78,10 @@ fn a_job_below_n_leaves_everything_at_and_above_n_alone() {
             assert_eq!(total, n, "{name} N {n}: the counters cover the prefix");
         }
     }
+    assert!(
+        zeros_above_n > 100,
+        "{zeros_above_n} unchecked entries sat at and above N for a job to write to"
+    );
 }
 
 #[test]
@@ -166,5 +171,4 @@ fn a_table_of_all_ones_makes_the_job_done_at_once() {
     assert_eq!(out.a, READY);
     assert_eq!(job.step().a, DONE);
     assert_eq!(job.kernel_calls()[4], 0);
-    let _ = Table::new(0, 0);
 }

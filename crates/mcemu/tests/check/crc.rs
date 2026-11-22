@@ -4,8 +4,8 @@
 use crate::layout::Table;
 use crate::rig::*;
 
-fn chunks(bytes: &[u8]) -> u8 {
-    bytes.len().div_ceil(1 << 14) as u8
+fn chunks(bytes: &[u8]) -> u16 {
+    bytes.len().div_ceil(1 << 14) as u16
 }
 
 #[test]

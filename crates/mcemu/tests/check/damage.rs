@@ -105,3 +105,11 @@ pub fn big() -> (String, Vec<u8>, Vec<bool>) {
         .find(|l| l.0 == "synthetic 0")
         .expect("the synthetic library")
 }
+
+/// The library `libraries` holds under `name`, with the model's verdicts.
+pub fn named(name: &str) -> (String, Vec<u8>, Vec<bool>) {
+    libraries()
+        .into_iter()
+        .find(|l| l.0 == name)
+        .unwrap_or_else(|| panic!("no library {name}"))
+}

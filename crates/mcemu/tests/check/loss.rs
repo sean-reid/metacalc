@@ -51,6 +51,25 @@ fn a_table_with_nothing_to_check_under_the_name_is_not_written_to() {
 }
 
 #[test]
+fn a_whole_table_of_another_library_put_under_the_name_between_steps_is_written_to() {
+    let (mut job, bytes) = running();
+    let count = count_of(&bytes);
+    let other = Table::new(header_crc(&bytes) ^ 1, count);
+    job.put_table(&other, 0);
+    let out = job.step();
+    assert_eq!(out.a, MORE, "the job does not notice: {out:?}");
+    let table = job.table().unwrap();
+    assert_eq!(
+        table.crc, other.crc,
+        "it is still the other library's table"
+    );
+    let written: Vec<usize> = (0..table.values.len())
+        .filter(|&i| table.values[i] != 0)
+        .collect();
+    assert_eq!(written, [4], "the step wrote its mark into it");
+}
+
+#[test]
 fn a_stopped_job_begins_again_with_a_crc_run_and_a_new_table() {
     let (mut job, bytes) = running();
     job.m.delete_var(VAR);

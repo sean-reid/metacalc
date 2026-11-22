@@ -6,7 +6,9 @@
 ; and launches. The app starts, opens the reader, and halts. The test then sets the program counter
 ; to one of the entries below, with the arguments in T_IN, and the entry halts with the registers
 ; the call returned in T_OUT. Every kernel call the job makes goes through a counter, so the test
-; sees how many real calls there were.
+; sees how many real calls there were, and the speed the call was made at. An entry sets the speed
+; port from T_IN_SPEED and the interrupt state from T_IN_IFF (0 off, 1 on) before it calls the job,
+; and records both again, as the job returned them, in T_OUT_SPEED and T_OUT_IFF.
 
 VERSION = 1
 #define STORE_VAR "MCJOBT"
@@ -15,19 +17,30 @@ T_IN_A      = 08A00h
 T_IN_DE     = 08A01h
 T_IN_N      = 08A03h
 T_IN_C      = 08A05h
+T_IN_SPEED  = 08A07h
+T_IN_IFF    = 08A08h
 T_OUT_A     = 08A10h
 T_OUT_BC    = 08A11h
 T_OUT_DE    = 08A13h
 T_OUT_HL    = 08A15h
 T_CALLS     = 08A17h
+T_OUT_SPEED = 08A19h
+T_OUT_IFF   = 08A1Ah
 T_COUNTERS  = 08A20h
 T_N_RESET   = T_COUNTERS
-T_N_INIT    = T_COUNTERS + 1
-T_N_BEGIN   = T_COUNTERS + 2
-T_N_CHUNK   = T_COUNTERS + 3
-T_N_VERIFY  = T_COUNTERS + 4
-T_N_REFS    = T_COUNTERS + 5
+T_N_INIT    = T_COUNTERS + 2
+T_N_BEGIN   = T_COUNTERS + 4
+T_N_CHUNK   = T_COUNTERS + 6
+T_N_VERIFY  = T_COUNTERS + 8
+T_N_REFS    = T_COUNTERS + 10
 T_OPEN      = 08A30h
+T_SEEN      = 08A40h
+T_SEEN_RESET  = T_SEEN
+T_SEEN_INIT   = T_SEEN + 1
+T_SEEN_BEGIN  = T_SEEN + 2
+T_SEEN_CHUNK  = T_SEEN + 3
+T_SEEN_VERIFY = T_SEEN + 4
+T_SEEN_REFS   = T_SEEN + 5
 
 ; The kernel's far entries are written here under other names, and the names the job calls are
 ; counting wrappers over them.
@@ -42,22 +55,28 @@ FAR_DATA_ENTRY(kernel_refs, far_real_refs)
 #include "scr/ram.inc"
 #include "check_ram.inc"
 
-#macro COUNT_CALL(wrapper, stub, counter)
+; Counts the call and keeps the speed port as it is on entry, plus one, so that 0 means no call.
+#macro COUNT_CALL(wrapper, stub, counter, seen)
 wrapper:
 	push af
-	ld a, (counter)
+	push hl
+	ld hl, (counter)
+	inc hl
+	ld (counter), hl
+	in a, (20h)
 	inc a
-	ld (counter), a
+	ld (seen), a
+	pop hl
 	pop af
 	jp stub
 #endmacro
 
-COUNT_CALL(far_kernel_reset, far_real_reset, T_N_RESET)
-COUNT_CALL(far_kernel_init, far_real_init, T_N_INIT)
-COUNT_CALL(far_kernel_crc_begin, far_real_crc_begin, T_N_BEGIN)
-COUNT_CALL(far_kernel_crc_chunk, far_real_crc_chunk, T_N_CHUNK)
-COUNT_CALL(far_kernel_verify, far_real_verify, T_N_VERIFY)
-COUNT_CALL(far_kernel_refs, far_real_refs, T_N_REFS)
+COUNT_CALL(far_kernel_reset, far_real_reset, T_N_RESET, T_SEEN_RESET)
+COUNT_CALL(far_kernel_init, far_real_init, T_N_INIT, T_SEEN_INIT)
+COUNT_CALL(far_kernel_crc_begin, far_real_crc_begin, T_N_BEGIN, T_SEEN_BEGIN)
+COUNT_CALL(far_kernel_crc_chunk, far_real_crc_chunk, T_N_CHUNK, T_SEEN_CHUNK)
+COUNT_CALL(far_kernel_verify, far_real_verify, T_N_VERIFY, T_SEEN_VERIFY)
+COUNT_CALL(far_kernel_refs, far_real_refs, T_N_REFS, T_SEEN_REFS)
 
 
 job_start:
@@ -70,7 +89,12 @@ job_start:
 	ldir
 	ld hl, T_COUNTERS
 	ld de, T_COUNTERS + 1
-	ld bc, 15
+	ld bc, 12
+	ld (hl), 0
+	ldir
+	ld hl, T_SEEN
+	ld de, T_SEEN + 1
+	ld bc, 5
 	ld (hl), 0
 	ldir
 	ld a, (libPage)
@@ -80,38 +104,63 @@ job_start:
 	di
 	halt
 
-; Saves A, BC, DE and HL.
+; Saves A, BC, DE and HL, the speed port and the interrupt state the routine returned with.
 t_out:
 	ld (T_OUT_HL), hl
 	ld (T_OUT_DE), de
 	ld (T_OUT_BC), bc
 	ld (T_OUT_A), a
+	ld a, i
+	ld a, 0
+	jp po, to_off
+	inc a
+to_off:
+	ld (T_OUT_IFF), a
+	in a, (20h)
+	ld (T_OUT_SPEED), a
+	ret
+
+; Puts the machine in the state the test asks for: the speed, and interrupts on or off.
+t_enter:
+	ld a, (T_IN_SPEED)
+	out (20h), a
+	ld a, (T_IN_IFF)
+	or a
+	jr z, te_off
+	ei
+	ret
+te_off:
+	di
 	ret
 
 t_begin:
-	di
+	call t_enter
 	ld a, (T_IN_A)
 	ld de, (T_IN_DE)
 	call check_begin
 	call t_out
+	di
 	halt
 
 t_crc_step:
-	di
+	call t_enter
 	call check_crc_step
 	call t_out
+	di
 	halt
 
 t_step:
-	di
+	call t_enter
 	call check_step
 	call t_out
+	di
 	halt
 
 t_end:
-	di
+	call t_enter
 	call check_end
 	call t_out
+	di
 	halt
 
 ; Waits for ON to come up and takes the interrupt it latched, as the probe does at a stop.
@@ -122,21 +171,23 @@ t_ack:
 
 ; Runs check_crc_step until it stops saying more, at most T_IN_C times, and counts the calls.
 t_run_crc:
-	di
+	call t_enter
 	call run_crc
 	call t_out
+	di
 	halt
 
 t_run_steps:
-	di
+	call t_enter
 	call run_steps
 	call t_out
+	di
 	halt
 
 ; A whole job: begin, the CRC steps if begin asks for them, then the steps. The status is the last
 ; call's and the calls are counted in T_CALLS.
 t_job:
-	di
+	call t_enter
 	ld a, (T_IN_A)
 	ld de, (T_IN_DE)
 	call check_begin
@@ -149,6 +200,7 @@ tj_steps:
 	call run_steps
 tj_out:
 	call t_out
+	di
 	halt
 
 run_crc:
@@ -227,6 +279,7 @@ t_init:
 	ld hl, ck_params
 	call far_real_init
 	call t_out
+	di
 	halt
 
 t_verify:
@@ -234,6 +287,7 @@ t_verify:
 	ld hl, (T_IN_DE)
 	call far_real_verify
 	call t_out
+	di
 	halt
 
 ; In: A = the page. The kernel_init block with every limit at its largest.
