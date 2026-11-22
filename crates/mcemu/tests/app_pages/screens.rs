@@ -340,7 +340,8 @@ fn quit_leaves_from_depth_2_and_fills_the_two_regions_as_it_does_from_depth_1() 
             shell.dirty_dead();
             let (neighbour_low, neighbour_high) = {
                 let stack = shell.app.label("SCR_STACK");
-                (stack - 1, stack + 128)
+                let home = shell.app.label("HOME_STATE");
+                (stack - 1, home + shell.app.label("HOME_STATE_SIZE"))
             };
             shell.app.m.load_ram(neighbour_low, &[0xE1]);
             shell.app.m.load_ram(neighbour_high, &[0x3B]);
