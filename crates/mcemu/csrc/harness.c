@@ -319,18 +319,25 @@ uint8_t mcemu_in(TilemCalc *calc, uint8_t port)
 	return calc->hw.z80_in(calc, port);
 }
 
+/* Where an interrupt in mode 1 and RST 38h go: 0038h, always on flash page 0. */
+#define VECTOR_38 0x38
+
 /* Runs until the instruction at a physical address is the next to execute, for at most `limit`
-   T-states. Returns 1 when it is. */
+   T-states. Returns 1 when it is, 2 when the run reached 0038h first, 0 at the limit. */
 int mcemu_run_to(TilemCalc *calc, uint32_t physical, int limit)
 {
-	int bp = tilem_z80_add_breakpoint(calc, TILEM_BREAK_MEM_EXEC | TILEM_BREAK_PHYSICAL,
-					  physical, physical, 0xffffffff, NULL, NULL);
+	int type = TILEM_BREAK_MEM_EXEC | TILEM_BREAK_PHYSICAL;
+	int target = tilem_z80_add_breakpoint(calc, type, physical, physical, 0xffffffff, NULL, NULL);
+	int vector = tilem_z80_add_breakpoint(calc, type, VECTOR_38, VECTOR_38, 0xffffffff, NULL, NULL);
+	uint32_t at;
 
 	running = calc;
 	bank_time(calc);
 	tilem_z80_run(calc, limit, NULL);
-	tilem_z80_remove_breakpoint(calc, bp);
-	return calc->hw.mem_ltop(calc, calc->z80.r.pc.w.l) == physical;
+	tilem_z80_remove_breakpoint(calc, target);
+	tilem_z80_remove_breakpoint(calc, vector);
+	at = calc->hw.mem_ltop(calc, calc->z80.r.pc.w.l);
+	return at == physical ? 1 : at == VECTOR_38 ? 2 : 0;
 }
 
 /* The CPU clock in T-states, which wraps at 32 bits. */

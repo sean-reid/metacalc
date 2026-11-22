@@ -131,9 +131,10 @@ impl Calc {
         unsafe { mcemu_khz(self.0.as_ptr()) }
     }
 
-    pub fn run_to(&mut self, physical: u32, limit: i32) -> bool {
+    /// 1 when the run reached the address, 2 when it reached 0038h first, 0 at the limit.
+    pub fn run_to(&mut self, physical: u32, limit: i32) -> i32 {
         // SAFETY: the handle is live.
-        unsafe { mcemu_run_to(self.0.as_ptr(), physical, limit) != 0 }
+        unsafe { mcemu_run_to(self.0.as_ptr(), physical, limit) }
     }
 
     pub fn clock(&self) -> u32 {

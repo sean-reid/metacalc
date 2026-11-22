@@ -1,4 +1,4 @@
-use mcemu::{Machine, STUB_ROM, Stop};
+use mcemu::{Machine, Reached, STUB_ROM, Stop};
 
 pub const APP: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/storecheck.8xk"));
 pub const BASE: u8 = 0x69;
@@ -25,19 +25,26 @@ pub fn label(name: &str) -> u16 {
 /// T-states from the first instruction of the routine at `entry` on flash page `page` to the
 /// instruction it returns to, at its `skip + 1`th call from where the machine is. The window
 /// holds the routine and the OS calls it makes, and nothing of the probe: not the dispatch, the
-/// argument fetch, the CALL or the log. Interrupts are off at both ends, so no interrupt is in it.
+/// argument fetch, the CALL or the log. No interrupt is taken in it: the run stops at 0038h if
+/// one is, and that fails here.
 pub fn call_window(m: &mut Machine, page: u8, entry: u16, skip: usize) -> u32 {
     for _ in 0..=skip {
-        assert!(m.run_to(page, entry, LIMIT), "the routine is called");
+        // Before the window the OS's interrupt runs freely, while its menu starts the app.
+        loop {
+            match m.run_to(page, entry, LIMIT) {
+                Reached::Target => break,
+                Reached::Vector38 => {}
+                Reached::Limit => panic!("the routine is not called"),
+            }
+        }
     }
-    let regs = m.regs();
-    let back = m.read_ram(regs.sp, 2);
+    let back = m.read_ram(m.regs().sp, 2);
     let start = m.clock();
-    assert!(
+    assert_eq!(
         m.run_to(page, u16::from_le_bytes([back[0], back[1]]), LIMIT),
-        "the routine returns"
+        Reached::Target,
+        "the routine returns with no interrupt taken"
     );
-    assert_eq!((regs.iff1, m.regs().iff1), (0, 0), "interrupts stay off");
     m.clock().wrapping_sub(start)
 }
 

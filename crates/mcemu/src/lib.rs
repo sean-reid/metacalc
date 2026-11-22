@@ -83,6 +83,16 @@ impl ExitState {
     };
 }
 
+/// What ended a `run_to`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reached {
+    Target,
+    /// 0038h is the next instruction: an interrupt in mode 1 was taken, or an RST 38h ran. The
+    /// target was not reached; another `run_to` goes on from there.
+    Vector38,
+    Limit,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Run {
     pub stop: Stop,
@@ -209,12 +219,21 @@ impl Machine {
     }
 
     /// Runs on, interrupts as the code left them, until the instruction at `addr` of flash page
-    /// `page` is the next to execute or `limit` T-states pass; true when it is. The same address
-    /// on another page does not stop the run.
-    pub fn run_to(&mut self, page: u8, addr: u16, limit: u32) -> bool {
-        let physical = usize::from(page) * FLASH_PAGE_SIZE + usize::from(addr) % FLASH_PAGE_SIZE;
+    /// `page` is the next to execute, and says what ended the run. `addr` is where the page is
+    /// mapped in bank A, 4000h to 7FFFh; the same address on another page does not stop the run.
+    pub fn run_to(&mut self, page: u8, addr: u16, limit: u32) -> Reached {
+        assert!((0x4000..0x8000).contains(&addr), "the address is in bank A");
+        assert!(
+            usize::from(page) < self.calc.rom_size() / FLASH_PAGE_SIZE,
+            "flash page out of range"
+        );
+        let physical = usize::from(page) * FLASH_PAGE_SIZE + usize::from(addr - 0x4000);
         let limit = i32::try_from(limit).expect("limit fits in i32");
-        self.calc.run_to(physical as u32, limit)
+        match self.calc.run_to(physical as u32, limit) {
+            1 => Reached::Target,
+            2 => Reached::Vector38,
+            _ => Reached::Limit,
+        }
     }
 
     /// The CPU's clock in T-states. It wraps at 32 bits, so two readings are compared with
