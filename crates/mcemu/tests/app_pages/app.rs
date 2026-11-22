@@ -59,6 +59,11 @@ impl Built {
 
 /// `make -C app` into a directory of its own, with the library when there is one.
 fn build(name: &str, library: Option<&[u8]>) -> Built {
+    build_with(name, library, &[])
+}
+
+/// `build` with more `make` arguments, such as `VERSION=1.2.3`.
+fn build_with(name: &str, library: Option<&[u8]>, more: &[&str]) -> Built {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     std::fs::create_dir_all(&dir).unwrap();
     let mut args = Vec::new();
@@ -76,6 +81,7 @@ fn build(name: &str, library: Option<&[u8]>) -> Built {
         .arg(format!("BUILD={}/build", dir.display()))
         .arg(format!("FONT={}/ui_font", env!("OUT_DIR")))
         .args(&args)
+        .args(more)
         .arg("app")
         .output()
         .expect("make runs");
@@ -105,6 +111,15 @@ pub fn plain() -> &'static Built {
 pub fn with_library() -> &'static Built {
     static BUILT: OnceLock<Built> = OnceLock::new();
     BUILT.get_or_init(|| build("pages-library", Some(&crate::fixture::library())))
+}
+
+/// The app built as if the workspace version were `version`, with no library.
+pub fn versioned(version: &str) -> &'static Built {
+    Box::leak(Box::new(build_with(
+        &format!("pages-version-{version}"),
+        None,
+        &[&format!("VERSION={version}")],
+    )))
 }
 
 /// The app with a shipped library from `MC_LIBRARIES`, after its code pages.
@@ -300,6 +315,7 @@ impl App {
             ("FAR_VARS", "FAR_VARS_SIZE"),
             ("LIB_STATE", "LIB_STATE_SIZE"),
             ("APP_BUF", "APP_BUF_SIZE"),
+            ("APP_SENTINEL", "APP_SENTINEL_SIZE"),
             ("FM_SCRATCH", "FM_SCRATCH_SIZE"),
         ];
         for (base, size) in regions {

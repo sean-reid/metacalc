@@ -6,6 +6,13 @@ FONT    ?=
 OUT     := $(BUILD)/metacalc.8xk
 ASM     := SPASM="$(SPASM)" sh ../scripts/spasm.sh
 INCLUDE := -I ../kernel -I src -I .. -I ../ui
+# The workspace version the host model reports as CARGO_PKG_VERSION, as the numbers About shows.
+VERSION := $(shell awk '/^\[/ { in_package = ($$0 == "[workspace.package]") } in_package && /^version *=/ { gsub(/[^0-9.]/, ""); print; exit }' ../Cargo.toml)
+VERSION_PARTS := $(subst ., ,$(VERSION))
+ifneq ($(words $(VERSION_PARTS)),3)
+$(error the workspace version "$(VERSION)" in ../Cargo.toml is not major.minor.patch)
+endif
+INCLUDE += -DVERSION_MAJOR=$(word 1,$(VERSION_PARTS)) -DVERSION_MINOR=$(word 2,$(VERSION_PARTS)) -DVERSION_PATCH=$(word 3,$(VERSION_PARTS))
 
 ifeq ($(FONT),)
 FONTDIR := $(BUILD)
