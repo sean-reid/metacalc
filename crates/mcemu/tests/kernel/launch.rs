@@ -20,9 +20,9 @@ fn launched(file: &[u8], base: u8) -> Machine {
     m
 }
 
-/// Every key but CLEAR redraws the same screen, so the unchanged screen after one shows only that a
-/// redraw leaves the screen whole; that each key is read and redraws is shown by the app_pages
-/// tests, which fill the frame with a pattern first.
+/// A key the start screen ignores leaves the screen as it was, ENTER and the first soft key open a
+/// notice that CLEAR closes, and CLEAR on the start screen leaves. That each key is read and that
+/// an ignored key draws nothing is shown by the app_pages tests.
 fn assert_waits_for_clear_then_exits(m: &mut Machine, library: Option<&[u8]>) {
     assert_eq!(m.run_app(SLICE).stop, Stop::Limit);
     assert!(
@@ -31,14 +31,29 @@ fn assert_waits_for_clear_then_exits(m: &mut Machine, library: Option<&[u8]>) {
     );
     let ink = m.lcd().lit();
     assert!(ink > 100);
-    for (name, key) in [("enter", 0x09), ("2nd", 0x36), ("y=", 0x35), ("up", 0x04)] {
+    let tap = |m: &mut Machine, name: &str, key: u8| {
         m.press_key(key);
         assert_eq!(m.run_app(SLICE).stop, Stop::Limit, "{name} down");
         m.release_key(key);
         assert_eq!(m.run_app(SLICE).stop, Stop::Limit, "{name} up");
+    };
+    for (name, key) in [("2nd", 0x36), ("up", 0x04)] {
+        tap(m, name, key);
         assert!(
             shows_the_start_screen(&m.lcd(), library),
             "{name}: the screen is unchanged"
+        );
+    }
+    for (name, key) in [("enter", 0x09), ("y=", 0x35)] {
+        tap(m, name, key);
+        assert!(
+            !shows_the_start_screen(&m.lcd(), library),
+            "{name}: a notice is open"
+        );
+        tap(m, "clear", CLEAR);
+        assert!(
+            shows_the_start_screen(&m.lcd(), library),
+            "{name}: CLEAR closed the notice"
         );
     }
     m.press_key(CLEAR);

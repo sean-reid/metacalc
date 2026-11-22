@@ -33,6 +33,7 @@ const ERROR_CALL: u16 = 0xA800;
 const STACK_BELOW: u16 = 0x100;
 const APP_STACK_TOP: u16 = 0xFFE4;
 const SCAN_DOWN: u8 = 0x01;
+const SCAN_F3: u8 = 0x33;
 const POWER_DOWN: u8 = 0x10;
 const KEY_GRAPH: u8 = 0x31;
 const GRAPH_DRAW: u8 = 0x01;
@@ -79,10 +80,17 @@ fn refused() -> &'static Build {
     })
 }
 
+/// The bytes of the two regions the shell does not use while it runs: the screen stack's first
+/// frame and the framework's variables are live and stay as they are.
+const LIVE: (u16, u16) = (16, 41);
+
 fn dirt() -> [(u16, Vec<u8>); 2] {
     [
-        (STACK.0, varied(STACK.1, 0x5A)),
-        (VARS.0, varied(VARS.1, 0xC3)),
+        (
+            STACK.0 + LIVE.0,
+            varied(STACK.1 - usize::from(LIVE.0), 0x5A),
+        ),
+        (VARS.0 + LIVE.1, varied(VARS.1 - usize::from(LIVE.1), 0xC3)),
     ]
 }
 
@@ -268,9 +276,16 @@ fn every_way_out_leaves_a_blank_home_screen_and_the_os_as_it_was() {
         ("library", with_library()),
         ("refused library", refused()),
     ] {
-        for (way, exit, plain_exit) in EXITS {
-            let name = format!("{kind}, {way}");
+        for (way, exit, plain_exit, depth) in EXITS
+            .iter()
+            .flat_map(|&(w, e, p)| [(w, e, p, 1), (w, e, p, 2)])
+            .filter(|&(way, _, _, depth)| depth == 1 || way != "CLEAR")
+        {
+            let name = format!("{kind}, {way}, depth {depth}");
             let (mut os, before, text) = launched(&app.file, Some(&app.start));
+            if depth == 2 {
+                os.tap(SCAN_F3, 150, 500);
+            }
             dirty(&mut os);
             exit(&mut os);
             assert_eq!(
@@ -459,6 +474,57 @@ fn an_auto_power_down_is_not_a_way_out_and_the_state_survives_the_wake() {
             );
         }
     }
+}
+
+/// The host model's About screen with no library, as lit pixels.
+fn about_pixels() -> Vec<bool> {
+    let mut ui = mcui::Ui::new(
+        vec![],
+        mcui::Statuses {
+            libraries: vec![],
+            my_proofs: 0,
+        },
+    )
+    .expect("the model loads");
+    ui.press(mcui::Key::F3);
+    let frame = ui.frame();
+    (0..64)
+        .flat_map(|y| (0..96).map(move |x| (x, y)))
+        .map(|(x, y)| frame.get(x, y))
+        .collect()
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn an_auto_power_down_with_about_open_leaves_it_open_and_the_next_key_draws_it_whole() {
+    let app = shell();
+    let (mut os, ..) = launched(&app.file, Some(&app.start));
+    os.tap(SCAN_F3, 150, 500);
+    let about = about_pixels();
+    assert!(os.screen() == about, "About is open");
+    let mut seconds = 0;
+    while os.m.in_port(3) & POWER_DOWN == 0 {
+        assert!(seconds < 600, "no auto power down in 600 s");
+        os.run_ms(5_000);
+        seconds += 5;
+    }
+    os.tap(Machine::KEY_ON, 150, 3000);
+    let sentinel = label_in(&app.labels, "APP_SENTINEL");
+    let frame_byte = label_in(&app.labels, "APP_SENTINEL_FRAME");
+    assert_ne!(
+        read(&mut os, sentinel, 1)[0],
+        !read(&mut os, frame_byte, 1)[0],
+        "the power down wrote the pixels over the sentinel"
+    );
+    os.m.load_ram(UI_FRAME, &[0xAA; 768]);
+    os.tap(SCAN_DOWN, 150, 400);
+    assert!(os.screen() == about, "About after the key");
+    assert_eq!(read(&mut os, VARS.0, 1), [2], "two screens are open");
+    assert_eq!(
+        read(&mut os, sentinel, 1)[0],
+        !read(&mut os, frame_byte, 1)[0],
+        "the sentinel is stored again"
+    );
 }
 
 fn waiting_on_the_stub() -> Machine {

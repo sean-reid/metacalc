@@ -24,7 +24,7 @@ fn frame(app: &mut App) -> (u32, u32) {
 }
 
 /// The most T-states scr_draw and ui_blit may take together for each screen, a little above what
-/// they take on the fixture library, and 
+/// they take on the fixture library.
 const START_PLAIN: u32 = 100_000;
 const START_LIBRARY: u32 = 113_000;
 const ABOUT: u32 = 141_000;
