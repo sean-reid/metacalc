@@ -440,6 +440,7 @@ fn main() {
     }
     assemble_kernel(&out);
     assemble_ui(&out);
+    assemble_scr(&out);
     assemble_reader(&out);
     assemble_layout_probes(&out);
     assemble_page_ports(&out);
@@ -1129,6 +1130,40 @@ fn assemble_ui(out: &Path) {
         other => fail(&format!(
             "soft key boxes too wide for the flip gave {other:?}, not a box error"
         )),
+    }
+}
+
+/// The screen framework with its fake kinds, as shipped and with its RAM moved, and the layout
+/// checks: the variables must fit SCR_VARS_SIZE to the byte and the stack must hold its frames.
+fn assemble_scr(out: &Path) {
+    println!("cargo:rerun-if-changed=../../scr");
+    for entry in fs::read_dir("../../scr").unwrap().flatten() {
+        println!("cargo:rerun-if-changed={}", entry.path().display());
+    }
+    println!("cargo:rerun-if-changed=tests/routines/scr_test.z80");
+    println!("cargo:rerun-if-changed=../../app/src/ram_map.inc");
+    let src = Path::new("tests/routines/scr_test.z80");
+    let args = ["-I", "../../app/src", "-I", "../..", "-L"];
+    for (name, defines) in [
+        ("scr_test", &[][..]),
+        ("scr_moved", &["SCR_VARS=$B000", "SCR_STACK=$B100"][..]),
+    ] {
+        spasm(src, &out.join(format!("{name}.bin")), defines, &args);
+    }
+    let probe = out.join("scr_probe.bin");
+    for (defines, want) in [
+        (&["SCR_VARS_SIZE=41"][..], None),
+        (
+            &["SCR_VARS_SIZE=40"][..],
+            Some("the screen variables overlap, leave a gap, or run past SCR_VARS_SIZE"),
+        ),
+        (&["SCR_STACK_SIZE=128"][..], None),
+        (
+            &["SCR_STACK_SIZE=127"][..],
+            Some("SCR_STACK_SIZE in ram_map.inc must hold SCR_MAX_DEPTH frames"),
+        ),
+    ] {
+        expect(src, &probe, defines, &args[..4], want);
     }
 }
 

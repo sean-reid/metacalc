@@ -9,7 +9,7 @@ use goals::{measure, shape};
 use source::Source;
 
 use crate::expr::{Expr, Shape};
-use crate::status::{Ledger, Mark, Status};
+use crate::status::{Counts, Ledger, Mark, Status};
 use mcedit::Catalog;
 use mcpack::library::{
     self, Assertion, HOST_LIMITS, Hypothesis, Kernel, Part, ReadError, Title, Trees,
@@ -30,6 +30,14 @@ pub struct Installed {
     pub bytes: Vec<u8>,
 }
 
+/// A prefix of a library the screens show as a row of its own: the first `end` assertions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stage {
+    pub name: String,
+    pub title: String,
+    pub end: usize,
+}
+
 /// The status table the caller keeps: one entry per assertion of each library, and the number of
 /// proofs the user has saved.
 #[derive(Debug, Clone, Default)]
@@ -44,6 +52,8 @@ pub enum LoadError {
     Library(String, ReadError),
     /// The status table does not match the libraries.
     Statuses(String),
+    /// The stages of the named library are not rising prefixes ending at its last assertion.
+    Stages(String),
 }
 
 impl fmt::Display for LoadError {
@@ -51,6 +61,7 @@ impl fmt::Display for LoadError {
         match self {
             LoadError::Library(name, e) => write!(f, "library {name}: {e}"),
             LoadError::Statuses(why) => write!(f, "status table: {why}"),
+            LoadError::Stages(why) => write!(f, "stages: {why}"),
         }
     }
 }
@@ -89,6 +100,8 @@ pub struct Lib {
     /// The library's own parse trees, when it carries them.
     trees: Option<Trees>,
     ledger: Ledger,
+    /// The prefixes shown as rows, rising, the last ending at the last assertion.
+    stages: Vec<Stage>,
     /// The status table as installed, kept as it was while the library is damaged and nothing
     /// in the ledger is trusted.
     installed: Vec<Status>,
@@ -100,6 +113,15 @@ impl Lib {
     /// A library's bytes, database and grammar live for the rest of the process, so load each
     /// library once.
     pub fn new(installed: Installed, status: Vec<Status>) -> Result<Lib, LoadError> {
+        Lib::with_stages(installed, status, Vec::new())
+    }
+
+    /// A library shown as `stages`; none means one stage named like the library.
+    pub fn with_stages(
+        installed: Installed,
+        status: Vec<Status>,
+        stages: Vec<Stage>,
+    ) -> Result<Lib, LoadError> {
         let library = library::decode(&installed.bytes)
             .map_err(|e| LoadError::Library(installed.name.clone(), e))?;
         let assertions = library.assertions;
@@ -117,6 +139,24 @@ impl Lib {
                 status.len()
             )));
         }
+        let stages = if stages.is_empty() {
+            vec![Stage {
+                name: installed.name.clone(),
+                title: String::new(),
+                end: assertions.len(),
+            }]
+        } else {
+            let ends: Vec<usize> = stages.iter().map(|s| s.end).collect();
+            let rising = ends[0] > 0 && ends.windows(2).all(|w| w[0] < w[1]);
+            if !rising || ends.last() != Some(&assertions.len()) {
+                return Err(LoadError::Stages(format!(
+                    "{} has {} assertions and stages ending at {ends:?}",
+                    installed.name,
+                    assertions.len()
+                )));
+            }
+            stages
+        };
         let bytes: &'static [u8] = Box::leak(installed.bytes.into_boxed_slice());
         let mut kernel = Kernel::new(bytes, HOST_LIMITS).ok();
         let trusted = match kernel.as_mut() {
@@ -135,6 +175,7 @@ impl Lib {
             bytes,
             kernel: RefCell::new(kernel),
             ledger: Ledger::new(&assertions, trusted),
+            stages,
             installed: status,
             assertions,
             names,
@@ -150,6 +191,29 @@ impl Lib {
 
     pub fn len(&self) -> usize {
         self.assertions.len()
+    }
+
+    /// The stages, smallest first; there is always at least one.
+    pub fn stages(&self) -> &[Stage] {
+        &self.stages
+    }
+
+    /// The totals over the assertions of stage `stage`, which are the first `end` of the
+    /// library.
+    pub fn counts(&self, stage: usize) -> Counts {
+        self.ledger.prefix(self.stages[stage].end)
+    }
+
+    /// The first assertion no check has settled, if it lies inside stage `stage`.
+    pub fn next_unchecked_in(&self, stage: usize) -> Option<usize> {
+        self.next_unchecked()
+            .filter(|&i| i < self.stages[stage].end)
+    }
+
+    /// The section titles that start inside stage `stage`.
+    pub fn stage_titles(&self, stage: usize) -> &[Title] {
+        let end = self.stages[stage].end;
+        &self.titles[..self.titles.partition_point(|t| t.assertion < end)]
     }
 
     pub fn is_empty(&self) -> bool {

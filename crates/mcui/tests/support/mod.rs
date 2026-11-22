@@ -598,3 +598,51 @@ pub fn font_lines(tokens: &[&str], width: usize) -> Vec<Vec<String>> {
         })
         .collect()
 }
+
+pub fn rule(pattern: &str) -> String {
+    pattern.repeat(80)[..79].to_string()
+}
+
+pub fn title(depth: u8, text: &str) -> String {
+    let pattern = ["##", "#*", "=-", "-."][depth as usize - 1];
+    format!("$(\n{}\n  {text}\n{}\n$)\n", rule(pattern), rule(pattern))
+}
+
+pub const LONG: &str = "Equivalence of a very long section title that cannot fit";
+
+/// The logic with titles: two on the first assertion, a title at depth 3 and one at depth 4, a
+/// title over axioms only in the middle and one at the very end, and a title over theorems only.
+pub fn sectioned() -> String {
+    source("")
+}
+
+/// [`sectioned`] with `lead` before the first title.
+pub fn source(lead: &str) -> String {
+    let mut src = String::from(
+        "$c ( ) -> wff |- setvar A. $.\n$v ph ps ch x $.\nwph $f wff ph $.\nwps $f wff ps $.\nwch $f wff ch $.\nvx $f setvar x $.\n",
+    );
+    src.push_str(lead);
+    src.push_str(&title(1, "Propositional calculus"));
+    src.push_str(&title(2, "Syntax"));
+    src.push_str("wi $a wff ( ph -> ps ) $.\nwal $a wff A. x ph $.\n");
+    src.push_str(&title(2, "Axioms"));
+    src.push_str("ax-1 $a |- ( ph -> ( ps -> ph ) ) $.\n");
+    src.push_str("ax-2 $a |- ( ( ph -> ( ps -> ch ) ) -> ( ( ph -> ps ) -> ( ph -> ch ) ) ) $.\n");
+    src.push_str("${\n  min $e |- ph $.\n  maj $e |- ( ph -> ps ) $.\n  ax-mp $a |- ps $.\n$}\n");
+    src.push_str(&title(1, "Derived rules"));
+    src.push_str(&title(2, "Inference"));
+    src.push_str(
+        "${\n  a1i.1 $e |- ph $.\n  a1i $p |- ( ps -> ph ) $= wph wps wph wi a1i.1 wph wps ax-1 ax-mp $.\n$}\n",
+    );
+    src.push_str(&title(3, "Deduction"));
+    src.push_str("${\n  a2i.1 $e |- ( ph -> ( ps -> ch ) ) $.\n  a2i $p |- ( ( ph -> ps ) -> ( ph -> ch ) ) $=\n    wph wps wch wi wi wph wps wi wph wch wi wi a2i.1 wph wps wch ax-2 ax-mp $.\n$}\n");
+    src.push_str(&title(4, LONG));
+    src.push_str("${\n  mpd.1 $e |- ( ph -> ps ) $.\n  mpd.2 $e |- ( ph -> ( ps -> ch ) ) $.\n  mpd $p |- ( ph -> ch ) $=\n    wph wps wi wph wch wi mpd.1 wph wps wch mpd.2 a2i ax-mp $.\n$}\n");
+    src.push_str(&title(1, "Predicate calculus"));
+    src.push_str("${\n  $d x ph $.\n  ax-5 $a |- ( ph -> A. x ph ) $.\n$}\n");
+    src.push_str(&title(2, "Quantifier theorems"));
+    src.push_str("${\n  $d x ph $.\n  alid $p |- ( ph -> A. x ph ) $= wph vx ax-5 $.\n$}\n");
+    src.push_str(&title(1, "Appendix"));
+    src.push_str("ax-last $a |- ( ph -> ph ) $.\n");
+    src
+}

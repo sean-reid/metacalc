@@ -41,6 +41,18 @@
 ;   kernel_verify   in:  HL = assertion number, kernel_init returned 0
 ;                   out: A = status, 0 meaning accepted; ST_INTERRUPTED replaces it when ON is
 ;                        down or latched at exit
+;   kernel_refs    in:  nothing
+;                   out: A = status. With 0: BC = the number of entries in the reference list of
+;                        the last assertion kernel_verify was given, and DE:HL = the library
+;                        offset of the first entry, D = 0, E the high byte and HL the low 16
+;                        bits, so that `ld a,e` and a lib_read of 2 * BC bytes reads the list,
+;                        256 bytes at most per read. The entries are the record's own:
+;                        little-endian words in the order stored, an assertion's number as is
+;                        and a dummy variable as 8000h plus its symbol number, dummies included
+;                        in the count and told apart by bit 15. An axiom gives BC = 0 and
+;                        DE:HL = 0. With ST_NO_REFS, DE:HL = 0 and BC is destroyed. With
+;                        ST_INTERRUPTED, which replaces the status when ON is down or latched
+;                        at exit, BC, DE and HL are not the list's and the caller asks again.
 ;   kernel_crc_begin  in:  kernel_init returned 0
 ;                     out: A = status, 0 or Malformed; ST_INTERRUPTED replaces it when ON is down
 ;                          or latched at exit
@@ -51,6 +63,24 @@
 ;                          low 16; with Malformed, DE:HL = 0; otherwise DE and HL are destroyed.
 ;                          ST_INTERRUPTED replaces any of these when ON is down or latched at
 ;                          exit, and DE:HL are then undefined, whatever the chunk had computed.
+;
+; A list is held once kernel_verify has parsed the whole record of its assertion, whatever the
+; verdict after that: BadRecord, a wrong proof step, WorkLimit and a stop by the ON key that
+; arrives after the parse all leave it in place. Malformed clears it, wherever in the call it
+; arises, so a list is held after every status of kernel_verify but Malformed. It stays until
+; the next kernel_verify, kernel_reset or kernel_init, each of which clears it as its first act,
+; so a verify refused before the record was parsed (Malformed, not ready, no such assertion)
+; leaves ST_NO_REFS and never an earlier assertion's list. kernel_refs also needs the ready
+; mark: it returns ST_NO_REFS when the mark is not the magic, and a flag byte other than 1
+; counts as no list. The list is therefore gone once fm has run, which sets the mark to
+; FM_OWNED, or once anything else has written the kernel's regions: the app calls kernel_refs
+; right after kernel_verify, before any fm call. kernel_refs does not change the list and may be
+; called again; kernel_crc_begin and kernel_crc_chunk leave it alone. The offset stays right as
+; long as the library stays where kernel_init found it.
+; kernel_refs costs 737 T-states for a list with entries, 614 for an axiom, 589 for ST_NO_REFS
+; with the mark set and no list held and 562 with the mark clear, entry and exit included, a call
+; and its return not, the same for any length of list. A tap in the 142 T-states between its read
+; of port 4 and its return, 150 with interrupts on, is not seen.
 ;
 ; kernel_verify returns Malformed unless the ready mark, which kernel_init sets when it succeeds
 ; and clears when it fails, is in place. The mark holds the magic from a completed kernel_init until
@@ -173,6 +203,7 @@
 ;          10 DisjointViolation 11 StackNotSingleton 12 WrongConclusion
 ;          13 WorkLimit         14 Interrupted (every call but kernel_reset)
 ;          15 LooseReference  16 BadSymbol (kernel_init only)
+;          17 NoReferences (kernel_refs only)
 ;         255 ST_CRC_MORE (kernel_crc_chunk only)
 ;
 ; RAM, bank C of page KERNEL_RAM_PAGE, shown for the default bases:
@@ -204,6 +235,10 @@ kernel_init:
 
 kernel_reset:
 	ld ix,reset_body
+	jr kernel_enter
+
+kernel_refs:
+	ld ix,refs_body
 	jr kernel_enter
 
 kernel_verify:
@@ -272,10 +307,14 @@ reset_body:
 	ld hl,0
 	ld (kv_ready),hl
 	ld (kv_crc_state),hl
-	ld c,l
+	ld a,l
+	ld (kv_listed),a
+	ld c,a
 	jr leave_c
 
 fail_malformed:
+	xor a
+	ld (kv_listed),a
 	ld a,ST_MALFORMED
 	jr leave
 fail_bad_record:
@@ -320,6 +359,70 @@ fail_loose:
 fail_bad_symbol:
 	ld a,ST_BAD_SYMBOL
 	jr leave
+
+; out: BC = count, E:HL = offset of the entries in the library, D = 0. Without a held list,
+; A = ST_NO_REFS and DE:HL = 0. Its own exit mirrors leave's, with the stack-free window between
+; the stack restore and the port 5 restore, and keeps BC, DE and HL.
+refs_body:
+	call is_ready
+	jr nz,refs_none
+	ld a,(kv_listed)
+	dec a
+	jr nz,refs_none
+	ld bc,(CUR_DESC+D_NREFS)
+	ld a,b
+	or c
+	jr z,refs_empty
+	ld a,(CUR_DESC+D_PAGE)
+	ld d,a
+	ld a,(kv_lib_page)
+	sub d
+	ld d,a
+	and 3
+	rrca
+	rrca
+	ld e,a
+	ld hl,(CUR_DESC+D_REFS)
+	ld a,h
+	and $3F
+	or e
+	ld h,a
+	ld a,d
+	srl a
+	srl a
+	ld e,a
+	jr refs_exit
+refs_none:
+	ld de,0
+	ld h,d
+	ld l,e
+	ld a,ST_NO_REFS
+	jp leave
+refs_empty:
+	ld de,0
+	ld h,d
+	ld l,e
+refs_exit:
+	in a,(4)
+	xor 8
+	and 9
+	jp nz,fail_interrupted
+	ld a,(kv_saved_bank)
+	out (7),a
+	ld a,(kv_saved_iff)
+	ld d,a
+	ld a,(kv_saved_port5)
+	ld sp,(kv_saved_sp)
+refs_window:
+	out (5),a
+refs_window_end:
+	ld a,d
+	ld d,0
+	or a
+	ld a,0
+	ret z
+	ei
+	ret
 
 ; in: HL = source, DE = destination, BC = count (may be 0)
 ; out: HL, DE advanced past the copy. Destroys AF BC.

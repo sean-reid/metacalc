@@ -64,6 +64,17 @@ pub fn marks(assertions: &[Assertion], status: &[Status]) -> Vec<Mark> {
     marks
 }
 
+/// The totals over the first `total` assertions of a table. A stage is always a prefix, so no
+/// other range is counted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Counts {
+    pub total: usize,
+    pub checked: usize,
+    pub failed: usize,
+    pub settled: usize,
+    pub failed_checks: usize,
+}
+
 /// The status and mark of every assertion, and the totals the screens read. A check changes one
 /// status, and only the assertions that use one whose mark moved are looked at again.
 pub struct Ledger {
@@ -157,6 +168,29 @@ impl Ledger {
     /// Assertions whose recorded status is a failed check.
     pub fn failed_checks(&self) -> usize {
         self.failed_checks
+    }
+
+    /// The totals over assertions `0..end`: the table's own when `end` is the whole table, one
+    /// pass over the first `end` entries otherwise.
+    pub fn prefix(&self, end: usize) -> Counts {
+        let end = end.min(self.len());
+        if end == self.len() {
+            return Counts {
+                total: end,
+                checked: self.checked,
+                failed: self.failed,
+                settled: self.settled,
+                failed_checks: self.failed_checks,
+            };
+        }
+        let count = |keep: &dyn Fn(usize) -> bool| (0..end).filter(|&i| keep(i)).count();
+        Counts {
+            total: end,
+            checked: count(&|i| counts_as_checked(self.marks[i])),
+            failed: count(&|i| self.marks[i] == Mark::Failed),
+            settled: count(&|i| self.status[i] != Status::Unchecked),
+            failed_checks: count(&|i| self.status[i] == Status::Failed),
+        }
     }
 
     /// The first assertion whose status is still unchecked.
@@ -269,6 +303,32 @@ mod tests {
             assert_eq!(ledger.settled, fresh.settled, "step {step}");
             assert_eq!(ledger.failed_checks, fresh.failed_checks, "step {step}");
             assert_eq!(ledger.next, fresh.next, "step {step}");
+            for end in [0, 1, n / 3, n - 1, n, n + 5] {
+                let counts = ledger.prefix(end);
+                let end = end.min(n);
+                let by_hand = |keep: &dyn Fn(usize) -> bool| (0..end).filter(|&i| keep(i)).count();
+                assert_eq!(counts.total, end, "step {step}");
+                assert_eq!(
+                    counts.checked,
+                    by_hand(&|i| counts_as_checked(fresh.marks[i])),
+                    "step {step} end {end}"
+                );
+                assert_eq!(
+                    counts.failed,
+                    by_hand(&|i| fresh.marks[i] == Mark::Failed),
+                    "step {step} end {end}"
+                );
+                assert_eq!(
+                    counts.settled,
+                    by_hand(&|i| status[i] != Status::Unchecked),
+                    "step {step} end {end}"
+                );
+                assert_eq!(
+                    counts.failed_checks,
+                    by_hand(&|i| status[i] == Status::Failed),
+                    "step {step} end {end}"
+                );
+            }
         }
     }
 }

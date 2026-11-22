@@ -24,6 +24,16 @@ pub struct Ctx<'a> {
     pub proofs: &'a Proofs,
 }
 
+impl Ctx<'_> {
+    /// The library and stage of each row of the libraries screen above My proofs.
+    pub(crate) fn stage_rows(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.libs
+            .iter()
+            .enumerate()
+            .flat_map(|(l, lib)| (0..lib.stages().len()).map(move |s| (l, s)))
+    }
+}
+
 pub enum Nav {
     Stay,
     Push(Box<Screen>),
@@ -68,6 +78,7 @@ pub enum State {
     },
     List {
         library: usize,
+        stage: usize,
         label: Option<String>,
         cursor: usize,
         top: usize,
@@ -126,8 +137,14 @@ pub enum State {
         title: String,
     },
     About,
+    /// The info of a stage of a library.
+    StageAbout {
+        library: usize,
+        stage: usize,
+    },
     Checking {
         library: usize,
+        stage: usize,
         /// Assertions settled either way.
         done: usize,
         total: usize,
@@ -193,7 +210,7 @@ impl Screen {
             Screen::Dist(s) => s.state(ctx),
             Screen::Proof(s) => s.state(ctx),
             Screen::Notice(s) => s.state(),
-            Screen::About(_) => State::About,
+            Screen::About(s) => s.state(),
             Screen::Checking(s) => s.state(ctx),
             Screen::Proving(s) => s.state(ctx),
             Screen::Sections(s) => s.state(ctx),
