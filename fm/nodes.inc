@@ -17,6 +17,7 @@ nodes_main:
 	jp nz,fm_fail
 	call fm_same_library
 	jp nz,fm_fail
+nodes_have:
 	ld a,(fv_count)
 	or a
 	ld a,FM_ERR_INDEX

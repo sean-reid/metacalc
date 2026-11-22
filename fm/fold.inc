@@ -123,7 +123,7 @@ fo_fresh:
 	ld de,7
 	add hl,de
 	ld a,(hl)
-	or a
+	and 1
 	ret z
 	ld (hl),0
 

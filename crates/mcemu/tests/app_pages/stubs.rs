@@ -8,7 +8,7 @@ use crate::support::decoded;
 use crate::ui_support::{pack, same_frame};
 use mcui::canvas::{Canvas, GUTTER, STATEMENT_WIDTH, text_width};
 use mcui::expr::Expr;
-use mcui::fold::{Folds, layout};
+use mcui::fold::{Fit, Folds, fit, fit_one, layout};
 
 /// The far call's own labels, which are not stubs.
 const FAR_CALL_NAMES: [&str; 17] = [
@@ -251,4 +251,108 @@ fn a_fold_and_a_cursor_asked_for_from_the_entry_page_draw_as_the_model_does() {
     app.far("far_ui_clear", In::default());
     assert_eq!(app.far("far_fm_draw", place).status(), 0);
     same_frame("the folded statement with no cursor", &app.frame(), &plain);
+}
+
+/// fm_fit asked from the entry page for an assertion whose hypotheses fold, then each statement
+/// drawn where the theorem screen puts it: the frame is the model's.
+#[test]
+fn fm_fit_asked_from_the_entry_page_folds_the_assertion_as_the_theorem_screen_does() {
+    let built = with_library();
+    let bytes = built.library.as_ref().unwrap();
+    let status = vec![mcui::Status::Unchecked; decoded(bytes).assertions.len()];
+    let installed = mcui::data::Installed {
+        name: "library".into(),
+        bytes: bytes.to_vec(),
+    };
+    let lib = mcui::data::Lib::new(installed, status).expect("the model loads the library");
+    let rows = 6;
+    let fitted = |n: usize| {
+        let statement = lib.statement(n);
+        let exprs = statement.all();
+        let hyps = statement.hyps.len();
+        let indent = match hyps {
+            0 => 0,
+            _ => text_width(&format!("{hyps}.")) + 2,
+        };
+        let widths: Vec<usize> = (0..=hyps)
+            .map(|s| STATEMENT_WIDTH - if s == hyps { 0 } else { indent })
+            .collect();
+        let items: Vec<Fit> = exprs
+            .iter()
+            .zip(&widths)
+            .map(|(&expr, &width)| Fit { expr, width })
+            .collect();
+        let mut folds = fit(&items, rows);
+        if items.len() > rows {
+            let last = items.len() - 1;
+            folds[last] = fit_one(items[last].expr, items[last].width, rows);
+        }
+        (statement, widths, indent, folds)
+    };
+    let n = (0..decoded(bytes).assertions.len())
+        .find(|&n| {
+            let (statement, _, _, folds) = fitted(n);
+            statement.hyps.len() > 1 && folds.iter().any(|f| f.count() > 0)
+        })
+        .expect("an assertion with hypotheses that folds");
+    let (statement, widths, indent, folds) = fitted(n);
+    let hyps = statement.hyps.len();
+    let exprs = statement.all();
+    let total: usize = (0..=hyps)
+        .map(|s| layout(exprs[s], &folds[s], widths[s]).rows())
+        .sum();
+
+    let mut app = App::start(built);
+    let loaded = app.far(
+        "far_fm_assertion",
+        In {
+            hl: n as u16,
+            ..In::default()
+        },
+    );
+    assert_eq!(loaded.status(), 0);
+    let fit_call = app.far(
+        "far_fm_fit",
+        In {
+            bc: (rows as u16) << 8,
+            de: (((STATEMENT_WIDTH - indent) as u16) << 8) | STATEMENT_WIDTH as u16,
+            ..In::default()
+        },
+    );
+    assert_eq!(fit_call.status(), 0);
+    assert_eq!(fit_call.page, BASE);
+    assert_eq!(usize::from(fit_call.regs.hl), total, "the lines together");
+
+    app.far("far_ui_clear", In::default());
+    let mut canvas = Canvas::default();
+    let mut row = 1;
+    for s in 0..=hyps {
+        let selected = app.far(
+            "far_fm_select",
+            In {
+                de: if s == hyps { 0xFF } else { s as u16 },
+                ..In::default()
+            },
+        );
+        assert_eq!(selected.status(), 0);
+        let x = GUTTER + STATEMENT_WIDTH - widths[s];
+        let drawn = app.far(
+            "far_fm_draw",
+            In {
+                hl: row as u16,
+                de: ((widths[s] as u16) << 8) | x as u16,
+                bc: (1 << 8) | 7,
+                ..In::default()
+            },
+        );
+        assert_eq!(drawn.status(), 0);
+        let laid = layout(exprs[s], &folds[s], widths[s]);
+        canvas.layout(&laid, x, row, 1..7);
+        row += laid.rows() as isize;
+    }
+    same_frame(
+        "the fitted statements",
+        &app.frame(),
+        &pack(&canvas.into_bitmap()),
+    );
 }
