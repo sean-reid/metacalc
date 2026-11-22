@@ -154,12 +154,16 @@ fn dirty(job: &mut Job, byte: u8) {
     job.poke("ck_params", &vec![byte; used]);
 }
 
+/// What a begin is given and what it must answer: the library, N, the status, whether ON is held,
+/// and the library page.
+type Case<'a> = (&'a str, &'a [u8], u16, u8, bool, u8);
+
 #[test]
 fn begin_leaves_the_counters_the_first_failure_and_the_chunk_count_zero_on_every_refusal() {
     let small = named("demo0.mm").1;
     let count = count_of(&small);
     let long = long_name_axioms(40, 60);
-    let cases: [(&str, &[u8], u16, u8, bool, u8); 5] = [
+    let cases: [Case; 5] = [
         (
             "paused in kernel_init",
             &long,

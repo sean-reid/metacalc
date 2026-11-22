@@ -132,11 +132,7 @@ fn a_list_in_the_second_64_kib_of_the_library_is_read_from_the_right_chunk() {
         (0x1_0100..0x1_8000).contains(&at),
         "the list starts at {at:x}"
     );
-    assert_eq!(
-        at % 0x4000 + 2 * entries < 0x4000,
-        true,
-        "it stays in its chunk"
-    );
+    assert!(at % 0x4000 + 2 * entries < 0x4000, "it stays in its chunk");
     let big = usize::from(count_of(&bytes)) - 1;
     let list = &references(&bytes)[big];
     assert!(list.len() > CK_PIECE, "{} entries", list.len());
