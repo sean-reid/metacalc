@@ -97,7 +97,7 @@ fn within(name: &str, got: &Costs, ceilings: &Ceilings) {
 }
 
 const FIXTURE: Ceilings = Ceilings {
-    median: 23500,
+    median: 22000,
     p99: 6330000,
     worst: 28700000,
     warm_worst: 27800000,
@@ -145,10 +145,10 @@ const SHIPPED: [(&str, Ceilings, usize, (usize, usize)); 3] = [
     (
         "prop",
         Ceilings {
-            median: 91000,
+            median: 90000,
             p99: 222000,
             worst: 402000,
-            warm_worst: 65600,
+            warm_worst: 58500,
         },
         5,
         (3, 1),
@@ -156,10 +156,10 @@ const SHIPPED: [(&str, Ceilings, usize, (usize, usize)); 3] = [
     (
         "pred",
         Ceilings {
-            median: 88500,
+            median: 87500,
             p99: 226000,
             worst: 540000,
-            warm_worst: 67500,
+            warm_worst: 58500,
         },
         10,
         (7, 3),
@@ -167,10 +167,10 @@ const SHIPPED: [(&str, Ceilings, usize, (usize, usize)); 3] = [
     (
         "ring",
         Ceilings {
-            median: 80800,
+            median: 80000,
             p99: 437000,
             worst: 1340000,
-            warm_worst: 516000,
+            warm_worst: 505000,
         },
         25,
         (300, 40),
