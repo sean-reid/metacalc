@@ -277,6 +277,12 @@ pub fn assemble_routine(file: &str) -> Vec<u8> {
         .clone()
 }
 
+/// The label file spasm wrote for `assemble_routine(file)`, for `label_in`.
+pub fn routine_labels(file: &str) -> PathBuf {
+    assemble_routine(file);
+    Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{file}.lab"))
+}
+
 fn assemble(file: &str) -> Vec<u8> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{file}.8xk"));
@@ -284,6 +290,7 @@ fn assemble(file: &str) -> Vec<u8> {
     let run = Command::new("sh")
         .arg(wrapper)
         .arg(format!("-DEXIT_MARK=${EXIT_MARK:04X}"))
+        .arg("-L")
         .arg("-I")
         .arg(root.join("../../app/src"))
         .arg("-I")

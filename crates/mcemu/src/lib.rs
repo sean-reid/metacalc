@@ -208,6 +208,15 @@ impl Machine {
         self.calc.mem_mut()[start..start + len].to_vec()
     }
 
+    /// Runs on, interrupts as the code left them, until the instruction at `addr` of flash page
+    /// `page` is the next to execute or `limit` T-states pass; true when it is. The same address
+    /// on another page does not stop the run.
+    pub fn run_to(&mut self, page: u8, addr: u16, limit: u32) -> bool {
+        let physical = usize::from(page) * FLASH_PAGE_SIZE + usize::from(addr) % FLASH_PAGE_SIZE;
+        let limit = i32::try_from(limit).expect("limit fits in i32");
+        self.calc.run_to(physical as u32, limit)
+    }
+
     /// The CPU's clock in T-states. It wraps at 32 bits, so two readings are compared with
     /// `wrapping_sub`.
     pub fn clock(&self) -> u32 {

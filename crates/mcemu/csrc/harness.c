@@ -319,6 +319,20 @@ uint8_t mcemu_in(TilemCalc *calc, uint8_t port)
 	return calc->hw.z80_in(calc, port);
 }
 
+/* Runs until the instruction at a physical address is the next to execute, for at most `limit`
+   T-states. Returns 1 when it is. */
+int mcemu_run_to(TilemCalc *calc, uint32_t physical, int limit)
+{
+	int bp = tilem_z80_add_breakpoint(calc, TILEM_BREAK_MEM_EXEC | TILEM_BREAK_PHYSICAL,
+					  physical, physical, 0xffffffff, NULL, NULL);
+
+	running = calc;
+	bank_time(calc);
+	tilem_z80_run(calc, limit, NULL);
+	tilem_z80_remove_breakpoint(calc, bp);
+	return calc->hw.mem_ltop(calc, calc->z80.r.pc.w.l) == physical;
+}
+
 /* The CPU clock in T-states, which wraps at 32 bits. */
 uint32_t mcemu_clock(const TilemCalc *calc) { return calc->z80.clock; }
 int mcemu_khz(const TilemCalc *calc) { return calc->z80.clockspeed; }

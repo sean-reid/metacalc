@@ -22,6 +22,7 @@ unsafe extern "C" {
     fn mcemu_stick_lcd_busy(calc: *mut Raw, on: i32);
     fn mcemu_khz(calc: *const Raw) -> i32;
     fn mcemu_clock(calc: *const Raw) -> u32;
+    fn mcemu_run_to(calc: *mut Raw, physical: u32, limit: i32) -> i32;
     fn mcemu_out_unlocked(calc: *mut Raw, port: u8, value: u8);
     fn mcemu_get_regs(calc: *const Raw, out: *mut Regs);
     fn mcemu_set_regs(calc: *mut Raw, regs: *const Regs);
@@ -128,6 +129,11 @@ impl Calc {
     pub fn khz(&self) -> i32 {
         // SAFETY: the handle is live.
         unsafe { mcemu_khz(self.0.as_ptr()) }
+    }
+
+    pub fn run_to(&mut self, physical: u32, limit: i32) -> bool {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_run_to(self.0.as_ptr(), physical, limit) != 0 }
     }
 
     pub fn clock(&self) -> u32 {
