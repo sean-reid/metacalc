@@ -114,8 +114,11 @@ start_built:
 ; Draws the title and, with LIBRARY, rows 1 to 7 of the library screen, without it the hint.
 start_draw:
 	call far_ui_clear
-	ld hl, str_title
-	ld de, str_none
+	ld hl, start_block
+	ld bc, START_BLOCK_SIZE
+	call app_stage_block
+	ld hl, STG_START_TITLE
+	ld de, STG_START_NONE
 	call far_ui_title
 #ifdef LIBRARY
 	ld a, (appStatus)
@@ -140,7 +143,7 @@ start_draw:
 	ld de, HINT_COL
 	ld b, LABEL_ROW
 	call far_ui_text
-	ld hl, str_hint
+	ld hl, STG_START_HINT
 	ld de, HINT_COL
 	ld b, LIBRARY_HINT_ROW
 	jp far_ui_text
@@ -156,7 +159,7 @@ start_refused:
 	ld b, LIBRARY_HINT_ROW
 	jp far_ui_text
 #else
-	ld hl, str_hint
+	ld hl, STG_START_HINT
 	ld de, HINT_COL
 	ld b, HINT_ROW
 	jp far_ui_text

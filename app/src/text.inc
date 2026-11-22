@@ -1,6 +1,33 @@
-; Text the shell builds in RAM. app_digit turns a nibble into the glyph code of its hex digit, for a
+; Strings the canvas reads. app_stage_block copies a screen's block of constant strings (strings.inc) into
+; APP_STAGE, where the canvas can read it with its own page mapped, unless the area already holds
+; that block. Text the shell builds in RAM. app_digit turns a nibble into the glyph code of its hex digit, for a
 ; status shown as two digits. With LIBRARY, app_codes turns the ASCII a reader accessor returns into
 ; glyph codes in place. The glyph codes are the main font's (UI_FONT_CH_ equates of font.inc).
+
+; In: HL = a block on this page, BC = its length. Copies it to APP_STAGE_DATA and sets the tag to HL,
+; unless the tag is HL already; a length over APP_STAGE_DATA_SIZE is cut to it. Destroys AF BC DE HL.
+app_stage_block:
+	ld de, (APP_STAGE_TAG)
+	ld a, l
+	cp e
+	jr nz, stage_copy
+	ld a, h
+	cp d
+	ret z
+stage_copy:
+	ld (APP_STAGE_TAG), hl
+	ld de, APP_STAGE_DATA
+	ld a, b
+	or a
+	jr nz, stage_cut
+	ld a, c
+	cp APP_STAGE_DATA_SIZE + 1
+	jr c, stage_go
+stage_cut:
+	ld bc, APP_STAGE_DATA_SIZE
+stage_go:
+	ldir
+	ret
 
 ; In: A, low nibble. Out: A = the glyph code of its hex digit. Keeps B.
 app_digit:

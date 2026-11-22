@@ -39,6 +39,16 @@
 ;                           saveSScreen after FM_SCRATCH; it holds only what the top screen's enter or
 ;                           draw builds again, since the OS writes the screen's pixels into saveSScreen
 ;                           at an auto power down
+;   APP_STAGE         B     the shell's staging area for constant strings, 128 bytes in saveSScreen
+;                           after APP_BUF: the canvas reads a string with its own page mapped, so the
+;                           entry page copies the strings of the screen it draws here first
+;                           (app_stage_block, text.inc). Offset 0 is the tag, the two byte address of the
+;                           block it holds, 0 for none; the block starts at offset 2, at most 126
+;                           bytes. A screen's block is the constant strings it draws, laid out by
+;                           strings.inc, and is the only thing the area holds, so a copy cannot
+;                           touch APP_BUF, where the strings built at run time are. The OS writes the
+;                           screen's pixels over it at an auto power down: the shell clears the tag
+;                           before the refresh that follows, and the next draw copies the block again
 ;   APP_SENTINEL      B     the shell's one byte, in saveSScreen after APP_BUF, the last byte of it: the
 ;                           complement of the byte of UI_FRAME at the same offset, stored after every
 ;                           blit, so that a pixel copy over saveSScreen is told from the screen
@@ -116,6 +126,15 @@ FM_SCRATCH_SIZE     .equ $100
 APP_BUF             .equ UI_VARS + UI_VARS_SIZE + FM_SCRATCH_SIZE
 #endif
 APP_BUF_SIZE        .equ $100
+#ifndef APP_STAGE
+APP_STAGE           .equ $8906
+#endif
+#ifndef APP_STAGE_SIZE
+APP_STAGE_SIZE      .equ $80
+#endif
+APP_STAGE_TAG       .equ APP_STAGE
+APP_STAGE_DATA      .equ APP_STAGE + 2
+APP_STAGE_DATA_SIZE .equ APP_STAGE_SIZE - 2
 #ifndef APP_SENTINEL
 APP_SENTINEL        .equ $89EB
 #endif
@@ -194,6 +213,7 @@ RAM_DISJOINT(KERNEL_RAM_LOW, LOW_SIZE, KERNEL_RAM_HIGH, HIGH_SIZE, "KERNEL_RAM_L
 
 RAM_WITHIN(FM_SCRATCH, FM_SCRATCH_SIZE, $8000, $C000, "FM_SCRATCH runs past bank B")
 RAM_WITHIN(APP_BUF, APP_BUF_SIZE, $8000, $C000, "APP_BUF runs past bank B")
+RAM_WITHIN(APP_STAGE, APP_STAGE_SIZE, $8000, $C000, "APP_STAGE runs past bank B")
 RAM_WITHIN(APP_SENTINEL, APP_SENTINEL_SIZE, $8000, $C000, "APP_SENTINEL runs past bank B")
 RAM_WITHIN(FM_RAM, FM_RAM_SIZE, KERNEL_RAM_HIGH, KERNEL_RAM_HIGH + HIGH_SIZE, "FM_RAM runs outside the kernel's high region")
 #if FM_LOW < (KERNEL_RAM_LOW + $100)
@@ -224,6 +244,16 @@ RAM_DISJOINT(APP_SENTINEL, APP_SENTINEL_SIZE, FAR_VARS, FAR_VARS_SIZE, "APP_SENT
 RAM_DISJOINT(APP_SENTINEL, APP_SENTINEL_SIZE, LIB_STATE, LIB_STATE_SIZE, "APP_SENTINEL and LIB_STATE overlap")
 RAM_DISJOINT(APP_SENTINEL, APP_SENTINEL_SIZE, FM_SCRATCH, FM_SCRATCH_SIZE, "APP_SENTINEL and FM_SCRATCH overlap")
 RAM_DISJOINT(APP_SENTINEL, APP_SENTINEL_SIZE, APP_BUF, APP_BUF_SIZE, "APP_SENTINEL and APP_BUF overlap")
+RAM_DISJOINT(APP_STAGE, APP_STAGE_SIZE, UI_VARS, UI_VARS_SIZE, "APP_STAGE and UI_VARS overlap")
+RAM_DISJOINT(APP_STAGE, APP_STAGE_SIZE, UI_FRAME, UI_FRAME_SIZE, "APP_STAGE and UI_FRAME overlap")
+RAM_DISJOINT(APP_STAGE, APP_STAGE_SIZE, SCR_VARS, SCR_VARS_SIZE, "APP_STAGE and SCR_VARS overlap")
+RAM_DISJOINT(APP_STAGE, APP_STAGE_SIZE, SCR_STACK, SCR_STACK_SIZE, "APP_STAGE and SCR_STACK overlap")
+RAM_DISJOINT(APP_STAGE, APP_STAGE_SIZE, KD_SCRATCH, KD_SCRATCH_SIZE, "APP_STAGE and KD_SCRATCH overlap")
+RAM_DISJOINT(APP_STAGE, APP_STAGE_SIZE, FAR_VARS, FAR_VARS_SIZE, "APP_STAGE and FAR_VARS overlap")
+RAM_DISJOINT(APP_STAGE, APP_STAGE_SIZE, LIB_STATE, LIB_STATE_SIZE, "APP_STAGE and LIB_STATE overlap")
+RAM_DISJOINT(APP_STAGE, APP_STAGE_SIZE, FM_SCRATCH, FM_SCRATCH_SIZE, "APP_STAGE and FM_SCRATCH overlap")
+RAM_DISJOINT(APP_STAGE, APP_STAGE_SIZE, APP_BUF, APP_BUF_SIZE, "APP_STAGE and APP_BUF overlap")
+RAM_DISJOINT(APP_STAGE, APP_STAGE_SIZE, APP_SENTINEL, APP_SENTINEL_SIZE, "APP_STAGE and APP_SENTINEL overlap")
 RAM_DISJOINT(FM_RAM, FM_RAM_SIZE, LIB_BOUNCE, LIB_BOUNCE_SIZE, "FM_RAM and LIB_BOUNCE overlap")
 
 #endif

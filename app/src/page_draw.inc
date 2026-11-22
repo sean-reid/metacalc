@@ -16,6 +16,9 @@
 #endif
 #define UI_EMBEDDED
 #include "ui.z80"
+#if (UI_FONT_CH_39 - UI_FONT_CH_30) != 9
+ .error "the digits 0 to 9 are not consecutive glyph codes"
+#endif
 #define FAR_ALIASES
 #include "far_reader.inc"
 #undef FAR_ALIASES
@@ -24,5 +27,4 @@
 #define FAR_UNALIASES
 #include "far_reader.inc"
 #undef FAR_UNALIASES
-#include "strings.inc"
 	APP_PAGE_FILL(PAGE_DRAW)

@@ -78,6 +78,9 @@ app_start:
 	call far_ui_set_font
 	xor a
 	ld (appStatus), a
+	ld h, a
+	ld l, a
+	ld (APP_STAGE_TAG), hl
 #ifdef LIBRARY
 	call app_find_library
 	call far_kernel_reset
@@ -110,6 +113,8 @@ app_wait:
 	cp (hl)
 	ld d, 0
 	jr z, app_keyed
+	ld hl, 0
+	ld (APP_STAGE_TAG), hl
 	call scr_refresh
 	or a
 	jr nz, app_refresh_failed
@@ -209,6 +214,7 @@ app_ret:
 	ret
 
 #include "text.inc"
+#include "strings.inc"
 #include "screens.inc"
 #include "screen_notice.inc"
 #include "screen_about.inc"

@@ -45,8 +45,8 @@ const NOTICE: u32 = 113_000;
 /// The most the loop may take around app_key for a key no screen answers, scr_key included.
 const IGNORED_KEY: u32 = 1_250;
 /// The most bytes each code page may use: entry, draw and data.
-const PAGES_PLAIN: [u32; 3] = [1_700, 15_600, 9_300];
-const PAGES_LIBRARY: [u32; 3] = [1_950, 15_600, 9_300];
+const PAGES_PLAIN: [u32; 3] = [1_900, 15_400, 9_300];
+const PAGES_LIBRARY: [u32; 3] = [2_160, 15_400, 9_300];
 
 #[test]
 fn a_frame_of_each_screen_fits_its_ceiling() {
@@ -61,6 +61,7 @@ fn a_frame_of_each_screen_fits_its_ceiling() {
         ("About, no library", plain(), Some(F3), ABOUT),
         ("About, fixture library", with_library(), Some(F3), ABOUT),
         ("Notice", plain(), Some(F1), NOTICE),
+        ("Notice, Verify", plain(), Some(F2), NOTICE),
     ] {
         let mut app = App::boot(built);
         if let Some(open) = open {
@@ -95,6 +96,29 @@ fn spinning(built: &'static Built) -> App {
         let at = usize::from(built.label("ak_wait") - 0x4000) + 1;
         m.load_flash(BASE, at, &[0xCD, h0, h1]);
     })
+}
+
+#[test]
+fn a_frame_of_the_error_notice_fits_its_ceiling() {
+    let mut app = App::boot(plain());
+    tap(&mut app, F1);
+    let at = app.label("SCR_STACK") + 16;
+    app.m.load_ram(at + 1, &[2, 0x5A]);
+    let enter = app.label("notice_enter");
+    app.call(
+        BASE,
+        enter,
+        In {
+            hl: at,
+            ..In::default()
+        },
+    );
+    let (draw, blit) = frame(&mut app);
+    println!(
+        "Notice, error: scr_draw {draw} and ui_blit {blit}: {} T-states",
+        draw + blit
+    );
+    assert!(draw + blit <= NOTICE, "{} over {NOTICE}", draw + blit);
 }
 
 #[test]
