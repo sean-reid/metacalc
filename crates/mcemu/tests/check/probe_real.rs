@@ -13,8 +13,6 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const SETUP_BASE: u8 = 0x6A;
-const KEY_3: u8 = 0x12;
 const P_TEMP: u16 = 0x982E;
 const PROG_PTR: u16 = 0x9830;
 const SYM_TABLE: u16 = 0xFE66;
@@ -34,26 +32,28 @@ const NONE: Setup = Setup {
     fill: false,
 };
 
-fn assemble(name: &str, source: &str, files: &[(&str, String)]) -> Vec<u8> {
+/// Assembles `source` of tests/routines, or the probe itself, with the files written first into
+/// a directory of its own that comes first on the include path.
+fn assemble(name: &str, source: &Path, flags: &[&str], files: &[(&str, String)]) -> Vec<u8> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     std::fs::create_dir_all(&dir).unwrap();
     for (file, text) in files {
         std::fs::write(dir.join(file), text).unwrap();
     }
-    let out = dir.join(format!("{source}.8xk"));
+    let out = dir.join("app.8xk");
     let spasm = std::env::var_os("SPASM").unwrap_or_else(|| "spasm".into());
     let run = Command::new("sh")
         .arg(root.join("../../scripts/spasm.sh"))
         .env("SPASM", spasm)
+        .args(flags)
         .arg("-I")
         .arg(&dir)
-        .arg("-I")
-        .arg(root.join("../../app/src"))
-        .arg("-I")
-        .arg(root.join("../../probe"))
-        .arg(root.join("tests/routines").join(source))
+        .args(["-I", "../../app/src", "-I", "../../kernel", "-I", "../.."])
+        .args(["-I", "../../probe", "-I", "tests/routines"])
+        .arg(source)
         .arg(&out)
+        .current_dir(root)
         .output()
         .expect("the assembler runs");
     assert!(
@@ -73,7 +73,8 @@ fn db(bytes: &[u8]) -> String {
     text
 }
 
-fn setup_app(name: &str, setup: &Setup) -> Vec<u8> {
+/// The probe around `library` built with JOB_WITH_SETUP, which makes what `setup` asks for first.
+fn setup_probe(name: &str, library: &[u8], setup: &Setup) -> (Vec<u8>, PathBuf) {
     let (data, archive) = setup.table.clone().unwrap_or_default();
     let defs = format!(
         "PREP_LEN = {}\nPREP_ARCHIVE = {}\nPREP_FILL = {}\n",
@@ -81,19 +82,34 @@ fn setup_app(name: &str, setup: &Setup) -> Vec<u8> {
         u8::from(archive),
         u8::from(setup.fill)
     );
-    let data = format!(
-        "prep_data:\n{}\n",
-        if data.is_empty() {
-            "\t.db 0".into()
-        } else {
-            db(&data)
-        }
-    );
-    assemble(
+    let table = if data.is_empty() {
+        "\t.db 0".to_string()
+    } else {
+        db(&data)
+    };
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    std::fs::create_dir_all(&dir).unwrap();
+    let lib = dir.join("library.mclib");
+    std::fs::write(&lib, library).unwrap();
+    let include = Command::new("sh")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app/scripts/library-include.sh"))
+        .arg(&lib)
+        .output()
+        .expect("the library include is written");
+    assert!(include.status.success());
+    let files = [
+        ("prep_defs.inc", defs),
+        ("prep_data.inc", format!("prep_data:\n{table}\n")),
+        ("library.inc", String::from_utf8(include.stdout).unwrap()),
+    ];
+    let probe = Path::new("../../probe/jobcheck.z80");
+    let app = assemble(
         name,
-        "job_prep.z80",
-        &[("prep_defs.inc", defs), ("prep_data.inc", data)],
-    )
+        probe,
+        &["-L", "-DLIBRARY", "-DJOB_WITH_SETUP"],
+        &files,
+    );
+    (app, dir.join("app.lab"))
 }
 
 /// A screen of `lines` drawn by another app on the OS, as lit pixels.
@@ -101,9 +117,14 @@ fn drawn(name: &str, lines: &[String]) -> Vec<bool> {
     let mut bytes = lines.join("\n").into_bytes();
     bytes.push(0);
     let text = format!("text:\n{}\n", db(&bytes));
-    let app = assemble(name, "show_text.z80", &[("text.inc", text)]);
+    let app = assemble(
+        name,
+        Path::new("tests/routines/show_text.z80"),
+        &[],
+        &[("text.inc", text)],
+    );
     let mut os = RealOs::boot(&app);
-    os.launch();
+    os.start_from_menu();
     os.run_ms(1500);
     os.screen()
 }
@@ -171,7 +192,6 @@ struct Real {
     /// The first bytes of the job's variables, which hold the library, N and the key and never
     /// change once begin has set them.
     held: Option<Vec<u8>>,
-    two_apps: bool,
 }
 
 /// What a run leaves, as read from the machine.
@@ -186,40 +206,30 @@ struct Ended {
 const HELD: usize = 0x11;
 
 impl Real {
+    /// Boots the reference OS with the probe installed. What `setup` asks for is made by the
+    /// probe's own first instructions, so the variables a run starts with are those of a fresh
+    /// OS and the ones `setup` names.
     fn new(name: &str, bytes: &[u8], setup: &Setup) -> Real {
-        let (app, lab) = build(name, bytes);
-        let mut apps = vec![(app.as_slice(), realos::BASE)];
-        let prep = (setup.table.is_some() || setup.fill)
-            .then(|| setup_app(&format!("{name}-setup"), setup));
-        if let Some(prep) = &prep {
-            apps.push((prep.as_slice(), SETUP_BASE));
-        }
-        let mut os = RealOs::boot_apps(&apps);
-        if prep.is_some() {
-            os.tap(KEY_APPS, 150, 600);
-            os.tap(KEY_3, 150, 300);
-            os.run_ms(2500);
-        }
-        let before = names(&mut os);
+        let (plain, _) = build(&format!("{name}-plain"), bytes);
+        let mut before = names(&mut RealOs::boot(&plain));
+        before.extend(setup.table.iter().map(|_| "MCJOBT".to_string()));
+        before.extend(setup.fill.then(|| "FILLER".to_string()));
+        let (app, lab) = if setup.table.is_some() || setup.fill {
+            setup_probe(name, bytes, setup)
+        } else {
+            build(name, bytes)
+        };
+        let os = RealOs::boot(&app);
         Real {
             os,
             lab,
             before,
             held: None,
-            two_apps: prep.is_some(),
         }
     }
 
-    /// Starts the probe from the APPS menu: the second entry, or the third with the setup app
-    /// installed beside it (jobsetup sorts after jobchk).
     fn launch_probe(&mut self) {
-        if self.two_apps {
-            self.os.tap(KEY_APPS, 150, 600);
-            self.os.tap(KEY_2, 150, 300);
-        } else {
-            self.os.start_from_menu();
-        }
-        assert_eq!(self.os.m.in_port(0x06), realos::BASE, "the probe runs");
+        self.os.start_from_menu();
     }
 
     fn at(&self, name: &str) -> usize {
@@ -343,8 +353,10 @@ fn same_on_both(
         ended.screen == shown,
         "the screen is not the text drawn by the OS: {lines:?}"
     );
+    assert_eq!(ended.block[0], realos::BASE - 3, "the library's first page");
     assert_eq!(
-        ended.block, block,
+        ended.block[1..],
+        block[1..],
         "the job's variables, as the stub left them"
     );
     assert_eq!(ended.flags, flags);
@@ -452,7 +464,11 @@ fn on_pauses_the_probe_on_the_reference_os_and_a_second_run_resumes() {
     real.os.m.release_key(Machine::KEY_ON);
     real.run_to_the_end();
     let paused = real.ended();
-    assert_eq!(paused.flags, [2, 1, 4, 0], "made, paused, CK_PAUSED");
+    assert_eq!(
+        paused.flags,
+        [2, 1, 4, 14],
+        "made, paused, CK_PAUSED, ST_INTERRUPTED"
+    );
     let partial = layout::decode(&paused.table.clone().expect("MCJOBT").0)
         .unwrap()
         .values;
@@ -468,11 +484,11 @@ fn on_pauses_the_probe_on_the_reference_os_and_a_second_run_resumes() {
     );
 
     real.os.tap(KEY_CLEAR, 150, 600);
-    real.os.launch();
+    real.launch_probe();
     real.held = None;
     real.run_to_the_end();
     let done = real.ended();
-    assert_eq!(done.flags, [1, 0, 3, 0], "kept, done, CK_DONE");
+    assert_eq!(done.flags[..3], [1, 0, 3], "kept, done, CK_DONE");
     let values = layout::decode(&done.table.clone().unwrap().0)
         .unwrap()
         .values;

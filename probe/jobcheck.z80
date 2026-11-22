@@ -18,6 +18,9 @@
 ; size. The user removes it from 2nd MEM, Mem Mgmt/Del, AppVars; removing the app itself is under
 ; Apps.
 ;
+; The reference OS test builds it with JOB_WITH_SETUP defined, which includes job_setup.inc and calls it
+; before the library is opened, to give a run the variables it needs found in place.
+;
 ; The app is three code pages and the library, as app/src/pages.inc lays them out; the kernel and
 ; the reader are on page 2 and everything that calls the OS is on page 0. It runs the job with
 ; interrupts off, as probe/kerndriver.inc does, so that a tap on ON between two steps is reported
@@ -72,6 +75,9 @@ job_start:
 	ld bc, CK_USED - 1
 	ld (hl), a
 	ldir
+#ifdef JOB_WITH_SETUP
+	call job_setup
+#endif
 	ld a, (libPage)
 	ld de, FM_SCRATCH
 	call far_lib_open
@@ -361,6 +367,9 @@ s_refused:
 #include "onbreak.inc"
 #include "store.inc"
 #include "check.inc"
+#ifdef JOB_WITH_SETUP
+#include "job_setup.inc"
+#endif
 
 #include "jobtail.inc"
 #ifdef LIBRARY
