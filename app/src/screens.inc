@@ -5,8 +5,9 @@
 ; Frames, 16 bytes: byte 0 the kind, byte 1 the notice's number, byte 2 its one parameter byte,
 ; the rest 0. KIND_START and KIND_ABOUT use no other byte.
 ;
-; The routines run on this page, where the strings they draw are not: a string goes to the canvas's
-; far entries by the address it has on the draw page (strings.inc), or by its address in APP_BUF.
+; The routines run on this page, and so do their constant strings, which the canvas cannot read: a
+; draw copies its screen's block (strings.inc) to APP_STAGE with app_stage_block and hands the canvas
+; the copy's addresses, or the address of a string it built in APP_BUF.
 
 KIND_START	.equ 1
 KIND_NOTICE	.equ 2

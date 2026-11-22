@@ -1,4 +1,4 @@
-; Code page 1, the draw page: the canvas, fm and the shell's strings. fm calls the reader on the
+; Code page 1, the draw page: the canvas and fm. fm calls the reader on the
 ; data page through the far entries of far_reader.inc, which the aliases name for the length of
 ; the include. Included at the app's page 1 by metacalc.z80; see pages.inc.
 	APP_PAGE(PAGE_DRAW)

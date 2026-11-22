@@ -45,8 +45,8 @@ const NOTICE: u32 = 113_000;
 /// The most the loop may take around app_key for a key no screen answers, scr_key included.
 const IGNORED_KEY: u32 = 1_250;
 /// The most bytes each code page may use: entry, draw and data.
-const PAGES_PLAIN: [u32; 3] = [1_900, 15_400, 9_300];
-const PAGES_LIBRARY: [u32; 3] = [2_160, 15_400, 9_300];
+const PAGES_PLAIN: [u32; 3] = [1_900, 15_000, 9_250];
+const PAGES_LIBRARY: [u32; 3] = [2_160, 15_000, 9_250];
 
 #[test]
 fn a_frame_of_each_screen_fits_its_ceiling() {
