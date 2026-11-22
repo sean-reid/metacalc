@@ -390,6 +390,11 @@ mod model {
         for (i, &end) in ends.iter().enumerate() {
             let want = lib.counts(i);
             for (how, counts) in [("pass", pass[i + 1]), ("prefix", log[3 + i].counts())] {
+                assert_eq!(
+                    counts,
+                    by_hand(&t.values, end),
+                    "{label} stage {i} ending at {end}, by {how}: each value's own count"
+                );
                 let (checked, failed, settled, total) = model_of(counts);
                 assert_eq!(
                     (want.checked, want.failed, want.settled, want.total),

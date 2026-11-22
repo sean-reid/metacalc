@@ -28,6 +28,8 @@
 ;     CMD_WAIT                             holds the screen until CLEAR after the last command
 ; The log starts at LOG with the address one past its end, then one record per command: the
 ; command byte, then what is listed above. A script in the archive logs FFh, 2 and runs nothing.
+; A record that would start at or past LOG_LIMIT is dropped, and so is every later one. CMD_MAKE
+; and CMD_LIST leave their variables on the calculator; the default script uses neither.
 ; The screen shows the first 120 bytes of the log, 12 bytes to a row of 24 hex digits.
 
 CMD_END      = 0
