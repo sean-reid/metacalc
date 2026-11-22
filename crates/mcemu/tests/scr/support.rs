@@ -421,6 +421,19 @@ impl Rig {
         (out.a(), self.log())
     }
 
+    /// One `scr_push_frame` of `new`, which sits outside the stack, while the enters return
+    /// `statuses` in turn.
+    pub fn push_frame(&mut self, new: Frame, statuses: &[u8]) -> Out {
+        let at = self.label("FK_SCRIPT") + 0x100;
+        self.poke(at, &new);
+        self.arm(statuses);
+        let regs = Regs {
+            hl: at,
+            ..Regs::default()
+        };
+        self.call("SCR_PUSH_FRAME", regs)
+    }
+
     /// One `scr_key`: the fake key routine returns `act`, and the enters return `statuses` in turn.
     pub fn key(&mut self, key: u8, ch: u8, act: Act, statuses: &[u8]) -> (Out, Vec<Rec>) {
         let (out, log, _) = self.key_at(key, ch, act, statuses, None);

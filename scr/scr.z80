@@ -58,6 +58,11 @@
 ;                removed, land does not run, and the status comes back as SCR_RES_FAILED; the
 ;                screen's frame is intact, and scr_refresh tries its enter again.
 ;                destroys everything but IY.
+;   scr_push_frame
+;                in HL = a frame of 16 bytes outside SCR_STACK, whose kind is not 0. Pushes it as
+;                a SCR_PUSH from a key routine does, with the same eviction and failure rules, for
+;                a caller that is not a key routine. out A and B as scr_key. destroys everything
+;                but IY.
 ;   scr_draw     runs the top screen's draw. destroys everything but IY.
 ;   scr_refresh  runs the top screen's enter and nothing else, for after the derived state is
 ;                gone. out A = its status. destroys everything but IY.
@@ -214,6 +219,10 @@ sk_failed:
 	ld a,SCR_RES_FAILED
 	ret
 
+scr_push_frame:
+	ld de,scr_new
+	ld bc,SCR_FRAME
+	ldir
 sk_push:
 	xor a
 	ld (scr_evicted),a

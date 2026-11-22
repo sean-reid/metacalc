@@ -193,3 +193,84 @@ fn the_far_call_is_63_bytes_long() {
     let built = plain();
     assert_eq!(built.label("far_end") - built.label("far_jump"), 63);
 }
+
+#[test]
+fn the_sentinel_must_lie_inside_save_screen_and_face_the_same_offset_of_the_frame() {
+    let go = |name: &str, at: &str| {
+        assemble_with(name, "equates.inc", "", &[&format!("APP_SENTINEL={at}")])
+    };
+    go("sentinel-first", "$86EC").expect_err("UI_VARS is there");
+    go("sentinel-default", "$89EB").expect("the last byte of saveSScreen");
+    for at in ["$86EB", "$89EC", "$9000"] {
+        let why = go(&format!("sentinel-{}", &at[1..]), at).expect_err(at);
+        assert!(
+            why.contains("APP_SENTINEL in ram_map.inc must lie inside saveSScreen"),
+            "{at}: {why}"
+        );
+    }
+    let built = plain();
+    let offset = built.label("APP_SENTINEL") - built.label("saveSScreen");
+    assert_eq!(
+        offset,
+        built.label("APP_SENTINEL_FRAME") - built.label("UI_FRAME")
+    );
+    assert!(offset < built.label("SAVE_SCREEN_SIZE"));
+}
+
+/// `make -C app` for `target` with a workspace file holding `toml`, on the font the tests share.
+fn make_with_toml(name: &str, toml: &str, target: &str) -> std::process::Output {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("pages-version-{name}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("Cargo.toml");
+    std::fs::write(&file, toml).unwrap();
+    let spasm = std::env::var_os("SPASM").unwrap_or_else(|| "spasm".into());
+    Command::new("make")
+        .arg("-C")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app"))
+        .arg(format!("SPASM={}", spasm.to_string_lossy()))
+        .arg(format!("BUILD={}/build", dir.display()))
+        .arg(format!("FONT={}/ui_font", env!("OUT_DIR")))
+        .arg(format!("WORKSPACE_TOML={}", file.display()))
+        .arg(target)
+        .output()
+        .expect("make runs")
+}
+
+#[test]
+fn a_version_that_is_not_a_plain_line_stops_the_app_build_but_not_make_clean() {
+    for (name, toml) in [
+        ("beta", "[workspace.package]\nversion = \"1.0.0-beta\"\n"),
+        (
+            "comment",
+            "[workspace.package]\nversion = \"1.0.0\" # next\n",
+        ),
+        ("single", "[workspace.package]\nversion = '1.0.0'\n"),
+        ("short", "[workspace.package]\nversion = \"1.0\"\n"),
+        ("missing", "[workspace.package]\nedition = \"2024\"\n"),
+        (
+            "elsewhere",
+            "[package]\nversion = \"1.0.0\"\n[workspace.package]\n",
+        ),
+    ] {
+        let app = make_with_toml(name, toml, "app");
+        let text = String::from_utf8_lossy(&app.stderr).into_owned();
+        assert!(!app.status.success(), "{name}: the build went on");
+        assert!(
+            text.contains("is not a line version = \"major.minor.patch\""),
+            "{name}: {text}"
+        );
+        let clean = make_with_toml(name, toml, "clean");
+        assert!(clean.status.success(), "{name}: make clean failed");
+    }
+}
+
+#[test]
+fn a_plain_version_line_builds_the_app() {
+    let toml = "[workspace.package]\nedition = \"2024\"\nversion = \"12.0.345\"\n";
+    let app = make_with_toml("plain", toml, "app");
+    assert!(
+        app.status.success(),
+        "{}",
+        String::from_utf8_lossy(&app.stderr)
+    );
+}
