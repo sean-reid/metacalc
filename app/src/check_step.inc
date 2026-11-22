@@ -94,6 +94,7 @@ cs_take:
 	ld hl, (ck_roff)
 	add hl, bc
 	ld (ck_roff), hl
+	; A guard: mcpack keeps a record inside one 16 KB chunk, so a list never crosses 64 KB.
 	jr nc, cs_same_chunk
 	ld hl, ck_roff + 2
 	inc (hl)

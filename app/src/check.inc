@@ -9,8 +9,8 @@
 ; far_lib_assertion_count (far_reader.inc). The reader is open on the library (lib_open returned 0).
 ; IY is the OS flags pointer. Every routine destroys every register but IY, and the stack it uses
 ; is the caller's. The job's variables are in SCR_VARS (check_ram.inc) and survive a key wait, an
-; auto power down and any number of OS calls; the caller zeroes them once, before the first
-; check_begin. The reference list is read through FM_SCRATCH, which the job holds only inside a call.
+; auto power down and any number of OS calls; check_begin zeroes them, so the caller need not.
+; The reference list is read through FM_SCRATCH, which the job holds only inside a call.
 ;
 ; Interrupts: the job never executes DI or EI. The kernel turns them off for each of its calls and
 ; gives the caller's state back, so a step enters and leaves as it was called. A tap on ON between two
@@ -78,7 +78,7 @@
 ;                      first N. Done is N - n0, failed is n2, resting is n3.
 ; check_first     out: A = 1 with DE = the number and B = the kernel's status of the first assertion this
 ;                      job found failing, or A = 0. Kept in RAM, never stored.
-; check_chunks    out: A = the chunks the CRC run has read.
+; check_chunks    out: A = the chunks the CRC run read before the call that ended it.
 ;
 ; Between steps the job detects a table that is deleted, archived or damaged (size, magic or
 ; version), and does not detect one replaced by another library's table of at least N entries: the
