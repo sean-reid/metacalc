@@ -25,6 +25,14 @@ mod realos;
 mod room;
 #[path = "app_pages/screen.rs"]
 mod screen;
+#[path = "app_pages/screens.rs"]
+mod screens;
+#[path = "app_pages/sentinel.rs"]
+mod sentinel;
+#[path = "app_pages/shell_cost.rs"]
+mod shell_cost;
+#[path = "app_pages/shellrig.rs"]
+mod shellrig;
 #[path = "app_pages/speed.rs"]
 mod speed;
 #[path = "app_pages/stubs.rs"]

@@ -207,3 +207,10 @@ fn an_archived_table_of_another_library_is_replaced_after_it_is_brought_back() {
     );
     assert_eq!(rig.table().unwrap(), Table::new(CRC, COUNT));
 }
+
+#[test]
+fn the_probes_room_command_reports_what_enough_mem_accepts() {
+    let mut rig = Rig::new();
+    let log = rig.run_free(&[Cmd::Room(100), Cmd::Room(101)], 100);
+    assert_eq!((log[0].a, log[1].a), (0, 1));
+}

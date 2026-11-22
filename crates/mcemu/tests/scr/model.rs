@@ -66,27 +66,36 @@ impl Mirror {
         vec![self.rec(Routine::Draw, self.frames.len() - 1, 0, 0, 0)]
     }
 
+    /// A push as the model does it, and as scr_push_frame does it outside a key routine.
+    fn push(&mut self, new: Frame, calls: &mut Vec<Rec>, q: &mut Queue) -> (u8, u8) {
+        let before = self.frames.clone();
+        if self.frames.len() == MAX_DEPTH {
+            self.frames.remove(2);
+        }
+        self.frames.push(new);
+        let status = self.enter(calls, q);
+        if status == 0 {
+            (DRAW, 0)
+        } else {
+            self.frames = before;
+            let again = self.enter(calls, q);
+            (FAILED, if again != 0 { again } else { status })
+        }
+    }
+
+    pub fn push_frame(&mut self, new: Frame, statuses: &[u8]) -> Keyed {
+        let mut calls = vec![];
+        let (res, status) = self.push(new, &mut calls, &mut Queue { statuses, next: 0 });
+        Keyed { res, status, calls }
+    }
+
     pub fn press(&mut self, key: u8, ch: u8, act: Act, statuses: &[u8]) -> Keyed {
         let mut q = Queue { statuses, next: 0 };
         let mut calls = vec![self.rec(Routine::Key, self.frames.len() - 1, 0, key, ch)];
         let (res, status) = match act {
             Act::Stay | Act::Other(_) => (IDLE, 0),
             Act::Redraw => (DRAW, 0),
-            Act::Push(new) => {
-                let before = self.frames.clone();
-                if self.frames.len() == MAX_DEPTH {
-                    self.frames.remove(2);
-                }
-                self.frames.push(new);
-                let status = self.enter(&mut calls, &mut q);
-                if status == 0 {
-                    (DRAW, 0)
-                } else {
-                    self.frames = before;
-                    let again = self.enter(&mut calls, &mut q);
-                    (FAILED, if again != 0 { again } else { status })
-                }
-            }
+            Act::Push(new) => self.push(new, &mut calls, &mut q),
             Act::Pop if self.frames.len() > 1 => {
                 self.frames.pop();
                 match self.enter(&mut calls, &mut q) {
@@ -180,6 +189,21 @@ impl Pair {
         self.key_spent = out.tstates;
         self.agree(
             &format!("{act:?} at depth {}", self.mirror.frames.len()),
+            &want,
+            &out,
+            log,
+        );
+        want
+    }
+
+    /// One scr_push_frame on both, compared as `key` is.
+    pub fn push_frame(&mut self, new: Frame, statuses: &[u8]) -> Keyed {
+        let want = self.mirror.push_frame(new, statuses);
+        let out = self.rig.push_frame(new, statuses);
+        let log = self.rig.log();
+        self.key_spent = out.tstates;
+        self.agree(
+            &format!("a pushed frame at depth {}", self.mirror.frames.len()),
             &want,
             &out,
             log,
