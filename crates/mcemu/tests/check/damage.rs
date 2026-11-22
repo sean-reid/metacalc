@@ -113,3 +113,14 @@ pub fn named(name: &str) -> (String, Vec<u8>, Vec<bool>) {
         .find(|l| l.0 == name)
         .unwrap_or_else(|| panic!("no library {name}"))
 }
+
+/// The first library whose marks hold a 3 as well as a 2, so that a job over it counts all four.
+pub fn with_resting() -> (String, Vec<u8>, Vec<bool>) {
+    libraries()
+        .into_iter()
+        .find(|(_, bytes, passes)| {
+            let marks = marks(bytes, passes);
+            marks.contains(&2) && marks.contains(&3)
+        })
+        .expect("a library with a failure and an assertion resting on it")
+}

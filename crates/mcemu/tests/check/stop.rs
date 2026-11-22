@@ -1,7 +1,7 @@
 //! ON stops a job at every assertion boundary and at a spread of points inside a verify, and a
 //! job that goes on from there ends with the table an uninterrupted job leaves.
 
-use crate::damage::{big, named};
+use crate::damage::{big, named, with_resting};
 use crate::rig::*;
 
 /// A job past begin and the CRC run, ready to step.
@@ -55,7 +55,7 @@ fn pause_at_the_boundary(job: &mut Job, name: &str, at: u16) {
 
 #[test]
 fn on_at_every_assertion_boundary_writes_nothing_and_the_resumed_job_ends_with_the_same_table() {
-    for (name, bytes, passes) in [big(), named("anatomy-bad1.mm")] {
+    for (name, bytes, passes) in [big(), with_resting()] {
         let want = marks(&bytes, &passes);
         let count = count_of(&bytes);
         let mut job = ready(&bytes, count);

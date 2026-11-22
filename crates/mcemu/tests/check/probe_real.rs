@@ -427,7 +427,7 @@ fn too_little_ram_for_the_table_stops_the_run_and_creates_nothing_but_the_filler
     let mut lines = expected("none", &vec![0; usize::from(count_of(&bytes))], None, "");
     lines.pop();
     lines.push(stop_line(6, 1));
-    same_on_both("jobreal-noram", &bytes, &setup, &lines, None, (1, 0));
+    same_on_both("jobreal-noram", &bytes, &setup, &lines, None, (0, 0));
 }
 
 #[test]
