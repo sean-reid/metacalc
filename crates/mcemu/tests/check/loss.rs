@@ -1,6 +1,6 @@
 //! The table deleted, archived or replaced between two steps.
 
-use crate::damage::{big, libraries};
+use crate::damage::big;
 use crate::layout::Table;
 use crate::rig::*;
 

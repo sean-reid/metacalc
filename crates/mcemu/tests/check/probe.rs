@@ -204,7 +204,7 @@ fn on_pauses_the_probe_and_a_second_run_carries_on() {
         );
         assert_eq!(p.table().unwrap(), want, "press at {press_at}");
         if let Some(partial) = partial {
-            assert!(partial.iter().any(|&v| v == 0), "the pause left work to do");
+            assert!(partial.contains(&0), "the pause left work to do");
             assert_eq!(p.byte("J_KEPT"), 1, "the second run found the table");
             paused_with_a_table += 1;
         }

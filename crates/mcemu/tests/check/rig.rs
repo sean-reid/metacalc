@@ -26,13 +26,10 @@ pub const PAUSED: u8 = 4;
 pub const REFUSED: u8 = 5;
 pub const STORE: u8 = 6;
 pub const RANGE: u8 = 7;
-pub const READER: u8 = 8;
 pub const BAD_STATE: u8 = 9;
 
 pub const ST_ABSENT: u8 = 7;
 pub const ST_ARCHIVED: u8 = 2;
-pub const ST_INTERRUPTED: u8 = 14;
-pub const ST_NO_REFS: u8 = 17;
 
 pub fn label(name: &str) -> u16 {
     LABELS
@@ -197,11 +194,6 @@ impl Job {
     pub fn job(&mut self, n: u16, limit: u16) -> Out {
         self.arg(LIB_PAGE, n, limit);
         self.call("t_job")
-    }
-
-    pub fn run_steps(&mut self, limit: u16) -> Out {
-        self.poke("T_IN_N", &limit.to_le_bytes());
-        self.call("t_run_steps")
     }
 
     pub fn run_crc(&mut self, limit: u16) -> Out {

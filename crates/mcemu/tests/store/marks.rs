@@ -117,7 +117,7 @@ fn all_ones_answers_for_every_list_as_a_count_by_hand_does() {
                 let list: Vec<u16> = (0..len)
                     .map(|_| {
                         let n = (xorshift(&mut seed) as usize % count) as u16;
-                        if xorshift(&mut seed) % 5 == 0 {
+                        if xorshift(&mut seed).is_multiple_of(5) {
                             0x8000 | xorshift(&mut seed) as u16
                         } else {
                             n

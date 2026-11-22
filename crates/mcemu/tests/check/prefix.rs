@@ -115,11 +115,8 @@ fn a_stale_or_wrong_next_never_makes_the_job_skip_an_unchecked_assertion() {
             let out = job.job(n, 65535);
             assert_eq!(out.a, DONE, "{name} trial {trial}");
             let got = job.table().unwrap().values;
-            for i in 0..usize::from(n) {
-                assert_ne!(
-                    got[i], 0,
-                    "{name} trial {trial}: assertion {i} stayed unchecked"
-                );
+            for (i, &v) in got.iter().take(usize::from(n)).enumerate() {
+                assert_ne!(v, 0, "{name} trial {trial}: assertion {i} stayed unchecked");
             }
         }
     }
