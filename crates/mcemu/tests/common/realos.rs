@@ -286,6 +286,8 @@ fn assemble(file: &str) -> Vec<u8> {
         .arg(format!("-DEXIT_MARK=${EXIT_MARK:04X}"))
         .arg("-I")
         .arg(root.join("../../app/src"))
+        .arg("-I")
+        .arg(root.join("../../probe"))
         .arg(root.join("tests/routines").join(file))
         .arg(&out)
         .output()
