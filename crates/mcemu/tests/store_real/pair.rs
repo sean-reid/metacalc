@@ -13,8 +13,13 @@ enum When {
     Always,
     /// While an app waits: OS scratch that the home screen sets again.
     Waiting,
-    /// Once the table has been through the archive, which the control's never was.
+    /// From the first archive on, measured through the unarchive, the delete and the return to
+    /// the home screen: state the OS's archive code and the memory menu leave and nothing in a
+    /// scenario sets back.
     Archived,
+    /// Only while the app waits with the table just brought back from the archive. It matches
+    /// the control again once the table is deleted.
+    BroughtBack,
 }
 
 /// RAM outside user memory that may differ from the control: when, why, the first address and
@@ -51,17 +56,28 @@ const ALLOWED: &[(When, &str, u16, u16)] = &[
         0x9817,
     ),
     (
-        When::Archived,
+        When::BroughtBack,
         "ramCode, the OS's flash writer copied to RAM",
         0x8100,
         0x8129,
     ),
-    (When::Archived, "a byte of tempSwapArea", 0x82A6, 0x82A7),
+    (
+        When::BroughtBack,
+        "the unnamed byte at 83E8h that each archive write changes",
+        0x83E8,
+        0x83E9,
+    ),
+    (
+        When::BroughtBack,
+        "flashByte2, the last byte written to flash",
+        0x9868,
+        0x9869,
+    ),
     (
         When::Archived,
-        "a byte of appID, changed by the memory menu's list",
-        0x8390,
-        0x8391,
+        "a byte of tempSwapArea, left by the archive write",
+        0x82A6,
+        0x82A7,
     ),
     (
         When::Archived,
@@ -71,14 +87,13 @@ const ALLOWED: &[(When, &str, u16, u16)] = &[
     ),
     (
         When::Archived,
-        "the unnamed byte at 83E8h that each archive write changes",
-        0x83E8,
-        0x83E9,
+        "arcInfo, the last archive operation",
+        0x83EE,
+        0x8406,
     ),
-    (When::Archived, "arcInfo", 0x83EE, 0x8406),
     (
         When::Archived,
-        "apdSubTimer and apdTimer: a flash write holds interrupts off",
+        "apdSubTimer and apdTimer, behind by the interrupts a flash write held off",
         0x8448,
         0x844A,
     ),
@@ -100,11 +115,16 @@ const ALLOWED: &[(When, &str, u16, u16)] = &[
         0x8A14,
         0x8A15,
     ),
-    (When::Archived, "chkDelPtr3", 0x981C, 0x981E),
     (
         When::Archived,
-        "flashByte2, freeArcBlock, arcPage and arcPtr",
-        0x9868,
+        "chkDelPtr3, left by the archive's memory move",
+        0x981C,
+        0x981E,
+    ),
+    (
+        When::Archived,
+        "freeArcBlock, arcPage and arcPtr, the archive's write position",
+        0x9869,
         0x986E,
     ),
     (
@@ -128,12 +148,18 @@ const POINTERS: [(u16, &str, Move); 10] = [
     (0x9830, "progPtr", Move::None),
     (0x9832, "newDataPtr", Move::Data),
 ];
-/// sp while the app waits in its HALT.
+/// sp while the app waits in its HALT, and when the emulator stops it inside the OS's key scan,
+/// which it does after an unarchive has put the OS's timers out of step.
 const APP_SP: u16 = 0xFFE3;
-/// How far below sp dead stack may differ: what a script's calls leave, and the deeper calls of
-/// the OS's archive code.
-const DEAD_STACK: u16 = 64;
-const DEAD_STACK_ARCHIVED: u16 = 112;
+const KEY_SCAN_SP: u16 = 0xFFD3;
+/// The two register pairs the key scan's entry saved, 2 bytes above its sp. They hold what the
+/// probe's drawing left in them, which follows the log's length.
+const KEY_SCAN_SAVED: std::ops::Range<u16> = 0xFFD5..0xFFD9;
+/// The lowest address at which dead stack was measured to differ from the control: 38 bytes
+/// below the app's sp from a script's calls, and FF80h after the OS's archive code. A byte
+/// differing below the floor is a stray, so a deeper path through the OS fails.
+const STACK_FLOOR: u16 = 0xFFBD;
+const STACK_FLOOR_ARCHIVED: u16 = 0xFF80;
 /// The archive's pages: from its first up to the app's.
 const ARCHIVE: std::ops::Range<u8> = 0x08..crate::realos::BASE;
 const PAGE: usize = 0x4000;
@@ -204,7 +230,8 @@ impl Pair {
     }
 
     /// RAM below user memory and above the symbol table, FFFFh included, matches the control but
-    /// for the probe's regions, `ALLOWED` and the app's stack, dead or saved. With `table` set the pointer block
+    /// for the probe's regions, `ALLOWED`, the dead stack down to its measured floor and, in the
+    /// key scan, the two register pairs it saved. With `table` set the pointer block
     /// is left to `only_the_table`, which asserts each of its words.
     fn outside(&mut self, name: &str, table: bool) {
         let sp = self.os.m.regs().sp;
@@ -214,14 +241,18 @@ impl Pair {
             "{name}: both stopped at the same depth"
         );
         let (waiting, archived) = (self.waiting(), !self.copies.is_empty());
-        let dead = if archived {
-            DEAD_STACK_ARCHIVED
+        let floor = if archived {
+            STACK_FLOOR_ARCHIVED
         } else {
-            DEAD_STACK
+            STACK_FLOOR
         };
-        // Stopped inside the OS's key scan, the app has registers saved above sp, and the log
-        // pointer among them differs.
-        let top = if waiting { sp.max(APP_SP) } else { sp };
+        let in_key_scan = waiting && sp != APP_SP;
+        if in_key_scan {
+            assert!(
+                archived && sp == KEY_SCAN_SP,
+                "{name}: the app waits at sp {sp:04X}, a state not measured"
+            );
+        }
         let p = probe();
         let own = [
             ("the probe's script", p.script),
@@ -243,10 +274,13 @@ impl Pair {
                             When::Always => true,
                             When::Waiting => waiting,
                             When::Archived => archived,
+                            When::BroughtBack => archived && waiting && table,
                         }
                 });
-                if (sp - dead..top).contains(&addr) {
-                    self.deepest = self.deepest.max(sp.saturating_sub(addr));
+                if (floor..sp).contains(&addr) {
+                    self.deepest = self.deepest.max(sp - addr);
+                } else if in_key_scan && KEY_SCAN_SAVED.contains(&addr) {
+                    self.used.insert("the registers the OS's key scan saved");
                 } else if let Some(o) = own.iter().find(|o| addr >= o.1.0 && addr - o.1.0 < o.1.1) {
                     self.used.insert(o.0);
                 } else if let Some(w) = allowed {

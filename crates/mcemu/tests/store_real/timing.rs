@@ -56,8 +56,14 @@ fn the_routines_cost_on_the_reference_os_stays_inside_its_budgets() {
         println!("{name}: {real} T-states on OS 2.43, {stub} on the stub");
         assert!(real < ceiling, "{name}: {real}");
     }
-    let lookup = rows[2].1.0 - rows[2].1.1;
-    for (name, (real, stub), _) in &rows[1..] {
+    // store_data is the one lookup, and the OS's costs 2,341 more than the stub's: the real
+    // _ChkFindSym and bcall against the stub's. Every other routine that finds the table is
+    // dearer on the OS by exactly that, which shows each makes one lookup and nothing else that
+    // differs between the two.
+    let (data, others) = (rows[2], [rows[1], rows[3], rows[4], rows[5], rows[6]]);
+    let lookup = data.1.0 - data.1.1;
+    assert_eq!(lookup, 2_341, "the OS's lookup against the stub's");
+    for (name, (real, stub), _) in others {
         assert_eq!(real - stub, lookup, "{name}: the OS costs one lookup more");
     }
 
