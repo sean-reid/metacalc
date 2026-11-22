@@ -15,6 +15,8 @@ mod layout;
 mod open;
 #[path = "store/prefix.rs"]
 mod prefix;
+#[path = "store/production.rs"]
+mod production;
 #[path = "store/rig.rs"]
 mod rig;
 #[path = "store/sizes.rs"]

@@ -124,6 +124,10 @@ fn one_pass_gives_every_end_its_own_counts() {
                     .map(|&e| by_hand(&t.values, usize::from(e)))
                     .collect();
                 assert_eq!(rec.ends(), want, "count {count} ends {ends:?}");
+                assert!(
+                    rec.untouched_past(ends.len()),
+                    "count {count} ends {ends:?}: past K"
+                );
             }
         }
     }
@@ -143,6 +147,7 @@ fn the_three_real_ends_in_one_pass_equal_three_separate_prefixes() {
     ]);
     let pass = log[1].ends();
     assert_eq!(pass.len(), 3);
+    assert!(log[1].untouched_past(3), "past the third result");
     for (i, end) in REAL_ENDS.iter().enumerate() {
         assert_eq!(pass[i], log[2 + i].counts(), "end {end}");
         assert_eq!(pass[i], by_hand(&t.values, usize::from(*end)));
@@ -199,6 +204,76 @@ fn eight_ends_are_the_most_and_the_buffer_past_them_is_not_written() {
         .map(|&e| by_hand(&t.values, e.into()))
         .collect();
     assert_eq!(log[1].ends(), want);
+    assert!(log[1].untouched_past(8));
+}
+
+/// Counts of one value that cross 255 and 256, the edges of a byte-wide tally, with the last byte
+/// partial before, at and after the edge.
+const UNIFORM_NS: [u16; 15] = [
+    251, 252, 253, 254, 255, 256, 257, 511, 512, 513, 1023, 1024, 1025, 2047, 3326,
+];
+
+/// A rig holding a table of 3326 entries that are all `v`.
+fn uniform(v: u8, seed: &mut u32) -> Rig {
+    let mut rig = Rig::new();
+    let mut t = Table::new(CRC, 3326);
+    t.values = vec![v; 3326];
+    let pad = xorshift(seed) as u8;
+    rig.m
+        .create_var(VAR, &layout::encode_padded(&t, pad))
+        .unwrap();
+    rig
+}
+
+fn only(v: u8, n: u16) -> [u16; 4] {
+    let mut counts = [0; 4];
+    counts[usize::from(v)] = n;
+    counts
+}
+
+#[test]
+fn a_table_of_one_value_counts_past_the_edges_of_a_byte_wide_tally() {
+    let mut seed = 0x0101_0101;
+    for v in 0..4 {
+        let mut rig = uniform(v, &mut seed);
+        let mut script = vec![Cmd::Open(CRC, 3326)];
+        script.extend(UNIFORM_NS.map(Cmd::CountTo));
+        script.push(Cmd::Count);
+        let log = rig.run(&script);
+        for (rec, n) in log[1..].iter().zip(UNIFORM_NS) {
+            assert_eq!(rec.counts(), only(v, n), "value {v} prefix {n}");
+        }
+        assert_eq!(
+            log.last().unwrap().counts(),
+            only(v, 3326),
+            "value {v} whole"
+        );
+    }
+}
+
+#[test]
+fn a_table_of_one_value_counts_the_same_through_lists_of_ends() {
+    const LISTS: [&[u16]; 4] = [
+        &[251, 252, 253, 254, 255, 256, 257, 511],
+        &[255, 256],
+        &[511, 512, 513, 1023, 1024, 1025, 2047, 3326],
+        &[0, 255, 256, 3326],
+    ];
+    let mut seed = 0x0202_0202;
+    for v in 0..4 {
+        let mut rig = uniform(v, &mut seed);
+        let mut script = vec![Cmd::Open(CRC, 3326)];
+        script.extend(LISTS.map(Cmd::CountEnds));
+        let log = rig.run(&script);
+        for (rec, ends) in log[1..].iter().zip(LISTS) {
+            let want: Vec<[u16; 4]> = ends.iter().map(|&e| only(v, e)).collect();
+            assert_eq!(rec.ends(), want, "value {v} ends {ends:?}");
+            assert!(
+                rec.untouched_past(ends.len()),
+                "value {v} ends {ends:?}: past K"
+            );
+        }
+    }
 }
 
 /// What the host model calls checked, failed and settled over a prefix, and the prefix's length,
@@ -228,18 +303,25 @@ mod model {
         }
     }
 
-    /// Loads `bytes` with random statuses and the stages ending at `ends`, stores the model's marks
-    /// as the table, and compares the Z80's counts of every stage's prefix with the model's.
-    pub fn agree(bytes: &[u8], ends: &[usize], seed: &mut u32, label: &str) {
-        let len = mcpack::library::read(bytes).unwrap().len();
+    /// The statuses of a round: random, mostly unchecked.
+    pub fn random_status(len: usize, seed: &mut u32) -> Vec<Status> {
         let statuses = [Status::Unchecked, Status::Checked, Status::Failed];
-        let status: Vec<Status> = (0..len)
+        (0..len)
             .map(|_| match xorshift(seed) % 8 {
                 0..=2 => statuses[1],
                 3 => statuses[2],
                 _ => statuses[0],
             })
-            .collect();
+            .collect()
+    }
+
+    /// Loads `bytes` with `status` and the stages ending at `ends`, stores the model's marks as the
+    /// table, and compares the Z80's counts of every stage's prefix, and of the empty prefix, with
+    /// the model's. A forward reference would make the model mark an unchecked assertion failed,
+    /// which the table cannot hold; the exporter refuses such a library, so none is counted here.
+    /// Returns how many assertions of each value the table held.
+    pub fn agree(bytes: &[u8], ends: &[usize], status: Vec<Status>, label: &str) -> [usize; 4] {
+        let len = status.len();
         let stages: Vec<Stage> = ends
             .iter()
             .map(|&end| Stage {
@@ -259,9 +341,15 @@ mod model {
         .expect("the library loads with its stages");
         let mut t = Table::new(CRC, len as u16);
         t.values = (0..len).map(|i| value(lib.mark(i))).collect();
+        let mut tally = [0; 4];
+        for v in &t.values {
+            tally[usize::from(*v)] += 1;
+        }
         let mut rig = Rig::new();
         rig.m.create_var(VAR, &layout::encode(&t)).unwrap();
-        let wire: Vec<u16> = ends.iter().map(|&e| e as u16).collect();
+        let wire: Vec<u16> = std::iter::once(0)
+            .chain(ends.iter().map(|&e| e as u16))
+            .collect();
         let mut script = vec![
             Cmd::Open(CRC, len as u16),
             Cmd::CountEnds(leak(wire.clone())),
@@ -269,9 +357,12 @@ mod model {
         script.extend(wire.iter().map(|&e| Cmd::CountTo(e)));
         let log = rig.run(&script);
         let pass = log[1].ends();
+        assert_eq!(pass.len(), wire.len(), "{label}");
+        assert_eq!(pass[0], [0; 4], "{label}: the empty prefix");
+        assert_eq!(log[2].counts(), [0; 4], "{label}: the empty prefix alone");
         for (i, &end) in ends.iter().enumerate() {
             let want = lib.counts(i);
-            for (how, counts) in [("pass", pass[i]), ("prefix", log[2 + i].counts())] {
+            for (how, counts) in [("pass", pass[i + 1]), ("prefix", log[3 + i].counts())] {
                 let (checked, failed, settled, total) = model_of(counts);
                 assert_eq!(
                     (want.checked, want.failed, want.settled, want.total),
@@ -280,6 +371,7 @@ mod model {
                 );
             }
         }
+        tally
     }
 }
 
@@ -288,6 +380,7 @@ fn the_counts_give_the_models_totals_for_random_statuses_and_stages() {
     let bytes = crate::fixture::proofs();
     let len = mcpack::library::read(&bytes).unwrap().len();
     let mut seed = 0x70_7A15;
+    let mut tally = [0; 4];
     for round in 0..40 {
         let mut ends: Vec<usize> = (0..1 + xorshift(&mut seed) % 3)
             .map(|_| 1 + (xorshift(&mut seed) as usize) % (len - 1))
@@ -295,8 +388,42 @@ fn the_counts_give_the_models_totals_for_random_statuses_and_stages() {
         ends.push(len);
         ends.sort_unstable();
         ends.dedup();
-        model::agree(&bytes, &ends, &mut seed, &format!("fixture round {round}"));
+        let status = model::random_status(len, &mut seed);
+        let got = model::agree(&bytes, &ends, status, &format!("fixture round {round}"));
+        for (all, one) in tally.iter_mut().zip(got) {
+            *all += one;
+        }
     }
+    assert!(
+        tally.iter().all(|&n| n > 0),
+        "every value occurred: {tally:?}"
+    );
+}
+
+#[test]
+fn a_resting_assertion_is_stored_as_three_and_counted_as_settled() {
+    use mcui::Status;
+    let bytes = crate::fixture::proofs();
+    let assertions = mcpack::library::read(&bytes).unwrap();
+    let (user, used) = assertions
+        .iter()
+        .enumerate()
+        .find_map(|(i, a)| {
+            a.references.iter().find_map(|r| match r {
+                mcpack::library::Reference::Assertion(j) if *j < i => Some((i, *j)),
+                _ => None,
+            })
+        })
+        .expect("a proof uses an earlier assertion");
+    let len = assertions.len();
+    let mut status = vec![Status::Checked; len];
+    status[used] = Status::Unchecked;
+    status[(0..len).rev().find(|&k| k != user && k != used).unwrap()] = Status::Failed;
+    let tally = model::agree(&bytes, &[user + 1, len], status, "hand built");
+    assert!(
+        tally.iter().all(|&n| n > 0),
+        "every value occurred: {tally:?}"
+    );
 }
 
 #[test]
@@ -305,12 +432,9 @@ fn the_counts_give_the_models_totals_for_ring_at_its_three_stages() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES is set");
     let bytes = std::fs::read(std::path::Path::new(&dir).join("ring.mclib")).unwrap();
     let mut seed = 0x21_4C0DE;
+    let len = mcpack::library::read(&bytes).unwrap().len();
     for round in 0..3 {
-        model::agree(
-            &bytes,
-            &[779, 1171, 3326],
-            &mut seed,
-            &format!("ring {round}"),
-        );
+        let status = model::random_status(len, &mut seed);
+        model::agree(&bytes, &[779, 1171, 3326], status, &format!("ring {round}"));
     }
 }
