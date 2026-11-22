@@ -414,7 +414,7 @@ fn clear_on_the_error_notice_leaves_when_the_screen_under_it_fails_again() {
 }
 
 #[test]
-fn a_refresh_that_fails_under_the_error_notice_leaves() {
+fn a_refresh_of_the_error_notice_that_fails_leaves() {
     let mut shell = booted(plain(), Enter::FailNoticeOnce(0x41));
     shell.flag(true);
     shell.tap(F1);

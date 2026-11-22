@@ -9,7 +9,7 @@ INCLUDE := -I ../kernel -I src -I .. -I ../ui
 # The workspace version the host model reports as CARGO_PKG_VERSION, as the numbers About shows:
 # the line `version = "major.minor.patch"` of [workspace.package] and nothing else on it. A line of
 # another form reads as `invalid`; the app target refuses that, so `make clean` works with any.
-WORKSPACE_TOML ?= ../Cargo.toml
+WORKSPACE_TOML := ../Cargo.toml
 VERSION := $(shell awk '/^\[/ { in_package = ($$0 == "[workspace.package]") } in_package && /^version *=/ { print (($$0 ~ /^version = "[0-9]+\.[0-9]+\.[0-9]+"$$/) ? substr($$0, 12, length($$0) - 12) : "invalid"); exit }' $(WORKSPACE_TOML))
 VERSION_PARTS := $(subst ., ,$(VERSION))
 INCLUDE += -DVERSION_MAJOR=$(word 1,$(VERSION_PARTS)) -DVERSION_MINOR=$(word 2,$(VERSION_PARTS)) -DVERSION_PATCH=$(word 3,$(VERSION_PARTS))

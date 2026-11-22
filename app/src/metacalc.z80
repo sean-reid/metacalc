@@ -27,7 +27,7 @@
 ; before scr_key, and the screen is drawn again even when scr_key ignores the key. A refresh that
 ; fails is SCR_RES_FAILED.
 ; Failure. SCR_RES_FAILED pushes the error notice, and one that comes while the error notice is on
-; top, from popping it or from refreshing under it, leaves by app_exit, so a screen whose enter
+; top, from popping it or from refreshing it, leaves by app_exit, so a screen whose enter
 ; keeps failing cannot hold the user. When the push of the error notice fails the shell leaves too.
 ; Exit. CLEAR on the start screen, SCR_RES_LEAVE, and 2nd+QUIT leave through app_exit; 2nd+OFF is
 ; the OS's. Every way out runs app_putaway, which fills SCR_STACK with spaces and SCR_VARS with

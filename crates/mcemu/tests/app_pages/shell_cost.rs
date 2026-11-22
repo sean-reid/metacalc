@@ -65,6 +65,8 @@ fn a_frame_of_each_screen_fits_its_ceiling() {
         let mut app = App::boot(built);
         if let Some(open) = open {
             tap(&mut app, open);
+            let depth = app.label("scr_count");
+            assert_eq!(app.m.read_ram(depth, 1), [2], "{name}: the screen opened");
         }
         let (draw, blit) = frame(&mut app);
         println!(
