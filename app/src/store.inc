@@ -25,11 +25,11 @@ ST_ARCHIVED      = 2    ; the variable is archived and could not be unarchived
 ST_BAD_MAGIC     = 3    ; wrong magic or version
 ST_OTHER_LIBRARY = 4    ; another library's CRC or another assertion count
 ST_BAD_SIZE      = 5    ; the size is not what the header implies
-ST_RANGE         = 6    ; an assertion number, a value or a next number out of range
+ST_RANGE         = 6    ; an assertion number, a value, a next number or a count end out of range
 ST_ABSENT        = 7    ; no variable: open was not called, or the user deleted it
 ;
 ; All routines destroy every register but IY, which must be the OS flags pointer, and the
-; stack. They destroy OP1 and OP2, and store_count also OP3.
+; stack. They destroy OP1 and OP2, and the count routines also OP3 to OP5.
 ;
 ; store_open   in:  DE:HL = the library's CRC-32 (DE the high 16 bits), BC = assertion count
 ;              out: A = 0 or ST_NO_RAM or ST_ARCHIVED; with 0, B = how it went:
@@ -45,15 +45,29 @@ ST_ABSENT        = 7    ; no variable: open was not called, or the user deleted 
 ; store_get_next  out: A = status, HL = number of the next assertion to check; ST_RANGE when
 ;              the header holds a number above the count
 ; store_set_next  in:  HL = number, at most the count    out: A = status
-; store_count  in:  HL = 8 bytes outside the table and OP1 to OP3
-;              out: A = status; the buffer holds four little-endian words, the number of
-;                   assertions with value 0, 1, 2 and 3
+; store_count  in:  HL = 8 bytes outside the table and OP1 to OP5
+;              out: A = status; the buffer holds four little-endian words, n0 to n3, the number
+;                   of assertions with value 0, 1, 2 and 3. The model's totals over them:
+;                   checked = n1 + n3, failed = n2, settled = n1 + n2 + n3, total = the count.
+; store_count_to  in:  HL = the buffer, DE = N    out: A = status; n0 to n3 over the first N
+;              assertions only, a last partial byte counted up to N. ST_RANGE when N is above
+;              the count, with the buffer untouched.
+; store_count_ends  in:  HL = a list, DE = results; both outside the table and OP1 to OP5, and
+;              the list outside the results; the list is a count byte K, 1 to 8, then K
+;              little-endian words, the ends, of which the first may be 0
+;              out: A = status; K buffers of 8 bytes, the end's n0 to n3 over the first `end`
+;              assertions, in one pass over the table. The ends must rise strictly and the last
+;              must not exceed the count; otherwise ST_RANGE, with the results untouched.
+;              store_count is the list of the count, store_count_to a list of N.
 ; store_reset  out: A = status; every assertion unchecked and the next number 0
 ; Padding: the unused bits of the last table byte are never read. store_set changes only the two
 ; bits it is given and leaves the padding as it is; store_reset and a newly
 ; created table zero it; store_count ignores it.
 OPEN_WAS_ARCHIVED = 80h
 
+#ifndef STORE_VAR
+#define STORE_VAR "MCSTAT"
+#endif
 STORE_MAGIC    = 4Dh
 STORE_VERSION  = 01h
 STORE_HEADER   = 10
@@ -75,7 +89,7 @@ store_name:
 	ret
 
 store_name_text:
-	.db appVarObj, "MCSTAT", 0, 0
+	.db appVarObj, STORE_VAR, 0, 0
 
 ; Out: HL = the table's header and BC = the assertion count, valid until the next OS call, or
 ; A = ST_ABSENT, ST_ARCHIVED, ST_BAD_MAGIC or ST_BAD_SIZE and the rest destroyed.
