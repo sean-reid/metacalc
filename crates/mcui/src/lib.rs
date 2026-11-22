@@ -20,6 +20,6 @@ pub use data::{Installed, LoadError, Stage, Statuses};
 pub use key::Key;
 pub use mcpack::library::Title;
 pub use proofs::{RestoreError, SavedProof};
-pub use screens::{Kind, State, View};
+pub use screens::{Kind, State, View, notice_frame};
 pub use status::{Counts, Mark, Status};
 pub use ui::{CheckStep, MAX_DEPTH, Ui};

@@ -18,6 +18,20 @@ use crate::proofs::Proofs;
 
 pub use list::Kind;
 
+/// The frame of a notice with a title and lines, for tests that compare another implementation's
+/// notice with the model's.
+#[doc(hidden)]
+pub fn notice_frame(title: &str, lines: &[&str]) -> mcglyph::Bitmap {
+    let proofs = Proofs::new(0);
+    let ctx = Ctx {
+        libs: &[],
+        proofs: &proofs,
+    };
+    let mut canvas = Canvas::default();
+    notice::Notice::screen(title, lines).draw(&ctx, &mut canvas);
+    canvas.into_bitmap()
+}
+
 /// Everything a screen reads and none changes.
 pub struct Ctx<'a> {
     pub libs: &'a [Lib],
