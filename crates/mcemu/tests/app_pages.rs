@@ -15,6 +15,8 @@ mod fixture;
 #[allow(dead_code)]
 #[path = "common/guard.rs"]
 mod guard;
+#[path = "common/refs.rs"]
+mod oracle;
 #[path = "app_pages/real.rs"]
 mod real;
 #[path = "common/realos.rs"]

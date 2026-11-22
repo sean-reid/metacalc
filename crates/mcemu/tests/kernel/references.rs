@@ -1,5 +1,5 @@
 #[path = "../../../mcpack/tests/cases/references.rs"]
-mod cases;
+pub mod cases;
 
 use crate::support::*;
 use mcpack::library::{Kernel, KernelError};

@@ -172,7 +172,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test kernel -- --ignored --exact libraries::the_shipped_libraries_verify_on_the_device_as_the_model_does --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test kernel -- --ignored --exact libraries::no_honest_proof_in_a_shipped_library_charges_over_an_eighth_of_the_work_limit --nocapture
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test kernel -- --ignored --exact refs::kernel_refs_gives_every_list_of_the_shipped_libraries_as_mcpacks_reader_has_it --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test reader -- --ignored --exact libraries::the_shipped_libraries_read_back_as_the_decoder_decodes_them --nocapture
+      - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test reader -- --ignored --exact refs::the_lists_of_the_shipped_libraries_read_back_through_kernel_refs_and_lib_read_as_mcpack_has_them --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact libraries::the_shipped_libraries_lay_out_and_draw_as_the_model_does --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact libraries::the_shipped_libraries_build_the_node_tables_the_model_has --nocapture
       - run: MC_LIBRARIES="$RUNNER_TEMP/libraries" sh scripts/require-tests.sh 1 cargo test --locked -p mcemu --test fm -- --ignored --exact speed::the_heaviest_six_row_frame_in_ring_redraws_within_50_ms_at_6_mhz --nocapture
