@@ -1,6 +1,9 @@
 #include "equates.inc"
 
-; Runs the commands of the AppVar MCCMD against the status table and logs what each returns.
+; Runs the commands of the AppVar MCCMD against the status table and logs what each returns, then
+; draws the log as hex. The table is the AppVar MCPROB, so a calculator's MCSTAT is never touched.
+; With no MCCMD the app runs the script at default_script, which deletes any MCPROB first and last,
+; whoever made it.
 ;
 ; MCCMD holds the commands, each a command byte and its arguments, ended by CMD_END. Words
 ; and the CRC are little endian. The app copies the script to RAM, so creating or deleting
@@ -11,18 +14,23 @@
 ;     CMD_GET_NEXT                         log: A, next (2)
 ;     CMD_SET_NEXT   n (2)                 log: A
 ;     CMD_COUNT                            log: A, four counts (8)
+;     CMD_COUNT_TO   n (2)                 log: A, four counts (8), A5h bytes if refused
+;     CMD_COUNT_ENDS k (1), k ends (2 each) log: A, k, the 64 bytes of results, A5h where unwritten
 ;     CMD_RESET                            log: A
 ;     CMD_MAKE       letter, size (2)      log: 0 made, 1 refused for room
 ;     CMD_DELETE     letter                log: 0 deleted, 1 absent
 ;     CMD_LOCATE                           log: 0 in RAM, 1 absent, 2 archived; data pointer (2), size (2)
+;     CMD_DROP                             deletes the table; log: 0 deleted, 1 absent
 ;     CMD_LIST       dim (2)               creates the list named Q, which sorts below every AppVar; log: 0
-;     CMD_FILL       size (2)              creates MCFILL with no room check; log: 0
 ;     CMD_ROOM       n (2)                 log: 0 if _EnoughMem accepts n bytes, 1 if not
 ;     CMD_NOP                              log: 0
 ;     CMD_REPEAT     n (2)                 runs the next command n times and logs the last
 ;     CMD_WAIT                             holds the screen until CLEAR after the last command
 ; The log starts at LOG with the address one past its end, then one record per command: the
-; command byte, then what is listed above.
+; command byte, then what is listed above. A script in the archive logs FFh, 2 and runs nothing.
+; A record that would start at or past LOG_LIMIT is dropped, and so is every later one. CMD_MAKE
+; and CMD_LIST leave their variables on the calculator; the default script uses neither.
+; The screen shows the first 120 bytes of the log, 12 bytes to a row of 24 hex digits.
 
 CMD_END      = 0
 CMD_OPEN     = 1
@@ -38,9 +46,12 @@ CMD_LOCATE   = 10
 CMD_NOP      = 11
 CMD_REPEAT   = 12
 CMD_WAIT     = 13
-CMD_FILL     = 14
 CMD_ROOM     = 15
 CMD_LIST     = 16
+CMD_COUNT_TO   = 17
+CMD_COUNT_ENDS = 18
+CMD_DROP       = 19
+SCRIPT_ARCHIVED = 0FFh
 
 #include "storeram.inc"
 LOG_LIMIT   = LOG + LOG_LIMIT_OFF
@@ -51,12 +62,12 @@ S_WAIT      = STATE + 6
 S_CMD       = STATE + 7
 S_RES_LEN   = STATE + 8
 S_RES       = STATE + 9
-S_TMP       = STATE + 24
-S_COUNTS    = STATE + 28
-S_DRAW      = STATE + 40
+S_TMP       = STATE + 76
+S_COUNTS    = STATE + 80
+S_DRAW      = STATE + 92
 
-; CMD_FILL, CMD_ROOM and CMD_WAIT are for the scripts of the local real-ROM runs; the tests never use them.
 #define APP_NAME "storechk"
+#define STORE_VAR "MCPROB"
 #include "header.inc"
 
 start:
@@ -142,7 +153,9 @@ fetch_word:
 	ld l, a
 	ret
 
-; Copies MCCMD to SCRIPT, ended by a zero byte. Out: NZ if there is no MCCMD.
+; Copies MCCMD to SCRIPT, ended by a zero byte, or the default script when there is no MCCMD. An
+; MCCMD in the archive runs nothing and logs SCRIPT_ARCHIVED, 2.
+; Out: Z.
 load_script:
 	ld hl, OP1
 	ld (hl), appVarObj
@@ -162,7 +175,7 @@ load_script:
 	jr c, no_script
 	ld a, b
 	or a
-	jr nz, no_script
+	jr nz, archived_script
 	ex de, hl
 	ld c, (hl)
 	inc hl
@@ -189,9 +202,44 @@ script_end:
 	xor a
 	ld (de), a
 	ret
-no_script:
-	or 1
+archived_script:
+	ld a, SCRIPT_ARCHIVED
+	ld (S_RES), a
+	ld a, 2
+	ld (S_RES + 1), a
+	ld (S_RES_LEN), a
+	call log_result
+	xor a
+	ld (SCRIPT), a
 	ret
+no_script:
+	ld hl, default_script
+	ld de, SCRIPT
+	ld bc, default_script_end - default_script
+	ldir
+	xor a
+	ret
+
+; The script of a bare run: a table of 10 entries holding 1 0 2 3 1 0 3 0 0 2, counted whole, to
+; 6 and to 11, which is refused, and by two lists of ends, the second not rising and refused.
+default_script:
+	.db CMD_DROP
+	.db CMD_OPEN, 026h, 039h, 0F4h, 0CBh, 10, 0
+	.db CMD_SET, 0, 0, 1
+	.db CMD_SET, 2, 0, 2
+	.db CMD_SET, 3, 0, 3
+	.db CMD_SET, 4, 0, 1
+	.db CMD_SET, 6, 0, 3
+	.db CMD_SET, 9, 0, 2
+	.db CMD_GET, 9, 0
+	.db CMD_COUNT_ENDS, 3, 3, 0, 6, 0, 10, 0
+	.db CMD_COUNT
+	.db CMD_COUNT_TO, 6, 0
+	.db CMD_COUNT_TO, 11, 0
+	.db CMD_COUNT_ENDS, 2, 6, 0, 3, 0
+	.db CMD_DROP
+	.db CMD_END
+default_script_end:
 
 dispatch:
 	cp CMD_OPEN
@@ -214,10 +262,14 @@ dispatch:
 	jp z, do_delete
 	cp CMD_LOCATE
 	jp z, do_locate
+	cp CMD_COUNT_TO
+	jp z, do_count_to
+	cp CMD_COUNT_ENDS
+	jp z, do_count_ends
+	cp CMD_DROP
+	jp z, do_drop
 	cp CMD_LIST
 	jp z, do_list
-	cp CMD_FILL
-	jp z, do_fill
 	cp CMD_ROOM
 	jp z, do_room
 	cp CMD_WAIT
@@ -283,6 +335,7 @@ do_set_next:
 do_count:
 	ld hl, S_COUNTS
 	call store_count
+count_done:
 	ld (S_RES + 1), a
 	ld hl, S_COUNTS
 	ld de, S_RES + 2
@@ -290,6 +343,48 @@ do_count:
 	ldir
 	ld a, 10
 	jp result_len
+
+do_count_to:
+	call fetch_word
+	push hl
+	ld hl, S_COUNTS
+	ld d, h
+	ld e, l
+	inc de
+	ld (hl), 0A5h
+	ld bc, 7
+	ldir
+	pop de
+	ld hl, S_COUNTS
+	call store_count_to
+	jr count_done
+
+do_count_ends:
+	ld hl, (S_PTR)
+	push hl
+	ld c, (hl)
+	ld a, c
+	ld (S_RES + 2), a
+	ld b, 0
+	sla c
+	rl b
+	inc bc
+	add hl, bc
+	ld (S_PTR), hl
+	ld hl, S_RES + 3
+	ld d, h
+	ld e, l
+	inc de
+	ld (hl), 0A5h
+	ld bc, 63
+	ldir
+	ld a, 67
+	ld (S_RES_LEN), a
+	pop hl
+	ld de, S_RES + 3
+	call store_count_ends
+	ld (S_RES + 1), a
+	ret
 
 do_reset:
 	call store_reset
@@ -319,6 +414,11 @@ do_delete:
 	call fetch
 	ld (S_TMP), a
 	call letter_name
+	jr delete_named
+
+do_drop:
+	call store_name
+delete_named:
 	bcall(_ChkFindSym)
 	jr nc, delete_found
 	ld a, 1
@@ -342,21 +442,6 @@ do_list:
 
 list_name:
 	.db 1, 5Dh, 'Q', 0
-
-do_fill:
-	call fetch_word
-	push hl
-	ld hl, fill_name
-	ld de, OP1
-	ld bc, 9
-	ldir
-	pop hl
-	bcall(_CreateAppVar)
-	xor a
-	jp result_a
-
-fill_name:
-	.db appVarObj, "MCFILL", 0, 0
 
 do_room:
 	call fetch_word

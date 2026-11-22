@@ -16,7 +16,7 @@ fn loaded(count: u16, seed: &mut u32) -> (Rig, Table, u8) {
     let mut rig = Rig::new();
     let (t, pad) = random_table(count, seed);
     rig.m
-        .create_var("MCSTAT", &layout::encode_padded(&t, pad))
+        .create_var(VAR, &layout::encode_padded(&t, pad))
         .unwrap();
     (rig, t, pad)
 }
@@ -115,7 +115,7 @@ fn an_archived_table_comes_back_unchanged_at_every_count() {
     // The stub keeps an archive in one 16 KB flash page, so the largest table does not fit.
     for count in COUNTS.into_iter().filter(|&c| c < 65535) {
         let (mut rig, t, pad) = loaded(count, &mut seed);
-        rig.m.archive_var("MCSTAT");
+        rig.m.archive_var(VAR);
         let log = rig.run(&[Cmd::Open(CRC, count), Cmd::GetNext]);
         assert_eq!(
             (log[0].a, log[0].b()),
@@ -123,7 +123,7 @@ fn an_archived_table_comes_back_unchanged_at_every_count() {
             "count {count}"
         );
         assert_eq!(log[1].word(0), t.next);
-        let var = rig.m.read_var("MCSTAT").unwrap();
+        let var = rig.m.read_var(VAR).unwrap();
         assert!(!var.archived);
         assert_eq!(var.data, layout::encode_padded(&t, pad), "count {count}");
     }
