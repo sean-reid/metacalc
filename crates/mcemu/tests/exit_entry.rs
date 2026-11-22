@@ -86,6 +86,21 @@ fn seen(shadow: &[u8]) -> String {
     shadow_text(shadow).trim_end_matches('.').to_string()
 }
 
+/// The app started after `keys`, with About open on top of the start screen when `depth` is 2.
+fn launched_at(app: &Build, keys: &[u8], depth: usize) -> RealOs {
+    let (mut os, ..) = launched_after(&app.file, Some(&app.start), keys);
+    if depth == 2 {
+        os.tap(SCAN_F3, 150, 500);
+    }
+    assert_eq!(read(&mut os, VARS.0, 1), [depth as u8], "screens open");
+    os
+}
+
+/// The ways out at `depth`: CLEAR on the About screen goes back instead of leaving.
+fn leaves(depth: usize, way: &str) -> bool {
+    depth == 1 || way != "CLEAR"
+}
+
 fn plain() -> Vec<u8> {
     assemble_routine("wait_app.z80")
 }
@@ -93,12 +108,18 @@ fn plain() -> Vec<u8> {
 /// Leaves the app by every way out from each of `starts` and compares the home screen with the
 /// plain app's. The three exits through app_exit end as the plain app does after a CLEAR key,
 /// with the cursor on the row the entry was on; the OS's two end as the plain app does.
-fn check_open_entries(starts: &[(&str, Vec<u8>)], builds: &[(&str, &Build)]) {
+fn check_open_entries(starts: &[(&str, Vec<u8>)], builds: &[(&str, &Build)], depths: &[usize]) {
     for (start, keys) in starts {
         for (kind, app) in builds {
-            for (i, (way, exit, plain_exit)) in EXITS.into_iter().enumerate() {
-                let name = format!("{start}, {kind}, {way}");
-                let (mut os, ..) = launched_after(&app.file, Some(&app.start), keys);
+            for (&depth, (i, (way, exit, plain_exit))) in depths
+                .iter()
+                .flat_map(|d| EXITS.into_iter().enumerate().map(move |e| (d, e)))
+            {
+                if !leaves(depth, way) {
+                    continue;
+                }
+                let name = format!("{start}, {kind}, {way}, depth {depth}");
+                let mut os = launched_at(app, keys, depth);
                 exit(&mut os);
                 let (mut control, ..) = launched_after(&plain(), None, keys);
                 plain_exit(&mut control);
@@ -145,6 +166,7 @@ fn an_open_entry_ends_as_the_os_leaves_it_on_every_way_out() {
             ("library", with_library()),
             ("refused library", refused()),
         ],
+        &[1, 2],
     );
 }
 
@@ -169,7 +191,7 @@ fn long_and_moved_starts() -> Vec<(&'static str, Vec<u8>)> {
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn a_long_entry_or_a_moved_cursor_ends_as_the_os_leaves_it_on_every_way_out() {
-    check_open_entries(&long_and_moved_starts(), &[("no library", shell())]);
+    check_open_entries(&long_and_moved_starts(), &[("no library", shell())], &[1]);
 }
 
 /// While the app runs the OS holds the whole entry before editCursor, and cmdCursor, a word, is the
@@ -207,12 +229,15 @@ fn after_the_apps_own_exits_a_typed_digit_lands_in_the_top_left_cell() {
     starts.push(("empty", vec![]));
     starts.push(("lower row, closed", THREE_ENTRIES.to_vec()));
     for (start, keys) in starts {
-        for (i, (way, exit, _)) in EXITS.into_iter().enumerate() {
-            if !HANDS_CLEAR[i] {
+        for (depth, (i, (way, exit, _))) in [1usize, 2]
+            .into_iter()
+            .flat_map(|d| EXITS.into_iter().enumerate().map(move |e| (d, e)))
+        {
+            if !HANDS_CLEAR[i] || !leaves(depth, way) {
                 continue;
             }
-            let name = format!("{start}, {way}");
-            let (mut os, ..) = launched_after(&app.file, Some(&app.start), &keys);
+            let name = format!("{start}, {way}, depth {depth}");
+            let mut os = launched_at(app, &keys, depth);
             exit(&mut os);
             os.tap(SCAN_5, 150, 500);
             assert_eq!(read(&mut os, TEXT_SHADOW, 1), *b"5", "{name}: cell 0");
@@ -231,10 +256,10 @@ fn known_limit_2nd_off_and_1_quit_keep_an_unentered_entry_the_screen_cannot_show
     for (start, keys) in &OPEN_STARTS[..2] {
         let shown = if *start == "5" { "5" } else { "55555222" };
         for (kind, app) in [("no library", shell()), ("library", with_library())] {
-            for index in [2, 3] {
+            for (depth, index) in [(1usize, 2usize), (1, 3), (2, 2), (2, 3)] {
                 let (way, exit, plain_exit) = EXITS[index];
-                let name = format!("{start}, {kind}, {way}");
-                let (mut os, ..) = launched_after(&app.file, Some(&app.start), keys);
+                let name = format!("{start}, {kind}, {way}, depth {depth}");
+                let mut os = launched_at(app, keys, depth);
                 exit(&mut os);
                 let (mut control, ..) = launched_after(&plain(), None, keys);
                 plain_exit(&mut control);
@@ -292,9 +317,15 @@ fn a_closed_entry_leaves_the_cursor_at_the_top_left_and_the_pointers_as_the_os_h
             ("library", with_library()),
             ("refused library", refused()),
         ] {
-            for (way, exit, plain_exit) in EXITS {
-                let name = format!("{start}, {kind}, {way}");
-                let (mut os, ..) = launched_after(&app.file, Some(&app.start), keys);
+            for (depth, (way, exit, plain_exit)) in [1usize, 2]
+                .into_iter()
+                .flat_map(|d| EXITS.into_iter().map(move |e| (d, e)))
+            {
+                if !leaves(depth, way) {
+                    continue;
+                }
+                let name = format!("{start}, {kind}, {way}, depth {depth}");
+                let mut os = launched_at(app, keys, depth);
                 assert_eq!(cursor(&mut os), at, "{name}: where the cursor starts");
                 exit(&mut os);
                 let (mut control, ..) = launched_after(&plain(), None, keys);

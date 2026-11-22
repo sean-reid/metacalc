@@ -177,17 +177,18 @@ pub fn clear(os: &mut RealOs) {
 
 /// Milliseconds to wait after 2nd: with an entry line open, or another context's buffer in use, the
 /// OS redraws first and drops the next key if it comes within about a second, and an entry that
-/// fills the screen takes longer.
+/// fills the screen takes longer. With two screens of the shell open it redraws the one below.
 pub fn second_gap(os: &mut RealOs) -> u32 {
     let word = |os: &mut RealOs, at| {
         let b = read(os, at, 2);
         u32::from(u16::from_le_bytes([b[0], b[1]]))
     };
     let (top, cursor) = (word(os, EDIT_TOP), word(os, EDIT_CURSOR));
+    let deep = if read(os, VARS.0, 1)[0] >= 2 { 2500 } else { 0 };
     if top == 0x9DB7 && cursor == top {
-        300
+        300 + deep
     } else {
-        1500 + 10 * (cursor.saturating_sub(top))
+        1500 + deep + 10 * (cursor.saturating_sub(top))
     }
 }
 
