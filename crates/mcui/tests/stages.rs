@@ -109,9 +109,9 @@ fn checking(ui: &Ui) -> (usize, usize, usize, usize, bool) {
 /// Opens the list of stage `stage` from the libraries screen.
 fn open_stage(ui: &mut Ui, stage: usize) {
     for _ in 0..stage {
-        ui.press(Down);
+        ui.press_settled(Down);
     }
-    ui.press(Enter);
+    ui.press_settled(Enter);
 }
 
 fn run_all(ui: &mut Ui) -> (usize, usize) {
@@ -171,9 +171,9 @@ fn the_cursor_walks_the_stage_rows_and_my_proofs_stops_at_the_end() {
     let mut ui = fresh();
     press(&mut ui, &[Down, Down, Down]);
     assert_eq!(ui.state(), State::Libraries { cursor: 3, top: 0 });
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(ui.state(), State::Libraries { cursor: 3, top: 0 });
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert!(matches!(ui.state(), State::Notice { .. }));
     press(&mut ui, &[Clear, Up, Up, Up, Up]);
     assert_eq!(ui.state(), State::Libraries { cursor: 0, top: 0 });
@@ -202,7 +202,7 @@ fn a_list_title_counts_only_its_stage() {
     open_stage(&mut ui, 1);
     assert!(support::title_is(&ui.frame(), "rules", "5/8"));
     press(&mut ui, &[Clear, Up]);
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert!(support::title_is(&ui.frame(), "base", "5/5"));
 }
 
@@ -214,7 +214,7 @@ fn find_stays_inside_the_stage() {
     assert_eq!(list(&ui).1.as_deref(), Some("ax-1"));
     let missed = format!("a1 {CROSS}");
     assert!(support::title_is(&ui.frame(), "base", &missed));
-    ui.press(Clear);
+    ui.press_settled(Clear);
     support::typed(&mut ui, "ax-m");
     assert_eq!(list(&ui).1.as_deref(), Some("ax-mp"));
 
@@ -244,7 +244,7 @@ fn kind_counts_only_the_stage() {
                 unreachable!()
             };
             seen.push((kind, len));
-            ui.press(F3);
+            ui.press_settled(F3);
         }
         seen
     };
@@ -264,7 +264,7 @@ fn the_sections_jump_stays_inside_the_stage() {
     for (stage, titles, lands) in [(0, 3, "ax-1"), (1, 7, "mpd"), (2, 10, "ax-last")] {
         let mut ui = fresh();
         open_stage(&mut ui, stage);
-        ui.press(F5);
+        ui.press_settled(F5);
         let State::Sections { len, .. } = ui.state() else {
             panic!("not sections: {:?}", ui.state());
         };
@@ -274,7 +274,7 @@ fn the_sections_jump_stays_inside_the_stage() {
             unreachable!()
         };
         assert_eq!(cursor, titles - 1);
-        ui.press(Enter);
+        ui.press_settled(Enter);
         assert_eq!(list(&ui).1.as_deref(), Some(lands), "stage {stage}");
         assert_eq!(list(&ui).0, stage);
     }
@@ -286,7 +286,7 @@ fn the_sections_screen_of_a_stage_opens_on_the_title_of_the_highlighted_row_and_
     let mut ui = fresh();
     open_stage(&mut ui, 1);
     press(&mut ui, &[Right; 40]);
-    ui.press(F5);
+    ui.press_settled(F5);
     let State::Sections { title, .. } = ui.state() else {
         panic!("not sections");
     };
@@ -304,9 +304,9 @@ fn a_stage_without_a_title_has_no_sections_key() {
         end: len,
     }];
     let mut ui = ui_with(bytes, vec![Status::Unchecked; len], stages).unwrap();
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert!(!support::key_label_is(&ui.frame(), 4, "Sect"));
-    ui.press(F5);
+    ui.press_settled(F5);
     assert!(matches!(ui.state(), State::List { .. }));
 }
 
@@ -316,7 +316,7 @@ fn a_theorem_opened_from_two_stages_is_the_same_theorem_with_the_same_mark() {
         let mut ui = staged(table(7, &["a1i"]));
         open_stage(&mut ui, stage);
         support::typed(&mut ui, "a1i");
-        ui.press(Enter);
+        ui.press_settled(Enter);
         ui
     };
     let (one, two) = (open_in(1), open_in(2));
@@ -333,12 +333,12 @@ fn a_theorem_opened_from_two_stages_is_the_same_theorem_with_the_same_mark() {
 #[test]
 fn running_a_stage_stops_at_its_end_and_the_next_run_carries_on() {
     let mut ui = fresh();
-    ui.press(F2);
+    ui.press_settled(F2);
     assert_eq!(checking(&ui), (0, 0, 5, 0, false));
     assert_eq!(run_all(&mut ui), (5, 0));
     assert_eq!(checking(&ui), (0, 5, 5, 0, true));
     assert_eq!(ui.step_check(), CheckStep::Finished);
-    ui.press(F1);
+    ui.press_settled(F1);
     assert_eq!(
         rows(&ui),
         read(&[
@@ -352,7 +352,7 @@ fn running_a_stage_stops_at_its_end_and_the_next_run_carries_on() {
     assert_eq!(checking(&ui), (2, 5, 11, 0, false));
     assert_eq!(run_all(&mut ui), (6, 0));
     assert_eq!(checking(&ui), (2, 11, 11, 0, true));
-    ui.press(F1);
+    ui.press_settled(F1);
     assert_eq!(
         rows(&ui)[..3],
         read(&[
@@ -369,7 +369,7 @@ fn running_the_middle_stage_leaves_the_last_assertions_alone() {
     press(&mut ui, &[Down, F2]);
     assert_eq!(run_all(&mut ui), (8, 0));
     assert_eq!(checking(&ui), (1, 8, 8, 0, true));
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(
         rows(&ui)[..3],
         read(&[
@@ -383,12 +383,12 @@ fn running_the_middle_stage_leaves_the_last_assertions_alone() {
 #[test]
 fn a_stage_whose_range_is_all_settled_says_so_even_when_later_ones_are_not() {
     let mut ui = staged(table(5, &[]));
-    ui.press(F2);
+    ui.press_settled(F2);
     assert_eq!(checking(&ui), (0, 5, 5, 0, true));
     assert_eq!(ui.step_check(), CheckStep::Finished);
     assert!(support::text_at(&ui.frame(), 24, 1, "All checked", false));
     assert!(support::key_label_is(&ui.frame(), 0, "Done"));
-    ui.press(F1);
+    ui.press_settled(F1);
     press(&mut ui, &[Down, F2]);
     assert_eq!(checking(&ui), (1, 5, 8, 0, false));
 }
@@ -401,9 +401,9 @@ fn a_failed_check_counts_in_the_stages_that_hold_it_and_not_in_the_ones_before()
     let open = |stage: usize| {
         let mut ui = ui_with(rejected.clone(), table(0, &[]), stages()).unwrap();
         for _ in 0..stage {
-            ui.press(Down);
+            ui.press_settled(Down);
         }
-        ui.press(F2);
+        ui.press_settled(F2);
         ui
     };
     let mut ui = open(0);
@@ -412,7 +412,7 @@ fn a_failed_check_counts_in_the_stages_that_hold_it_and_not_in_the_ones_before()
     let mut ui = open(1);
     assert_eq!(run_all(&mut ui), (7, 1));
     assert_eq!(checking(&ui), (1, 8, 8, 1, true));
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(
         rows(&ui)[..3],
         read(&[
@@ -447,7 +447,7 @@ fn info_on_a_stage_shows_its_title_and_counts() {
             "{text}"
         );
     }
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert!(matches!(ui.state(), State::Libraries { cursor: 1, .. }));
 }
 
@@ -512,17 +512,17 @@ fn one_stage_ending_at_the_last_assertion_is_the_library_under_the_stage_name() 
     };
     let mut ui = ui_with(bytes(), table(3, &[]), vec![stage]).unwrap();
     assert_eq!(rows(&ui), read(&[("whole", "3/11"), ("My proofs", "2")]));
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(list(&ui), (0, Some("wi".into()), 0, 11));
-    ui.press(Clear);
-    ui.press(F3);
+    ui.press_settled(Clear);
+    ui.press_settled(F3);
     assert_eq!(ui.state(), State::About);
 }
 
 #[test]
 fn the_three_stage_frames() {
     let mut ui = staged(table(5, &[]));
-    ui.press(Down);
+    ui.press_settled(Down);
     check_frame(&ui.frame(), "stages-libraries");
     press(&mut ui, &[Enter, Down, Down, Down, Down, Down, Down]);
     check_frame(&ui.frame(), "stages-list");
@@ -567,12 +567,12 @@ fn ring_with_the_stages_mcpack_reports_reads_779_1171_and_3326() {
     let mut ui = ui;
     for (stage, want) in [779, 1171, 3326].into_iter().enumerate() {
         press(&mut ui, &vec![Down; stage]);
-        ui.press(F2);
+        ui.press_settled(F2);
         let State::Checking { total, done, .. } = ui.state() else {
             panic!("not checking: {:?}", ui.state());
         };
         assert_eq!((total, done), (want, 100));
-        ui.press(Clear);
+        ui.press_settled(Clear);
         press(&mut ui, &vec![Up; stage]);
     }
 }
@@ -586,7 +586,7 @@ fn a_run_goes_past_a_recorded_failure_to_the_end_of_its_stage() {
     assert_eq!(checking(&ui), (1, 6, 8, 1, false));
     assert_eq!(run_all(&mut ui), (2, 0));
     assert_eq!(checking(&ui), (1, 8, 8, 1, true));
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(
         rows(&ui)[..3],
         read(&[
@@ -617,13 +617,13 @@ fn more_stage_rows_than_the_screen_holds_scroll_and_open_the_stage_under_the_cur
     assert_eq!(names, ["s3", "s4", "s5", "s6", "s7", "My proofs"]);
     press(&mut ui, &[Down, Up]);
     assert_eq!(ui.state(), State::Libraries { cursor: 7, top: 3 });
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(list(&ui), (7, Some("wi".into()), 0, 11));
-    ui.press(Clear);
+    ui.press_settled(Clear);
     press(&mut ui, &[Up, Up, Up]);
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(list(&ui), (4, Some("wi".into()), 0, 5));
-    ui.press(Clear);
+    ui.press_settled(Clear);
     press(&mut ui, &[Up; 10]);
     assert_eq!(ui.state(), State::Libraries { cursor: 0, top: 0 });
 }

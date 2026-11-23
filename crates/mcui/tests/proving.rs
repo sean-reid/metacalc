@@ -68,7 +68,7 @@ fn notice(ui: &Ui) -> String {
 fn prove(bytes: &[u8], label: &str) -> Ui {
     let mut ui = ui_over(bytes.to_vec(), &[], &[]);
     open(&mut ui, label);
-    ui.press(F4);
+    ui.press_settled(F4);
     ui
 }
 
@@ -78,7 +78,7 @@ fn select(ui: &mut Ui, label: &str) {
         if at(ui).candidate.as_deref() == Some(label) {
             return;
         }
-        ui.press(Down);
+        ui.press_settled(Down);
     }
     panic!("no candidate {label}");
 }
@@ -198,13 +198,13 @@ fn try_opens_the_proving_screen_from_the_list_and_the_theorem() {
     let mut ui = ui_over(bytes.clone(), &[], &[]);
     press(&mut ui, &[Enter, F2]);
     support::typed(&mut ui, "a1i");
-    ui.press(F4);
+    ui.press_settled(F4);
     assert!(matches!(ui.state(), State::Proving { ref label, .. } if label == "a1i"));
     assert_eq!(ui.depth(), 3);
-    ui.press(Clear);
-    ui.press(Enter);
+    ui.press_settled(Clear);
+    ui.press_settled(Enter);
     assert!(matches!(ui.state(), State::Theorem { .. }));
-    ui.press(F4);
+    ui.press_settled(F4);
     assert!(matches!(ui.state(), State::Proving { ref label, .. } if label == "a1i"));
     assert_eq!(ui.depth(), 4);
 }
@@ -213,12 +213,12 @@ fn try_opens_the_proving_screen_from_the_list_and_the_theorem() {
 fn an_axiom_and_a_syntax_theorem_cannot_be_proved() {
     let mut ui = ui_over(proving_bytes(), &[], &[]);
     open(&mut ui, "ax-1");
-    ui.press(F4);
+    ui.press_settled(F4);
     assert_eq!(notice(&ui), "Prove");
     check(&ui, "proving-notice-axiom");
     home(&mut ui);
     open(&mut ui, "wtwice");
-    ui.press(F4);
+    ui.press_settled(F4);
     assert_eq!(notice(&ui), "Prove");
     check(&ui, "proving-notice-syntax");
 }
@@ -240,7 +240,7 @@ fn deep_bytes() -> Vec<u8> {
 fn a_theorem_whose_statement_is_past_the_term_bound_says_so() {
     let mut ui = ui_over(deep_bytes(), &[], &[]);
     open(&mut ui, "deep");
-    ui.press(F4);
+    ui.press_settled(F4);
     assert_eq!(notice(&ui), "Prove");
     check(&ui, "proving-notice-too-large");
 }
@@ -340,7 +340,7 @@ fn candidates_scroll_in_the_order_the_editor_returns_them() {
         if seen.last() != Some(&now) {
             seen.push(now);
         }
-        ui.press(Down);
+        ui.press_settled(Down);
     }
     assert_eq!(
         seen,
@@ -368,7 +368,7 @@ fn a_hypothesis_that_does_not_match_is_refused() {
     press(&mut ui, &[F2, F1]);
     assert_eq!(notice(&ui), "Use");
     check(&ui, "proving-notice-no-match");
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(at(&ui).steps, 0);
     assert_eq!(ui.saved_proofs().count(), 0);
 }
@@ -376,7 +376,7 @@ fn a_hypothesis_that_does_not_match_is_refused() {
 #[test]
 fn undo_with_nothing_done_is_refused() {
     let mut ui = prove(&proving_bytes(), "a1i");
-    ui.press(F4);
+    ui.press_settled(F4);
     assert_eq!(notice(&ui), "Undo");
     check(&ui, "proving-notice-nothing-to-undo");
 }
@@ -384,10 +384,10 @@ fn undo_with_nothing_done_is_refused() {
 #[test]
 fn auto_that_finds_nothing_or_meets_unknowns_is_refused() {
     let mut ui = prove(&proving_bytes(), "a1i");
-    ui.press(F3);
+    ui.press_settled(F3);
     assert_eq!(notice(&ui), "Auto");
     check(&ui, "proving-notice-auto-nothing");
-    ui.press(Clear);
+    ui.press_settled(Clear);
     select(&mut ui, "ax-mp");
     press(&mut ui, &[F1, F3]);
     assert_eq!(notice(&ui), "Auto");
@@ -399,10 +399,10 @@ fn auto_that_finds_nothing_or_meets_unknowns_is_refused() {
 fn auto_on_a_goal_with_unknowns_says_so() {
     let mut ui = prove(&proving_bytes(), "mpd");
     select(&mut ui, "ax-mp");
-    ui.press(F1);
+    ui.press_settled(F1);
     select(&mut ui, "a2i");
-    ui.press(F1);
-    ui.press(F3);
+    ui.press_settled(F1);
+    ui.press_settled(F3);
     assert_eq!(notice(&ui), "Auto");
     check(&ui, "proving-notice-auto-unknowns");
 }
@@ -411,10 +411,10 @@ fn auto_on_a_goal_with_unknowns_says_so() {
 fn an_application_that_breaks_a_distinct_variable_rule_is_refused() {
     let mut ui = prove(&proving_bytes(), "tq");
     select(&mut ui, "ax-5");
-    ui.press(F1);
+    ui.press_settled(F1);
     assert_eq!(notice(&ui), "Apply");
     check(&ui, "proving-notice-distinct");
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(at(&ui).steps, 0);
     assert_eq!(at(&ui).open, 1);
 }
@@ -423,13 +423,13 @@ fn an_application_that_breaks_a_distinct_variable_rule_is_refused() {
 fn a_goal_that_is_still_unknown_waits_and_cannot_be_applied_to() {
     let mut ui = prove(&proving_bytes(), "a1i");
     select(&mut ui, "ax-mp");
-    ui.press(F1);
+    ui.press_settled(F1);
     press(&mut ui, &[F5, Up, Up]);
-    ui.press(Down);
-    ui.press(Enter);
+    ui.press_settled(Down);
+    ui.press_settled(Enter);
     assert_eq!(at(&ui).goal, Some(1));
     check(&ui, "proving-unknown");
-    ui.press(F1);
+    ui.press_settled(F1);
     assert_eq!(notice(&ui), "Apply");
     check(&ui, "proving-notice-unknown");
 }
@@ -438,7 +438,7 @@ fn a_goal_that_is_still_unknown_waits_and_cannot_be_applied_to() {
 fn unknowns_of_a_goal_are_spaced_like_variables() {
     let mut ui = prove(&proving_bytes(), "tdv2");
     select(&mut ui, "axu");
-    ui.press(F1);
+    ui.press_settled(F1);
     assert_eq!(at(&ui).open, 1);
     check(&ui, "proving-unknowns-spaced");
 }
@@ -468,11 +468,11 @@ fn clear_leaves_each_list_before_it_leaves_the_screen() {
     press(&mut ui, &[F2]);
     assert_eq!(at(&ui).view, View::Hyps);
     check(&ui, "proving-hyps-two");
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(at(&ui).view, View::Candidates);
     press(&mut ui, &[F5, Clear]);
     assert_eq!(at(&ui).view, View::Candidates);
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(ui.depth(), 3);
 }
 
@@ -514,7 +514,7 @@ fn libraries_with(bytes: &[u8], count: usize) -> mcglyph::Bitmap {
 
 fn home(ui: &mut Ui) -> mcglyph::Bitmap {
     while ui.depth() > 1 {
-        ui.press(Clear);
+        ui.press_settled(Clear);
     }
     ui.frame()
 }
@@ -700,8 +700,8 @@ fn groups_that_do_not_describe_the_operations_are_refused() {
             "{groups:?}"
         );
         open(&mut ui, "a1i");
-        ui.press(F4);
-        ui.press(F4);
+        ui.press_settled(F4);
+        ui.press_settled(F4);
         assert_eq!(notice(&ui), "Undo", "{groups:?}");
     }
 }
@@ -713,7 +713,7 @@ fn a_restored_proof_with_a_broken_distinct_variable_rule_is_not_finished() {
     ui.restore_proof(crafted(&bytes, "tq", &["ax-5"], vec![1]))
         .unwrap();
     open(&mut ui, "tq");
-    ui.press(F4);
+    ui.press_settled(F4);
     let now = at(&ui);
     assert_eq!((now.open, now.goal, now.finished), (0, None, false));
 }
@@ -793,7 +793,7 @@ fn a_version_one_save_is_refused_as_damaged() {
 #[test]
 fn a_hypothesis_list_longer_than_the_screen_scrolls_and_pages() {
     let mut ui = prove(&proving_bytes(), "many2");
-    ui.press(F2);
+    ui.press_settled(F2);
     check(&ui, "proving-many-hyps-top");
     let selected = |ui: &Ui| match ui.state() {
         State::Proving { selected, .. } => selected,
@@ -808,10 +808,10 @@ fn a_hypothesis_list_longer_than_the_screen_scrolls_and_pages() {
     assert_eq!(selected(&ui), 7 - at_rows(&ui));
     press(&mut ui, &[Left, Left, Left]);
     assert_eq!(selected(&ui), 0);
-    ui.press(Right);
+    ui.press_settled(Right);
     assert_eq!(selected(&ui), at_rows(&ui));
     press(&mut ui, &[Down, Down, Down, Down, Down, Down]);
-    ui.press(F1);
+    ui.press_settled(F1);
     assert_eq!(notice(&ui), "Use");
 }
 
@@ -840,14 +840,14 @@ fn a_deep_tree_scrolls_and_its_indent_stops_at_the_maximum_depth() {
     ui_press_n(&mut p.ui, Up, 20);
     assert_eq!(selected(&p.ui), 0);
     check(&p.ui, "proving-tree-deep-top");
-    p.ui.press(Right);
+    p.ui.press_settled(Right);
     assert_eq!(selected(&p.ui), 6);
-    p.ui.press(Right);
-    p.ui.press(Right);
+    p.ui.press_settled(Right);
+    p.ui.press_settled(Right);
     assert_eq!(selected(&p.ui), 12, "stops at the last goal");
-    p.ui.press(Left);
+    p.ui.press_settled(Left);
     assert_eq!(selected(&p.ui), 6);
-    p.ui.press(Enter);
+    p.ui.press_settled(Enter);
     assert_eq!(
         at(&p.ui).view,
         View::Tree,
@@ -857,7 +857,7 @@ fn a_deep_tree_scrolls_and_its_indent_stops_at_the_maximum_depth() {
 
 fn ui_press_n(ui: &mut Ui, key: Key, n: usize) {
     for _ in 0..n {
-        ui.press(key);
+        ui.press_settled(key);
     }
 }
 
@@ -870,7 +870,7 @@ fn no_key_press_replays_the_operations_before_it() {
     let mut times = Vec::new();
     for _ in 0..depth {
         let started = Instant::now();
-        ui.press(F1);
+        ui.press_settled(F1);
         times.push(started.elapsed());
         assert_eq!(replayed(&ui), 0);
     }
@@ -913,7 +913,7 @@ fn offered(ui: &mut Ui) -> Vec<String> {
             Some(label) if !seen.contains(&label) => seen.push(label),
             _ => break,
         }
-        ui.press(Down);
+        ui.press_settled(Down);
     }
     seen
 }
