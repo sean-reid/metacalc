@@ -1,7 +1,8 @@
 ; The screen kinds the shell gives the screen stack (scr/scr.z80), the kind table and the routines
-; that build a frame to push. The kind table has a row of four addresses, enter, draw, key and land,
-; for each kind. Kind 1 is in screen_libraries.inc, kind 2 in screen_notice.inc, kind 3 in
-; screen_about.inc and kind 4 in screen_stage.inc. No kind has a land: a row's land is a ret.
+; that build a frame to push. The kind table has a row of five addresses, enter, draw, key, land and
+; idle, for each kind. Kind 1 is in screen_libraries.inc, kind 2 in screen_notice.inc, kind 3 in
+; screen_about.inc and kind 4 in screen_stage.inc. No kind has a land or an idle: a row's land is
+; screen_ret and its idle is screen_idle.
 ;
 ; Frames, 16 bytes: byte 0 the kind, the rest 0 but what the kind keeps there.
 ;   KIND_LIBRARIES  byte 1 the cursor, byte 2 the first row shown
@@ -21,16 +22,21 @@ FRAME_CURSOR	.equ 1
 FRAME_TOP	.equ 2
 
 screen_kinds:
-	.dw libs_enter, libs_draw, libs_key, screen_ret
-	.dw notice_enter, notice_draw, notice_key, screen_ret
-	.dw about_enter, about_draw, about_key, screen_ret
-	.dw stage_enter, stage_draw, about_key, screen_ret
+	.dw libs_enter, libs_draw, libs_key, screen_ret, screen_idle
+	.dw notice_enter, notice_draw, notice_key, screen_ret, screen_idle
+	.dw about_enter, about_draw, about_key, screen_ret, screen_idle
+	.dw stage_enter, stage_draw, about_key, screen_ret, screen_idle
 
 screen_first:
 	.db KIND_LIBRARIES
 	.fill 15, 0
 
 screen_ret:
+	ret
+
+; Out: A = SCR_STAY, carry clear: nothing pending.
+screen_idle:
+	xor a
 	ret
 
 ; In: HL = a frame, A = kind, B = number, C = parameter. Writes them and zeros the rest.

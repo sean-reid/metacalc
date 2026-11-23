@@ -75,6 +75,10 @@ impl Out {
     pub fn b(&self) -> u8 {
         (self.bc >> 8) as u8
     }
+
+    pub fn carry(&self) -> bool {
+        self.af & 1 != 0
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,6 +87,7 @@ pub enum Routine {
     Draw,
     Key,
     Land,
+    Idle,
 }
 
 /// One call of a fake routine, as it logged itself. `a` and `b` mean something for a key, `de` for a land.
@@ -204,13 +209,13 @@ impl Rig {
 
     fn write_table(&mut self) {
         let table = self.table();
-        self.poke(table, &[0; 255 * 8]);
+        self.poke(table, &[0; 255 * 10]);
         for (kind, fake) in KINDS {
-            let row: Vec<u8> = ["enter", "draw", "key", "land"]
+            let row: Vec<u8> = ["enter", "draw", "key", "land", "idle"]
                 .iter()
                 .flat_map(|r| self.label(&format!("fk{fake}_{r}")).to_le_bytes())
                 .collect();
-            self.poke(table + u16::from(kind - 1) * 8, &row);
+            self.poke(table + u16::from(kind - 1) * 10, &row);
         }
     }
 
@@ -352,7 +357,12 @@ impl Rig {
     }
 
     pub fn script(&mut self, act: Act) {
-        let mut entry = vec![act.code(), 0];
+        self.script_with(act, false);
+    }
+
+    /// The routine returns `act`, with carry set when `more`; a key routine ignores the carry.
+    pub fn script_with(&mut self, act: Act, more: bool) {
+        let mut entry = vec![act.code(), u8::from(more)];
         let (de, frame) = match act {
             Act::Jump(de) => (de, [0; 16]),
             Act::Push(frame) => (0, frame),
@@ -376,6 +386,7 @@ impl Rig {
                     2 => Routine::Draw,
                     3 => Routine::Key,
                     4 => Routine::Land,
+                    5 => Routine::Idle,
                     other => panic!("a log record of routine {other}"),
                 },
                 kind: r[1],
@@ -438,6 +449,26 @@ impl Rig {
     pub fn key(&mut self, key: u8, ch: u8, act: Act, statuses: &[u8]) -> (Out, Vec<Rec>) {
         let (out, log, _) = self.key_at(key, ch, act, statuses, None);
         (out, log)
+    }
+
+    /// One `scr_idle`: the fake idle routine returns `act` with carry `more`, and the enters
+    /// return `statuses` in turn.
+    pub fn idle(&mut self, act: Act, more: bool, statuses: &[u8]) -> (Out, Vec<Rec>) {
+        self.idle_regs(Regs::default(), act, more, statuses)
+    }
+
+    /// `idle` called with `regs`.
+    pub fn idle_regs(
+        &mut self,
+        regs: Regs,
+        act: Act,
+        more: bool,
+        statuses: &[u8],
+    ) -> (Out, Vec<Rec>) {
+        self.arm(statuses);
+        self.script_with(act, more);
+        let (out, _) = self.run("SCR_IDLE", regs, None);
+        (out, self.log())
     }
 
     /// `key`, with an interrupt after `after` T-states when given; also returns how many the

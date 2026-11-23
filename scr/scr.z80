@@ -11,8 +11,8 @@
 ; a kind. Bytes 1 to 15 are that screen's position and mean nothing to the framework. The frames
 ; above the open ones hold stale bytes.
 ;
-; Kinds. scr_init is given a table of 8 byte rows, one per kind, the row of kind k at table +
-; (k-1)*8, four little-endian addresses: enter, draw, key, land. Only the top screen has derived
+; Kinds. scr_init is given a table of 10 byte rows, one per kind, the row of kind k at table +
+; (k-1)*10, five little-endian addresses: enter, draw, key, land, idle. Only the top screen has derived
 ; state, so a screen that becomes the top is entered again from its frame. A kind that is not in
 ; the table, or kind 0, is a wild jump. Every routine of a kind may destroy every register but
 ; IY and gets the frame as HL, the frame's address in SCR_STACK, which holds only until the stack
@@ -23,21 +23,27 @@
 ;          out A = SCR_STAY, SCR_REDRAW, SCR_PUSH (the new frame's 16 bytes are in scr_new),
 ;          SCR_POP, or SCR_JUMP (DE = the assertion to land on). Any other value is SCR_STAY.
 ;   land   in HL = frame, DE = the assertion. Moves the screen to it, after its enter.
+;   idle   in HL = frame. Does the screen's pending work, or one bounded slice of it.
+;          out A = an action as a key routine returns it, and carry set when more work is
+;          pending after this call, clear when none is. SCR_STAY with carry clear means nothing
+;          was pending and nothing changed. A kind with no work points idle at a routine that
+;          returns A = SCR_STAY with carry clear.
 ;
 ; Contracts the code does not check: scr_init runs before any other routine; a kind is 1 to 255 and
-; has a row in the table; a key routine that returns SCR_PUSH has filled scr_new with a frame whose
+; has a row in the table; a key or idle routine that returns SCR_PUSH has filled scr_new with a frame whose
 ; kind is not 0; after SCR_RES_FAILED from a pop or a jump the uncovered screen has not been entered,
-; so the caller runs scr_refresh, or leaves, before the next scr_key.
+; so the caller runs scr_refresh, or leaves, before the next scr_key or scr_idle.
 ;
 ; Variables. SCR_USED (41) bytes of SCR_VARS, laid out in ram.inc; scr_new is the frame a key
-; routine writes before it returns SCR_PUSH. Nothing is kept in a register across a call of a
+; or idle routine writes before it returns SCR_PUSH. Nothing is kept in a register across a call of a
 ; kind's routine. Only the stack, the variables and scr_new hold state, so all of it survives a
 ; key wait and an auto power down, except the derived state of the top screen: scr_refresh builds
 ; it again. The framework never touches IY, the shadow registers or IX, never changes the
 ; interrupt state, and works with interrupts on.
 ;
-; Stack: counting the caller's return address, at most 10 bytes inside scr_dispatch, and at most 4
-; at the entry of a kind's routine; the routines add their own.
+; Stack: counting the caller's return address, scr_key and the other routines use at most 10 bytes
+; inside scr_dispatch and at most 4 at the entry of a kind's routine. scr_idle uses at most 12 and
+; at most 6 when its action is a push, a pop or a jump. The routines add their own.
 ;
 ; Routines:
 ;   scr_init     in HL = the kind table, DE = the first frame, 16 bytes outside SCR_STACK. Clears
@@ -57,6 +63,15 @@
 ;                its land with the assertion after that. When that enter fails the frame stays
 ;                removed, land does not run, and the status comes back as SCR_RES_FAILED; the
 ;                screen's frame is intact, and scr_refresh tries its enter again.
+;                destroys everything but IY.
+;   scr_idle     Runs the top screen's idle and applies its action as scr_key applies a key's, push
+;                with eviction and its failure rule, pop, jump and leave included. out A and B as
+;                scr_key, and carry set when the screen on top after the action has more work
+;                pending. After SCR_STAY and SCR_REDRAW that is the idle routine's own carry;
+;                after a push, pop or jump the framework cannot know and answers carry set, so the
+;                next scr_idle asks the new top screen; SCR_RES_LEAVE and SCR_RES_FAILED answer
+;                carry clear. The caller calls scr_idle again while carry is set, checking for a
+;                waiting key between calls, and waits for a key when it is clear.
 ;                destroys everything but IY.
 ;   scr_push_frame
 ;                in HL = a frame of 16 bytes outside SCR_STACK, whose kind is not 0. Pushes it as
@@ -90,6 +105,7 @@ SCR_AT_ENTER               .equ 0
 SCR_AT_DRAW                .equ 2
 SCR_AT_KEY                 .equ 4
 SCR_AT_LAND                .equ 6
+SCR_AT_IDLE                .equ 8
 
 scr_init:
 	ld (scr_table),hl
@@ -133,8 +149,11 @@ scr_dispatch:
 	ld l,a
 	ld h,0
 	add hl,hl
+	ld e,l
+	ld d,h
 	add hl,hl
 	add hl,hl
+	add hl,de
 	ld a,c
 	ld de,(scr_table)
 	add hl,de
@@ -172,6 +191,9 @@ scr_top:
 scr_key:
 	ld c,SCR_AT_KEY
 	call scr_on_top
+
+; in A = the action a routine returned, DE = its assertion for SCR_JUMP
+sk_apply:
 	cp SCR_PUSH
 	jr z,sk_push
 	cp SCR_POP
@@ -274,3 +296,27 @@ sk_reenter:
 	jr nz,sk_failed
 	ld a,(scr_status)
 	jr sk_failed
+
+scr_idle:
+	ld c,SCR_AT_IDLE
+	call scr_on_top
+	ld c,0
+	rl c
+	cp SCR_PUSH
+	jr z,si_moved
+	cp SCR_POP
+	jr z,si_moved
+	cp SCR_JUMP
+	jr z,si_moved
+	cp SCR_REDRAW
+	ld a,SCR_RES_IDLE
+	jr nz,si_carry
+	ld a,SCR_RES_REDRAW
+si_carry:
+	rr c
+	ret
+si_moved:
+	call sk_apply
+	; carry set for SCR_RES_IDLE and SCR_RES_REDRAW, clear for SCR_RES_LEAVE and SCR_RES_FAILED
+	cp SCR_RES_LEAVE
+	ret

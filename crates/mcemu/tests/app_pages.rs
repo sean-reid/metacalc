@@ -21,6 +21,8 @@ mod fixture;
 #[allow(dead_code)]
 #[path = "common/guard.rs"]
 mod guard;
+#[path = "app_pages/idle.rs"]
+mod idle;
 #[path = "app_pages/keys.rs"]
 mod keys;
 #[path = "app_pages/numbers.rs"]
