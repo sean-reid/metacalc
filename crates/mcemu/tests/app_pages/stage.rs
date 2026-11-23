@@ -130,8 +130,8 @@ fn the_stage_about_hands_the_canvas_only_strings_in_ram() {
     let [_, centered, title, _, _, cut] = counts(&mut shell);
     assert_eq!(
         (centered, title, cut),
-        (4, 2, 5),
-        "four centred lines and a title bar, and three row names and two cuts"
+        (4, 2, 4),
+        "four centred lines and a title bar, and three row names and the title cut"
     );
 }
 

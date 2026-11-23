@@ -440,12 +440,6 @@ impl App {
         (done, tstates)
     }
 
-    /// `far` timed as `timed` does.
-    pub fn far_timed(&mut self, name: &str, input: In) -> Done {
-        let at = self.label(name);
-        self.timed(BASE, at, input)
-    }
-
     /// The RAM a driver run writes, `DRIVER_RAM`, lies clear of every region of the app's RAM map.
     fn assert_scratch_is_free(&self) {
         let regions = [

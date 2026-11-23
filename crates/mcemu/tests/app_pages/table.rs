@@ -79,7 +79,7 @@ pub fn random_status(count: usize, seed: &mut u32, checked: u32, failing: u32) -
             let r = xorshift(seed);
             if r % 100 < checked {
                 Status::Checked
-            } else if failing != 0 && (r / 100) % failing == 0 {
+            } else if failing != 0 && (r / 100).is_multiple_of(failing) {
                 Status::Failed
             } else {
                 Status::Unchecked
