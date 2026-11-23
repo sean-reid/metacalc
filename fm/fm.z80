@@ -79,10 +79,10 @@
 ; statement takes 266,746 T-states and with the cursor on the node that costs most 290,183, within
 ; the 50 ms budget of 300,000: the
 ; cursor adds one ui_invert for each line, at most 3,203 for a line as wide as the window. fm_clip
-; costs 1,140 T-states on a statement that fits the lines and was counted by fm_fit, and at most
-; 2,667 on ring's conclusions cut to one line of 30 pixels; fm_fit to one line and then fm_clip
-; takes 52,577 T-states at the median over ring's conclusions at the preview's width of 94 pixels
-; and 1,051,171 at worst. The reader
+; costs 1,197 T-states on a statement that fits the lines and was counted by fm_fit, and at most
+; 2,750 on ring's conclusions cut to one line of 30 pixels; fm_fit to one line and then fm_clip
+; takes 52,743 T-states at the median over ring's conclusions at the preview's width of 94 pixels
+; and 1,073,468 at worst, for df-rng. The reader
 ; and the canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
 ; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
