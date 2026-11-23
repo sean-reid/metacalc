@@ -1,5 +1,11 @@
 #[path = "fm/clip.rs"]
 mod clip;
+#[path = "fm/clipcost.rs"]
+mod clipcost;
+#[path = "fm/clipedge.rs"]
+mod clipedge;
+#[path = "fm/cliprefuse.rs"]
+mod cliprefuse;
 #[path = "fm/clipstate.rs"]
 mod clipstate;
 #[path = "fm/damaged.rs"]

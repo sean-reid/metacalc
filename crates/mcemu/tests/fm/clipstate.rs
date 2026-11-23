@@ -8,14 +8,6 @@ use mcui::canvas::{CONTENT_ROWS, STATEMENT_WIDTH, TEXT_WIDTH};
 use mcui::expr::Expr;
 use mcui::fold::{Folds, fit_one, layout};
 
-fn index(bytes: &[u8], label: &str) -> u16 {
-    decoded(bytes)
-        .assertions
-        .iter()
-        .position(|a| a.label == label)
-        .unwrap_or_else(|| panic!("no assertion {label}")) as u16
-}
-
 /// A conclusion that no fold can shorten and that takes several lines at `width`.
 fn unfoldable(model: &Model, bytes: &[u8], width: usize) -> (u16, Expr) {
     for n in 0..decoded(bytes).assertions.len() as u16 {
@@ -169,11 +161,6 @@ fn a_statement_that_fits_is_left_alone_and_costs_a_check() {
     assert_eq!(out.status(), 0);
     assert_eq!(fm.records(), before);
     assert!(spent < 1200, "{spent}");
-    let wide = fm.clip(CONTENT_ROWS, 20);
-    assert_eq!(wide.status(), 0);
-    assert!(count(wide) <= CONTENT_ROWS);
-    assert_eq!(fm.clip(1, 20).status(), 0);
-    assert_eq!(fm.clip(1, 20).status(), code("FM_ERR_CLIPPED"));
 }
 
 #[test]
