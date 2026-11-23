@@ -19,6 +19,8 @@ if [ "${1:-}" = --find ]; then
 	shift
 fi
 spasm=${1:?$usage}
+# The table's lengths belong to the bytes of an app of this version, whatever the workspace's is.
+version=0.1.0
 app=$(cd "$(dirname "$0")/.." && pwd)
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
@@ -35,7 +37,7 @@ if [ -n "$find" ]; then
 	while [ "$len" -le "$last" ]; do
 		make_library "$len"
 		rm -rf "$dir/build"
-		make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" > /dev/null
+		make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" VERSION="$version" > /dev/null
 		out=$(sh "$app/scripts/check-8xk.sh" -p 3 -l "$dir/lib" "$dir/build/metacalc.8xk")
 		echo "$len $(echo "$out" | sed 's/.*bytes, //')"
 		len=$((len + 1))
@@ -72,7 +74,7 @@ for entry in 56:63:00 4:64:01\ 01 2:64:01\ 02 1:64:01\ 03 6:64:00; do
 	form=${rest#*:}
 	make_library "$len"
 	rm -rf "$dir/build"
-	make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" > /dev/null
+	make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" VERSION="$version" > /dev/null
 	out=$(sh "$app/scripts/check-8xk.sh" -p 3 -l "$dir/lib" "$dir/build/metacalc.8xk")
 	case $out in
 		*", $want-byte signature, trailer $form)") ;;
