@@ -311,6 +311,25 @@ fn only_the_statement_caps_decide_the_list_preview() {
     assert!(!blank(&crowded));
 }
 
+#[test]
+fn a_statement_past_a_cap_settles_at_idle_with_the_row_still_blank() {
+    let shapes = [(255, 256)];
+    let bytes = library(&shapes);
+    assert_measured(&bytes, &shapes);
+    let mut ui = ui_over(bytes, &[], &[]);
+    press(&mut ui, &[Enter, F2]);
+    ui.press(Letter('b'));
+    ui.press(Letter('i'));
+    ui.press(Letter('g'));
+    let pending = |ui: &Ui| matches!(ui.state(), State::List { pending: true, .. });
+    assert!(pending(&ui));
+    let frame = ui.frame();
+    assert!(!ui.idle());
+    assert!(!pending(&ui));
+    assert_eq!(ui.frame(), frame);
+    assert!(!ui.idle());
+}
+
 /// No assertion of a shipped library is past a cap, so none opens on the notice.
 #[test]
 #[ignore = "needs MC_LIBRARIES, a directory of built libraries"]
