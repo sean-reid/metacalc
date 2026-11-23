@@ -19,7 +19,8 @@ if [ "${1:-}" = --find ]; then
 	shift
 fi
 spasm=${1:?$usage}
-# The table's lengths belong to the bytes of an app of this version, whatever the workspace's is.
+# The lengths this script expects belong to the bytes of an app of this version, whatever the
+# workspace's is.
 version=0.1.0
 app=$(cd "$(dirname "$0")/.." && pwd)
 dir=$(mktemp -d)
@@ -85,7 +86,7 @@ done
 # A library of 935 bytes puts 0Ah in the file header's length field, which is not a line ending.
 make_library 935
 rm -rf "$dir/build"
-make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" > /dev/null
+make -s -C "$app" SPASM="$spasm" BUILD="$dir/build" LIBRARY="$dir/lib" VERSION="$version" > /dev/null
 [ "$(head -c 78 "$dir/build/metacalc.8xk" | tail -c 4 | od -An -tx1 | tr -d ' ')" = 0ad80100 ] || {
 	echo "test-library-pages: 935 bytes: the header has no 0Ah byte" >&2
 	exit 1
