@@ -84,7 +84,7 @@ fn long_unfolded() -> Ui {
 #[test]
 fn a_cursor_inside_a_fold_the_refit_makes_keeps_its_node() {
     let mut ui = long_unfolded();
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(at(&ui), (0, 7, 0, 41, false));
     press(&mut ui, &[F2, Clear]);
     assert_eq!(at(&ui), (0, 7, 0, 42, false));
@@ -99,7 +99,7 @@ fn a_cursor_inside_a_fold_the_refit_makes_keeps_its_node() {
 fn a_scroll_beyond_the_refit_layout_is_cut_back() {
     let mut ui = long_unfolded();
     while at(&ui).1 != 0 {
-        ui.press(Up);
+        ui.press_settled(Up);
     }
     press(&mut ui, &[Right; 7]);
     let (statement, _, tall, _, _) = at(&ui);
@@ -130,11 +130,11 @@ fn a_pop_at_full_depth_fits_the_top_theorem_again() {
         press(&mut ui, &[F3, F3]);
     }
     assert_eq!(ui.depth(), mcui::MAX_DEPTH);
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(at(&ui).3, 1);
-    ui.press(F3);
+    ui.press_settled(F3);
     assert_eq!(ui.depth(), mcui::MAX_DEPTH);
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(ui.depth(), mcui::MAX_DEPTH - 1);
     assert_eq!(at(&ui).3, 0);
 }
@@ -143,11 +143,11 @@ fn a_pop_at_full_depth_fits_the_top_theorem_again() {
 fn a_theorem_closed_over_a_notice_is_fitted_again() {
     let mut ui = support::rejected_ui();
     open(&mut ui, "a1i");
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(at(&ui).3, 1);
-    ui.press(F3);
+    ui.press_settled(F3);
     assert!(matches!(ui.state(), State::Notice { .. }));
-    ui.press(Clear);
+    ui.press_settled(Clear);
     let mut fresh = support::rejected_ui();
     open(&mut fresh, "a1i");
     assert_eq!(ui.state(), fresh.state());
@@ -161,9 +161,9 @@ fn the_cursor_is_in_view_after_a_refit_that_shortens_the_layout() {
     for _ in 0..7 {
         press(&mut ui, &[Down, Right, Down, Right, Down, Right, Enter]);
         while at(&ui).1 != 0 {
-            ui.press(Up);
+            ui.press_settled(Up);
         }
-        ui.press(Right);
+        ui.press_settled(Right);
     }
     press(&mut ui, &[Left; 4]);
     assert_eq!(at(&ui).2, 6);

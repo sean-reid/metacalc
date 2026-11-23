@@ -83,7 +83,7 @@ fn list_at(label: &str) -> Ui {
     press(&mut ui, &[Enter]);
     let want = index_of(&bytes(), label);
     for _ in 0..want {
-        ui.press(Down);
+        ui.press_settled(Down);
     }
     assert_eq!(on(&ui), label);
     ui
@@ -92,9 +92,9 @@ fn list_at(label: &str) -> Ui {
 fn jump_from(ui: &mut Ui, title: &str) {
     let want = TITLES.iter().position(|t| t.0 == title).unwrap();
     while at(ui).1 != want {
-        ui.press(if at(ui).1 < want { Down } else { Up });
+        ui.press_settled(if at(ui).1 < want { Down } else { Up });
     }
-    ui.press(Enter);
+    ui.press_settled(Enter);
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn the_section_of_the_highlighted_theorem_is_highlighted_when_the_screen_opens()
         ("ax-last", "Appendix"),
     ] {
         let mut ui = list_at(label);
-        ui.press(F5);
+        ui.press_settled(F5);
         assert_eq!(at(&ui).0, want, "from {label}");
     }
 }
@@ -138,19 +138,19 @@ fn the_section_of_the_highlighted_theorem_is_highlighted_when_the_screen_opens()
 #[test]
 fn the_sections_screen_moves_by_one_and_by_page_and_stops_at_both_ends() {
     let mut ui = list_at("wi");
-    ui.press(F5);
+    ui.press_settled(F5);
     assert_eq!(at(&ui), ("Syntax".to_string(), 1, 0));
     press(&mut ui, &[Up, Up]);
     assert_eq!(at(&ui), ("Propositional calculus".to_string(), 0, 0));
     press(&mut ui, &[Down; 5]);
     assert_eq!(at(&ui), ("Deduction".to_string(), 5, 0));
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(at(&ui), (LONG.to_string(), 6, 1));
-    ui.press(Right);
+    ui.press_settled(Right);
     assert_eq!(at(&ui), ("Appendix".to_string(), 9, 4));
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(at(&ui), ("Appendix".to_string(), 9, 4));
-    ui.press(Left);
+    ui.press_settled(Left);
     assert_eq!(at(&ui).1, 3);
     press(&mut ui, &[Left, Left]);
     assert_eq!(at(&ui), ("Propositional calculus".to_string(), 0, 0));
@@ -160,13 +160,13 @@ fn the_sections_screen_moves_by_one_and_by_page_and_stops_at_both_ends() {
 fn enter_and_go_land_on_the_first_assertion_of_the_section() {
     for &(text, _, label) in &TITLES {
         let mut ui = list_at("wi");
-        ui.press(F5);
+        ui.press_settled(F5);
         jump_from(&mut ui, text);
         assert_eq!(on(&ui), label, "{text}");
         assert_eq!(ui.depth(), 2);
     }
     let mut ui = list_at("wi");
-    ui.press(F5);
+    ui.press_settled(F5);
     press(&mut ui, &[Down, F1]);
     assert_eq!(on(&ui), "ax-1");
     assert_eq!(ui.depth(), 2);
@@ -175,7 +175,7 @@ fn enter_and_go_land_on_the_first_assertion_of_the_section() {
 #[test]
 fn the_first_assertion_of_a_section_is_shown_even_when_it_is_far_down() {
     let mut ui = list_at("wi");
-    ui.press(F5);
+    ui.press_settled(F5);
     jump_from(&mut ui, "Appendix");
     match ui.state() {
         State::List { cursor, top, .. } => assert!(top <= cursor && cursor < top + 5),
@@ -188,7 +188,7 @@ fn clear_returns_to_the_list_unchanged() {
     let mut ui = list_at("ax-mp");
     let before = ui.state();
     let frame = ui.frame();
-    ui.press(F5);
+    ui.press_settled(F5);
     press(&mut ui, &[Down, Down, Clear]);
     assert_eq!(ui.state(), before);
     assert_eq!(ui.frame(), frame);
@@ -199,7 +199,7 @@ fn clear_returns_to_the_list_unchanged() {
 fn a_typed_prefix_does_not_survive_a_jump() {
     let mut ui = sections();
     press(&mut ui, &[Enter, F2, Letter('a'), Letter('x')]);
-    ui.press(F5);
+    ui.press_settled(F5);
     jump_from(&mut ui, "Derived rules");
     match ui.state() {
         State::List { find, label, .. } => {
@@ -222,21 +222,21 @@ fn a_jump_lands_on_the_first_visible_assertion_at_or_after_the_section() {
     let mut ui = list_at("wi");
     press(&mut ui, &[F3]);
     assert_eq!(kind(&ui), Kind::Theorems);
-    ui.press(F5);
+    ui.press_settled(F5);
     assert_eq!(at(&ui).0, "Inference");
     jump_from(&mut ui, "Axioms");
     assert_eq!(on(&ui), "a1i");
-    ui.press(F5);
+    ui.press_settled(F5);
     assert_eq!(at(&ui).0, "Inference");
     jump_from(&mut ui, "Predicate calculus");
     assert_eq!(on(&ui), "alid");
-    ui.press(F5);
+    ui.press_settled(F5);
     jump_from(&mut ui, "Deduction");
     assert_eq!(on(&ui), "a2i");
 
     press(&mut ui, &[F3]);
     assert_eq!(kind(&ui), Kind::Axioms);
-    ui.press(F5);
+    ui.press_settled(F5);
     jump_from(&mut ui, "Inference");
     assert_eq!(on(&ui), "ax-5");
 }
@@ -245,7 +245,7 @@ fn a_jump_lands_on_the_first_visible_assertion_at_or_after_the_section() {
 fn a_jump_past_the_last_visible_assertion_stops_on_it() {
     let mut ui = list_at("wi");
     press(&mut ui, &[F3]);
-    ui.press(F5);
+    ui.press_settled(F5);
     jump_from(&mut ui, "Appendix");
     assert_eq!(on(&ui), "alid");
     match ui.state() {
@@ -254,7 +254,7 @@ fn a_jump_past_the_last_visible_assertion_stops_on_it() {
     }
     press(&mut ui, &[F3, F3]);
     assert_eq!(kind(&ui), Kind::Unchecked);
-    ui.press(F5);
+    ui.press_settled(F5);
     jump_from(&mut ui, "Syntax");
     match ui.state() {
         State::List { label, len, .. } => assert_eq!((label, len), (None, 0)),
@@ -268,7 +268,7 @@ fn the_section_of_the_highlight_follows_the_axioms_filter() {
     press(&mut ui, &[F3, F3]);
     assert_eq!(kind(&ui), Kind::Axioms);
     assert_eq!(on(&ui), "ax-5");
-    ui.press(F5);
+    ui.press_settled(F5);
     assert_eq!(at(&ui).0, "Predicate calculus");
 }
 
@@ -277,9 +277,9 @@ fn an_assertion_before_the_first_title_opens_on_the_first_title() {
     let mut ui = untitled_lead();
     press(&mut ui, &[Enter]);
     assert_eq!(on(&ui), "ax-0");
-    ui.press(F5);
+    ui.press_settled(F5);
     assert_eq!(at(&ui), ("Propositional calculus".to_string(), 0, 0));
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(on(&ui), "wi");
 }
 
@@ -288,7 +288,7 @@ fn titles_out_of_order_are_dropped_with_their_key() {
     let mut ui = ui_over(swapped_titles(), &[], &[]);
     press(&mut ui, &[Enter]);
     let before = (ui.state(), ui.frame());
-    ui.press(F5);
+    ui.press_settled(F5);
     assert_eq!((ui.state(), ui.frame()), before);
     assert!(calls(&ui).contains(&Call::SoftKeys(
         ["Open", "Find", "Kind", "Try", ""].map(String::from)
@@ -305,7 +305,7 @@ fn the_sections_screen_draws_the_title_bar_indents_and_one_highlighted_row() {
     for (key_presses, cursor, top) in [(0, 1, 0), (8, 9, 4)] {
         let mut ui = open_sections("wi");
         for _ in 0..key_presses {
-            ui.press(Down);
+            ui.press_settled(Down);
         }
         assert_eq!(at(&ui).1, cursor);
         let calls = calls(&ui);
@@ -369,7 +369,7 @@ fn a_library_without_titles_has_no_sections_key() {
     let mut ui = without_titles();
     press(&mut ui, &[Enter]);
     let before = (ui.state(), ui.frame());
-    ui.press(F5);
+    ui.press_settled(F5);
     assert_eq!((ui.state(), ui.frame()), before);
     assert_eq!(ui.depth(), 2);
 }
@@ -394,7 +394,7 @@ fn the_sections_key_is_drawn_only_when_there_are_titles() {
 
 fn open_sections(label: &str) -> Ui {
     let mut ui = list_at(label);
-    ui.press(F5);
+    ui.press_settled(F5);
     ui
 }
 

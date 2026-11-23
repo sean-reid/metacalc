@@ -58,15 +58,15 @@ fn the_list_scrolls_by_rows_and_stops_at_both_ends() {
     assert_eq!(len, 13);
     press(&mut ui, &[Down, Down, Down, Down]);
     assert_eq!((list(ui.state()).1, list(ui.state()).2), (4, 0));
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!((list(ui.state()).1, list(ui.state()).2), (5, 1));
     for _ in 0..30 {
-        ui.press(Down);
+        ui.press_settled(Down);
     }
     assert_eq!((list(ui.state()).1, list(ui.state()).2), (12, 8));
     assert_eq!(list(ui.state()).0.as_deref(), Some("ax-many"));
     for _ in 0..30 {
-        ui.press(Up);
+        ui.press_settled(Up);
     }
     assert_eq!((list(ui.state()).1, list(ui.state()).2), (0, 0));
 }
@@ -114,11 +114,11 @@ fn a_prefix_that_matches_nothing_leaves_the_cursor_and_clear_removes_the_prefix_
     typed(&mut ui, "z");
     assert_eq!(list(ui.state()).0.as_deref(), Some("syl"));
     assert!(ui.frame() != before);
-    ui.press(Clear);
+    ui.press_settled(Clear);
     let (label, _, _, find, _, _) = list(ui.state());
     assert_eq!((label.as_deref(), find.as_str()), (Some("syl"), ""));
     assert_eq!(ui.depth(), 2);
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(ui.depth(), 1);
 }
 
@@ -146,7 +146,7 @@ fn kind_cycles_through_all_theorems_axioms_and_unchecked() {
     ];
     for (i, (kind, len)) in kinds.into_iter().enumerate() {
         if i > 0 {
-            ui.press(F3);
+            ui.press_settled(F3);
         }
         let state = list(ui.state());
         assert_eq!((state.4, state.5), (kind, len), "step {i}");
@@ -179,9 +179,9 @@ fn clear_from_a_theorem_returns_to_the_same_row_of_the_same_list() {
     press(&mut ui, &[Enter, F3, F3]);
     press(&mut ui, &[Down, Down]);
     let before = list(ui.state());
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert!(matches!(ui.state(), State::Theorem { .. }));
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(list(ui.state()), before);
 }
 
@@ -192,17 +192,17 @@ fn the_cursor_starts_on_the_conclusion_and_moves_over_the_tree() {
     assert_eq!(theorem(ui.state()), (2, 0, 0, 0, false));
     press(&mut ui, &[Up]);
     assert_eq!(theorem(ui.state()).1, 0);
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(theorem(ui.state()).1, 1);
-    ui.press(Right);
+    ui.press_settled(Right);
     assert_eq!(theorem(ui.state()).1, 2);
-    ui.press(Right);
+    ui.press_settled(Right);
     assert_eq!(theorem(ui.state()).1, 2);
-    ui.press(Left);
+    ui.press_settled(Left);
     assert_eq!(theorem(ui.state()).1, 1);
-    ui.press(Left);
+    ui.press_settled(Left);
     assert_eq!(theorem(ui.state()).1, 1);
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(theorem(ui.state()).1, 1);
 }
 
@@ -233,7 +233,7 @@ fn down_enters_the_first_child_and_up_leaves_to_the_parent() {
 fn left_and_right_at_a_root_move_between_the_statements() {
     let mut ui = ui();
     open(&mut ui, "syl");
-    ui.press(Right);
+    ui.press_settled(Right);
     assert_eq!(theorem(ui.state()).0, 2);
     press(&mut ui, &[Left]);
     assert_eq!(theorem(ui.state()).0, 1);
@@ -252,19 +252,19 @@ fn enter_and_fold_toggle_the_subexpression_under_the_cursor() {
     press(&mut ui, &[Down, Right]);
     let open_frame = ui.frame();
     assert_eq!(theorem(ui.state()).3, 0);
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(theorem(ui.state()), (0, 6, 0, 1, true));
     assert!(ui.frame() != open_frame);
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(
         theorem(ui.state()).1,
         6,
         "a folded subexpression cannot be entered"
     );
-    ui.press(F1);
+    ui.press_settled(F1);
     assert_eq!(theorem(ui.state()), (0, 6, 0, 0, false));
     assert!(ui.frame() == open_frame);
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(theorem(ui.state()).1, 7);
 }
 
@@ -292,7 +292,7 @@ fn the_view_scrolls_to_follow_the_cursor_over_statements_taller_than_the_screen(
         (1, 1),
         (0, 0),
     ] {
-        ui.press(Left);
+        ui.press_settled(Left);
         let (statement, _, scroll, _, _) = theorem(ui.state());
         assert_eq!((statement, scroll), want);
     }
@@ -306,7 +306,7 @@ fn the_view_scrolls_to_follow_the_cursor_over_statements_taller_than_the_screen(
         (7, 2),
         (8, 3),
     ] {
-        ui.press(Right);
+        ui.press_settled(Right);
         let (statement, _, scroll, _, _) = theorem(ui.state());
         assert_eq!((statement, scroll), want);
     }
@@ -352,12 +352,12 @@ fn a_flat_statement_over_six_rows_scrolls_a_row_at_a_time_with_up_and_down() {
     assert!(first_row_is_line(&ui, 0));
     check_frame(&ui.frame(), "theorem-flat-top");
     for line in 1..=last {
-        ui.press(Down);
+        ui.press_settled(Down);
         assert_eq!(theorem(ui.state()).2, line);
         assert!(first_row_is_line(&ui, line), "after {line} presses of Down");
     }
     check_frame(&ui.frame(), "theorem-flat-end");
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(
         theorem(ui.state()).2,
         last,
@@ -365,11 +365,11 @@ fn a_flat_statement_over_six_rows_scrolls_a_row_at_a_time_with_up_and_down() {
     );
     assert!(first_row_is_line(&ui, last));
     for line in (0..last).rev() {
-        ui.press(Up);
+        ui.press_settled(Up);
         assert_eq!(theorem(ui.state()).2, line);
         assert!(first_row_is_line(&ui, line), "after Up to line {line}");
     }
-    ui.press(Up);
+    ui.press_settled(Up);
     assert_eq!(theorem(ui.state()).2, 0);
     assert_eq!(
         theorem(ui.state()).1,
@@ -390,7 +390,7 @@ fn up_and_down_on_a_tree_statement_leave_the_cursor_in_view() {
     assert_eq!(theorem(ui.state()).2, 0);
     loop {
         let before = theorem(ui.state());
-        ui.press(Down);
+        ui.press_settled(Down);
         if theorem(ui.state()).1 == before.1 {
             break;
         }
@@ -398,7 +398,7 @@ fn up_and_down_on_a_tree_statement_leave_the_cursor_in_view() {
     let at_leaf = (theorem(ui.state()), ui.frame());
     assert_ne!(at_leaf.0.1, 0, "the cursor is inside the first hypothesis");
     for _ in 0..3 {
-        ui.press(Down);
+        ui.press_settled(Down);
     }
     assert_eq!(
         theorem(ui.state()),
@@ -460,7 +460,7 @@ fn hopping_between_proofs_and_theorems_keeps_the_newest_screens_and_clear_then_r
     let mut back = Vec::new();
     while screen_of(&ui) != "list" {
         back.push(screen_of(&ui));
-        ui.press(Clear);
+        ui.press_settled(Clear);
     }
     assert_eq!(
         back,
@@ -487,9 +487,9 @@ fn one_rejected_assertion_leaves_every_statement_a_tree_and_the_list_unflattened
     let mut ui = support::ui_over(rejected, &[], &[]);
     press(&mut ui, &[Enter]);
     assert!(support::title_is(&ui.frame(), "logic", "12/13"));
-    ui.press(Clear);
+    ui.press_settled(Clear);
     open(&mut ui, "syl");
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_ne!(
         theorem(ui.state()).1,
         0,
@@ -509,7 +509,7 @@ fn with_one_rejected_assertion_why_reads_the_proof_of_an_unrelated_theorem() {
     for label in ["a2i", "id", "alid", "syl"] {
         let mut ui = support::rejected_ui();
         open(&mut ui, label);
-        ui.press(F3);
+        ui.press_settled(F3);
         assert!(
             matches!(ui.state(), State::Proof { label: ref l, .. } if l == label),
             "{label}"
@@ -521,9 +521,9 @@ fn with_one_rejected_assertion_why_reads_the_proof_of_an_unrelated_theorem() {
 fn why_on_the_rejected_theorem_says_its_proof_failed() {
     let mut ui = support::rejected_ui();
     open(&mut ui, "a1i");
-    ui.press(F3);
+    ui.press_settled(F3);
     assert_eq!(notice_title(&ui), "Proof");
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert!(matches!(ui.state(), State::Theorem { ref label, .. } if label == "a1i"));
 }
 
@@ -532,7 +532,7 @@ fn try_opens_on_an_unrelated_theorem_and_on_the_rejected_one() {
     for label in ["a2i", "syl", "a1i"] {
         let mut ui = support::rejected_ui();
         open(&mut ui, label);
-        ui.press(F4);
+        ui.press_settled(F4);
         assert!(
             matches!(ui.state(), State::Proving { label: ref l, .. } if l == label),
             "{label}"
@@ -584,7 +584,7 @@ fn a_table_that_calls_a_rejected_theorem_checked_does_not_get_a_check_mark() {
     assert_eq!(lib.mark(index_in(&lib, "a2i")), mcui::Mark::Checked);
     let mut ui = support::ui_over(bytes, &[], &[]);
     open(&mut ui, "a1i");
-    ui.press(F3);
+    ui.press_settled(F3);
     assert_eq!(notice_title(&ui), "Proof");
 }
 
@@ -611,7 +611,7 @@ fn a_table_that_calls_a_sound_theorem_failed_still_lets_why_read_its_proof() {
     assert_eq!(lib.mark(a2i), mcui::Mark::Failed);
     let mut ui = support::ui_over(bytes, &[], &["a2i"]);
     open(&mut ui, "a2i");
-    ui.press(F3);
+    ui.press_settled(F3);
     assert!(matches!(ui.state(), State::Proof { .. }));
 }
 
@@ -638,7 +638,7 @@ fn every_key_a_notice_offers_closes_it() {
         press(&mut ui, &[Down, Down, F2]);
         assert!(matches!(ui.state(), State::Notice { .. }));
         assert!(support::key_label_is(&ui.frame(), 0, "Back"));
-        ui.press(key);
+        ui.press_settled(key);
         assert_eq!(ui.depth(), 1, "{key:?}");
     }
 }
@@ -647,7 +647,7 @@ fn every_key_a_notice_offers_closes_it() {
 fn proof_nodes_descend_and_ascend_with_the_selection_restored() {
     let mut ui = ui();
     open(&mut ui, "syl");
-    ui.press(F3);
+    ui.press_settled(F3);
     let at = |ui: &mcui::Ui| match ui.state() {
         State::Proof { path, selected, .. } => (path, selected),
         other => panic!("not a proof: {other:?}"),
@@ -657,17 +657,17 @@ fn proof_nodes_descend_and_ascend_with_the_selection_restored() {
     assert_eq!(at(&ui), (vec![], 0));
     press(&mut ui, &[Down, Down]);
     assert_eq!(at(&ui), (vec![], 1));
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(at(&ui), (vec![1], 0));
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(at(&ui), (vec![1, 0], 0));
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(at(&ui), (vec![1, 0], 0), "a hypothesis has no subgoals");
-    ui.press(F2);
+    ui.press_settled(F2);
     assert_eq!(at(&ui), (vec![1], 0));
-    ui.press(Left);
+    ui.press_settled(Left);
     assert_eq!(at(&ui), (vec![], 1));
-    ui.press(Left);
+    ui.press_settled(Left);
     assert_eq!(at(&ui), (vec![], 1));
 }
 
@@ -680,14 +680,14 @@ fn thm_opens_the_cited_theorem_and_clear_comes_back_to_the_same_node() {
         State::Theorem { label, .. } => assert_eq!(label, "a1i"),
         other => panic!("not a theorem: {other:?}"),
     }
-    ui.press(Clear);
+    ui.press_settled(Clear);
     match ui.state() {
         State::Proof { path, .. } => assert_eq!(path, vec![1]),
         other => panic!("not a proof: {other:?}"),
     }
-    ui.press(Down);
-    ui.press(Enter);
-    ui.press(F3);
+    ui.press_settled(Down);
+    ui.press_settled(Enter);
+    ui.press_settled(F3);
     assert!(
         matches!(ui.state(), State::Proof { .. }),
         "a hypothesis cites no theorem"
@@ -698,14 +698,14 @@ fn thm_opens_the_cited_theorem_and_clear_comes_back_to_the_same_node() {
 fn an_axiom_has_no_proof_to_read() {
     let mut ui = ui();
     open(&mut ui, "ax-2");
-    ui.press(F3);
+    ui.press_settled(F3);
     assert_eq!(
         ui.state(),
         State::Notice {
             title: "Proof".into()
         }
     );
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert!(matches!(ui.state(), State::Theorem { .. }));
 }
 
@@ -722,7 +722,7 @@ fn keys_without_a_function_on_a_screen_change_nothing() {
 fn up_from_the_first_subgoal_puts_the_cursor_on_the_goal_and_down_takes_it_back() {
     let mut ui = ui();
     open(&mut ui, "syl");
-    ui.press(F3);
+    ui.press_settled(F3);
     let on_goal = |ui: &mcui::Ui| match ui.state() {
         State::Proof {
             on_goal, selected, ..
@@ -731,12 +731,12 @@ fn up_from_the_first_subgoal_puts_the_cursor_on_the_goal_and_down_takes_it_back(
     };
     assert_eq!(on_goal(&ui), (false, 0));
     let subgoal = ui.frame();
-    ui.press(Up);
+    ui.press_settled(Up);
     assert_eq!(on_goal(&ui), (true, 0));
     assert!(ui.frame() != subgoal);
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(on_goal(&ui), (true, 0), "the goal cannot be entered");
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(on_goal(&ui), (false, 0));
     assert!(ui.frame() == subgoal);
 }
@@ -786,7 +786,7 @@ fn a_proof_whose_root_is_a_hypothesis_has_nothing_to_enter() {
     press(&mut ui, &[Down, Enter, Right, Up, Down]);
     assert_eq!(proof(&ui), (vec![], 0, true));
     assert!(ui.frame() == frame);
-    ui.press(F3);
+    ui.press_settled(F3);
     assert!(
         matches!(ui.state(), State::Proof { .. }),
         "a hypothesis cites no theorem"
@@ -799,7 +799,7 @@ fn hide_keeps_the_cursor_where_it_was() {
     open(&mut ui, "syl");
     press(&mut ui, &[F3, Down]);
     assert_eq!(proof(&ui), (vec![], 1, false));
-    ui.press(F1);
+    ui.press_settled(F1);
     assert_eq!(proof(&ui), (vec![], 1, false));
     press(&mut ui, &[Up, Up]);
     assert_eq!(proof(&ui), (vec![], 0, true));
@@ -842,14 +842,14 @@ fn an_unfolded_goal_scrolls_a_row_at_a_time_before_the_cursor_reaches_the_subgoa
     assert!(first_row_is_line(&ui, bottom));
     assert!(by_shown(&ui, bottom));
     check_frame(&ui.frame(), "proof-tall-goal-opened");
-    ui.press(Up);
+    ui.press_settled(Up);
     assert_eq!(proof_scroll(&ui), (bottom, true));
     for row in (0..bottom).rev() {
-        ui.press(Up);
+        ui.press_settled(Up);
         assert_eq!(proof_scroll(&ui), (row, true));
         assert!(first_row_is_line(&ui, row), "scrolled up to {row}");
     }
-    ui.press(Up);
+    ui.press_settled(Up);
     assert_eq!(proof_scroll(&ui), (0, true));
     assert!(!by_shown(&ui, 0), "the by line is below the first six rows");
     check_frame(&ui.frame(), "proof-tall-goal-top");
@@ -857,7 +857,7 @@ fn an_unfolded_goal_scrolls_a_row_at_a_time_before_the_cursor_reaches_the_subgoa
     while proof_scroll(&ui).1 {
         let at = proof_scroll(&ui).0;
         let by_in_view = by_shown(&ui, at);
-        ui.press(Down);
+        ui.press_settled(Down);
         presses += 1;
         if by_in_view {
             assert!(
@@ -884,9 +884,9 @@ fn an_unfolded_goal_scrolls_a_row_at_a_time_before_the_cursor_reaches_the_subgoa
         "one row earlier the by line is below the window"
     );
     assert_eq!(proof(&ui).1, 0);
-    ui.press(Up);
+    ui.press_settled(Up);
     assert_eq!(proof_scroll(&ui), (last + 1, true));
-    ui.press(Up);
+    ui.press_settled(Up);
     assert_eq!(proof_scroll(&ui), (last, true));
 }
 
@@ -898,14 +898,14 @@ fn a_goal_with_no_subgoals_scrolls_with_up_and_down_and_stops_at_its_last_row() 
     assert_eq!(proof_scroll(&ui), (0, true));
     let mut at = 0;
     for _ in 0..40 {
-        ui.press(Down);
+        ui.press_settled(Down);
         at = proof_scroll(&ui).0;
     }
     assert!(at >= 3);
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(proof_scroll(&ui), (at, true));
     for _ in 0..40 {
-        ui.press(Up);
+        ui.press_settled(Up);
     }
     assert_eq!(proof_scroll(&ui), (0, true));
 }
@@ -914,20 +914,20 @@ fn a_goal_with_no_subgoals_scrolls_with_up_and_down_and_stops_at_its_last_row() 
 fn eight_subgoals_scroll_the_view_to_the_highlight() {
     let mut ui = support::extra_ui();
     open(&mut ui, "many2");
-    ui.press(F3);
+    ui.press_settled(F3);
     let inverted_rows = |ui: &mcui::Ui| -> Vec<usize> {
         let frame = ui.frame();
         (1..7).filter(|&r| frame.get(0, 8 * r + 1)).collect()
     };
     assert_eq!(inverted_rows(&ui), [3]);
     for k in 1..8 {
-        ui.press(Down);
+        ui.press_settled(Down);
         assert_eq!(proof(&ui), (vec![], k, false));
         assert_eq!(inverted_rows(&ui), [(3 + k).min(6)], "subgoal {k}");
     }
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(proof(&ui).1, 7);
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(proof(&ui).0, vec![7]);
 }
 
@@ -963,7 +963,7 @@ fn the_no_match_cross_goes_when_the_cursor_moves_or_the_kind_changes() {
             "logic",
             &format!("synx {}", mcglyph::CROSS)
         ));
-        ui.press(key);
+        ui.press_settled(key);
         let right = "synx";
         if key == F3 {
             let cross = format!("{right} {}", mcglyph::CROSS);
@@ -1034,7 +1034,7 @@ fn a_kind_with_nothing_in_it_shows_an_empty_list_that_does_not_open() {
         &[Enter, F1, Up, Down, Left, Right, F2, Letter('a')],
     );
     assert_eq!(ui.depth(), 2);
-    ui.press(F3);
+    ui.press_settled(F3);
     assert_eq!(list(ui.state()).5, 13);
 }
 
@@ -1048,9 +1048,9 @@ fn my_proofs_opens_the_not_available_frame_and_verify_needs_a_library() {
             title: "My proofs".into()
         }
     );
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(ui.state(), State::Libraries { cursor: 1, top: 0 });
-    ui.press(F2);
+    ui.press_settled(F2);
     assert_eq!(
         ui.state(),
         State::Notice {
@@ -1072,7 +1072,7 @@ fn notice_and_about_leave_on_clear_or_enter_and_ignore_the_rest() {
             );
             assert!(ui.frame() == frame);
             assert_eq!(ui.depth(), 2);
-            ui.press(leave);
+            ui.press_settled(leave);
             assert_eq!(ui.depth(), 1);
         }
     }
@@ -1082,30 +1082,30 @@ fn notice_and_about_leave_on_clear_or_enter_and_ignore_the_rest() {
 fn dist_scrolls_one_row_at_a_time_and_ignores_left_and_right() {
     let mut ui = support::extra_ui();
     open(&mut ui, "ax-dvs");
-    ui.press(F2);
+    ui.press_settled(F2);
     let top = |ui: &mcui::Ui| match ui.state() {
         State::Dist { top, .. } => top,
         other => panic!("{other:?}"),
     };
     assert_eq!(top(&ui), 0);
-    ui.press(Up);
+    ui.press_settled(Up);
     assert_eq!(top(&ui), 0);
     let first = ui.frame();
     press(&mut ui, &[Left, Right]);
     assert!(ui.frame() == first);
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(top(&ui), 1);
     assert!(ui.frame() != first);
     for _ in 0..30 {
-        ui.press(Down);
+        ui.press_settled(Down);
     }
     let last = top(&ui);
     assert!(last >= 2);
     let bottom = ui.frame();
-    ui.press(Down);
+    ui.press_settled(Down);
     assert_eq!(top(&ui), last);
     assert!(ui.frame() == bottom);
-    ui.press(Up);
+    ui.press_settled(Up);
     assert_eq!(top(&ui), last - 1);
 }
 
@@ -1116,9 +1116,9 @@ fn clear_from_dist_returns_to_the_same_cursor_and_scroll() {
     press(&mut ui, &[Left, Left]);
     let before = ui.state();
     let frame = ui.frame();
-    ui.press(F2);
+    ui.press_settled(F2);
     assert!(matches!(ui.state(), State::Dist { .. }));
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(ui.state(), before);
     assert!(ui.frame() == frame);
 }
@@ -1127,11 +1127,11 @@ fn clear_from_dist_returns_to_the_same_cursor_and_scroll() {
 fn a_folded_root_cannot_be_entered_and_unfolds_again() {
     let mut ui = ui();
     open(&mut ui, "syl");
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(theorem(ui.state()), (2, 0, 0, 1, true));
     press(&mut ui, &[Down, Right]);
     assert_eq!(theorem(ui.state()).1, 0);
-    ui.press(Enter);
+    ui.press_settled(Enter);
     assert_eq!(theorem(ui.state()), (2, 0, 0, 0, false));
 }
 
@@ -1146,7 +1146,7 @@ fn unchecked_labels(ui: &mut mcui::Ui) -> Vec<String> {
     let mut labels = Vec::new();
     for _ in 0..len {
         labels.push(list(ui.state()).0.unwrap());
-        ui.press(Down);
+        ui.press_settled(Down);
     }
     labels
 }
