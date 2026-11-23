@@ -27,6 +27,8 @@ pub const ON_INTERRUPT: u8 = 0x10;
 pub const EXIT_MARK: u16 = 0x90D3;
 /// The OS flag byte holding `graphDraw`, bit 0, which the app sets as its last mark before it leaves.
 pub const GRAPH_FLAGS: usize = OS_FLAGS + 3;
+/// The bit of port 3 that is set while the calculator is powered down.
+const POWERED_DOWN: u8 = 0x10;
 
 fn rom() -> Option<Vec<u8>> {
     let path = Path::new(&std::env::var_os("HOME")?).join("ti84-rom/84PSE_v243.rom");
@@ -78,6 +80,17 @@ impl RealOs {
         self.run_ms(up_ms);
     }
 
+    /// Runs the OS until its auto power down fires, then wakes it with ON.
+    pub fn power_down_and_wake(&mut self) {
+        let mut seconds = 0;
+        while self.m.in_port(3) & POWERED_DOWN == 0 {
+            assert!(seconds < 600, "no auto power down in 600 s");
+            self.run_ms(5_000);
+            seconds += 5;
+        }
+        self.tap(Machine::KEY_ON, 150, 3000);
+    }
+
     /// Starts the app from the APPS menu, where it is the second entry after Finance.
     pub fn launch(&mut self) {
         self.start_from_menu();
@@ -95,7 +108,7 @@ impl RealOs {
         self.run_ms(300);
         assert!(
             self.screen() == start_screen,
-            "the app did not draw its start screen"
+            "the app did not draw its first screen"
         );
     }
 
@@ -191,44 +204,84 @@ pub fn assert_blank_home<W: Watch>(w: &mut W, name: &str) {
     assert!(cursor, "{name}: the home screen shows its cursor");
 }
 
-/// What the model's canvas draws for the app's start screen: with no library the title bar and the
-/// hint on row 3; with one the title bar, the label of its first assertion on row 1, that
-/// assertion's conclusion on rows 2 to 6 and the hint on row 7. A status other than 0 is what the
-/// screen shows as two hex digits on row 7 in place of everything under the title bar.
-pub fn start_model(library: Option<&[u8]>, status: u8) -> mcglyph::Bitmap {
-    use mcui::canvas::{Canvas, GUTTER, STATEMENT_WIDTH};
-    use mcui::expr::Expr;
-    use mcui::fold::{Folds, layout};
-    let mut canvas = Canvas::default();
-    canvas.title("metacalc", "");
-    match (library, status) {
-        (_, 1..) => canvas.text(1, 7, &format!("{status:02X}")),
-        (Some(bytes), 0)
-            if mcpack::library::decode(bytes)
-                .expect("the library decodes")
-                .assertions
-                .is_empty() =>
-        {
-            panic!("a library with no assertion draws only a status: pass it")
-        }
-        (None, 0) => canvas.text(1, 3, "CLEAR to quit"),
-        (Some(bytes), 0) => {
-            let library = mcpack::library::decode(bytes).expect("the library decodes");
-            let first = &library.assertions[0];
-            canvas.text(1, 1, &first.label);
-            let tokens = &first.conclusion;
-            let expr = Expr::flat(vec![tokens[0].clone()], &tokens[1..]);
-            let laid = layout(&expr, &Folds::none(&expr), STATEMENT_WIDTH);
-            canvas.layout(&laid, GUTTER, 2, 2..7);
-            canvas.text(1, 7, "CLEAR to quit")
-        }
-    };
-    canvas.into_bitmap()
+/// The library an app is built around as the model sees it: the name the build gives its one stage
+/// when there is no stage list (the library file's name without its extension), the bytes, the
+/// stages of the build's list (none for one stage) and the status table (none for every assertion
+/// unchecked, which is what the app shows when the store has no table for the library).
+pub struct Shown<'a> {
+    pub name: &'a str,
+    pub bytes: &'a [u8],
+    pub stages: Vec<mcui::Stage>,
+    pub status: Vec<mcui::Status>,
 }
 
-/// `start_model` as lit pixels, row by row, as `RealOs::screen` gives them.
-pub fn start_pixels(library: Option<&[u8]>, status: u8) -> Vec<bool> {
-    let bitmap = start_model(library, status);
+impl<'a> Shown<'a> {
+    pub fn new(name: &'a str, bytes: &'a [u8]) -> Shown<'a> {
+        Shown {
+            name,
+            bytes,
+            stages: Vec::new(),
+            status: Vec::new(),
+        }
+    }
+}
+
+/// The model's interface for an app built around `library`, open on the Libraries screen; `None`
+/// is a build with no library.
+pub fn libraries_ui(library: Option<&Shown>) -> mcui::Ui {
+    let (libraries, stages, tables) = match library {
+        None => (Vec::new(), Vec::new(), Vec::new()),
+        Some(shown) => {
+            let count = mcpack::library::decode(shown.bytes)
+                .expect("the library decodes")
+                .assertions
+                .len();
+            let status = if shown.status.is_empty() {
+                vec![mcui::Status::Unchecked; count]
+            } else {
+                shown.status.clone()
+            };
+            let installed = mcui::Installed {
+                name: shown.name.to_string(),
+                bytes: shown.bytes.to_vec(),
+            };
+            (vec![installed], vec![shown.stages.clone()], vec![status])
+        }
+    };
+    mcui::Ui::with_stages(
+        libraries,
+        stages,
+        mcui::Statuses {
+            libraries: tables,
+            my_proofs: 0,
+        },
+    )
+    .expect("the model loads")
+}
+
+/// What the model draws on the Libraries screen: `libraries_ui`'s frame.
+pub fn libraries_model(library: Option<&Shown>) -> mcglyph::Bitmap {
+    libraries_ui(library).frame()
+}
+
+/// `libraries_model` as lit pixels, row by row, as `RealOs::screen` gives them.
+pub fn libraries_pixels(library: Option<&Shown>) -> Vec<bool> {
+    let bitmap = libraries_model(library);
+    (0..64)
+        .flat_map(|y| (0..96).map(move |x| (x, y)))
+        .map(|(x, y)| bitmap.get(x, y))
+        .collect()
+}
+
+/// What the model's Notice draws for the error the app shows when a call refuses: the title
+/// "Error" and "Status " with the status as two hex digits.
+pub fn error_model(status: u8) -> mcglyph::Bitmap {
+    mcui::notice_frame("Error", &[&format!("Status {status:02X}")])
+}
+
+/// `error_model` as lit pixels.
+pub fn error_pixels(status: u8) -> Vec<bool> {
+    let bitmap = error_model(status);
     (0..64)
         .flat_map(|y| (0..96).map(move |x| (x, y)))
         .map(|(x, y)| bitmap.get(x, y))

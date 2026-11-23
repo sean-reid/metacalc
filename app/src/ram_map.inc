@@ -40,10 +40,10 @@
 ;   LIB_BOUNCE        C     an overlay on the last 256 bytes of the kernel's high region
 ;   FM_SCRATCH        B     fm's 256 byte buffer for the reader's accessors, in saveSScreen after
 ;                           UI_VARS; it holds nothing across calls
-;   APP_BUF           B     the shell's 256 byte buffer for the reader's scratch and the strings it draws, in
-;                           saveSScreen after FM_SCRATCH; it holds only what the top screen's enter or
-;                           draw builds again, since the OS writes the screen's pixels into saveSScreen
-;                           at an auto power down
+;   APP_BUF           B     the shell's 256 byte buffer for what the top screen's enter or draw builds
+;                           again, in saveSScreen after FM_SCRATCH, since the OS writes the screen's
+;                           pixels into saveSScreen at an auto power down. Its variables follow the
+;                           regions, from APP_COUNTS to APP_FRAME, each placed by APP_VAR
 ;   APP_STAGE         B     the shell's staging area for constant strings, 128 bytes in saveSScreen
 ;                           after APP_BUF: the canvas reads a string with its own page mapped, so the
 ;                           entry page copies the strings of the screen it draws here first
@@ -194,6 +194,29 @@ name .equ base + offset
  .error message
 #endif
 #endmacro
+
+; The variables of APP_BUF, in address order. Each APP_VAR checks that its variable neither overlaps
+; the one before it nor runs past APP_BUF_SIZE.
+;   APP_COUNTS  the check counts of the stages (screen_counts.inc): eight bytes for each of at most
+;               six stages, the four little-endian words n0 to n3 of store_count_ends
+;   APP_LIST    the list store_count_ends takes: the number of stages, then each stage's end
+;   APP_CRC     the library's CRC-32 as the header holds it
+;   APP_TEXT    what the top screen draws that is not a constant: the strings it builds and its
+;               own variables, laid out by that screen's file
+;   APP_FRAME   the frame the error notice is pushed from, outside SCR_STACK
+#define APP_NEXT 0
+#macro APP_VAR(name, offset, size)
+RAM_VAR(name, APP_BUF, offset, size, APP_BUF_SIZE, APP_NEXT, "the APP_BUF variables overlap, leave a gap, or run past APP_BUF_SIZE in ram_map.inc")
+#define APP_NEXT eval(offset + size)
+#endmacro
+
+APP_VAR(APP_COUNTS, $00, 48)
+APP_VAR(APP_LIST, $30, 13)
+APP_VAR(APP_CRC, $3D, 4)
+APP_VAR(APP_TEXT, $41, 175)
+APP_VAR(APP_FRAME, $F0, 16)
+APP_COUNTS_SIZE     .equ APP_LIST - APP_COUNTS
+APP_TEXT_SIZE       .equ APP_FRAME - APP_TEXT
 
 RAM_WITHIN(SCR_VARS, SCR_VARS_SIZE, $8000, $C000, "SCR_VARS runs past bank B")
 RAM_WITHIN(SCR_STACK, SCR_STACK_SIZE, $8000, $C000, "SCR_STACK runs past bank B")

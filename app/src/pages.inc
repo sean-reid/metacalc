@@ -1,7 +1,8 @@
 ; The app's three code pages and the far entries between them. The pages are assembled in this
 ; order, each at 4000h, and the library follows the last:
-;   0  entry  header, shell, screens, the shell's constant strings (strings.inc), app_key and every
-;             OS call; the far entries of the other two
+;   0  entry  header, shell, screens, the shell's constant strings (strings.inc), the stage table and
+;             the status table store with a library, app_key and every OS call; the far entries of
+;             the other two
 ;   1  draw   the canvas (ui/) and fm (fm/); the far entries of the reader
 ;   2  data   the kernel (kernel/) and the reader (lib/)
 ; A routine on one page calls a routine on another through its far entry, a stub on the caller's
