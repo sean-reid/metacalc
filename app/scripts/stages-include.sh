@@ -53,7 +53,14 @@ while IFS=$tab read -r name end title; do
 		'' | *[!0-9]*) echo "stages-include: stage $name: the count '$end' is not a number" >&2; exit 1 ;;
 	esac
 	[ "$n" -le 6 ] || { echo "stages-include: more than 6 stages" >&2; exit 1; }
-	[ "${#name}" -ge 1 ] && [ "${#name}" -le 12 ] || { echo "stages-include: stage '$name': a name is 1 to 12 characters" >&2; exit 1; }
+	if [ "${#name}" -lt 1 ] || [ "${#name}" -gt 12 ]; then
+		if [ -n "$list" ]; then
+			echo "stages-include: stage '$name': a name is 1 to 12 characters" >&2
+		else
+			echo "stages-include: with no stage list the stage is named after the library file, '$name', which is not 1 to 12 characters: rename the file or give a stages.list" >&2
+		fi
+		exit 1
+	fi
 	[ "${#title}" -le 48 ] || { echo "stages-include: stage $name: a title is at most 48 characters" >&2; exit 1; }
 	case $name$title in
 		*[![:print:]]*) echo "stages-include: stage $name: only printable ASCII" >&2; exit 1 ;;

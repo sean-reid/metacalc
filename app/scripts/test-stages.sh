@@ -98,6 +98,12 @@ refuses 'only printable ASCII' LIBRARY="$dir/ring.mclib"
 echo "test-stages: lists that cannot be shown"
 
 rm "$dir/stages.list"
+cp "$dir/ring.mclib" "$dir/averylonglibraryname.mclib"
+refuses 'is named after the library file, '"'"'averylonglibraryname'"'"'' LIBRARY="$dir/averylonglibraryname.mclib"
+cp "$dir/ring.mclib" "$dir/twelvecharsx.mclib"
+build twelve LIBRARY="$dir/twelvecharsx.mclib" > /dev/null
+grep -q '^STAGE_COUNT .equ 1$' "$dir/twelve/stages.inc" || { echo "test-stages: a file name of 12 characters was refused" >&2; exit 1; }
+echo "test-stages: a library file name that is too long for a stage"
 refuses 'is not a file' LIBRARY="$dir/ring.mclib" STAGES="$dir/missing.list"
 printf 'ring 3326 Ring theory\n' > "$dir/elsewhere.list"
 build elsewhere LIBRARY="$dir/ring.mclib" STAGES="$dir/elsewhere.list" > /dev/null
