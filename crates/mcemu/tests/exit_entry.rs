@@ -159,6 +159,22 @@ fn check_open_entries(starts: &[(&str, Vec<u8>)], builds: &[(&str, &Build)], dep
                         "{name}: the cursor is on the entry's row"
                     );
                 }
+                if !HANDS_CLEAR[i] {
+                    assert_ne!(
+                        seen(&want.shadow),
+                        "",
+                        "{name}: a plain app shows the entry"
+                    );
+                    assert_eq!(
+                        seen(&got.shadow),
+                        "",
+                        "{name}: the OS's own exit leaves the screen blank"
+                    );
+                    assert!(
+                        pending(&got.edit),
+                        "{name}: and the entry still pending, the known limit"
+                    );
+                }
                 if !HANDS_CLEAR[i] || history {
                     got.shadow.clear();
                     want.shadow.clear();
