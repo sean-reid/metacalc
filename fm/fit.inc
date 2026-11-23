@@ -297,10 +297,8 @@ ft_fits:
 	cp l
 	ret
 
-; Marks the selected statement's records stale, which also drops its line count. Destroys AF DE HL.
+; Marks the selected statement's records stale, which also drops its line count and its clip. Destroys AF HL.
 ft_dirty:
-	ld hl,(fv_hdr)
-	ld de,7
-	add hl,de
+	call fm_hdr7
 	ld (hl),1
 	ret

@@ -38,19 +38,19 @@ cb_fits:
 	xor a
 	jp fm_leave
 
-; out: NZ when the selected statement is clipped. Destroys AF HL.
+; out: NZ when the selected statement is clipped, HL = the address of its header byte 7. Destroys AF.
 cl_flag:
-	ld hl,(fv_hdr)
-	ld a,l
-	add a,7
-	ld l,a
+	call fm_hdr7
 	bit FM_CLIPPED,(hl)
 	ret
 
-; Walks the records of the selected statement against fv_kr lines of fv_limit pixels. out: fv_kb =
-; the record that becomes the ellipsis, fv_kp = the spacing flags of the visible token before it,
+; Walks the records of the selected statement against fv_kr lines of fv_limit pixels. in: fv_tok,
+; fv_count, fv_kr, fv_limit and fv_ew, with the records fresh (fo_fresh has run). out: fv_kb = the
+; record that becomes the ellipsis, fv_kp = the spacing flags of the visible token before it,
 ; fv_kn = the lines the cut statement takes. A hidden record has gap 0, a visible one at least 1.
-; The cut at the start, an ellipsis alone, is the default and the answer when no token fits.
+; The cut at the start, an ellipsis alone, is the default and the answer when no token fits. It
+; returns early with carry set, before the last record, when a token starts a line past fv_kr.
+; Destroys AF BC DE HL and writes fv_kl, fv_kc, fv_kp, fv_kn and fv_kb; it writes no record.
 clip_scan:
 	ld hl,(fv_tok)
 	ld (fv_kb),hl
@@ -166,17 +166,9 @@ ca_hide:
 	cp d
 	jr z,ca_done
 ca_one:
-	ld c,(hl)
-	ld b,FM_SYMF>>8
-	ld a,(bc)
-	and $0F
-	inc hl
-	ld (hl),0
-	inc hl
-	ld (hl),0
-	inc hl
-	ld (hl),a
-	inc hl
+	push de
+	call fo_hide
+	pop de
 	jr ca_hide
 ca_done:
 	call ct_slot
@@ -186,9 +178,7 @@ ca_done:
 	add hl,de
 	ld a,(fv_limit)
 	ld (hl),a
-	ld hl,(fv_hdr)
-	ld de,7
-	add hl,de
+	call fm_hdr7
 	set FM_COUNTED,(hl)
 	set FM_CLIPPED,(hl)
 	ret

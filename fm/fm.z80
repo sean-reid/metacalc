@@ -30,10 +30,10 @@
 ;               rewrite the width, the gap and the flags of the selected statement's records
 ;               (fold.inc): a token a fold hides has width 0 and gap 0, the first token of a
 ;               folded span has the ellipsis width, its gap and flags 4 | 80h, bit 7 marking the
-;               ellipsis. A hidden token's width and gap add up to 0, so ly_scan and ly_draw
+;               ellipsis, and the symbol id of a record with bit 7 set is undefined. A hidden token's width and gap add up to 0, so ly_scan and ly_draw
 ;               always fit it on the line it follows, at any width and after a first token wider
-;               than the width, and a line starts only where a token did not fit; token 0 is
-;               never hidden, so the visible tokens are placed as the model places them and
+;               than the width, and a line starts only where a token did not fit; only fm_clip makes
+;               token 0 an ellipsis, so the visible tokens are placed as the model places them and
 ;               fm_lay never reads the node table.
 ; FM_LOW is $1100 bytes from KERNEL_RAM_LOW + $100 in the same page, an overlay on the kernel's low
 ; region, and the kernel's first page, with its parameters, its save area and the ready mark, is
@@ -161,7 +161,7 @@
 ;                      refused after the open check.
 ;   fm_rows       in:  D = width in pixels, 0 to 255
 ;                 out: A = status, B = the number of lines the selected statement takes, with its
-;                      folds applied. A token wider than the width sits alone on its line. A line
+;                      folds applied; a clipped statement's count is the clipped one. A token wider than the width sits alone on its line. A line
 ;                      count that fm_fit kept for the statement and its width is read back, 932
 ;                      T-states against 32,522 laid out for the fixture's longest statement;
 ;                      fm_rows itself keeps none. fm_fold on the statement and the pass that
