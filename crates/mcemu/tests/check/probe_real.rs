@@ -1,14 +1,15 @@
 //! The probe on the reference OS 2.43, with its real _PutC, _NewLine, variable store and archive.
 //! What it does is compared with the stub's run of the same scenario, the screen with the same
-//! text drawn by another app in the OS's own font, and the job's variables in SCR_VARS with
-//! themselves every millisecond: the OS calls the probe makes must not change them. A scenario
+//! text drawn by another app in the OS's own font, and the job's variables in SCR_VARS, which
+//! the machine watches for writes of any value once the job has set them: the OS calls the probe
+//! makes must not write them. A scenario
 //! that needs a variable in place first runs a second app, jobsetup, that makes it.
 
 use crate::layout::{self, Table};
 use crate::probe::{Probe, build, expected, label_of, library, screens};
 use crate::realos::{self, *};
 use crate::rig::*;
-use mcemu::Machine;
+use mcemu::{Machine, Write};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -195,9 +196,22 @@ struct Real {
     os: RealOs,
     lab: PathBuf,
     before: BTreeSet<String>,
-    /// The first bytes of the job's variables, which hold the library, N and the key and never
-    /// change once begin has set them.
-    held: Option<Vec<u8>>,
+    /// Whether the machine watches the first bytes of the job's variables, which hold the
+    /// library, N and the key and are never written once begin has set them.
+    armed: bool,
+}
+
+fn describe(writes: &[Write]) -> String {
+    let list: Vec<String> = writes
+        .iter()
+        .map(|w| {
+            format!(
+                "{:02X} to {:04X} by the instruction at {:04X} (flat {:06X}) at clock {}",
+                w.value, w.addr, w.pc, w.pc_physical, w.clock
+            )
+        })
+        .collect();
+    list.join("; ")
 }
 
 /// What a run leaves, as read from the machine.
@@ -208,9 +222,9 @@ struct Ended {
     table: Option<(Vec<u8>, bool)>,
 }
 
-/// The bytes of the job's block that never change during a job: ck_params, ck_n, ck_count, ck_crc.
-/// They are all set by the time ck_state is not 0, which arms the watch.
-const HELD: usize = 0x11;
+/// The bytes of the job's block that are never written during a job: ck_params, ck_n, ck_count,
+/// ck_crc. They are all set by the time ck_state is not 0, which arms the watch.
+const HELD: u16 = 0x11;
 
 impl Real {
     /// Boots the reference OS with the probe installed. What `setup` asks for is made by the
@@ -231,7 +245,7 @@ impl Real {
             os,
             lab,
             before,
-            held: None,
+            armed: false,
         }
     }
 
@@ -256,16 +270,27 @@ impl Real {
         self.os.ram(at, 1)[0]
     }
 
-    /// Asserts that the job's constants stand, once begin has set them, and returns the block.
+    /// Arms the write watch on the job's constants once begin has set them, and asserts that
+    /// nothing has written them since. Returns the block.
     fn watch(&mut self) -> Vec<u8> {
         let block = self.block();
         let state = usize::from(label_of(&self.lab, "ck_state") - label_of(&self.lab, "ck_params"));
-        match &self.held {
-            Some(held) => assert_eq!(&block[..HELD], &held[..], "SCR_VARS changed"),
-            None if block[state] != 0 => self.held = Some(block[..HELD].to_vec()),
-            None => {}
+        if self.armed {
+            let writes = self.os.m.take_writes();
+            assert!(writes.is_empty(), "SCR_VARS written: {}", describe(&writes));
+        } else if block[state] != 0 {
+            self.os
+                .m
+                .watch_writes(label_of(&self.lab, "ck_params"), HELD);
+            self.armed = true;
         }
         block
+    }
+
+    fn disarm(&mut self) {
+        self.os.m.unwatch_writes();
+        self.os.m.take_writes();
+        self.armed = false;
     }
 
     /// Runs a millisecond at a time, watching SCR_VARS, until `until` holds of the block.
@@ -462,11 +487,16 @@ fn on_pauses_the_probe_on_the_reference_os_and_a_second_run_resumes() {
         usize::from(label_of(&real.lab, "ck_counts") - label_of(&real.lab, "ck_params")),
         usize::from(label_of(&real.lab, "ck_n") - label_of(&real.lab, "ck_params")),
     );
-    real.run_until("three assertions checked", |b| {
-        b[state] == 3
-            && u16::from_le_bytes([b[n0], b[n0 + 1]]) + 3 <= u16::from_le_bytes([b[n], b[n + 1]])
+    let checked = |b: &[u8]| {
+        usize::from(u16::from_le_bytes([b[n], b[n + 1]]))
+            - usize::from(u16::from_le_bytes([b[n0], b[n0 + 1]]))
+    };
+    real.run_until("the watch armed", |b| b[state] != 0);
+    assert!(real.armed, "the watch armed");
+    let base = checked(&real.block());
+    real.run_until("three more assertions checked", |b| {
+        b[state] == 3 && checked(b) >= base + 3
     });
-    assert!(real.held.is_some(), "the watch armed");
     real.os.m.press_key(Machine::KEY_ON);
     for _ in 0..300 {
         real.os.run_ms(1);
@@ -496,7 +526,7 @@ fn on_pauses_the_probe_on_the_reference_os_and_a_second_run_resumes() {
 
     real.os.tap(KEY_CLEAR, 150, 600);
     real.launch_probe();
-    real.held = None;
+    real.disarm();
     real.run_to_the_end();
     let done = real.ended();
     assert_eq!(done.flags[..3], [1, 0, 3], "kept, done, CK_DONE");
