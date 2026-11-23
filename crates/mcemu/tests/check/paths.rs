@@ -250,6 +250,7 @@ fn a_refused_begin_on_a_ready_job_leaves_it_idle_and_end_writes_nothing() {
         let mut job = stepped(bytes, 0);
         assert_eq!(job.byte("ck_state"), job.label_byte("CK_S_READY"), "{what}");
         let before = job.raw();
+        assert!(before.is_some(), "{what}: a table before the begin");
         if status == READER {
             job.poke("lr_length", &[0, 0, 0]);
         }

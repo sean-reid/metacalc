@@ -466,8 +466,12 @@ fn on_pauses_the_probe_on_the_reference_os_and_a_second_run_resumes() {
         b[state] == 3
             && u16::from_le_bytes([b[n0], b[n0 + 1]]) + 3 <= u16::from_le_bytes([b[n], b[n + 1]])
     });
+    assert!(real.held.is_some(), "the watch armed");
     real.os.m.press_key(Machine::KEY_ON);
-    real.os.run_ms(300);
+    for _ in 0..300 {
+        real.os.run_ms(1);
+        real.watch();
+    }
     real.os.m.release_key(Machine::KEY_ON);
     real.run_to_the_end();
     let paused = real.ended();
