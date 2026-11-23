@@ -2,9 +2,9 @@
 ; the stage's name in the title bar, its title on row 2, and on rows 4 to 6 "N assertions",
 ; "N checked" and "N failed", centred. The numbers are the stage's, from the same counts the
 ; Libraries screen shows (screen_counts.inc): the assertions up to its end, n1 + n3 of the store
-; and n2. Frame: byte 1 the stage. A build without LIBRARY never pushes it. The name and the title
-; are cut to the width of the screen as the canvas cuts them. CLEAR and ENTER pop (about_key);
-; every other key stays.
+; and n2. Frame: byte 1 the stage. A build without LIBRARY never pushes it. The title is cut to the
+; width of the screen as the canvas cuts it; a name of 12 characters is never wider than the title
+; bar. CLEAR and ENTER pop (about_key); every other key stays.
 ;
 ; stage_enter  out: A = the status of libs_counts, which derives the counts the draw reads.
 ; stage_draw   builds each string in APP_TEXT and draws it.
@@ -44,7 +44,8 @@ stage_draw:
 	ld a, (SG_IDX)
 	call stage_strings
 	push de
-	call stage_cut
+	ld de, SG_CUT
+	call app_strcpy
 	ld hl, SG_CUT
 	ld de, SG_EMPTY
 	call far_ui_title
@@ -66,7 +67,7 @@ stage_draw:
 	ld b, 6
 	jp stage_line
 
-; In: HL = a string of the stage table. Writes it to SG_CUT cut to the width of the screen.
+; In: HL = the stage's title in the stage table. Writes it to SG_CUT cut to the width of the screen.
 stage_cut:
 	ld de, SG_RAW
 	call app_strcpy

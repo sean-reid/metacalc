@@ -375,3 +375,34 @@ fn a_cursor_move_costs_little() {
     println!("libs_key, DOWN: {down} T-states");
     assert!(down <= CURSOR_KEY, "{down} over {CURSOR_KEY}");
 }
+
+/// The most T-states scr_draw and ui_blit may take for ring's three stages with a table that leaves
+/// each under way, warm and cold.
+const LIBRARIES_RING: u32 = 162_800;
+const LIBRARIES_RING_COLD: u32 = 164_200;
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn a_frame_of_ring_in_three_stages_fits_its_warm_and_its_cold_ceiling() {
+    let built = shipped_staged();
+    let data = alternating(built);
+    let mut app = App::boot_with(built, |m| crate::table::install(m, &data));
+    let (draw, blit) = frame(&mut app);
+    go_cold(&mut app);
+    let (cold_draw, cold_blit) = frame(&mut app);
+    println!(
+        "Libraries, ring in three stages under way: {} T-states, cold {}",
+        draw + blit,
+        cold_draw + cold_blit
+    );
+    assert!(
+        draw + blit <= LIBRARIES_RING,
+        "{} over {LIBRARIES_RING}",
+        draw + blit
+    );
+    assert!(
+        cold_draw + cold_blit <= LIBRARIES_RING_COLD,
+        "cold {} over {LIBRARIES_RING_COLD}",
+        cold_draw + cold_blit
+    );
+}

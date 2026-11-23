@@ -78,7 +78,7 @@ libs_cut:
 	ld b, 94
 	or a
 	jr z, libs_room
-	ld b, 92
+	ld b, 91
 libs_room:
 	ld a, b
 	sub l

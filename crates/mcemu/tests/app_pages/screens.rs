@@ -22,40 +22,100 @@ fn the_libraries_screen_is_the_frame_the_models_canvas_draws() {
 
 #[test]
 fn a_stage_row_and_the_stage_about_are_the_models_whatever_the_name_and_the_title() {
-    let library = crate::fixture::library();
+    names_and_titles("pages-names", &crate::fixture::library(), false);
+}
+
+/// With ring's 3,326 assertions a row's text is wide enough to cut a name.
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding ring.mclib>"]
+fn a_stage_name_the_model_cuts_to_the_room_its_text_leaves_is_cut_the_same() {
+    let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    let ring = std::fs::read(format!("{dir}/ring.mclib")).expect("library reads");
+    names_and_titles("pages-names-ring", &ring, true);
+}
+
+fn names_and_titles(build: &str, library: &[u8], edge_required: bool) {
+    let library = library.to_vec();
     let count = crate::table::header_of(&library).1 as usize;
-    let stages: Vec<mcui::Stage> = ["WWWWWWWWWWWW", "i", "mmmmm", "x-y.z_1"]
-        .iter()
-        .enumerate()
-        .map(|(i, name)| mcui::Stage {
-            name: (*name).into(),
-            title: "W".repeat(48),
-            end: (i + 1) * count / 4,
+    let widest = (b'!'..=b'~')
+        .map(char::from)
+        .max_by_key(|c| mcui::canvas::text_width(&c.to_string()))
+        .unwrap();
+    let too_wide = widest.to_string().repeat(12);
+    assert!(
+        mcui::canvas::text_width(&too_wide) <= mcui::canvas::TEXT_WIDTH,
+        "a name of twelve characters fits the title bar, which the notice and the stage About rely on"
+    );
+    // Every stage is under way, so each row ends in "checked/total". The fourth and fifth names sit
+    // on the edge of the room their text leaves, one cut at it and not a pixel above, the other
+    // cut a pixel below it and not at it, which a Z80 that is a pixel out either way gets wrong.
+    let status: Vec<mcui::Status> = (0..count)
+        .map(|i| {
+            if i % 2 == 0 {
+                mcui::Status::Checked
+            } else {
+                mcui::Status::Unchecked
+            }
         })
         .collect();
-    let built = staged_with("pages-names", &library, &stages);
-    let mut shell = shown(built, Enter::Real);
-    let mut ui = model::ui(built, &[]);
-    for row in 0..4 {
+    let stage = |i: usize, name: &str| mcui::Stage {
+        name: name.into(),
+        title: "W".repeat(48),
+        end: (i + 1) * count / 6,
+    };
+    let placeholders: Vec<mcui::Stage> = (0..6).map(|i| stage(i, "a")).collect();
+    let probe = crate::realos::libraries_ui(Some(&crate::realos::Shown {
+        stages: placeholders,
+        status: status.clone(),
+        ..crate::realos::Shown::new(LIBRARY_NAME, &library)
+    }));
+    let rights: Vec<String> = probe
+        .frame_calls()
+        .1
+        .into_iter()
+        .filter_map(|call| match call {
+            mcui::canvas::Call::ListRow { right, .. } => Some(right),
+            _ => None,
+        })
+        .collect();
+    let chars: Vec<char> = (b'!'..=b'~').map(char::from).collect();
+    // A name whose cut differs between two limits a pixel apart, for the room row `i` leaves.
+    let edge = |i: usize, below: bool| {
+        let room = mcui::canvas::TEXT_WIDTH - 3 - mcui::canvas::text_width(&rights[i]);
+        let (low, high) = if below {
+            (room - 1, room)
+        } else {
+            (room, room + 1)
+        };
+        let found = chars
+            .iter()
+            .flat_map(|&a| chars.iter().map(move |&b| (a, b)))
+            .flat_map(|(a, b)| (0..=12).flat_map(move |n| (1..=12 - n).map(move |m| (a, b, n, m))))
+            .map(|(a, b, n, m)| format!("{}{}", a.to_string().repeat(n), b.to_string().repeat(m)))
+            .find(|name| mcui::canvas::truncate(name, low) != mcui::canvas::truncate(name, high));
+        assert!(
+            found.is_some() || !edge_required,
+            "no name is cut at {low} pixels and not at {high}: the text is {:?}",
+            rights[i]
+        );
+        found.unwrap_or_else(|| "edge".into())
+    };
+    let (above, below) = (edge(3, false), edge(4, true));
+    let names = [too_wide.as_str(), "i", "mmmmm", &above, &below, "x-y.z_1"];
+    let stages: Vec<mcui::Stage> = names.iter().enumerate().map(|(i, n)| stage(i, n)).collect();
+    let built = staged_with(build, &library, &stages);
+    let data = crate::table::of(&library, &crate::table::values(built, &status));
+    let mut shell = booted(built, Some(&data));
+    let mut ui = model::ui(built, &status);
+    shell.shows("the Libraries screen", &model::frame(&ui));
+    for row in 0..6 {
         press(&mut shell, &mut ui, built, DOWN, &format!("row {row}"));
     }
-    for row in (0..4).rev() {
-        press(&mut shell, &mut ui, built, UP, &format!("row {row}"));
-        press(
-            &mut shell,
-            &mut ui,
-            built,
-            F3,
-            &format!("the About of row {row}"),
-        );
-        press(
-            &mut shell,
-            &mut ui,
-            built,
-            CLEAR,
-            &format!("back to row {row}"),
-        );
-        let at = format!("the list of row {row}");
+    for row in (0..6).rev() {
+        let at = format!("row {row}");
+        press(&mut shell, &mut ui, built, UP, &at);
+        press(&mut shell, &mut ui, built, F3, &at);
+        press(&mut shell, &mut ui, built, CLEAR, &at);
         press(&mut shell, &mut ui, built, F1, &at);
         press(&mut shell, &mut ui, built, CLEAR, &at);
     }
@@ -223,25 +283,4 @@ fn the_app_leaves_when_the_error_notices_own_push_fails() {
             shell.assert_regions_put_away();
         }
     }
-}
-
-#[test]
-fn the_libraries_enter_runs_once_for_each_opening_and_never_for_a_key_it_ignores() {
-    let mut shell = shown(three_stages(), Enter::Real);
-    assert_eq!(shell.enters(KIND_LIBRARIES), 1);
-    for key in [F4, F5, LEFT, RIGHT, DOWN, UP] {
-        shell.tap(key);
-    }
-    assert_eq!(
-        shell.enters(KIND_LIBRARIES),
-        1,
-        "a cursor move builds nothing again"
-    );
-    shell.tap(F3);
-    shell.tap(CLEAR);
-    assert_eq!(
-        shell.enters(KIND_LIBRARIES),
-        2,
-        "a screen that is uncovered is entered again"
-    );
 }

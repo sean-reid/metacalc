@@ -22,8 +22,8 @@ NT_TITLE	.equ APP_TEXT
 NT_TITLE_SIZE	.equ 17
 NT_LINE		.equ NT_TITLE + NT_TITLE_SIZE
 NT_LINE_SIZE	.equ 10
-NT_RAW		.equ NT_LINE + NT_LINE_SIZE
-#if (NT_RAW + NT_TITLE_SIZE) > (APP_TEXT + APP_TEXT_SIZE)
+NT_END		.equ NT_LINE + NT_LINE_SIZE
+#if NT_END > (APP_TEXT + APP_TEXT_SIZE)
  .error "the notice's variables are longer than APP_TEXT"
 #endif
 
@@ -71,13 +71,8 @@ notice_stage:
 	inc hl
 	ld a, (hl)
 	call stage_strings
-	ld de, NT_RAW
-	call app_strcpy
-	ld hl, NT_RAW
 	ld de, NT_TITLE
-	ld b, NT_TITLE_SIZE
-	ld c, 94
-	call far_ui_truncate
+	call app_strcpy
 #else
 	xor a
 	ld (NT_TITLE), a
