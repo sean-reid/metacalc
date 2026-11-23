@@ -62,6 +62,12 @@ const ALLOWED: &[(When, &str, u16, u16)] = &[
         0x8129,
     ),
     (
+        When::Archived,
+        "the rest of ramCode, which only an archive write copies now that a launch writes no flash",
+        0x8129,
+        0x817C,
+    ),
+    (
         When::BroughtBack,
         "the unnamed byte at 83E8h that each archive write changes",
         0x83E8,
