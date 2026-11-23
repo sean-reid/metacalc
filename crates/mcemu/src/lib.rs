@@ -10,7 +10,7 @@ mod stub {
 }
 
 pub use app::{AppError, decode as decode_app};
-pub use ffi::Regs;
+pub use ffi::{Regs, Write};
 pub use vars::{E_BAD_CALL, E_MEMORY, NoRoom, Var};
 
 /// Free stub ROM: boots to a known state and jumps to `ENTRY`.
@@ -288,6 +288,32 @@ impl Machine {
     /// page, so this is the only record of which page number the code selected.
     pub fn banks_written(&mut self) -> Vec<(u8, u8)> {
         self.calc.banks_written()
+    }
+
+    /// Records every write the CPU makes into the `len` logical addresses from `addr`, changed
+    /// or not, by app or OS code. Replaces a watch already armed and clears its record.
+    pub fn watch_writes(&mut self, addr: u16, len: u16) {
+        assert!(
+            len > 0 && usize::from(addr) + usize::from(len) <= 0x1_0000,
+            "the range is inside memory"
+        );
+        self.calc.watch(addr, len.into());
+    }
+
+    /// Stops recording; what is recorded stays until `take_writes`.
+    pub fn unwatch_writes(&mut self) {
+        self.calc.unwatch();
+    }
+
+    /// The writes recorded since the last call. `pc` is the writing instruction (see `Write`), and a push
+    /// writes its low byte first. The record holds 65536 writes; more panics.
+    pub fn take_writes(&mut self) -> Vec<Write> {
+        let (writes, lost) = self.calc.take_writes();
+        assert_eq!(
+            lost, 0,
+            "the write record was full; take the writes more often"
+        );
+        writes
     }
 
     /// Forces the LCD busy bit, bit 7 of port 10h, on for every read, as a controller that never

@@ -7,17 +7,18 @@ cursor_body:
 	ld a,e
 	inc a
 	jr z,cb_store
-	ld a,(fv_count)
-	or a
-	jr z,cb_index
 	ld hl,(fv_hdr)
-	inc hl
-	inc hl
-	inc hl
-	ld a,(hl)
-	cp e
-	jr c,cb_index
-	jr z,cb_index
+	ld a,l
+	add a,3
+	ld l,a
+	ld a,e
+	cp (hl)
+	jr nc,cb_index
+	ld a,l
+	add a,4
+	ld l,a
+	bit FM_CLIPPED,(hl)
+	jr nz,cb_clipped
 cb_store:
 	ld a,e
 	ld (fv_curn),a
@@ -26,6 +27,9 @@ cb_store:
 	jp fm_leave
 cb_index:
 	ld a,FM_ERR_INDEX
+	jp fm_fail
+cb_clipped:
+	ld a,FM_ERR_CLIPPED
 	jp fm_fail
 
 ; Sets fv_cc when the cursor node is in the selected statement's table: fv_cf and fv_cl are then

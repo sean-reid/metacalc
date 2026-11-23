@@ -6,7 +6,8 @@
 ; subexpression table of each statement, the nodes of the model's Expr, folds nodes behind an
 ; ellipsis and inverts a node's pieces on each line as it draws, as a cursor. fm_fit folds the
 ; statements of the loaded assertion deepest level first until together they fit a number of
-; lines, as the host model's fit does.
+; lines, as the host model's fit does, and fm_clip cuts the selected statement to a number of lines
+; with an ellipsis as the model's Layout::clipped does.
 ;
 ; Code runs from flash in bank A and is position dependent. An including file defines FM_EMBEDDED
 ; first and places the code itself, after the reader (lib/) and the canvas (ui/) it calls, with -I
@@ -17,9 +18,9 @@
 ; Memory, placed by app/src/ram_map.inc. FM_RAM is in bank C of the kernel's spare page
 ; KERNEL_RAM_PAGE, from KERNEL_RAM_HIGH, $1E00 bytes, which the kernel uses only inside a kernel
 ; call; fm maps the page in every public routine and keeps everything there:
-;   +$000 $100  variables (fm/ram.inc), among them fv_rows and fv_rwid, 32 bytes each: the line
-;               count of each loaded statement and the width it was counted at, current when bit
-;               1 of the statement's header byte 7 is set
+;   +$000 $100  variables (fm/ram.inc), $DF bytes of them, among them fv_rows and fv_rwid, 32 bytes
+;               each: the line count of each loaded statement and the width it was counted at,
+;               current when bit 1 of the statement's header byte 7 is set
 ;   +$100 $100  fm's private stack, FM_STACK_TOP at +$200
 ;   +$200 $800  FM_GLYPHS, the library's glyph map section as lib_glyphs finds it
 ;   +$A00 $800  FM_SECOND, the library's shapes section as lib_shapes finds it
@@ -29,10 +30,12 @@
 ;               rewrite the width, the gap and the flags of the selected statement's records
 ;               (fold.inc): a token a fold hides has width 0 and gap 0, the first token of a
 ;               folded span has the ellipsis width, its gap and flags 4 | 80h, bit 7 marking the
-;               ellipsis. A hidden token's width and gap add up to 0, so ly_scan and ly_draw
-;               always fit it on the line it follows, at any width and after a first token wider
-;               than the width, and a line starts only where a token did not fit; token 0 is
-;               never hidden, so the visible tokens are placed as the model places them and
+;               ellipsis. A record's symbol id is kept from load: the folds and the clip never
+;               write it, and it is reread whenever the folds are reapplied. A hidden token's
+;               width and gap add up to 0, so ly_scan and ly_draw always fit it on the line it
+;               follows, at any width and after a first token wider than the width, and a line
+;               starts only where a token did not fit; only fm_clip makes
+;               token 0 an ellipsis, so the visible tokens are placed as the model places them and
 ;               fm_lay never reads the node table.
 ; FM_LOW is $1100 bytes from KERNEL_RAM_LOW + $100 in the same page, an overlay on the kernel's low
 ; region, and the kernel's first page, with its parameters, its save area and the ready mark, is
@@ -41,7 +44,8 @@
 ;               of its first token record, its token count, its node count (0 until fm_nodes has
 ;               built its table), the first row of its table in the node planes, its number for
 ;               lib_tree, and a byte whose bit 0 is set when a fold has changed since the records
-;               were last rewritten and bit 1 while its line count in fv_rows is current
+;               were last rewritten, bit 1 while its line count in fv_rows is current and bit 2
+;               while fm_clip has cut it
 ;   +$100 $100  FM_TLEN, FM_TCNT at +$200 and FM_TSIZE at +$300: what fm_nodes keeps for each node
 ;               of the stored tree, at most 255 (nodes.inc)
 ;   +$400 $200  FM_PILE, fm_nodes' explicit stack: 255 pairs of two bytes, one for each tree
@@ -76,7 +80,11 @@
 ; plus the pass, up to 128,000 on the fixture and 50,000 on ring. The six-row frame of the ring
 ; statement takes 266,746 T-states and with the cursor on the node that costs most 290,183, within
 ; the 50 ms budget of 300,000: the
-; cursor adds one ui_invert for each line, at most 3,203 for a line as wide as the window. The reader
+; cursor adds one ui_invert for each line, at most 3,203 for a line as wide as the window. fm_clip
+; costs 1,197 T-states on a statement that fits the lines and was counted by fm_fit, and at most
+; 2,750 on ring's conclusions cut to one line of 30 pixels; fm_fit to one line and then fm_clip
+; takes 52,743 T-states at the median over ring's conclusions at the preview's width of 94 pixels
+; and 1,073,468 at worst, for df-rng. The reader
 ; and the canvas run inside it: lib_read saves the caller's port 5, which is the spare page,
 ; and puts it back, with no stack instruction in between, and needs its buffer in bank B; the canvas
 ; touches only bank B, the stack and the font table it was given. A session calls no OS routine.
@@ -155,7 +163,7 @@
 ;                      refused after the open check.
 ;   fm_rows       in:  D = width in pixels, 0 to 255
 ;                 out: A = status, B = the number of lines the selected statement takes, with its
-;                      folds applied. A token wider than the width sits alone on its line. A line
+;                      folds applied; a clipped statement's count is the clipped one. A token wider than the width sits alone on its line. A line
 ;                      count that fm_fit kept for the statement and its width is read back, 932
 ;                      T-states against 32,522 laid out for the fixture's longest statement;
 ;                      fm_rows itself keeps none. fm_fold on the statement and the pass that
@@ -207,6 +215,8 @@
 ;                      flag at 0 and returns status 0 and B = 0. The records are rewritten by
 ;                      the next fm_rows or fm_draw, once for any number of changes.
 ;                      FM_ERR_BAD: D above 2, checked before anything is built.
+;                      FM_ERR_CLIPPED: the selected statement is clipped and the call
+;                      would change a flag; a call that changes none returns status 0 as before.
 ;                      FM_ERR_INDEX: no node E in the table.
 ;   fm_folded     in:  E = node of the selected statement
 ;                 out: A = status, B = bit 0 its flag, bit 1 set when it is foldable, bit 2 set
@@ -230,8 +240,9 @@
 ;                      cleared as soon as fm is known to be open, so every exit leaves it cleared
 ;                      but a refusal because fm is closed, which writes nothing, as fm's memory
 ;                      may not be fm's then. Every statement's records are fresh and its line
-;                      count is kept for fm_rows. A store of one statement, loaded by
-;                      fm_statement, is fitted too when it is a conclusion.
+;                      count is kept for fm_rows. A clip of any statement is dropped. A store of
+;                      one statement, loaded by fm_statement, is fitted too when it is a
+;                      conclusion.
 ;                      FM_ERR_LIMIT: more than 384 nodes in the tables of the assertion or
 ;                      more than 255 in one statement, the cases the host model calls too large
 ;                      with its caps; no flag of a table that was built before the call is
@@ -240,10 +251,31 @@
 ;                      and FM_ERR_READ as fm_nodes gives them.
 ;   fm_cursor     in:  A = node of the selected statement, FFh for none
 ;                 out: A = status. Stores the node, which the draws that follow show as the
-;                      cursor, until fm_open, fm_assertion, fm_statement, fm_fit or a
-;                      fm_select that selects clears it; a fold change keeps it. Draws nothing.
+;                      cursor, until fm_open, fm_assertion, fm_statement, fm_fit, a fm_clip
+;                      that cuts or a fm_select that selects clears it; a fold change keeps it.
+;                      Draws nothing.
 ;                      FFh succeeds on an open fm. FM_ERR_INDEX: the table is not built or has no
-;                      node A, and the cursor stays as it was.
+;                      node A, and the cursor stays as it was. FM_ERR_CLIPPED: the selected
+;                      statement is clipped and has the node.
+;   fm_clip       in:  B = the lines to keep, D = the width in pixels to lay the kept tokens out at
+;                 out: A = status, B = the lines the statement takes after the call. Does what the
+;                      model's Layout::clipped(width, rows) does to the selected statement as it is
+;                      laid out, folds and all: a statement that already takes at most B lines is
+;                      untouched, and costs the check of its line count, which fm_fit kept when it
+;                      was fitted at that width. Else it keeps the first tokens that leave the
+;                      ellipsis ending on a line within B, as many as the lines allow, and the
+;                      ellipsis, placed and padded as a folded node's, takes the place of the rest:
+;                      the record after the last kept token becomes the ellipsis and every later
+;                      record is hidden, so fm_rows and fm_draw lay out and draw what the model
+;                      draws, with no other code knowing of the clip. B = 0 keeps the ellipsis
+;                      alone, as the model does. The line count is kept for the width. The cursor is
+;                      cleared. The clip belongs to the statement: header byte 7 bit 2 marks it, it
+;                      survives fm_select of other statements and back, and a load of the
+;                      statement, fm_fit and fm_open drop it, so no later draw shows a stale cut. A
+;                      refused fm_fit leaves it. fm_rows and fm_draw at another width lay out the
+;                      kept tokens and the ellipsis at that width. Stale folds are applied first.
+;                      FM_ERR_CLIPPED: the statement is clipped already, whatever B; fit it again to
+;                      clip it again. FM_ERR_INDEX: nothing is selected.
 ; Other statuses: FM_ERR_NOT_OPEN, from every routine but fm_open.
 
 #ifndef FM_EMBEDDED
@@ -259,6 +291,7 @@
 #include "fm/layout.inc"
 #include "fm/fold.inc"
 #include "fm/fit.inc"
+#include "fm/clip.inc"
 #include "fm/cursor.inc"
 #include "fm/nodes.inc"
 #include "fm/tree.inc"
