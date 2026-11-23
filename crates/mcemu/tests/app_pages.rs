@@ -35,6 +35,8 @@ mod shell_cost;
 mod shellrig;
 #[path = "app_pages/speed.rs"]
 mod speed;
+#[path = "app_pages/stage.rs"]
+mod stage;
 #[path = "app_pages/stubs.rs"]
 mod stubs;
 

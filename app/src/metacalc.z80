@@ -43,8 +43,10 @@
 ; leaves by app_exit. An auto power down calls none of them.
 ; RAM: the canvas's, fm's and the kernel's blocks in ram_map.inc, libPage (the flash page of
 ; library chunk 0) and appStatus after it, and APP_BUF, which holds the reader's scratch and the
-; strings in glyph codes, APP_FRAME in its upper half. The strings the canvas reads from the draw
-; page are in strings.inc.
+; strings in glyph codes, APP_FRAME in its upper half, and APP_STAGE after it, which holds the
+; copy of the constant strings (strings.inc) of the screen last drawn, since the canvas cannot read
+; the entry page. The tag at its start is cleared at start and before the refresh that follows an
+; auto power down.
 
 #include "equates.inc"
 
@@ -82,6 +84,9 @@ app_start:
 	call far_ui_set_font
 	xor a
 	ld (appStatus), a
+	ld h, a
+	ld l, a
+	ld (APP_STAGE_TAG), hl
 #ifdef LIBRARY
 	call app_find_library
 	call far_kernel_reset
@@ -114,6 +119,8 @@ app_wait:
 	cp (hl)
 	ld d, 0
 	jr z, app_keyed
+	ld hl, 0
+	ld (APP_STAGE_TAG), hl
 	call scr_refresh
 	or a
 	jr nz, app_refresh_failed
@@ -221,6 +228,7 @@ app_ret:
 	ret
 
 #include "text.inc"
+#include "strings.inc"
 #include "screens.inc"
 #include "screen_notice.inc"
 #include "screen_about.inc"

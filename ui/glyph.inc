@@ -516,7 +516,13 @@ ui_w7:	TAIL1(7)
  .error "one byte form block ui_tw7 is not at ui_vblk+7*256: a tail or head outgrew its 256 bytes"
 #endif
 	.fill (256-($&255))&255,0
-	.fill 256,0
+ui_hole:
+#include "progress.inc"
+#include "titlebar.inc"
+#if ($-ui_hole) > 256
+ .error "the code in the empty block outgrew its 256 bytes"
+#endif
+	.fill 256-($-ui_hole),0
 ui_tv1:	HEAD(1)
 	jr ui_v1
 	.fill (128-($&127))&127,0
@@ -635,7 +641,6 @@ ui_vend:
 	m
 	m
 	m
-	.fill 160,0
 #endmacro
 	.fill (256-($&255))&255,0
 ui_toff:
@@ -660,8 +665,20 @@ ui_toff:
 	HIGH32(7)
 ui_tfit:
 	PAGE(FITS)
+ui_tfit_tail:
+#include "rows.inc"
+#if ($-ui_tfit_tail) > 160
+ .error "the code in the tail of the ui_tfit page outgrew its 160 bytes"
+#endif
+	.fill 160-($-ui_tfit_tail),0
 ui_tblk:
 	PAGE(SHIFTS(ui_vblk>>8))
+ui_tblk_tail:
+#include "clear.inc"
+#if ($-ui_tblk_tail) > 160
+ .error "the code in the tail of the ui_tblk page outgrew its 160 bytes"
+#endif
+	.fill 160-($-ui_tblk_tail),0
 ui_tcol:
 	BYTES8(0)
 	BYTES8(1)

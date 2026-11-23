@@ -14,19 +14,22 @@ about_enter:
 
 about_draw:
 	call far_ui_clear
-	ld hl, str_about
-	ld de, str_none
+	ld hl, about_block
+	ld bc, ABOUT_BLOCK_SIZE
+	call app_stage_block
+	ld hl, STG_ABOUT_TITLE
+	ld de, STG_ABOUT_NONE
 	call far_ui_title
-	ld hl, str_about_version
+	ld hl, STG_ABOUT_VERSION
 	ld b, ABOUT_VERSION_ROW
 	call far_ui_text_centered
-	ld hl, str_about_a
+	ld hl, STG_ABOUT_A
 	ld b, ABOUT_LINE_ROW
 	call far_ui_text_centered
-	ld hl, str_about_b
+	ld hl, STG_ABOUT_B
 	ld b, ABOUT_LINE_ROW + 1
 	call far_ui_text_centered
-	ld hl, str_about_libs
+	ld hl, STG_ABOUT_LIBS
 	ld b, ABOUT_COUNT_ROW
 	jp far_ui_text_centered
 

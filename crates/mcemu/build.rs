@@ -1168,7 +1168,53 @@ fn assemble_ui(out: &Path) {
         (&["APP_SENTINEL=$8000"][..], None),
         (&["APP_SENTINEL=$BFFF"][..], None),
         (&["APP_SENTINEL=$86EB"][..], None),
-        (&["APP_SENTINEL=$8906"][..], None),
+        (
+            &["APP_SENTINEL=$8906"][..],
+            Some("APP_STAGE and APP_SENTINEL overlap"),
+        ),
+        (&["APP_SENTINEL=$8986"][..], None),
+        (
+            &["APP_SENTINEL=$8985"][..],
+            Some("APP_STAGE and APP_SENTINEL overlap"),
+        ),
+        (&["APP_STAGE=$8000"][..], None),
+        (&["APP_STAGE=$7FFF"][..], Some("APP_STAGE runs past bank B")),
+        (&["APP_STAGE=$BF80"][..], None),
+        (&["APP_STAGE=$BF81"][..], Some("APP_STAGE runs past bank B")),
+        (
+            &["APP_STAGE=$8806"][..],
+            Some("APP_STAGE and APP_BUF overlap"),
+        ),
+        (
+            &["APP_STAGE=$8706"][..],
+            Some("APP_STAGE and FM_SCRATCH overlap"),
+        ),
+        (
+            &["APP_STAGE=$86EC"][..],
+            Some("APP_STAGE and UI_VARS overlap"),
+        ),
+        (
+            &["APP_STAGE=$9340"][..],
+            Some("APP_STAGE and UI_FRAME overlap"),
+        ),
+        (
+            &["APP_STAGE=$96EE"][..],
+            Some("APP_STAGE and HOME_STATE overlap"),
+        ),
+        (
+            &["APP_STAGE=$96F4"][..],
+            Some("APP_STAGE and HOME_PENDING overlap"),
+        ),
+        (
+            &["HOME_STATE=$8906"][..],
+            Some("APP_STAGE and HOME_STATE overlap"),
+        ),
+        (&["HOME_STATE=$8986"][..], None),
+        (
+            &["HOME_PENDING=$8985"][..],
+            Some("APP_STAGE and HOME_PENDING overlap"),
+        ),
+        (&["HOME_PENDING=$8986"][..], None),
         (
             &["APP_SENTINEL=$7FFF"][..],
             Some("APP_SENTINEL runs past bank B"),
@@ -1213,7 +1259,7 @@ fn assemble_ui(out: &Path) {
             &["APP_SENTINEL=$989C"][..],
             Some("APP_SENTINEL and LIB_STATE overlap"),
         ),
-        (&["UI_VARS_SIZE=$30"][..], None),
+        (&["UI_VARS_SIZE=$30", "APP_STAGE=$8930"][..], None),
         (
             &["UI_VARS_SIZE=$19"][..],
             Some("the UI variables overlap, leave a gap, or run past UI_VARS_SIZE"),
@@ -1477,6 +1523,7 @@ fn expect(source: &Path, out: &Path, defines: &[&str], args: &[&str], want: Opti
 
 /// The far call's scratch, moved clear of the bytes after KD_SCRATCH that the layouts below grow into.
 const FAR_ASIDE: &str = "FAR_VARS=$9C00";
+const STAGE_ASIDE: &str = "APP_STAGE=$8930";
 
 /// Each probe refuses RAM of its own that leaves bank B, overlaps another of its regions or overlaps
 /// a map region its image links, and accepts the default addresses and a move clear of them. Each
@@ -1799,7 +1846,7 @@ fn assemble_layout_probes(out: &Path) {
         for (lines, defines, want) in [
             (
                 format!("{prefix}_VAR(probe_next, ${end:X}, 1)"),
-                vec![size, FAR_ASIDE],
+                vec![size, FAR_ASIDE, STAGE_ASIDE],
                 None,
             ),
             (
@@ -1808,22 +1855,22 @@ fn assemble_layout_probes(out: &Path) {
                     end + 2,
                     end + 2
                 ),
-                vec![size, FAR_ASIDE],
+                vec![size, FAR_ASIDE, STAGE_ASIDE],
                 None,
             ),
             (
                 format!("{prefix}_VAR(probe_same, ${:X}, 1)", end - 1),
-                vec![size, FAR_ASIDE],
+                vec![size, FAR_ASIDE, STAGE_ASIDE],
                 Some(message),
             ),
             (
                 format!("{prefix}_VAR(probe_inside, $1, 1)"),
-                vec![size, FAR_ASIDE],
+                vec![size, FAR_ASIDE, STAGE_ASIDE],
                 Some(message),
             ),
             (
                 format!("{prefix}_VAR(probe_gap, ${:X}, 1)", end + 2),
-                vec![size, FAR_ASIDE],
+                vec![size, FAR_ASIDE, STAGE_ASIDE],
                 Some(message),
             ),
             (
@@ -1833,7 +1880,7 @@ fn assemble_layout_probes(out: &Path) {
             ),
             (
                 format!("{prefix}_AT($0)"),
-                vec![size, FAR_ASIDE],
+                vec![size, FAR_ASIDE, STAGE_ASIDE],
                 Some(go_back.as_str()),
             ),
             (

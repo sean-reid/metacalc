@@ -5,8 +5,9 @@
 ; Frames, 16 bytes: byte 0 the kind, byte 1 the notice's number, byte 2 its one parameter byte,
 ; the rest 0. KIND_START and KIND_ABOUT use no other byte.
 ;
-; The routines run on this page, where the strings they draw are not: a string goes to the canvas's
-; far entries by the address it has on the draw page (strings.inc), or by its address in APP_BUF.
+; The routines run on this page, and so do their constant strings, which the canvas cannot read: a
+; draw copies its screen's block (strings.inc) to APP_STAGE with app_stage_block and hands the canvas
+; the copy's addresses, or the address of a string it built in APP_BUF.
 
 KIND_START	.equ 1
 KIND_NOTICE	.equ 2
@@ -114,8 +115,11 @@ start_built:
 ; Draws the title and, with LIBRARY, rows 1 to 7 of the library screen, without it the hint.
 start_draw:
 	call far_ui_clear
-	ld hl, str_title
-	ld de, str_none
+	ld hl, start_block
+	ld bc, START_BLOCK_SIZE
+	call app_stage_block
+	ld hl, STG_START_TITLE
+	ld de, STG_START_NONE
 	call far_ui_title
 #ifdef LIBRARY
 	ld a, (appStatus)
@@ -140,7 +144,7 @@ start_draw:
 	ld de, HINT_COL
 	ld b, LABEL_ROW
 	call far_ui_text
-	ld hl, str_hint
+	ld hl, STG_START_HINT
 	ld de, HINT_COL
 	ld b, LIBRARY_HINT_ROW
 	jp far_ui_text
@@ -156,7 +160,7 @@ start_refused:
 	ld b, LIBRARY_HINT_ROW
 	jp far_ui_text
 #else
-	ld hl, str_hint
+	ld hl, STG_START_HINT
 	ld de, HINT_COL
 	ld b, HINT_ROW
 	jp far_ui_text

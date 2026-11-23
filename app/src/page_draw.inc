@@ -1,4 +1,4 @@
-; Code page 1, the draw page: the canvas, fm and the shell's strings. fm calls the reader on the
+; Code page 1, the draw page: the canvas and fm. fm calls the reader on the
 ; data page through the far entries of far_reader.inc, which the aliases name for the length of
 ; the include. Included at the app's page 1 by metacalc.z80; see pages.inc.
 	APP_PAGE(PAGE_DRAW)
@@ -16,6 +16,9 @@
 #endif
 #define UI_EMBEDDED
 #include "ui.z80"
+#if (UI_FONT_CH_39 - UI_FONT_CH_30) != 9
+ .error "the digits 0 to 9 are not consecutive glyph codes"
+#endif
 #define FAR_ALIASES
 #include "far_reader.inc"
 #undef FAR_ALIASES
@@ -24,5 +27,4 @@
 #define FAR_UNALIASES
 #include "far_reader.inc"
 #undef FAR_UNALIASES
-#include "strings.inc"
 	APP_PAGE_FILL(PAGE_DRAW)

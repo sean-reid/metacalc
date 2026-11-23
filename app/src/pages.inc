@@ -1,8 +1,8 @@
 ; The app's three code pages and the far entries between them. The pages are assembled in this
 ; order, each at 4000h, and the library follows the last:
-;   0  entry  header, shell, screens, app_key and every OS call; the far entries of the other two
-;   1  draw   the canvas (ui/), fm (fm/) and the shell's constant strings; the far entries of the
-;             reader
+;   0  entry  header, shell, screens, the shell's constant strings (strings.inc), app_key and every
+;             OS call; the far entries of the other two
+;   1  draw   the canvas (ui/) and fm (fm/); the far entries of the reader
 ;   2  data   the kernel (kernel/) and the reader (lib/)
 ; A routine on one page calls a routine on another through its far entry, a stub on the caller's
 ; page that loads IX and jumps to farcall.inc's far_pageN for the callee's page N. FAR_JUMP_DRAW and
@@ -14,7 +14,9 @@
 ; nothing in IX over the call.
 ;
 ; Pointers: a string or table handed to a routine on another page is in RAM or on that page, since
-; the callee runs with its own page mapped. The shell's strings are on the draw page, and the
+; the callee runs with its own page mapped. The shell's strings are on the entry page, which the
+; canvas cannot read: a screen's draw copies the strings it needs into APP_STAGE (text.inc,
+; strings.inc) and passes the copy's addresses, so a new screen adds nothing to the draw page. The
 ; kernel_init parameter block is in RAM.
 ;
 ; APP_PAGE_END(n) stops the assembly when page n runs past 4000h to 7FFFh, which spasm does not do

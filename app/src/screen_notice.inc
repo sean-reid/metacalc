@@ -12,9 +12,9 @@ NOTICE_ERROR	.equ 2
 NOTICE_ROW	.equ 3
 
 notice_titles:
-	.dw str_theorems, str_verify, str_error
+	.dw STG_NOTICE_THEOREMS, STG_NOTICE_VERIFY, STG_NOTICE_ERROR
 notice_lines:
-	.dw str_unavailable, str_unavailable, APP_BUF
+	.dw STG_NOTICE_UNAVAILABLE, STG_NOTICE_UNAVAILABLE, APP_BUF
 #if (notice_lines - notice_titles) != (2 * (NOTICE_ERROR + 1))
  .error "notice_titles needs a title for every NOTICE_ number"
 #endif
@@ -50,6 +50,9 @@ notice_built:
 notice_draw:
 	push hl
 	call far_ui_clear
+	ld hl, notice_block
+	ld bc, NOTICE_BLOCK_SIZE
+	call app_stage_block
 	pop hl
 	inc hl
 	ld a, (hl)
@@ -66,7 +69,7 @@ notice_known:
 	inc hl
 	ld d, (hl)
 	ex de, hl
-	ld de, str_none
+	ld de, STG_NOTICE_NONE
 	push bc
 	call far_ui_title
 	pop bc
@@ -78,7 +81,7 @@ notice_known:
 	ex de, hl
 	ld b, NOTICE_ROW
 	call far_ui_text_centered
-	ld hl, str_keys_back
+	ld hl, STG_NOTICE_KEYS
 	jp far_ui_soft_keys
 
 ; In: A = the key.

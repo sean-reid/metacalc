@@ -1,6 +1,43 @@
-; Text the shell builds in RAM. app_digit turns a nibble into the glyph code of its hex digit, for a
-; status shown as two digits. With LIBRARY, app_codes turns the ASCII a reader accessor returns into
-; glyph codes in place. The glyph codes are the main font's (UI_FONT_CH_ equates of font.inc).
+; Text for the canvas. app_stage_block copies a screen's block of constant strings (strings.inc)
+; into APP_STAGE, where the canvas can read it with its own page mapped, unless the area already
+; holds that block. app_digit turns a nibble into the glyph code of its hex digit, for a status
+; shown as two digits. With LIBRARY, app_codes turns the ASCII a reader accessor returns into glyph
+; codes in place. The glyph codes are the main font's (UI_FONT_CH_ equates of font.inc).
+
+; In: HL = a block on this page, BC = its length. Copies it to APP_STAGE_DATA and sets the tag to HL,
+; unless the tag is HL already; a length of 0 does nothing. A block longer than APP_STAGE_DATA_SIZE
+; is refused whole: nothing is copied and the tag is cleared. Out: carry set when refused, else
+; reset. Destroys AF BC DE HL.
+app_stage_block:
+	ld a, b
+	or c
+	ret z
+	ld a, b
+	or a
+	jr nz, stage_refuse
+	ld a, c
+	cp APP_STAGE_DATA_SIZE + 1
+	jr nc, stage_refuse
+	ld de, (APP_STAGE_TAG)
+	ld a, l
+	cp e
+	jr nz, stage_copy
+	ld a, h
+	cp d
+	ret z
+stage_copy:
+	ld de, APP_STAGE_DATA
+	push hl
+	ldir
+	pop hl
+	ld (APP_STAGE_TAG), hl
+	or a
+	ret
+stage_refuse:
+	ld hl, 0
+	ld (APP_STAGE_TAG), hl
+	scf
+	ret
 
 ; In: A, low nibble. Out: A = the glyph code of its hex digit. Keeps B.
 app_digit:
