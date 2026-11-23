@@ -25,9 +25,7 @@ fm_cached:
 	ld a,(fv_count)
 	or a
 	ret z
-	ld hl,(fv_hdr)
-	ld de,7
-	add hl,de
+	call fm_hdr7
 	bit FM_COUNTED,(hl)
 	jr z,fc_no
 	call ct_slot
@@ -64,11 +62,18 @@ fm_count:
 	add hl,de
 	ld a,(fv_limit)
 	ld (hl),a
-	ld hl,(fv_hdr)
-	ld de,7
-	add hl,de
+	call fm_hdr7
 	set FM_COUNTED,(hl)
 	ld a,(fv_line)
+	ret
+
+; in: fv_hdr. out: HL = the address of byte 7 of the selected statement's header. Only L changes, so
+; the header slots must stay 8-aligned: byte 7 then never crosses a 256-byte boundary. Destroys AF.
+fm_hdr7:
+	ld hl,(fv_hdr)
+	ld a,l
+	add a,7
+	ld l,a
 	ret
 
 ; out: HL = the selected statement's byte in fv_rows. Destroys AF DE.

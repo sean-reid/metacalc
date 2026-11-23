@@ -119,9 +119,7 @@ fo_fresh:
 	ld a,(fv_count)
 	or a
 	ret z
-	ld hl,(fv_hdr)
-	ld de,7
-	add hl,de
+	call fm_hdr7
 	ld a,(hl)
 	and 1
 	ret z
@@ -319,11 +317,13 @@ fd_cmp:
 	cp c
 	ld a,0
 	jp z,fm_leave
-	ld (hl),c
-	ld hl,(fv_hdr)
-	ld de,7
-	add hl,de
+	ex de,hl
+	call cl_flag
+	ld a,FM_ERR_CLIPPED
+	jp nz,fm_fail
 	ld (hl),1
+	ex de,hl
+	ld (hl),c
 	ld b,1
 	xor a
 	jp fm_leave
