@@ -7,8 +7,7 @@ use crate::rig::*;
 const ENDS: &[u16] = &[779, 1171, 3326];
 
 /// T-states of the store routine `entry` on the reference OS and on the stub, at its
-/// `skip + 1`th call in `cmds`. Each runs on a machine booted for it: the OS defragments its
-/// apps at the sixteenth launch after a boot.
+/// `skip + 1`th call in `cmds`. Each runs on a machine booted for it.
 fn windows(cmds: &[Cmd], entry: &str, skip: usize) -> (u32, u32) {
     let real = launch_window(&mut boot(), cmds, entry, skip);
     (real, Rig::new().window(cmds, label(entry), skip))

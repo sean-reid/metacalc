@@ -39,7 +39,7 @@ pub struct RealOs {
 
 impl RealOs {
     /// Boots the reference OS with `app` installed on `BASE`, turns it on, and returns at the
-    /// home screen.
+    /// home screen. The app has no launch limit, as after the OS's own install.
     pub fn boot(app: &[u8]) -> RealOs {
         RealOs::boot_apps(&[(app, BASE)])
     }

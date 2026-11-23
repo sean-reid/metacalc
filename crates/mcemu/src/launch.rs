@@ -12,6 +12,14 @@ pub const FLAGS: u16 = 0x89F0;
 const FIRST_PROTECTED: u8 = 0x08;
 const RAM_PAGE_BANK_B: u8 = 0x81;
 const INIT_LIMIT: u32 = 100_000;
+/// The OS keeps one two-byte launch budget per app slot in flash page 7Eh, from 5E50h, slot 0
+/// being the app on page 69h and each lower base page the next slot. A budget the OS left at
+/// FFFFh allows 16 launches, after which it deletes the app and defragments; 80h, 00h marks an
+/// app with no limit, which is what its own install writes for an app without a trial field.
+const BUDGET_PAGE: u8 = 0x7E;
+const BUDGET_TABLE: usize = 0x1E50;
+const TOP_APP_PAGE: u8 = 0x69;
+const UNLIMITED: [u8; 2] = [0x80, 0x00];
 
 impl Machine {
     fn check_base(&self, base: u8) -> Result<(), AppError> {
@@ -25,7 +33,8 @@ impl Machine {
     }
 
     /// Writes page k of the app file to flash page `base - k`, and remembers how many pages that
-    /// is for `launch`, per base page.
+    /// is for `launch`, per base page. On a real OS image it also marks the app unlimited, as the
+    /// OS's own install does; a base above 69h has no slot in the OS's table and is not marked.
     pub fn install_app(&mut self, file: &[u8], base: u8) -> Result<(), AppError> {
         self.check_base(base)?;
         let pages = decode_app(file)?;
@@ -34,6 +43,10 @@ impl Machine {
         }
         for (k, page) in pages.iter().enumerate() {
             self.load_flash(base - k as u8, 0, page);
+        }
+        if self.os && base <= TOP_APP_PAGE {
+            let slot = BUDGET_TABLE + 2 * usize::from(TOP_APP_PAGE - base);
+            self.load_flash(BUDGET_PAGE, slot, &UNLIMITED);
         }
         self.apps.insert(base, pages.len());
         Ok(())
