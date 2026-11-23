@@ -2,7 +2,7 @@
 
 use crate::app::*;
 use crate::builds::*;
-use crate::realos::{BASE, RealOs};
+use crate::realos::{BASE, RealOs, libraries_pixels};
 use crate::shellrig::*;
 
 /// The RAM the screens and the canvas keep: the screen stack and its variables, the canvas, the
@@ -20,12 +20,18 @@ const REGIONS: [(&str, &str); 10] = [
     ("FM_SCRATCH", "FM_SCRATCH_SIZE"),
 ];
 
+/// Every region's bytes, except scr_vec, which each dispatch writes with the routine it calls.
 fn snapshot(app: &mut App) -> Vec<Vec<u8>> {
+    let vec = usize::from(app.label("scr_vec") - app.label("SCR_VARS"));
     REGIONS
         .iter()
         .map(|(base, size)| {
             let (at, len) = (app.label(base), usize::from(app.label(size)));
-            app.m.read_ram(at, len)
+            let mut bytes = app.m.read_ram(at, len);
+            if *base == "SCR_VARS" {
+                bytes.drain(vec..vec + 2);
+            }
+            bytes
         })
         .collect()
 }
@@ -46,41 +52,52 @@ fn idles_to_nothing(app: &mut App, on_real_os: bool, what: &str) {
     }
 }
 
-#[test]
-fn the_libraries_screen_and_about_idle_to_nothing_and_change_no_byte() {
-    for built in [plain(), with_library()] {
-        let mut shell = Shell::boot(built, Enter::Real);
-        idles_to_nothing(&mut shell.app, false, "Libraries");
-        assert_eq!(shell.top_kind(), KIND_LIBRARIES);
-        shell.tap(F3);
-        assert_eq!(shell.top_kind(), KIND_ABOUT);
-        idles_to_nothing(&mut shell.app, false, "About");
-        assert_eq!(shell.top_kind(), KIND_ABOUT);
+/// Opens the screen the keys lead to on a fresh app, then idles it. The call leaves the machine
+/// at the driver's halt, so each screen gets an app of its own.
+fn idle_after(built: &'static Built, keys: &[u8], kind: u8, what: &str) {
+    let mut shell = Shell::boot(built, Enter::Real);
+    for &key in keys {
+        shell.tap(key);
     }
+    assert_eq!(shell.top_kind(), kind, "{what}");
+    idles_to_nothing(&mut shell.app, false, what);
+    assert_eq!(shell.top_kind(), kind, "{what}");
 }
 
 #[test]
-fn a_stage_and_a_notice_idle_to_nothing_and_change_no_byte() {
-    let mut shell = Shell::boot(three_stages(), Enter::Real);
-    shell.tap(F3);
-    assert_eq!(shell.top_kind(), KIND_STAGE);
-    idles_to_nothing(&mut shell.app, false, "a stage");
-    shell.tap(CLEAR);
-    shell.tap(F1);
-    assert_eq!(shell.top_kind(), KIND_NOTICE);
-    idles_to_nothing(&mut shell.app, false, "a notice");
-    assert_eq!(shell.top_kind(), KIND_NOTICE);
+fn every_screen_of_the_app_idles_to_nothing_and_changes_no_byte() {
+    for built in [plain(), with_library()] {
+        idle_after(built, &[], KIND_LIBRARIES, "Libraries");
+        idle_after(built, &[F3], KIND_ABOUT, "About");
+    }
+    let staged = three_stages();
+    idle_after(staged, &[F3], KIND_STAGE, "a stage");
+    idle_after(staged, &[F1], KIND_NOTICE, "a notice");
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn on_the_reference_os_the_libraries_screen_and_about_idle_to_nothing() {
+fn on_the_reference_os_the_libraries_screen_idles_to_nothing() {
     let mut app = App::on_real_os(with_library());
     idles_to_nothing(&mut app, true, "Libraries");
-    let mut os = RealOs { m: app.m };
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn on_the_reference_os_about_idles_to_nothing() {
+    let built = with_library();
+    let libraries = libraries_pixels(built.shown().as_ref());
+    let mut os = RealOs {
+        m: started_on_real_os(built),
+    };
     os.tap(F3, 150, 400);
-    let mut app = App { m: os.m, ..app };
-    let at = app.label("scr_count");
-    assert_eq!(app.m.read_ram(at, 1), [2], "About is open");
+    assert!(os.screen() != libraries, "About is open");
+    let mut app = App {
+        m: os.m,
+        built,
+        driver: 0xA800,
+        stack: 0xAA00,
+        scratch: vec![(0xA800, 0xA810), (0xA9C0, 0xAA00)],
+    };
     idles_to_nothing(&mut app, true, "About");
 }
