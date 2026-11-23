@@ -263,3 +263,67 @@ fn the_store_runs_at_the_callers_speed() {
     };
     store_runs_at_the_callers_speed("t_crc_step", "store_open", &last_chunk);
 }
+
+#[test]
+fn a_reader_failure_returns_the_callers_speed_and_interrupts_in_begin_and_in_a_step() {
+    let bytes = small();
+    let count = count_of(&bytes);
+    comes_back(
+        "a reader failing in begin",
+        &|| {
+            let mut job = Job::new(&bytes);
+            job.poke("lr_length", &[0, 0, 0]);
+            job
+        },
+        &|j| j.begin(count),
+        READER,
+    );
+    let anatomy = named("anatomy.mm").1;
+    let at = crate::paths::first_with_refs(&anatomy);
+    comes_back(
+        "a reader failing in a step",
+        &|| {
+            let mut job = crate::paths::stepped(&anatomy, at);
+            job.poke("lr_length", &[0x10, 0, 0]);
+            job
+        },
+        &|j| j.step(),
+        READER,
+    );
+}
+
+#[test]
+fn a_kernel_refusal_after_a_pass_returns_the_callers_speed_and_interrupts() {
+    let bytes = named("anatomy.mm").1;
+    let at = crate::paths::first_with_refs(&bytes);
+    let listed = usize::from(label("kv_listed")) - 0xC000;
+    comes_back(
+        "kernel_refs refusing after a verify",
+        &|| crate::paths::stepped(&bytes, at),
+        &|j| {
+            let page = j.label_byte("KERNEL_RAM_PAGE");
+            j.call_hooked("t_step", BASE, "far_kernel_refs", |m| {
+                m.ram_page(page)[listed] = 0;
+            })
+        },
+        REFUSED,
+    );
+}
+
+#[test]
+fn a_store_that_cannot_open_the_table_returns_the_callers_speed_and_interrupts() {
+    let long = axioms(700);
+    comes_back(
+        "store_open failing after the crc run",
+        &|| {
+            let mut job = begun(&long);
+            for _ in 0..long.len().div_ceil(1 << 14) {
+                assert_eq!(job.crc_step().a, MORE);
+            }
+            job.m.set_free_ram(20);
+            job
+        },
+        &|j| j.crc_step(),
+        STORE,
+    );
+}
