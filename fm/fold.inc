@@ -179,17 +179,6 @@ ap_ell:
 	call ap_put
 	jr ap_next
 ap_hide:
-	call fo_hide
-ap_next:
-	ld a,(fv_ta)
-	inc a
-	ld (fv_ta),a
-	dec b
-	jr ap_loop
-
-; in: HL = a record. Gives it width 0, gap 0 and its symbol's spacing flags. out: HL = the next
-; record. Destroys AF C DE.
-fo_hide:
 	ld e,(hl)
 	ld d,FM_SYMF>>8
 	ld a,(de)
@@ -202,7 +191,12 @@ fo_hide:
 	inc hl
 	ld (hl),c
 	inc hl
-	ret
+ap_next:
+	ld a,(fv_ta)
+	inc a
+	ld (fv_ta),a
+	dec b
+	jr ap_loop
 
 ; in: HL = a record, A = the token's width, C = its flags. Writes the width, the gap after the previous
 ; shown token and the flags. out: HL = the next record. Keeps B. Destroys AF DE.

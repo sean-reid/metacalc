@@ -53,7 +53,7 @@ const SHIPPED: [Ceilings; 6] = [
         clip_cut: (0, 0),
         preview: (47_000, 296_000),
         draw_cut: (0, 0),
-        cut: 20,
+        cut: 0,
     },
     Ceilings {
         name: "prop",
@@ -98,7 +98,7 @@ const SHIPPED: [Ceilings; 6] = [
         clip_cut: (2_800, 2_800),
         preview: (86_900, 1_210_000),
         draw_cut: (8_000, 8_000),
-        cut: 0,
+        cut: 20,
     },
 ];
 

@@ -166,9 +166,17 @@ ca_hide:
 	cp d
 	jr z,ca_done
 ca_one:
-	push de
-	call fo_hide
-	pop de
+	ld c,(hl)
+	ld b,FM_SYMF>>8
+	ld a,(bc)
+	and $0F
+	inc hl
+	ld (hl),0
+	inc hl
+	ld (hl),0
+	inc hl
+	ld (hl),a
+	inc hl
 	jr ca_hide
 ca_done:
 	call ct_slot
