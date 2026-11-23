@@ -7,6 +7,8 @@
 mod app;
 #[path = "app_pages/builds.rs"]
 mod builds;
+#[path = "app_pages/cost_stages.rs"]
+mod cost_stages;
 #[path = "app_pages/counts.rs"]
 mod counts;
 #[path = "app_pages/data.rs"]
@@ -21,6 +23,8 @@ mod fixture;
 mod guard;
 #[path = "app_pages/keys.rs"]
 mod keys;
+#[path = "app_pages/numbers.rs"]
+mod numbers;
 #[path = "common/refs.rs"]
 mod oracle;
 #[path = "app_pages/power.rs"]

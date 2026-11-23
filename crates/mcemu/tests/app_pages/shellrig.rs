@@ -34,13 +34,15 @@ pub const NOTICE_PROOFS: u8 = 3;
 pub const NOTICE_PICK: u8 = 4;
 
 const TAP: u32 = 120_000;
-const BLITS: u16 = 0xA700;
-const ENTERS: u16 = 0xA710;
-const FLAG: u16 = 0xA720;
-const SCR_KEYS: u16 = 0xA730;
-const KEY_HOOK: u16 = 0xA6C0;
-const BLIT_HOOK: u16 = 0xA640;
-const ENTER_HOOK: u16 = 0xA760;
+/// The rig's counters and hooks sit above the heap the stub OS gives a status table, which a
+/// library of 10,000 assertions fills up to A765h.
+const BLITS: u16 = 0xB500;
+const ENTERS: u16 = 0xB510;
+const FLAG: u16 = 0xB520;
+const SCR_KEYS: u16 = 0xB530;
+const KEY_HOOK: u16 = 0xB4C0;
+const BLIT_HOOK: u16 = 0xB440;
+const ENTER_HOOK: u16 = 0xB560;
 const SAVE_SCREEN: u16 = 0x86EC;
 
 /// `push hl`, `ld hl,(counter)`, `inc hl`, `ld (counter),hl`, `pop hl`, `jp then`.
@@ -107,6 +109,9 @@ pub enum Enter {
 
 pub struct Shell {
     pub app: App,
+    /// How many times the usual time a key gets to finish: a library of 10,000 assertions makes
+    /// each enter take longer than the allowance of the others.
+    pub patience: u32,
 }
 
 fn patch_enter(m: &mut Machine, built: &Built, kind: u8, to: u16) {
@@ -181,7 +186,7 @@ impl Shell {
                 patch_enter(m, built, kind, at);
             }
         });
-        Shell { app }
+        Shell { app, patience: 1 }
     }
 
     fn word(&mut self, at: u16) -> u16 {
@@ -281,7 +286,10 @@ impl Shell {
         self.app.m.press_key(scan);
         assert_eq!(self.app.m.run_app(TAP).stop, Stop::Limit);
         self.app.m.release_key(scan);
-        assert_eq!(self.app.m.run_app(4 * TAP).stop, Stop::Limit);
+        assert_eq!(
+            self.app.m.run_app(4 * TAP * self.patience).stop,
+            Stop::Limit
+        );
     }
 
     /// The regions' bytes after the app left: every one of both is filled as the home screen has it.

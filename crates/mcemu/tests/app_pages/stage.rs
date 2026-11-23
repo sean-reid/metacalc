@@ -67,7 +67,7 @@ fn watched(built: &'static Built) -> Shell {
             hook_stub(m, built, stub, at);
         }
     });
-    Shell { app }
+    Shell { app, patience: 1 }
 }
 
 fn key(shell: &mut Shell, scan: u8) {

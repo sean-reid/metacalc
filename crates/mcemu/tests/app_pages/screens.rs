@@ -25,6 +25,13 @@ fn a_stage_row_and_the_stage_about_are_the_models_whatever_the_name_and_the_titl
     names_and_titles("pages-names", &crate::fixture::library(), false);
 }
 
+/// With more than 10,000 assertions every row's text is wide enough to cut a name, so the names
+/// that sit on the edge of the room exist and the test fails when it finds none.
+#[test]
+fn a_stage_name_the_model_cuts_to_the_room_its_text_leaves_is_cut_the_same_on_a_wide_library() {
+    names_and_titles("pages-names-wide", crate::numbers::wide(), true);
+}
+
 /// With ring's 3,326 assertions a row's text is wide enough to cut a name.
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding ring.mclib>"]
@@ -106,6 +113,7 @@ fn names_and_titles(build: &str, library: &[u8], edge_required: bool) {
     let built = staged_with(build, &library, &stages);
     let data = crate::table::of(&library, &crate::table::values(built, &status));
     let mut shell = booted(built, Some(&data));
+    shell.patience = if count > 10_000 { 4 } else { 1 };
     let mut ui = model::ui(built, &status);
     shell.shows("the Libraries screen", &model::frame(&ui));
     for row in 0..6 {

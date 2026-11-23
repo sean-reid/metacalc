@@ -11,18 +11,21 @@ use crate::shellrig::*;
 use mcemu::Stop;
 
 const TAP: u32 = 120_000;
+/// The app's frame budget: no frame, warm or cold, takes more T-states than this on any screen or
+/// build. The ceilings below it are each screen's own, a little above what it takes.
+pub const FRAME_BUDGET: u32 = 300_000;
 const HOOK: u16 = 0xA640;
 const COUNT: u16 = 0xA660;
 /// The OS's code for the left arrow, which every screen ignores, and scr_key's own for KEY_LEFT.
 const LEFT_CODE: u8 = 0x02;
 
-fn driver_cost(app: &mut App) -> u32 {
+pub fn driver_cost(app: &mut App) -> u32 {
     app.m.load_ram(SCRATCH - 16, &[0xC9]);
     app.call(BASE, SCRATCH - 16, In::default()).tstates
 }
 
 /// The T-states of scr_draw and then ui_blit for the screen on top, the driver's own taken off.
-fn frame(app: &mut App) -> (u32, u32) {
+pub fn frame(app: &mut App) -> (u32, u32) {
     let driver = driver_cost(app);
     let draw = app.label("scr_draw");
     let draw = app.call(BASE, draw, In::default()).tstates - driver;
@@ -68,7 +71,7 @@ const PAGES_PLAIN: [u32; 3] = [2_200, 15_000, 9_250];
 const PAGES_LIBRARY: [u32; 3] = [4_100, 15_000, 9_250];
 
 /// Clears the staging tag, so that the next draw copies its screen's strings.
-fn go_cold(app: &mut App) {
+pub fn go_cold(app: &mut App) {
     let tag = app.label("APP_STAGE_TAG");
     app.m.load_ram(tag, &[0, 0]);
 }
@@ -137,7 +140,21 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
             ABOUT_COLD,
         ),
         ("Notice", plain(), &[F1], NOTICE, NOTICE_COLD),
-        ("Notice, Verify", plain(), &[F2], NOTICE, NOTICE_COLD),
+        (
+            "Notice, Pick a library",
+            plain(),
+            &[F2],
+            NOTICE,
+            NOTICE_COLD,
+        ),
+        (
+            "Notice, a stage's list",
+            three_stages(),
+            &[F1],
+            NOTICE,
+            NOTICE_COLD,
+        ),
+        ("Notice, Verify", three_stages(), &[F2], NOTICE, NOTICE_COLD),
     ] {
         let tabled = name.ends_with("of total");
         let data = if tabled {
@@ -167,6 +184,7 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
             "{name}: {} over {ceiling}",
             draw + blit
         );
+        assert!(draw + blit < FRAME_BUDGET, "{name}: over the frame budget");
         go_cold(&mut app);
         let (cold_draw, cold_blit) = frame(&mut app);
         println!(
@@ -178,6 +196,10 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
             cold_draw + cold_blit <= cold_ceiling,
             "{name}: cold {} over {cold_ceiling}",
             cold_draw + cold_blit
+        );
+        assert!(
+            cold_draw + cold_blit < FRAME_BUDGET,
+            "{name}: cold, over the frame budget"
         );
     }
 }
@@ -237,6 +259,7 @@ fn a_frame_of_the_error_notice_fits_its_ceiling() {
         draw + blit
     );
     assert!(draw + blit <= NOTICE, "{} over {NOTICE}", draw + blit);
+    assert!(draw + blit < FRAME_BUDGET, "over the frame budget");
     go_cold(&mut app);
     let (draw, blit) = frame(&mut app);
     println!(
@@ -248,6 +271,7 @@ fn a_frame_of_the_error_notice_fits_its_ceiling() {
         "cold {} over {NOTICE_COLD}",
         draw + blit
     );
+    assert!(draw + blit < FRAME_BUDGET, "cold, over the frame budget");
 }
 
 #[test]
@@ -309,7 +333,7 @@ const CURSOR_KEY: u32 = 150;
 
 /// A table of `built`'s library whose assertions alternate checked and unchecked, which gives
 /// every stage the longest text, checked of total.
-fn alternating(built: &Built) -> Vec<u8> {
+pub fn alternating(built: &Built) -> Vec<u8> {
     let library = built.library.as_ref().unwrap();
     let n = usize::from(crate::table::header_of(library).1);
     crate::table::of(library, &(0..n).map(|i| (i % 2) as u8).collect::<Vec<u8>>())
@@ -405,4 +429,9 @@ fn a_frame_of_ring_in_three_stages_fits_its_warm_and_its_cold_ceiling() {
         "cold {} over {LIBRARIES_RING_COLD}",
         cold_draw + cold_blit
     );
+    assert!(
+        cold_draw + cold_blit < FRAME_BUDGET,
+        "ring, cold, over the frame budget"
+    );
+    assert!(draw + blit < FRAME_BUDGET, "ring, over the frame budget");
 }
