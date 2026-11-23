@@ -277,9 +277,22 @@ fn the_frames_the_keys_push_hold_the_notice_or_the_stage() {
     }
 }
 
-/// The keys that close a notice: the model's own Notice pops on these three and ignores the rest.
+/// Whether the model's own Notice, the one My proofs opens on F1, closes on `key`.
 fn pops_a_notice(key: Option<Key>) -> bool {
-    matches!(key, Some(Key::F1 | Key::Clear | Key::Enter))
+    let mut ui = model::ui(plain(), &[]);
+    ui.press(Key::F1);
+    assert_eq!(ui.depth(), 2, "the model opened a notice");
+    assert_eq!(
+        ui.state(),
+        mcui::State::Notice {
+            title: "My proofs".into()
+        },
+        "it is the notice of My proofs"
+    );
+    if let Some(key) = key {
+        ui.press(key);
+    }
+    ui.depth() == 1
 }
 
 /// The notice that stands in for the model's theorem list or checking screen, opened by `open` on

@@ -40,9 +40,17 @@ fn the_decimal_conversion_writes_each_number_with_no_leading_zero_and_nothing_pa
             digits.bytes().map(|d| zero + d - b'0').collect::<Vec<u8>>(),
             "{n}: the digits"
         );
+        let len = digits.len();
+        let tail = app.m.read_ram(into + len as u16, 8 - len);
+        assert!(
+            tail[..5 - len]
+                .iter()
+                .all(|b| (zero..zero + 10).contains(b)),
+            "{n}: the working digits after the number are digits: {tail:?}"
+        );
         assert_eq!(
-            app.m.read_ram(into + 5, 3),
-            [0xEE; 3],
+            tail[5 - len..],
+            vec![0xEE; 3],
             "{n}: nothing past the fifth byte"
         );
     }
@@ -58,7 +66,7 @@ pub fn wide() -> &'static [u8] {
 }
 
 /// The wide library as three stages ending at 10,000, at 11,000 and at its count.
-fn wide_stages() -> &'static Built {
+pub fn wide_stages() -> &'static Built {
     static BUILT: OnceLock<&'static Built> = OnceLock::new();
     BUILT.get_or_init(|| {
         let count = usize::from(table::header_of(wide()).1);
@@ -68,7 +76,7 @@ fn wide_stages() -> &'static Built {
 
 /// Every assertion checked but the sixth: each stage is one short of done, so each row reads
 /// "checked/total" with the checked count and the total both of five digits.
-fn one_short() -> Vec<Status> {
+pub fn one_short() -> Vec<Status> {
     let mut status = vec![Status::Checked; usize::from(table::header_of(wide()).1)];
     status[5] = Status::Unchecked;
     status

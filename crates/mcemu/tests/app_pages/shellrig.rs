@@ -34,8 +34,8 @@ pub const NOTICE_PROOFS: u8 = 3;
 pub const NOTICE_PICK: u8 = 4;
 
 const TAP: u32 = 120_000;
-/// The rig's counters and hooks sit above the heap the stub OS gives a status table, which a
-/// library of 10,000 assertions fills up to A765h.
+/// The rig's counters and hooks sit above the heap the stub OS gives a status table; boot_with
+/// asserts the heap ends below BLIT_HOOK, the lowest of them.
 const BLITS: u16 = 0xB500;
 const ENTERS: u16 = 0xB510;
 const FLAG: u16 = 0xB520;
@@ -133,6 +133,11 @@ impl Shell {
     ) -> Shell {
         let app = App::boot_with(built, |m| {
             setup(m);
+            let heap = m.heap_end();
+            assert!(
+                heap < BLIT_HOOK,
+                "the stub heap ends at {heap:04X}, not below the rig's hooks at {BLIT_HOOK:04X}"
+            );
             m.load_ram(BLITS, &[0; 0x40]);
             // scr_key starts `ld c,SCR_AT_KEY`, `call scr_on_top`: five bytes the hook runs itself.
             let key = built.label("scr_key");

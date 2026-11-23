@@ -17,7 +17,7 @@
 ; count pass refuses, every mark shows as unchecked until a check runs.
 ;
 ; libs_enter   A = appStatus when the reader or fm refused the library, so the shell shows the
-;              error notice, else the status of libs_counts (0 for any table), then the strings are built.
+;              error notice, else libs_counts's, then the strings are built.
 ; libs_key     UP and DOWN move the cursor, stopping at the ends, and the first row shown moves as
 ;              little as it must to keep the cursor on screen; a key that moves nothing is SCR_STAY.
 ;              ENTER and F1 push the notice of the list (NOTICE_LIST, titled by the stage) or, on

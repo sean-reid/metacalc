@@ -55,6 +55,8 @@ mod store_rule;
 mod stubs;
 #[path = "app_pages/table.rs"]
 mod table;
+#[path = "app_pages/wide_cost.rs"]
+mod wide_cost;
 
 #[allow(dead_code)]
 #[path = "fm/rig.rs"]

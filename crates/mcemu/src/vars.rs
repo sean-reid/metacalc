@@ -112,7 +112,7 @@ impl Machine {
         }
     }
 
-    /// Every variable, newest first: its type, its name and its contents, from the symbol table.
+    /// Every variable in creation order: its type, its name and its contents, from the symbol table.
     pub fn var_list(&mut self) -> Vec<(u8, String, Var)> {
         self.call_stub(stub::HOST_INIT, 0, 0, 0);
         let low = self.word_at(stub::VS_VAT_LOW);

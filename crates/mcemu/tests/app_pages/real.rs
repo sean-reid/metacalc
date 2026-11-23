@@ -202,6 +202,42 @@ mod vat {
         out
     }
 
+    const DRIVER: u16 = 0xA800;
+    const STACK: u16 = 0xAA00;
+
+    /// Makes the AppVar MCOTHER (4 bytes) and the list L1 (2 reals) with the OS's own routines, run
+    /// from RAM at the home screen; the registers and port 6 are put back as they were.
+    pub fn make_variables(os: &mut RealOs) {
+        let (saved, port) = (os.m.regs(), os.m.in_port(0x06));
+        let name = |at: u16| [at.to_le_bytes()[0], at.to_le_bytes()[1]];
+        let (appvar, list) = (DRIVER + 0x20, DRIVER + 0x2A);
+        let mut code = vec![0x21];
+        code.extend(name(appvar));
+        code.extend([0x11, 0x78, 0x84, 0x01, 0x09, 0x00, 0xED, 0xB0, 0x21, 4, 0]);
+        code.extend([0xEF, 0x6A, 0x4E, 0x21]);
+        code.extend(name(list));
+        code.extend([0x11, 0x78, 0x84, 0x01, 0x09, 0x00, 0xED, 0xB0, 0x21, 2, 0]);
+        code.extend([0xEF, 0x15, 0x43, 0x76, 0x18, 0xFD]);
+        assert!(code.len() < 0x20);
+        os.m.load_ram(DRIVER, &code);
+        os.m.load_ram(
+            appvar,
+            &[APPVAR, b'M', b'C', b'O', b'T', b'H', b'E', b'R', 0],
+        );
+        os.m.load_ram(list, &[0x01, 0x5D, 0, 0, 0, 0, 0, 0, 0]);
+        let mut regs = saved;
+        (regs.pc, regs.sp, regs.iff1, regs.iff2) = (DRIVER, STACK, 0, 0);
+        os.m.set_regs(&regs);
+        os.m.resume(20_000_000);
+        let end = DRIVER + code.len() as u16;
+        assert!(
+            (end - 3..=end - 2).contains(&os.m.regs().pc),
+            "the driver halted"
+        );
+        os.m.set_regs(&saved);
+        os.m.out_port(0x06, port);
+    }
+
     pub fn has_table(list: &[(u8, Vec<u8>, u8, u16, u16)]) -> bool {
         list.iter().any(|e| e.0 == APPVAR && e.1 == b"MCSTAT")
     }
@@ -215,8 +251,11 @@ fn on_the_reference_os_the_screens_with_no_table_leave_the_whole_variable_list_a
     use crate::shellrig::{CLEAR, DOWN, ENTER, F1, F2, F3, UP};
     for built in [with_library(), three_stages()] {
         let mut os = RealOs::boot(&built.file);
+        vat::make_variables(&mut os);
         let before = vat::list(&mut os);
         assert!(!vat::has_table(&before), "no table to begin with");
+        assert!(before.len() >= 2, "the list compared holds {before:?}");
+        println!("{} variables compared", before.len());
         os.tap(KEY_APPS, 150, 600);
         os.tap(KEY_2, 150, 300);
         os.run_ms(500);
