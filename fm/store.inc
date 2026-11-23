@@ -1,9 +1,27 @@
 ; The store: every statement of one assertion, loaded by fm_assertion, and fm_select, which makes one
 ; of them the statement the other routines work on.
 
-; Drops what is loaded. Destroys AF HL.
+; Drops what is loaded and points fv_hdr at fv_nohdr, a header of zeros, so that a routine that reads
+; the selected statement's header finds no node and no flag. Destroys AF HL.
 fm_clear:
+	ld hl,fv_nohdr
+	ld (fv_hdr),hl
 	xor a
+	ld (hl),a
+	inc hl
+	ld (hl),a
+	inc hl
+	ld (hl),a
+	inc hl
+	ld (hl),a
+	inc hl
+	ld (hl),a
+	inc hl
+	ld (hl),a
+	inc hl
+	ld (hl),a
+	inc hl
+	ld (hl),a
 	ld (fv_nhyps),a
 	ld (fv_nw),a
 	ld (fv_count),a

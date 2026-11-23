@@ -373,6 +373,7 @@ fn compile_tilem() {
     cc::Build::new()
         .files(&files)
         .file("csrc/harness.c")
+        .file("csrc/watch.c")
         .include(&emu)
         .include(emu.join("xz"))
         .define("HAVE_STDINT_H", "1")
@@ -386,6 +387,8 @@ fn compile_tilem() {
         .opt_level(2)
         .compile("tilem");
     println!("cargo:rerun-if-changed=csrc/harness.c");
+    println!("cargo:rerun-if-changed=csrc/watch.c");
+    println!("cargo:rerun-if-changed=csrc/watch.h");
 }
 
 fn spasm_try(src: &Path, out: &Path, defines: &[&str], args: &[&str]) -> Result<(), String> {
@@ -1819,8 +1822,8 @@ fn assemble_layout_probes(out: &Path) {
             "FM",
             "#include \"fm/ram.inc\"\n".to_string(),
             &ui_args[..],
-            "FM_VARS_SIZE=$D3",
-            0xD0,
+            "FM_VARS_SIZE=$E2",
+            0xDF,
             "the fm variables overlap, leave a gap, or run past FM_VARS_SIZE",
         ),
         (

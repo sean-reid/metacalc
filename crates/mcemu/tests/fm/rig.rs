@@ -39,7 +39,7 @@ pub struct Fm {
 }
 
 /// The FM_ERR_ numbers as the header lists them, written out here and not read from the image.
-pub const STATUSES: [(&str, u8); 10] = [
+pub const STATUSES: [(&str, u8); 11] = [
     ("FM_ERR_NOT_OPEN", 1),
     ("FM_ERR_CLOSED", 2),
     ("FM_ERR_NO_MAP", 3),
@@ -50,6 +50,7 @@ pub const STATUSES: [(&str, u8); 10] = [
     ("FM_ERR_READ", 8),
     ("FM_ERR_TREE", 9),
     ("FM_ERR_LIMIT", 10),
+    ("FM_ERR_CLIPPED", 11),
 ];
 
 pub const SPARE_BASE: u16 = 0xC000;
