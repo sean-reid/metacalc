@@ -8,22 +8,34 @@
 struct McWatch {
 	int write_bp;
 	int exec_bp;
+	int op_bp;
+	int boundary;
 	uint16_t pc;
 	McWrite *rec;
 	size_t len;
 	size_t lost;
 };
 
-/* Runs before every instruction, so `pc` is the address of the one whose writes follow. The core
-   also runs it for the byte after a prefix, which is part of the same instruction. */
+/* Runs after each instruction executes, before the fetch of the next one. */
+static int note_boundary(TilemCalc *calc, dword op, void *data)
+{
+	(void)calc;
+	(void)op;
+	((McWatch *)data)->boundary = 1;
+	return 0;
+}
+
+/* Runs for the next instruction's address after an instruction and for the byte after each prefix.
+   Only the first follows an instruction, so only it moves `pc`. */
 static int note_pc(TilemCalc *calc, dword addr, void *data)
 {
 	McWatch *w = data;
-	byte op = calc->mem[calc->hw.mem_ltop(calc, w->pc)];
-	int prefix = op == 0xCB || op == 0xDD || op == 0xED || op == 0xFD;
 
-	if (!(prefix && addr == (word)(w->pc + 1)))
+	(void)calc;
+	if (w->boundary) {
 		w->pc = addr;
+		w->boundary = 0;
+	}
 	return 0;
 }
 
@@ -54,7 +66,8 @@ static void remove_hooks(TilemCalc *calc, McWatch *w)
 	if (w->write_bp) {
 		tilem_z80_remove_breakpoint(calc, w->write_bp);
 		tilem_z80_remove_breakpoint(calc, w->exec_bp);
-		w->write_bp = w->exec_bp = 0;
+		tilem_z80_remove_breakpoint(calc, w->op_bp);
+		w->write_bp = w->exec_bp = w->op_bp = 0;
 	}
 }
 
@@ -67,8 +80,10 @@ void mc_watch_arm(TilemCalc *calc, McWatch **slot, uint16_t start, uint32_t len)
 	remove_hooks(calc, w);
 	w->len = w->lost = 0;
 	w->pc = calc->z80.r.pc.w.l;
+	w->boundary = 0;
 	w->write_bp = tilem_z80_add_breakpoint(calc, TILEM_BREAK_MEM_WRITE, start, start + len - 1, 0xffff, note_write, w);
 	w->exec_bp = tilem_z80_add_breakpoint(calc, TILEM_BREAK_MEM_EXEC, 0, 0xffff, 0xffff, note_pc, w);
+	w->op_bp = tilem_z80_add_breakpoint(calc, TILEM_BREAK_EXECUTE, 0, 0xffffffff, 0xffffffff, note_boundary, w);
 	*slot = w;
 }
 
@@ -80,8 +95,10 @@ void mc_watch_disarm(TilemCalc *calc, McWatch *w)
 
 void mc_watch_run(TilemCalc *calc, McWatch *w)
 {
-	if (w && w->write_bp)
+	if (w && w->write_bp) {
 		w->pc = calc->z80.r.pc.w.l;
+		w->boundary = 0;
+	}
 }
 
 size_t mc_watch_len(const McWatch *w) { return w ? w->len : 0; }

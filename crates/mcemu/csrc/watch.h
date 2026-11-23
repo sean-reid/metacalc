@@ -9,7 +9,11 @@
 
 typedef struct McWatch McWatch;
 
-/* One write the CPU made into the watched range. */
+/* One write the CPU made into the watched range.
+   clock: the CPU clock when the write ran, before the writing instruction's own T-states are added.
+   pc: the address of the instruction's first byte; an interrupt's pushes carry the instruction that completed before it.
+   pc_physical: the flat offset of pc under the bank mapping at the time of the write.
+   value: the byte read back at addr after the write, so a write to flash or ROM records the byte that stays. */
 typedef struct {
 	uint32_t clock;
 	uint32_t pc_physical;

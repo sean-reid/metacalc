@@ -305,7 +305,7 @@ impl Machine {
         self.calc.unwatch();
     }
 
-    /// The writes recorded since the last call. `pc` is the writing instruction, and a push
+    /// The writes recorded since the last call. `pc` is the writing instruction (see `Write`), and a push
     /// writes its low byte first. The record holds 65536 writes; more panics.
     pub fn take_writes(&mut self) -> Vec<Write> {
         let (writes, lost) = self.calc.take_writes();

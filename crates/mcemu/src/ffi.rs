@@ -64,14 +64,18 @@ pub struct Regs {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Write {
-    /// The CPU clock in T-states when the write completed.
+    /// The CPU clock in T-states when the write ran, before the writing instruction's own cost
+    /// is added.
     pub clock: u32,
-    /// The flat memory offset of the writing instruction, flash first and then RAM.
+    /// The flat memory offset of `pc` under the bank mapping at the time of the write, flash
+    /// first and then RAM.
     pub pc_physical: u32,
     pub addr: u16,
-    /// The logical address of the writing instruction.
+    /// The logical address of the writing instruction's first byte; an interrupt's pushes carry
+    /// the instruction that completed before it.
     pub pc: u16,
-    /// The byte at `addr` after the write.
+    /// The byte read back at `addr` after the write, so a write to flash or ROM records the byte
+    /// that stays.
     pub value: u8,
 }
 

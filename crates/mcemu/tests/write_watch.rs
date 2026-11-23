@@ -210,15 +210,20 @@ fn a_write_to_bank_c_is_recorded_whichever_page_it_reaches() {
 }
 
 #[test]
-fn the_clock_of_a_record_is_when_the_write_happened() {
+fn the_clock_of_a_record_is_before_the_writing_instruction_s_own_cost() {
+    const DI: u32 = 4;
+    const LD_A_N: u32 = 7;
+    const LD_NN_A: u32 = 13;
     let mut m = watched();
     let start = m.clock();
-    let (tstates, _) = run(&mut m, &[ld_a(1), ld_at(WATCH), ld_at(WATCH + 1)]);
+    run(&mut m, &[ld_a(1), ld_at(WATCH), ld_at(WATCH + 1)]);
     let w = m.take_writes();
-    assert_eq!(w.len(), 2);
-    assert_eq!(w[1].clock - w[0].clock, 13, "ld (nn),a takes 13 T-states");
-    assert!(w[0].clock.wrapping_sub(start) <= tstates);
-    assert!(w[1].clock.wrapping_sub(start) <= tstates);
+    let at = |w: &Write| w.clock.wrapping_sub(start);
+    assert_eq!(
+        (at(&w[0]), at(&w[1])),
+        (DI + LD_A_N, DI + LD_A_N + LD_NN_A),
+        "T-states from the start of the run to each write"
+    );
 }
 
 #[test]
@@ -267,4 +272,146 @@ fn watching_does_not_change_the_t_states_of_a_run() {
     println!("T-states, unwatched {plain}, watched {armed}");
     assert_eq!(plain, armed);
     assert!(!m.take_writes().is_empty());
+}
+
+fn run_for(m: &mut Machine, pieces: &[Vec<u8>], limit: u32) -> Vec<u16> {
+    let (code, at) = program(pieces);
+    m.load_ram(CODE, &code);
+    m.run(CODE, limit);
+    at
+}
+
+#[test]
+fn an_indexed_cb_store_is_attributed_to_the_dd() {
+    let mut m = watched();
+    let at = run_for(
+        &mut m,
+        &[
+            [vec![0xDD], ld_16(0x21, WATCH)].concat(),
+            vec![0xDD, 0xCB, 0x01, 0xC6],
+        ],
+        LIMIT,
+    );
+    assert_eq!(seen(&m.take_writes()), [(WATCH + 1, 1, at[1])]);
+}
+
+#[test]
+fn a_doubled_prefix_is_one_instruction_at_its_first_byte() {
+    let mut m = watched();
+    m.load_ram(0xA100, &[9]);
+    let at = run_for(
+        &mut m,
+        &[
+            ld_a(0x33),
+            [vec![0xDD], ld_16(0x21, WATCH)].concat(),
+            vec![0xDD, 0xDD, 0x77, 0x02],
+            vec![0xFD, 0xDD, 0x77, 0x03],
+            ld_16(0x21, 0xA100),
+            ld_16(0x11, WATCH),
+            ld_16(0x01, 1),
+            vec![0xDD, 0xED, 0xB0],
+        ],
+        LIMIT,
+    );
+    assert_eq!(
+        seen(&m.take_writes()),
+        [
+            (WATCH + 2, 0x33, at[2]),
+            (WATCH + 3, 0x33, at[3]),
+            (WATCH, 9, at[7]),
+        ]
+    );
+}
+
+#[test]
+fn a_jump_through_ix_into_the_next_byte_leaves_the_write_at_its_own_instruction() {
+    const JP_IX: u16 = CODE + 0x0A;
+    const STORE: u16 = CODE + 0x0D;
+    for target in [JP_IX + 1, JP_IX + 2] {
+        let mut m = watched();
+        let code = [
+            vec![0xF3],
+            ld_a(0x44),
+            ld_16(0x21, STORE),
+            [vec![0xDD], ld_16(0x21, target)].concat(),
+            vec![0xDD, 0xE9],
+            vec![0xE9],
+            ld_at(WATCH),
+            vec![0x76],
+        ]
+        .concat();
+        assert_eq!(code[usize::from(STORE - CODE)], 0x32);
+        m.load_ram(CODE, &code);
+        m.run(CODE, LIMIT);
+        assert_eq!(
+            seen(&m.take_writes()),
+            [(WATCH, 0x44, STORE)],
+            "{target:04X}"
+        );
+    }
+}
+
+#[test]
+fn a_range_ending_at_the_top_of_memory_is_watched() {
+    let mut m = boot();
+    m.watch_writes(0xFFFF, 1);
+    let at = run_for(&mut m, &[ld_a(0x21), ld_at(0xFFFE), ld_at(0xFFFF)], LIMIT);
+    assert_eq!(seen(&m.take_writes()), [(0xFFFF, 0x21, at[2])]);
+}
+
+/// Writes A to WATCH `count` times, the loop counting down from `count` taken mod 65536.
+fn write_loop(count: u16) -> Vec<Vec<u8>> {
+    vec![
+        ld_a(1),
+        ld_16(0x21, WATCH),
+        ld_16(0x01, count),
+        vec![0x77, 0x0B, 0x78, 0xB1, 0x20, 0xFA],
+    ]
+}
+
+#[test]
+fn the_record_holds_65536_writes_and_the_next_one_panics() {
+    let mut m = watched();
+    run_for(&mut m, &write_loop(0), 5_000_000);
+    assert_eq!(m.take_writes().len(), 65536);
+
+    let mut pieces = write_loop(0);
+    pieces.push(ld_at(WATCH));
+    run_for(&mut m, &pieces, 5_000_000);
+    let full = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| m.take_writes()));
+    assert!(full.is_err(), "65537 writes");
+    assert!(
+        m.take_writes().is_empty(),
+        "the failed take cleared the record"
+    );
+    run_for(&mut m, &[ld_a(1), ld_at(WATCH)], LIMIT);
+    assert_eq!(m.take_writes().len(), 1, "the watch still works");
+}
+
+#[test]
+fn an_interrupt_pushes_into_the_range_with_the_pc_of_the_instruction_it_followed() {
+    let mut m = boot();
+    m.watch_writes(WATCH + 2, 2);
+    let (code, at) = program(&[ld_16(0x31, WATCH + 4), vec![0xFB], vec![0x76]]);
+    m.load_ram(CODE, &code);
+    m.run(CODE, 200_000);
+    let w = m.take_writes();
+    let first = &w[..2];
+    let mut pushed: Vec<(u16, u8)> = first.iter().map(|w| (w.addr, w.value)).collect();
+    pushed.sort();
+    let [lo, hi] = (at[2] + 1).to_le_bytes();
+    assert_eq!(pushed, [(WATCH + 2, lo), (WATCH + 3, hi)], "{w:?}");
+    assert!(first.iter().all(|w| w.pc == at[2]), "{w:?}");
+}
+
+#[test]
+fn dropping_a_machine_with_a_watch_armed_leaves_the_next_one_clean() {
+    let mut m = watched();
+    run(&mut m, &[ld_a(1), ld_at(WATCH)]);
+    drop(m);
+    let mut next = boot();
+    assert!(next.take_writes().is_empty());
+    next.watch_writes(WATCH, LEN);
+    let (_, at) = run(&mut next, &[ld_a(2), ld_at(WATCH)]);
+    assert_eq!(seen(&next.take_writes()), [(WATCH, 2, at[1])]);
 }
