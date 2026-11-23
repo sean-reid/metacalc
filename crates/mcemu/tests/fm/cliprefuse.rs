@@ -87,14 +87,14 @@ fn a_fold_that_changes_no_flag_on_a_clipped_statement_returns_zero() {
         assert_eq!((out.status(), count(out)), (0, 0), "clear {node}");
         assert_eq!(snapshot(&mut fm, nodes), before, "clear {node} wrote");
     }
-    let flat = (1..nodes).find(|node| !foldable.contains(node));
-    if let Some(node) = flat {
-        for mode in [0, 1, 2] {
-            let out = fm.fold(node, mode);
-            assert_eq!((out.status(), count(out)), (0, 0), "unfoldable {node}");
-        }
-        assert_eq!(snapshot(&mut fm, nodes), before);
+    let node = (1..nodes)
+        .find(|node| !foldable.contains(node))
+        .expect("the statement has a node that does not fold");
+    for mode in [0, 1, 2] {
+        let out = fm.fold(node, mode);
+        assert_eq!((out.status(), count(out)), (0, 0), "unfoldable {node}");
     }
+    assert_eq!(snapshot(&mut fm, nodes), before);
 }
 
 #[test]
@@ -150,7 +150,21 @@ fn fm_open_drops_the_clip_and_the_header_it_was_in() {
     assert_eq!(fm.header_flags(), 0, "no flag is left to read");
     let n = index(&bytes, "many");
     assert_eq!(fm.statement(n, 0xFF).status(), 0);
-    cut(&mut fm);
+    let expr = Model::new(&bytes).expr(n, 0xFF);
+    let plain = layout(&expr, &Folds::none(&expr), CUT);
+    assert!(
+        plain.rows() > 1,
+        "the statement needs a cut at {CUT} pixels"
+    );
+    let want = plain.clipped(CUT, 1);
+    let what = "many, reloaded after fm_open";
+    check(
+        &mut fm,
+        what,
+        (&plain, &want),
+        (1, CUT),
+        &mut Tally::default(),
+    );
 }
 
 #[test]

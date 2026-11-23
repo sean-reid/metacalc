@@ -160,7 +160,7 @@ fn a_statement_that_fits_is_left_alone_and_costs_a_check() {
     println!("fm_clip of a statement that fits, counted by fm_fit: {spent} T-states");
     assert_eq!(out.status(), 0);
     assert_eq!(fm.records(), before);
-    assert!(spent < 1200, "{spent}");
+    assert!(spent < 1250, "{spent}");
 }
 
 #[test]

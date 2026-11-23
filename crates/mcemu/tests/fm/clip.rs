@@ -289,7 +289,11 @@ pub fn floors(name: &str, t: &Tally, floors: Floors) {
             && sum.pieces_kept >= floors.kept,
         "{name}: {sum:?}"
     );
-    for (rows, c) in t.by_rows.range(1..=3) {
+    for rows in 1..=3 {
+        let c = t
+            .by_rows
+            .get(&rows)
+            .unwrap_or_else(|| panic!("{name}: {rows} rows never ran"));
         assert!(
             c.clipped > 0,
             "{name}: no statement clipped at {rows} rows: {c:?}"

@@ -6,8 +6,9 @@ use crate::support::*;
 use crate::ui_support::same_frame;
 use mcui::canvas::{GUTTER, TEXT_WIDTH};
 use mcui::fold::{fit_one, fitted, layout};
+use std::ops::RangeInclusive;
 
-/// The narrow width of a preview, which cuts most conclusions.
+/// The narrow width of a preview: it cuts 22 of ring's conclusions and none of prop's or pred's.
 const NARROW: usize = 30;
 
 /// The median and the worst of each T-state figure, as (median, worst), a little above what each
@@ -20,8 +21,8 @@ struct Ceilings {
     clip_cut: (u32, u32),
     preview: (u32, u32),
     draw_cut: (u32, u32),
-    /// The fewest conclusions the preview cuts to one row at this width.
-    cut: usize,
+    /// How many conclusions the preview cuts to one row at this width.
+    cut: RangeInclusive<usize>,
 }
 
 const FIXTURE: [Ceilings; 2] = [
@@ -32,7 +33,7 @@ const FIXTURE: [Ceilings; 2] = [
         clip_cut: (7_000, 52_800),
         preview: (23_000, 38_700_000),
         draw_cut: (24_900, 63_800),
-        cut: 5,
+        cut: 5..=usize::MAX,
     },
     Ceilings {
         name: "fixture",
@@ -41,7 +42,7 @@ const FIXTURE: [Ceilings; 2] = [
         clip_cut: (2_800, 51_100),
         preview: (23_000, 40_900_000),
         draw_cut: (5_700, 52_100),
-        cut: 30,
+        cut: 30..=usize::MAX,
     },
 ];
 
@@ -53,7 +54,7 @@ const SHIPPED: [Ceilings; 6] = [
         clip_cut: (0, 0),
         preview: (47_000, 296_000),
         draw_cut: (0, 0),
-        cut: 0,
+        cut: 0..=0,
     },
     Ceilings {
         name: "prop",
@@ -62,7 +63,7 @@ const SHIPPED: [Ceilings; 6] = [
         clip_cut: (0, 0),
         preview: (69_500, 358_000),
         draw_cut: (0, 0),
-        cut: 0,
+        cut: 0..=0,
     },
     Ceilings {
         name: "pred",
@@ -71,7 +72,7 @@ const SHIPPED: [Ceilings; 6] = [
         clip_cut: (0, 0),
         preview: (49_000, 296_000),
         draw_cut: (0, 0),
-        cut: 0,
+        cut: 0..=0,
     },
     Ceilings {
         name: "pred",
@@ -80,7 +81,7 @@ const SHIPPED: [Ceilings; 6] = [
         clip_cut: (0, 0),
         preview: (78_800, 358_000),
         draw_cut: (0, 0),
-        cut: 0,
+        cut: 0..=0,
     },
     Ceilings {
         name: "ring",
@@ -89,7 +90,7 @@ const SHIPPED: [Ceilings; 6] = [
         clip_cut: (0, 0),
         preview: (53_000, 1_080_000),
         draw_cut: (0, 0),
-        cut: 0,
+        cut: 0..=0,
     },
     Ceilings {
         name: "ring",
@@ -98,7 +99,7 @@ const SHIPPED: [Ceilings; 6] = [
         clip_cut: (2_800, 2_800),
         preview: (86_900, 1_210_000),
         draw_cut: (8_000, 8_000),
-        cut: 20,
+        cut: 20..=24,
     },
 ];
 
@@ -175,8 +176,9 @@ fn measure(bytes: &[u8], ceiling: &Ceilings) -> Tally {
     let counts = tally.by_rows[&1];
     println!("{name} at {width}: {tally:?}");
     assert!(
-        counts.clipped >= ceiling.cut,
-        "{name} at {width}: {} cut, floor {}",
+        ceiling.cut.contains(&counts.clipped),
+        "{name} at {width}: {} conclusions cut to one row, expected {:?}; the library or the fit \
+         changed, or fm_clip cuts what it left alone",
         counts.clipped,
         ceiling.cut
     );
