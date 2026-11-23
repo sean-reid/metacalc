@@ -13,11 +13,11 @@
 ; the failed mark when any assertion below its end failed, else the checked mark when all are
 ; checked, the unchecked mark when none is, else "checked/total", checked being n1 + n3 of the
 ; store. The model's "damaged" is not reachable here: no CRC run happens on this screen. The
-; counts come from a table with this library's CRC and count; with none, or an archived one, every
-; mark shows as unchecked until a check runs.
+; counts come from a table with this library's CRC and count; with none, an archived one or one the
+; count pass refuses, every mark shows as unchecked until a check runs.
 ;
 ; libs_enter   A = appStatus when the reader or fm refused the library, so the shell shows the
-;              error notice, else the status of libs_counts, then the strings are built.
+;              error notice, else the status of libs_counts (0 for any table), then the strings are built.
 ; libs_key     UP and DOWN move the cursor, stopping at the ends, and the first row shown moves as
 ;              little as it must to keep the cursor on screen; a key that moves nothing is SCR_STAY.
 ;              ENTER and F1 push the notice of the list (NOTICE_LIST, titled by the stage) or, on

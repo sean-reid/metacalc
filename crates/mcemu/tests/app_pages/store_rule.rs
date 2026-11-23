@@ -28,13 +28,36 @@ fn stays(m: &mut Machine, want: Option<&mcemu::Var>) {
     assert_eq!(m.read_var(VAR).as_ref(), want, "the table");
 }
 
+/// A shell with variables of other kinds in RAM and in the archive, so that a list that changes
+/// has something to show.
+fn with_neighbours(built: &'static Built) -> Shell {
+    Shell::boot_with(built, Enter::Real, |m| {
+        m.create_var("MCOTHER", &[1, 2, 3]).unwrap();
+        m.create_typed(0x01, "L1", &[4, 5]).unwrap();
+        m.create_var("MCOLD", &[9; 40]).unwrap();
+        m.archive_var("MCOLD");
+    })
+}
+
 #[test]
 fn no_table_exists_after_the_screen_is_shown_and_every_key_is_pressed() {
     for built in [with_library(), three_stages(), six_stages()] {
-        let mut shell = booted(built, None);
+        let mut shell = with_neighbours(built);
+        let before = shell.app.m.var_list();
+        let names: Vec<&str> = before.iter().map(|v| v.1.as_str()).collect();
+        assert_eq!(
+            names,
+            ["MCOTHER", "L1", "MCOLD"],
+            "the neighbours are listed"
+        );
         stays(&mut shell.app.m, None);
         press_everything(&mut shell, built);
         stays(&mut shell.app.m, None);
+        assert_eq!(
+            shell.app.m.var_list(),
+            before,
+            "every variable, name, size and byte"
+        );
         for _ in 0..rows(built) {
             shell.tap(UP);
         }
@@ -142,4 +165,64 @@ fn a_table_of_this_library_is_read_and_left_as_it_was() {
     let var = shell.app.m.read_var(VAR).expect("the table is there");
     assert_eq!(var.data, data, "its bytes");
     assert!(!var.archived);
+}
+
+/// RAM no other hook of the rig uses.
+const DAMAGE_HOOK: u16 = 0xB480;
+
+/// Makes the table's magic wrong the moment `store_count_ends` goes to find it, after `store_has`
+/// has accepted it: the call to `store_data` at the routine's third byte becomes a call to a hook
+/// that spoils the magic and goes on to `store_data`, which then refuses the table.
+fn damage_between_the_calls(m: &mut Machine, built: &Built, magic_at: u16) {
+    let at = built.label("store_count_ends") + 2;
+    let page = usize::from(at - 0x4000);
+    let data = built.label("store_data").to_le_bytes();
+    let original = [0xCD, data[0], data[1]];
+    assert_eq!(
+        mcemu::decode_app(&built.file).unwrap()[0][page..page + 3],
+        original,
+        "store_count_ends calls store_data at its third byte"
+    );
+    let [m0, m1] = magic_at.to_le_bytes();
+    let hook = [0x3E, 0xFF, 0x32, m0, m1, 0xC3, data[0], data[1]];
+    m.load_ram(DAMAGE_HOOK, &hook);
+    let [h0, h1] = DAMAGE_HOOK.to_le_bytes();
+    m.load_flash(crate::realos::BASE, page, &[0xCD, h0, h1]);
+}
+
+/// A table that `store_has` accepts and the count pass then refuses is no table: the screen shows
+/// every stage unchecked, the stage About the same, nothing is created or deleted, and the table is
+/// left as it is, damaged, for the check job to replace.
+#[test]
+fn a_table_the_count_pass_refuses_after_store_has_accepted_it_shows_no_table() {
+    let built = three_stages();
+    let library = built.library.as_ref().unwrap();
+    let n = usize::from(table::header_of(library).1);
+    let data = table::of(library, &(0..n).map(|i| (i % 2) as u8).collect::<Vec<u8>>());
+    let mut pointer = 0;
+    let mut shell = Shell::boot_with(built, Enter::Real, |m| {
+        table::install(m, &data);
+        pointer = m.read_var(VAR).unwrap().pointer;
+        damage_between_the_calls(m, built, pointer + 2);
+    });
+    assert_eq!(shell.depth(), 1, "no error notice over the screen");
+    assert_eq!(shell.enters(KIND_LIBRARIES), 1);
+    shell.shows("the damaged table", &model::libraries(built));
+    let var = shell.app.m.read_var(VAR).expect("the table is still there");
+    let mut spoiled = data.clone();
+    spoiled[0] = 0xFF;
+    assert_eq!(var.data, spoiled, "only the magic is changed, by the hook");
+    let mut ui = model::ui(built, &[]);
+    for row in 0..rows(built) {
+        let at = format!("row {row}");
+        if row < built.stages.len() {
+            press(&mut shell, &mut ui, built, F3, &at);
+            press(&mut shell, &mut ui, built, CLEAR, &at);
+        }
+        press(&mut shell, &mut ui, built, DOWN, &at);
+    }
+    shell.power_down();
+    shell.tap(F4);
+    assert_eq!(shell.depth(), 1);
+    assert_eq!(shell.app.m.read_var(VAR).unwrap().data, spoiled);
 }
