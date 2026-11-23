@@ -144,6 +144,8 @@ pub struct Machine {
     calc: ffi::Calc,
     /// The page count of each app installed, by base page, which `launch` reads.
     apps: std::collections::HashMap<u8, usize>,
+    /// Whether the machine runs a real OS image, which keeps its own record of each app.
+    os: bool,
 }
 
 impl Machine {
@@ -153,6 +155,7 @@ impl Machine {
             .map(|calc| Machine {
                 calc,
                 apps: Default::default(),
+                os: false,
             })
             .ok_or(BootError)
     }
@@ -165,6 +168,7 @@ impl Machine {
             .map(|calc| Machine {
                 calc,
                 apps: Default::default(),
+                os: true,
             })
             .ok_or(BootError)
     }
