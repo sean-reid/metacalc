@@ -374,11 +374,7 @@ fn fm_clip_asked_from_the_entry_page_cuts_the_conclusion_as_the_list_preview_doe
         })
         .expect("a conclusion that one line cuts");
     let want = fitted(&expr, width, 1);
-    assert!(
-        want.pieces
-            .iter()
-            .any(|p| *p == mcui::fold::Piece::Ellipsis)
-    );
+    assert!(want.pieces.contains(&mcui::fold::Piece::Ellipsis));
     let mut app = App::start(built);
     let loaded = app.far(
         "far_fm_assertion",
