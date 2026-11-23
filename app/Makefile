@@ -1,6 +1,9 @@
 SPASM   ?= spasm
 BUILD   ?= build
 LIBRARY ?=
+# The stage table, scripts/stages-include.sh's input: stages.list beside LIBRARY unless one is given.
+# A build with no list at that default has one stage, the whole library.
+STAGES  ?= $(shell dirname "$(LIBRARY)")/stages.list
 # A directory holding font.inc; by default the one mcglyph writes into BUILD.
 FONT    ?=
 OUT     := $(BUILD)/metacalc.8xk
@@ -43,6 +46,11 @@ ifeq ($(FONT),)
 endif
 ifneq ($(LIBRARY),)
 	sh scripts/library-include.sh "$(LIBRARY)" > "$(BUILD)/library.inc"
+ifeq ($(origin STAGES),file)
+	list="$(STAGES)"; [ -f "$$list" ] || list=; sh scripts/stages-include.sh "$(LIBRARY)" "$$list" > "$(BUILD)/stages.inc"
+else
+	sh scripts/stages-include.sh "$(LIBRARY)" "$(STAGES)" > "$(BUILD)/stages.inc"
+endif
 endif
 	$(ASM) -L $(FLAGS) src/metacalc.z80 "$(OUT)"
 
@@ -50,6 +58,7 @@ check: app
 	$(CHECK)
 	$(SELF)
 	sh scripts/test-library-pages.sh "$(SPASM)"
+	sh scripts/test-stages.sh "$(SPASM)"
 
 clean:
 	rm -rf "$(BUILD)"

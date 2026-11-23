@@ -1,5 +1,5 @@
 use crate::app::build;
-use crate::realos::start_model;
+use crate::realos::{Shown, libraries_model};
 use crate::support::*;
 use mcemu::{LCD_HEIGHT, LCD_WIDTH, Lcd, Machine, STUB_ROM, Stop};
 
@@ -7,9 +7,9 @@ const SLICE: u32 = 600_000;
 const CLEAR: u8 = 0x0F;
 const LIB_PAGE_ADDR: u16 = 0x9872;
 
-/// Whether the screen is what the model's canvas draws for the app's start screen with `library`.
-fn shows_the_start_screen(lcd: &Lcd, library: Option<&[u8]>) -> bool {
-    let want = start_model(library, 0);
+/// Whether the screen is what the model's canvas draws for the app's Libraries screen with `library`.
+fn shows_the_libraries_screen(lcd: &Lcd, library: Option<&[u8]>) -> bool {
+    let want = libraries_model(library.map(|bytes| Shown::new("library", bytes)).as_ref());
     (0..LCD_HEIGHT).all(|y| (0..LCD_WIDTH).all(|x| lcd.pixel(x, y) == want.get(x, y)))
 }
 
@@ -20,14 +20,14 @@ fn launched(file: &[u8], base: u8) -> Machine {
     m
 }
 
-/// A key the start screen ignores leaves the screen as it was, ENTER and the first soft key open a
-/// notice that CLEAR closes, and CLEAR on the start screen leaves. That each key is read and that
+/// A key the Libraries screen ignores leaves the screen as it was, ENTER and the first soft key open a
+/// notice that CLEAR closes, and CLEAR on the Libraries screen leaves. That each key is read and that
 /// an ignored key draws nothing is shown by the app_pages tests.
 fn assert_waits_for_clear_then_exits(m: &mut Machine, library: Option<&[u8]>) {
     assert_eq!(m.run_app(SLICE).stop, Stop::Limit);
     assert!(
-        shows_the_start_screen(&m.lcd(), library),
-        "the start screen is on screen"
+        shows_the_libraries_screen(&m.lcd(), library),
+        "the Libraries screen is on screen"
     );
     let ink = m.lcd().lit();
     assert!(ink > 100);
@@ -40,19 +40,19 @@ fn assert_waits_for_clear_then_exits(m: &mut Machine, library: Option<&[u8]>) {
     for (name, key) in [("2nd", 0x36), ("up", 0x04)] {
         tap(m, name, key);
         assert!(
-            shows_the_start_screen(&m.lcd(), library),
+            shows_the_libraries_screen(&m.lcd(), library),
             "{name}: the screen is unchanged"
         );
     }
     for (name, key) in [("enter", 0x09), ("y=", 0x35)] {
         tap(m, name, key);
         assert!(
-            !shows_the_start_screen(&m.lcd(), library),
+            !shows_the_libraries_screen(&m.lcd(), library),
             "{name}: a notice is open"
         );
         tap(m, "clear", CLEAR);
         assert!(
-            shows_the_start_screen(&m.lcd(), library),
+            shows_the_libraries_screen(&m.lcd(), library),
             "{name}: CLEAR closed the notice"
         );
     }
@@ -61,7 +61,7 @@ fn assert_waits_for_clear_then_exits(m: &mut Machine, library: Option<&[u8]>) {
 }
 
 #[test]
-fn the_app_without_a_library_draws_its_start_screen_waits_for_clear_and_exits() {
+fn the_app_without_a_library_draws_its_libraries_screen_waits_for_clear_and_exits() {
     let app = build("run-one-page", None);
     assert_eq!(app.pages.len(), 3);
     let mut m = launched(&app.file, 0x69);

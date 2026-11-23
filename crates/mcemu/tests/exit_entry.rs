@@ -86,7 +86,7 @@ fn seen(shadow: &[u8]) -> String {
     shadow_text(shadow).trim_end_matches('.').to_string()
 }
 
-/// The app started after `keys`, with About open on top of the start screen when `depth` is 2.
+/// The app started after `keys`, with About open on top of the Libraries screen when `depth` is 2.
 fn launched_at(app: &Build, keys: &[u8], depth: usize) -> RealOs {
     let (mut os, ..) = launched_after(&app.file, Some(&app.start), keys);
     if depth == 2 {
@@ -99,6 +99,12 @@ fn launched_at(app: &Build, keys: &[u8], depth: usize) -> RealOs {
 /// The ways out at `depth`: CLEAR on the About screen goes back instead of leaving.
 fn leaves(depth: usize, way: &str) -> bool {
     depth == 1 || way != "CLEAR"
+}
+
+/// Whether a build can be at `depth` when it starts: a refused library opens its error notice
+/// over the Libraries screen, so it is never at depth 1.
+fn starts_at(kind: &str, depth: usize) -> bool {
+    depth == 2 || kind != "refused library"
 }
 
 fn plain() -> Vec<u8> {
@@ -115,7 +121,7 @@ fn check_open_entries(starts: &[(&str, Vec<u8>)], builds: &[(&str, &Build)], dep
                 .iter()
                 .flat_map(|d| EXITS.into_iter().enumerate().map(move |e| (d, e)))
             {
-                if !leaves(depth, way) {
+                if !leaves(depth, way) || !starts_at(kind, depth) {
                     continue;
                 }
                 let name = format!("{start}, {kind}, {way}, depth {depth}");
@@ -321,7 +327,7 @@ fn a_closed_entry_leaves_the_cursor_at_the_top_left_and_the_pointers_as_the_os_h
                 .into_iter()
                 .flat_map(|d| EXITS.into_iter().map(move |e| (d, e)))
             {
-                if !leaves(depth, way) {
+                if !leaves(depth, way) || !starts_at(kind, depth) {
                     continue;
                 }
                 let name = format!("{start}, {kind}, {way}, depth {depth}");

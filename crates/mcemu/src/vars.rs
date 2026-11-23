@@ -7,6 +7,7 @@ const OP1: u16 = 0x8478;
 const APPVAR: u8 = 0x15;
 const LIMIT: u32 = 5_000_000;
 const FLASH_BASE: usize = 0x4000;
+const VAT_TOP: u16 = 0xFE66;
 /// Bytes of an archive record before the name: flag, length, type, version, a zero, the pointer,
 /// the page and the name length.
 const RECORD_HEADER: usize = 10;
@@ -86,25 +87,48 @@ impl Machine {
         if r.af & 1 != 0 {
             return None;
         }
-        let (pointer, page) = (r.de, (r.bc >> 8) as u8);
+        Some(self.var_at(r.de, (r.bc >> 8) as u8, name.len()))
+    }
+
+    /// The variable whose data pointer is `pointer` in `page` (0 for RAM), its name `name_len` long.
+    fn var_at(&mut self, pointer: u16, page: u8, name_len: usize) -> Var {
         if page == 0 {
             let size = usize::from(self.word_at(pointer));
             let data = self.read_ram(pointer + 2, size);
-            return Some(Var {
+            return Var {
                 data,
                 archived: false,
                 pointer,
-            });
+            };
         }
         let at = usize::from(page) * crate::FLASH_PAGE_SIZE + usize::from(pointer) - FLASH_BASE;
         let flash = self.calc.mem_mut();
-        let size_at = at + RECORD_HEADER + name.len();
+        let size_at = at + RECORD_HEADER + name_len;
         let size = usize::from(u16::from_le_bytes([flash[size_at], flash[size_at + 1]]));
-        Some(Var {
+        Var {
             data: flash[size_at + 2..size_at + 2 + size].to_vec(),
             archived: true,
             pointer,
-        })
+        }
+    }
+
+    /// Every variable in creation order: its type, its name and its contents, from the symbol table.
+    pub fn var_list(&mut self) -> Vec<(u8, String, Var)> {
+        self.call_stub(stub::HOST_INIT, 0, 0, 0);
+        let low = self.word_at(stub::VS_VAT_LOW);
+        let mut found = Vec::new();
+        let mut top = VAT_TOP;
+        while top >= low {
+            let entry = self.read_ram(top - 6, 7);
+            let (ty, page, n) = (entry[6], entry[2], usize::from(entry[1]));
+            let pointer = u16::from_be_bytes([entry[3], entry[4]]);
+            let name = self.read_ram(top - 6 - n as u16, n);
+            let name: String = name.iter().rev().map(|&b| char::from(b)).collect();
+            let var = self.var_at(pointer, page, n);
+            found.push((ty, name, var));
+            top -= 7 + n as u16;
+        }
+        found
     }
 
     /// Archives the RAM variable `name`: a record of its bytes goes to the stub's archive page

@@ -1,6 +1,6 @@
 //! Building the app and standing on one of its pages.
 
-use crate::realos::{BASE, KEY_2, KEY_APPS, RealOs, start_model, start_pixels};
+use crate::realos::{BASE, KEY_2, KEY_APPS, RealOs, Shown, libraries_model, libraries_pixels};
 use crate::ui_support::{pack, same_frame};
 use mcemu::{Machine, Regs, STUB_ROM, Stop};
 use std::path::Path;
@@ -42,9 +42,30 @@ pub struct Built {
     pub used: Vec<u32>,
     /// The library after the code pages, if any.
     pub library: Option<Vec<u8>>,
+    /// The stages of the list the build was given beside the library; none for the one stage a
+    /// build with no list has.
+    pub stages: Vec<mcui::Stage>,
 }
 
+/// The name the build gives the one stage of a library with no stage list: the library file's.
+pub const LIBRARY_NAME: &str = "library";
+
 impl Built {
+    /// The library as the model sees it, with no status table; none for a build with no library.
+    pub fn shown(&self) -> Option<Shown<'_>> {
+        self.library.as_deref().map(|bytes| Shown {
+            name: LIBRARY_NAME,
+            bytes,
+            stages: self.stages.clone(),
+            status: Vec::new(),
+        })
+    }
+
+    /// The name of stage `i` of the library's one table, as its row shows it.
+    pub fn stage_name(&self, i: usize) -> &str {
+        self.stages.get(i).map_or(LIBRARY_NAME, |s| s.name.as_str())
+    }
+
     pub fn label(&self, name: &str) -> u16 {
         self.labels
             .lines()
@@ -59,11 +80,11 @@ impl Built {
 
 /// `make -C app` into a directory of its own, with the library when there is one.
 fn build(name: &str, library: Option<&[u8]>) -> Built {
-    build_with(name, library, &[])
+    build_with(name, library, &[], &[])
 }
 
 /// `build` with more `make` arguments, such as `VERSION=1.2.3`.
-fn build_with(name: &str, library: Option<&[u8]>, more: &[&str]) -> Built {
+fn build_with(name: &str, library: Option<&[u8]>, stages: &[mcui::Stage], more: &[&str]) -> Built {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     std::fs::create_dir_all(&dir).unwrap();
     let mut args = Vec::new();
@@ -71,6 +92,13 @@ fn build_with(name: &str, library: Option<&[u8]>, more: &[&str]) -> Built {
         let path = dir.join("library.mclib");
         std::fs::write(&path, bytes).unwrap();
         args.push(format!("LIBRARY={}", path.display()));
+    }
+    if !stages.is_empty() {
+        let list: String = stages
+            .iter()
+            .map(|s| format!("{} {} {}\n", s.name, s.end, s.title))
+            .collect();
+        std::fs::write(dir.join("stages.list"), list).unwrap();
     }
     let spasm = std::env::var_os("SPASM").unwrap_or_else(|| "spasm".into());
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app");
@@ -98,6 +126,7 @@ fn build_with(name: &str, library: Option<&[u8]>, more: &[&str]) -> Built {
         labels: std::fs::read_to_string(build.join("metacalc.lab")).unwrap(),
         used,
         library: library.map(<[u8]>::to_vec),
+        stages: stages.to_vec(),
     }
 }
 
@@ -113,11 +142,38 @@ pub fn with_library() -> &'static Built {
     BUILT.get_or_init(|| build("pages-library", Some(&crate::fixture::library())))
 }
 
+/// The app around `library` with the stage list `stages` beside it, in a build directory of its
+/// own named `name`.
+pub fn staged_with(name: &str, library: &[u8], stages: &[mcui::Stage]) -> &'static Built {
+    Box::leak(Box::new(build_with(name, Some(library), stages, &[])))
+}
+
+/// `staged_with` for the stages `s0`, `s1` and so on that end at `ends`, the last being the
+/// library's count.
+pub fn staged(name: &str, library: &[u8], ends: &[usize]) -> &'static Built {
+    let stages: Vec<mcui::Stage> = ends
+        .iter()
+        .enumerate()
+        .map(|(i, &end)| mcui::Stage {
+            name: format!("s{i}"),
+            title: format!("Stage {i} up to {end}"),
+            end,
+        })
+        .collect();
+    staged_with(name, library, &stages)
+}
+
+/// The app around `library` with no stage list, in a build directory of its own named `name`.
+pub fn around(name: &str, library: &[u8]) -> &'static Built {
+    Box::leak(Box::new(build(&format!("pages-{name}"), Some(library))))
+}
+
 /// The app built as if the workspace version were `version`, with no library.
 pub fn versioned(version: &str) -> &'static Built {
     Box::leak(Box::new(build_with(
         &format!("pages-version-{version}"),
         None,
+        &[],
         &[&format!("VERSION={version}")],
     )))
 }
@@ -135,6 +191,31 @@ pub fn shipped(name: &str) -> &'static Built {
     let built: &'static Built = Box::leak(Box::new(build(&format!("pages-{name}"), Some(&bytes))));
     all.push((name.to_string(), built));
     built
+}
+
+/// The app around ring from `MC_LIBRARIES` as the three stages of the shipped list: prop, pred and
+/// ring, each ending where its library does.
+pub fn shipped_staged() -> &'static Built {
+    static BUILT: std::sync::OnceLock<&'static Built> = std::sync::OnceLock::new();
+    BUILT.get_or_init(|| {
+        let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+        let read =
+            |name: &str| std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
+        let end = |bytes: &[u8]| usize::from(u16::from_le_bytes([bytes[14], bytes[15]]));
+        let ring = read("ring");
+        let stages: Vec<mcui::Stage> = [
+            ("prop", "Propositional calculus"),
+            ("pred", "Predicate calculus with equality"),
+            ("ring", "Ring theory"),
+        ]
+        .map(|(name, title)| mcui::Stage {
+            name: name.into(),
+            title: title.into(),
+            end: end(&read(name)),
+        })
+        .to_vec();
+        staged_with("pages-ring-staged", &ring, &stages)
+    })
 }
 
 /// The app with `bytes` as its library under a name of its own, for a library the reader or fm
@@ -225,12 +306,12 @@ impl App {
         }
     }
 
-    /// `boot`, and the app has drawn the start screen the model draws for its library: the frame it
-    /// left is the model's, so it reached its key wait by its own path.
+    /// `boot`, and the app has drawn the Libraries screen the model draws for its library: the frame
+    /// it left is the model's, so it reached its key wait by its own path.
     pub fn start(built: &'static Built) -> App {
         let mut app = App::boot(built);
-        let want = pack(&start_model(built.library.as_deref(), 0));
-        same_frame("the start screen", &app.frame(), &want);
+        let want = pack(&libraries_model(built.shown().as_ref()));
+        same_frame("the Libraries screen", &app.frame(), &want);
         app
     }
 
@@ -241,7 +322,7 @@ impl App {
         app.driver = 0xA800;
         app.stack = 0xAA00;
         app.scratch = vec![(0xA800, 0xA810), (0xA9C0, 0xAA00)];
-        let screen = start_pixels(built.library.as_deref(), 0);
+        let screen = libraries_pixels(built.shown().as_ref());
         let lcd = app.m.lcd();
         let lit: Vec<bool> = (0..64)
             .flat_map(|y| (0..96).map(move |x| (x, y)))
@@ -304,6 +385,59 @@ impl App {
         };
         self.m.out_port(0x06, BASE);
         done
+    }
+
+    /// `call` for the reference OS, where the driver's HALT with interrupts off never ends a run:
+    /// the driver jumps to the entry page's `screen_ret` instead, the run stops there, and the
+    /// T-states are those from the driver's first instruction to it, less what the same driver takes
+    /// to call a plain `ret`. Interrupts are off, so no handler's time is in it.
+    pub fn timed(&mut self, page: u8, target: u16, input: In) -> Done {
+        let overhead = self
+            .run_timed(BASE, self.label("screen_ret"), In::default())
+            .1;
+        let (mut done, tstates) = self.run_timed(page, target, input);
+        done.tstates = tstates - overhead;
+        done
+    }
+
+    fn run_timed(&mut self, page: u8, target: u16, input: In) -> (Done, u32) {
+        self.assert_scratch_is_free();
+        let stop = self.label("screen_ret");
+        let [lo, hi] = target.to_le_bytes();
+        let [slo, shi] = stop.to_le_bytes();
+        self.m
+            .load_ram(self.driver, &[0xCD, lo, hi, 0xC3, slo, shi]);
+        self.m.out_port(0x06, page);
+        self.m.set_regs(&Regs {
+            af: u16::from(input.a) << 8,
+            bc: input.bc,
+            de: input.de,
+            hl: input.hl,
+            ix: 0x1111,
+            iy: FLAGS,
+            sp: self.stack,
+            pc: self.driver,
+            af2: 0x2222,
+            bc2: 0x3333,
+            de2: 0x4444,
+            hl2: 0x5555,
+            i: 0xFF,
+            iff1: 0,
+            iff2: 0,
+            im: 1,
+        });
+        let start = self.m.clock();
+        let reached = self.m.run_to(BASE, stop, LIMIT);
+        assert_eq!(reached, mcemu::Reached::Target, "the call to {target:04X}");
+        let tstates = self.m.clock().wrapping_sub(start);
+        let regs = self.m.regs();
+        let done = Done {
+            regs,
+            tstates,
+            page: self.m.in_port(0x06),
+        };
+        self.m.out_port(0x06, BASE);
+        (done, tstates)
     }
 
     /// The RAM a driver run writes, `DRIVER_RAM`, lies clear of every region of the app's RAM map.

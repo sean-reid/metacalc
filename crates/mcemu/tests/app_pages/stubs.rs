@@ -106,7 +106,7 @@ fn conclusions(library: &[u8]) -> impl Iterator<Item = Expr> {
 
 /// Calls the draw page's routines the shell never calls, from the entry page, and checks what only
 /// they give: the loaded statement's rows and token count, a text's width. A RAM driver makes the
-/// calls, after the app has drawn its start screen.
+/// calls, after the app has drawn its Libraries screen.
 #[test]
 fn the_far_entries_the_shell_never_calls_reach_their_routines_by_a_ram_driver() {
     let built = with_library();
@@ -114,6 +114,8 @@ fn the_far_entries_the_shell_never_calls_reach_their_routines_by_a_ram_driver() 
     let first = &decoded(library).assertions[0];
     let mut app = App::start(built);
 
+    let load = app.far("far_fm_assertion", In::default());
+    assert_eq!(load.status(), 0);
     let select = app.far(
         "far_fm_select",
         In {
