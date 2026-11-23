@@ -487,11 +487,16 @@ fn on_pauses_the_probe_on_the_reference_os_and_a_second_run_resumes() {
         usize::from(label_of(&real.lab, "ck_counts") - label_of(&real.lab, "ck_params")),
         usize::from(label_of(&real.lab, "ck_n") - label_of(&real.lab, "ck_params")),
     );
-    real.run_until("three assertions checked", |b| {
-        b[state] == 3
-            && u16::from_le_bytes([b[n0], b[n0 + 1]]) + 3 <= u16::from_le_bytes([b[n], b[n + 1]])
-    });
+    let checked = |b: &[u8]| {
+        usize::from(u16::from_le_bytes([b[n], b[n + 1]]))
+            - usize::from(u16::from_le_bytes([b[n0], b[n0 + 1]]))
+    };
+    real.run_until("the watch armed", |b| b[state] != 0);
     assert!(real.armed, "the watch armed");
+    let base = checked(&real.block());
+    real.run_until("three more assertions checked", |b| {
+        b[state] == 3 && checked(b) >= base + 3
+    });
     real.os.m.press_key(Machine::KEY_ON);
     for _ in 0..300 {
         real.os.run_ms(1);
