@@ -154,3 +154,150 @@ fn on_the_reference_os_the_libraries_enter_reads_a_table_and_the_frame_is_the_mo
     let want = model::frame(&model::ui(built, &status));
     same_frame("the frame with the table", &app.frame(), &want);
 }
+
+/// What the app does on the reference OS with no table in RAM: the symbol table at the home
+/// screen, which holds every variable's type, name, place and archive page, is the same before the
+/// app starts and after it has shown its screens and been left, so nothing was created, deleted,
+/// archived or moved.
+mod vat {
+    use crate::realos::RealOs;
+
+    const P_TEMP: u16 = 0x982E;
+    const PROG_PTR: u16 = 0x9830;
+    const SYM_TABLE: u16 = 0xFE66;
+    const APPVAR: u8 = 0x15;
+
+    fn bytes(os: &mut RealOs, addr: u16, len: usize) -> Vec<u8> {
+        (usize::from(addr)..usize::from(addr) + len)
+            .map(|a| {
+                let page = if a < 0xC000 { 1 } else { 0 };
+                os.m.ram_page(page)[a % 0x4000]
+            })
+            .collect()
+    }
+
+    fn word(os: &mut RealOs, addr: u16) -> u16 {
+        let b = bytes(os, addr, 2);
+        u16::from_le_bytes([b[0], b[1]])
+    }
+
+    /// Every variable as (type, name, archive page, data pointer, size word or 0 if archived),
+    /// from the symbol table: entries of 9 bytes with three name bytes as far as progPtr, then
+    /// entries with a name length as far as pTemp.
+    pub fn list(os: &mut RealOs) -> Vec<(u8, Vec<u8>, u8, u16, u16)> {
+        let (named, low) = (word(os, PROG_PTR), word(os, P_TEMP));
+        let (mut at, mut out) = (SYM_TABLE, vec![]);
+        while at > low {
+            let b = bytes(os, at - 6, 7);
+            let len = if at > named { 3 } else { u16::from(b[0]) };
+            let skip = if at > named { 5 } else { 6 };
+            let mut name = bytes(os, at - skip - len, usize::from(len));
+            name.reverse();
+            let (page, addr) = (b[1], u16::from_le_bytes([b[3], b[2]]));
+            let size = if page == 0 { word(os, addr) } else { 0 };
+            out.push((b[6], name, page, addr, size));
+            at -= skip + 1 + len;
+        }
+        assert_eq!(at, low, "the entries end at pTemp");
+        out
+    }
+
+    pub fn has_table(list: &[(u8, Vec<u8>, u8, u16, u16)]) -> bool {
+        list.iter().any(|e| e.0 == APPVAR && e.1 == b"MCSTAT")
+    }
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn on_the_reference_os_the_screens_with_no_table_leave_the_whole_variable_list_as_it_was() {
+    use crate::builds::three_stages;
+    use crate::realos::{KEY_2, KEY_APPS, RealOs};
+    use crate::shellrig::{CLEAR, DOWN, ENTER, F1, F2, F3, UP};
+    for built in [with_library(), three_stages()] {
+        let mut os = RealOs::boot(&built.file);
+        let before = vat::list(&mut os);
+        assert!(!vat::has_table(&before), "no table to begin with");
+        os.tap(KEY_APPS, 150, 600);
+        os.tap(KEY_2, 150, 300);
+        os.run_ms(500);
+        for key in [
+            F1, CLEAR, F2, CLEAR, F3, CLEAR, DOWN, ENTER, CLEAR, F3, CLEAR, UP,
+        ] {
+            os.tap(key, 150, 400);
+        }
+        os.tap(CLEAR, 150, 1500);
+        assert!(
+            os.screen() != libraries_pixels(built.shown().as_ref()),
+            "left"
+        );
+        let after = vat::list(&mut os);
+        assert!(!vat::has_table(&after), "the screens made no table");
+        assert_eq!(after, before, "the variables, their places and their sizes");
+    }
+}
+
+/// An auto power down on the OS with a table the app's own store made after the screen was drawn:
+/// the wake and the next key enter the screen again, which reads the table, so every stage shows
+/// "checked/total" where it showed unchecked before, and the frame is the model's.
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn on_the_reference_os_a_power_down_with_a_table_installed_shows_n_of_m_rows_after_the_wake() {
+    use crate::builds::three_stages;
+    use crate::realos::RealOs;
+    use crate::table::header_of;
+    let built = three_stages();
+    let mut app = App::on_real_os(built);
+    let (crc, count) = header_of(built.library.as_ref().unwrap());
+    let crc = u32::from_le_bytes(crc);
+    let (saved, port) = (app.m.regs(), app.m.in_port(0x06));
+    let open = In {
+        hl: crc as u16,
+        de: (crc >> 16) as u16,
+        bc: count,
+        ..In::default()
+    };
+    assert_eq!(app.far("store_open", open).status(), 0, "the table is made");
+    let mut status = vec![mcui::Status::Unchecked; usize::from(count)];
+    for n in 0..3u16 {
+        let set = In {
+            hl: n,
+            bc: 1 << 8,
+            ..In::default()
+        };
+        assert_eq!(app.far("store_set", set).status(), 0);
+        status[usize::from(n)] = mcui::Status::Checked;
+    }
+    app.m.set_regs(&saved);
+    app.m.out_port(0x06, port);
+    let mut os = RealOs { m: app.m };
+    let mut shown = built.shown().unwrap();
+    assert!(
+        os.screen() == libraries_pixels(Some(&shown)),
+        "the screen drawn before the table was made shows no checks"
+    );
+    shown.status = status;
+    let want = libraries_pixels(Some(&shown));
+    assert!(os.screen() != want, "the table changes the rows");
+    os.power_down_and_wake();
+    os.tap(F4, 150, 600);
+    assert!(os.screen() == want, "the rows after the wake");
+    let texts = shown_rows(&shown);
+    assert_eq!(
+        texts,
+        ["3/9", "3/18", "3/27"],
+        "the model's rows are n of m"
+    );
+}
+
+/// The right text of each stage row the model draws for `shown`.
+fn shown_rows(shown: &crate::realos::Shown) -> Vec<String> {
+    crate::realos::libraries_ui(Some(shown))
+        .frame_calls()
+        .1
+        .into_iter()
+        .filter_map(|call| match call {
+            mcui::canvas::Call::ListRow { left, right, .. } if left != "My proofs" => Some(right),
+            _ => None,
+        })
+        .collect()
+}

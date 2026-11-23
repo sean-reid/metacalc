@@ -27,6 +27,8 @@ pub const ON_INTERRUPT: u8 = 0x10;
 pub const EXIT_MARK: u16 = 0x90D3;
 /// The OS flag byte holding `graphDraw`, bit 0, which the app sets as its last mark before it leaves.
 pub const GRAPH_FLAGS: usize = OS_FLAGS + 3;
+/// The bit of port 3 that is set while the calculator is powered down.
+const POWERED_DOWN: u8 = 0x10;
 
 fn rom() -> Option<Vec<u8>> {
     let path = Path::new(&std::env::var_os("HOME")?).join("ti84-rom/84PSE_v243.rom");
@@ -76,6 +78,17 @@ impl RealOs {
         self.run_ms(down_ms);
         self.m.release_key(key);
         self.run_ms(up_ms);
+    }
+
+    /// Runs the OS until its auto power down fires, then wakes it with ON.
+    pub fn power_down_and_wake(&mut self) {
+        let mut seconds = 0;
+        while self.m.in_port(3) & POWERED_DOWN == 0 {
+            assert!(seconds < 600, "no auto power down in 600 s");
+            self.run_ms(5_000);
+            seconds += 5;
+        }
+        self.tap(Machine::KEY_ON, 150, 3000);
     }
 
     /// Starts the app from the APPS menu, where it is the second entry after Finance.

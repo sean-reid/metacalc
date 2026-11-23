@@ -262,17 +262,6 @@ fn the_app_leaves_banks_b_and_c_as_a_plain_waiting_app_does_but_for_what_it_decl
     }
 }
 
-/// Runs the reference OS until the auto power down fires, then wakes it with ON.
-fn power_down_and_wake(os: &mut RealOs) {
-    let mut seconds = 0;
-    while os.m.in_port(3) & POWER_DOWN == 0 {
-        assert!(seconds < 600, "no auto power down in 600 s");
-        os.run_ms(5_000);
-        seconds += 5;
-    }
-    os.tap(Machine::KEY_ON, 150, 3000);
-}
-
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn an_auto_power_down_is_not_a_way_out_and_the_state_survives_the_wake() {
@@ -282,7 +271,7 @@ fn an_auto_power_down_is_not_a_way_out_and_the_state_survives_the_wake() {
     let held = live(&mut os, 1);
     let theirs = context(&mut os);
     assert_ne!(theirs[0], before[0], "the app's context is installed");
-    power_down_and_wake(&mut os);
+    os.power_down_and_wake();
     assert_eq!(context(&mut os), theirs, "the app's context after the wake");
     for when in ["wake", "key"] {
         if when == "key" {
@@ -339,7 +328,7 @@ fn power_down_with(app: &Build, open: &[u8], depth: u8, shown: &mcglyph::Bitmap)
     assert!(os.screen() == pixels(shown), "the screen is open");
     dirty(&mut os, usize::from(depth));
     let held = live(&mut os, usize::from(depth));
-    power_down_and_wake(&mut os);
+    os.power_down_and_wake();
     let sentinel = label_in(&app.labels, "APP_SENTINEL");
     let frame_byte = label_in(&app.labels, "APP_SENTINEL_FRAME");
     assert_ne!(
