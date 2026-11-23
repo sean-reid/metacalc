@@ -11,7 +11,7 @@ use mcui::Status;
 use std::sync::OnceLock;
 
 #[test]
-fn the_decimal_conversion_writes_each_number_with_no_leading_zero_and_nothing_past_its_digits() {
+fn the_decimal_conversion_writes_each_number_with_no_leading_zero_and_nothing_past_five_bytes() {
     let mut app = App::boot(plain());
     let at = app.label("app_dec16");
     let into = SCRATCH + 0x40;

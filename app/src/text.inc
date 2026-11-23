@@ -74,9 +74,9 @@ app_hex_byte:
 app_hex:
 	.db UI_FONT_CH_30, UI_FONT_CH_31, UI_FONT_CH_32, UI_FONT_CH_33, UI_FONT_CH_34, UI_FONT_CH_35, UI_FONT_CH_36, UI_FONT_CH_37, UI_FONT_CH_38, UI_FONT_CH_39, UI_FONT_CH_41, UI_FONT_CH_42, UI_FONT_CH_43, UI_FONT_CH_44, UI_FONT_CH_45, UI_FONT_CH_46
 
-; In: HL = a number, DE = where to write. Writes its decimal digits as glyph codes with no leading
-; zero, "0" for 0, and no terminator. Out: DE = the address after the last digit.
-; Destroys AF BC HL.
+; In: HL = a number, DE = where to write, five bytes it may use. Writes its decimal digits as glyph
+; codes with no leading zero, "0" for 0, and no terminator; the rest of the five bytes hold digit
+; glyphs with no meaning. Out: DE = the address after the last digit. Destroys AF BC HL.
 app_dec16:
 	push de
 	ld bc, -10000

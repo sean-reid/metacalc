@@ -218,6 +218,7 @@ fn on_the_reference_os_the_screens_with_no_table_leave_the_whole_variable_list_a
         let before = vat::list(&mut os);
         assert!(!vat::has_table(&before), "no table to begin with");
         println!("{} variables compared", before.len());
+        assert!(before.len() > 1, "the OS has variables to compare");
         os.tap(KEY_APPS, 150, 600);
         os.tap(KEY_2, 150, 300);
         os.run_ms(500);

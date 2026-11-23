@@ -35,7 +35,8 @@ pub const NOTICE_PICK: u8 = 4;
 
 const TAP: u32 = 120_000;
 /// The rig's counters and hooks sit above the heap the stub OS gives a status table; boot_with
-/// asserts the heap ends below BLIT_HOOK, the lowest of them. The 12,012 assertion fixture ends it at A95Ch.
+/// asserts the heap ends below BLIT_HOOK, the lowest of them. The 12,012 assertion fixture ends
+/// it at A95Ch.
 const BLITS: u16 = 0xB500;
 const ENTERS: u16 = 0xB510;
 const FLAG: u16 = 0xB520;
