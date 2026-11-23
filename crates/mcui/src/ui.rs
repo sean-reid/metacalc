@@ -100,13 +100,41 @@ impl Ui {
                     self.stack.pop();
                     if let Some(below) = self.stack.last_mut() {
                         below.uncovered(&ctx);
-                        below.land(&ctx, assertion);
+                        below.land(assertion);
                     }
                 }
             }
         }
         if let Some(Screen::Proving(proving)) = self.stack.last() {
             self.proofs.store(proving.saved());
+        }
+    }
+
+    /// Presses `key`, then does the screen's pending work, so the frame is what the user sees
+    /// once no key is waiting.
+    pub fn press_settled(&mut self, key: Key) {
+        self.press(key);
+        self.idle();
+    }
+
+    /// The step taken when no key is waiting: the open screen does its pending work, and the
+    /// answer is whether the frame changed. A theorem list fills its preview row; every other
+    /// screen has nothing pending.
+    pub fn idle(&mut self) -> bool {
+        let ctx = Ctx {
+            libs: &self.libs,
+            proofs: &self.proofs,
+        };
+        let top = self.stack.last_mut().expect("a screen is always open");
+        top.idle(&ctx)
+    }
+
+    /// How many previews the open list has computed; none for another screen.
+    #[doc(hidden)]
+    pub fn previews_computed(&self) -> usize {
+        match self.stack.last() {
+            Some(Screen::List(list)) => list.computed(),
+            _ => 0,
         }
     }
 

@@ -38,16 +38,16 @@ fn screen_three_renders_every_assertion_of_the_ring_library_within_the_screen() 
         },
     )
     .unwrap();
-    ui.press(Key::Enter);
+    ui.press_settled(Key::Enter);
     for i in 0..count {
-        ui.press(Key::Enter);
+        ui.press_settled(Key::Enter);
         let State::Theorem { label, .. } = ui.state() else {
             panic!("assertion {i} did not open");
         };
         let frame = ui.frame();
         assert_eq!((frame.width(), frame.height()), (96, 64), "{label}");
-        ui.press(Key::Clear);
-        ui.press(Key::Down);
+        ui.press_settled(Key::Clear);
+        ui.press_settled(Key::Down);
     }
 }
 
@@ -167,9 +167,9 @@ fn every_title_of_the_ring_library_can_be_jumped_to() {
         },
     )
     .unwrap();
-    ui.press(Key::Enter);
+    ui.press_settled(Key::Enter);
     for (k, title) in titles.iter().enumerate() {
-        ui.press(Key::F5);
+        ui.press_settled(Key::F5);
         loop {
             let State::Sections { cursor, .. } = ui.state() else {
                 panic!("sections did not open for title {k}");
@@ -177,9 +177,9 @@ fn every_title_of_the_ring_library_can_be_jumped_to() {
             if cursor == k {
                 break;
             }
-            ui.press(if cursor < k { Key::Down } else { Key::Up });
+            ui.press_settled(if cursor < k { Key::Down } else { Key::Up });
         }
-        ui.press(Key::Enter);
+        ui.press_settled(Key::Enter);
         let State::List { label, .. } = ui.state() else {
             panic!("title {k} did not return to the list");
         };

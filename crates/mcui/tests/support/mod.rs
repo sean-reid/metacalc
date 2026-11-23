@@ -302,11 +302,11 @@ pub fn ui() -> Ui {
 }
 
 pub fn press(ui: &mut Ui, keys: &[Key]) {
-    keys.iter().for_each(|&k| ui.press(k));
+    keys.iter().for_each(|&k| ui.press_settled(k));
 }
 
 pub fn typed(ui: &mut Ui, text: &str) {
-    text.chars().for_each(|c| ui.press(Key::Letter(c)));
+    text.chars().for_each(|c| ui.press_settled(Key::Letter(c)));
 }
 
 /// Opens the logic library and the theorem `label` in it.
@@ -314,9 +314,9 @@ pub fn open(ui: &mut Ui, label: &str) {
     press(ui, &[Key::Enter, Key::F2]);
     typed(ui, label);
     while !matches!(ui.state(), mcui::State::List { label: Some(ref l), .. } if l == label) {
-        ui.press(Key::Down);
+        ui.press_settled(Key::Down);
     }
-    ui.press(Key::Enter);
+    ui.press_settled(Key::Enter);
 }
 
 /// Compares `frame` with the checked-in text art. With MCUI_BLESS set the art is rewritten first
