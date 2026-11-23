@@ -63,6 +63,15 @@ fn a_theorem_list_with_the_cursor_below_the_first_row() {
 }
 
 #[test]
+fn a_theorem_list_while_its_preview_waits() {
+    let mut ui = ui();
+    press(&mut ui, &[Enter]);
+    ui.press(Down);
+    assert!(matches!(ui.state(), State::List { pending: true, .. }));
+    assert!(replay("list-pending", &ui) >= 4);
+}
+
+#[test]
 fn a_theorem_list_with_a_find_prefix_that_matches_nothing() {
     let mut ui = ui();
     press(&mut ui, &[Enter, F2]);
