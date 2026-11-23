@@ -112,7 +112,8 @@ fn setup_probe(name: &str, library: &[u8], setup: &Setup) -> (Vec<u8>, PathBuf) 
     (app, dir.join("app.lab"))
 }
 
-/// A screen of `lines` drawn by another app on the OS, as lit pixels.
+/// A screen of `lines` drawn by another app on the OS, as lit pixels, with a lit pixel in each
+/// 8-pixel row of a line that has text.
 fn drawn(name: &str, lines: &[String]) -> Vec<bool> {
     let mut bytes = lines.join("\n").into_bytes();
     bytes.push(0);
@@ -126,7 +127,12 @@ fn drawn(name: &str, lines: &[String]) -> Vec<bool> {
     let mut os = RealOs::boot(&app);
     os.start_from_menu();
     os.run_ms(1500);
-    os.screen()
+    let screen = os.screen();
+    for (i, line) in lines.iter().enumerate().filter(|(_, l)| !l.is_empty()) {
+        let band = &screen[i * 8 * 96..(i + 1) * 8 * 96];
+        assert!(band.iter().any(|&p| p), "text row {i} is blank: {line:?}");
+    }
+    screen
 }
 
 fn read(os: &mut RealOs, addr: u16, len: usize) -> Vec<u8> {
@@ -203,6 +209,7 @@ struct Ended {
 }
 
 /// The bytes of the job's block that never change during a job: ck_params, ck_n, ck_count, ck_crc.
+/// They are all set by the time ck_state is not 0, which arms the watch.
 const HELD: usize = 0x11;
 
 impl Real {
@@ -252,10 +259,10 @@ impl Real {
     /// Asserts that the job's constants stand, once begin has set them, and returns the block.
     fn watch(&mut self) -> Vec<u8> {
         let block = self.block();
-        let n = usize::from(label_of(&self.lab, "ck_n") - label_of(&self.lab, "ck_params"));
+        let state = usize::from(label_of(&self.lab, "ck_state") - label_of(&self.lab, "ck_params"));
         match &self.held {
             Some(held) => assert_eq!(&block[..HELD], &held[..], "SCR_VARS changed"),
-            None if block[n] != 0 => self.held = Some(block[..HELD].to_vec()),
+            None if block[state] != 0 => self.held = Some(block[..HELD].to_vec()),
             None => {}
         }
         block
