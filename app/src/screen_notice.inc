@@ -2,7 +2,8 @@
 ; on row 3 and Back over F1. The frame's byte 1 is the notice's number and byte 2 its parameter.
 ;   NOTICE_LIST     the stage's name as the title and "Not available yet", for the theorem list
 ;                   that does not exist yet; the parameter is the stage, and notice_enter builds
-;                   the title in NT_TITLE
+;                   the title in NT_TITLE; the title is the whole name, where the model's list
+;                   cuts it to leave room for "checked/total"
 ;   NOTICE_VERIFY   "Verify", "Not available yet", for the checking screen
 ;   NOTICE_ERROR    "Error", "Status " and the parameter as two hex digits, built in NT_LINE by
 ;                   notice_enter, since the OS overwrites saveSScreen at an auto power down
