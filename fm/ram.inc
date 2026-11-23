@@ -4,7 +4,7 @@
 #endif
 
 #ifndef FM_VARS_SIZE
-FM_VARS_SIZE        .equ $D0
+FM_VARS_SIZE        .equ $DF
 #endif
 #if FM_VARS_SIZE > $100
  .error "FM_VARS_SIZE must leave the stack at FM_RAM + $100 alone"
@@ -175,6 +175,13 @@ FM_VAR(fv_fs, $CC, 1)
 FM_VAR(fv_fo, $CD, 1)
 FM_VAR(fv_fd, $CE, 1)
 FM_VAR(fv_fchg, $CF, 1)
+FM_VAR(fv_kr, $D0, 1)
+FM_VAR(fv_kl, $D1, 1)
+FM_VAR(fv_kc, $D2, 1)
+FM_VAR(fv_kp, $D3, 1)
+FM_VAR(fv_kn, $D4, 1)
+FM_VAR(fv_kb, $D5, 2)
+FM_VAR(fv_nohdr, $D7, 8)
 
 FM_OPEN_MAGIC       .equ $464D
 FM_OWNED            .equ $4F46
@@ -184,6 +191,7 @@ FM_OWNED            .equ $4F46
 FM_SPACE            .equ 2
 FM_ELLIPSIS         .equ 7
 FM_COUNTED          .equ 1
+FM_CLIPPED          .equ 2
 FM_PAD_VAR          .equ 4
 FM_MODE_TOGGLE      .equ 2
 
@@ -198,3 +206,4 @@ FM_ERR_INDEX        .equ 7
 FM_ERR_READ         .equ 8
 FM_ERR_TREE         .equ 9
 FM_ERR_LIMIT        .equ 10
+FM_ERR_CLIPPED      .equ 11

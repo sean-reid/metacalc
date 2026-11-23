@@ -1,3 +1,7 @@
+#[path = "fm/clip.rs"]
+mod clip;
+#[path = "fm/clipstate.rs"]
+mod clipstate;
 #[path = "fm/damaged.rs"]
 mod damaged;
 #[path = "fm/errors.rs"]

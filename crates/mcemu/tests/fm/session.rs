@@ -66,6 +66,11 @@ fn calls(n: u16, k: u8) -> Vec<(&'static str, Regs, u8)> {
         ("FM_STATEMENT", regs(n, 0x77, 0), code("FM_ERR_INDEX")),
         ("FM_NODES", regs(0, 0, 0), code("FM_ERR_INDEX")),
         ("FM_STATEMENT", regs(0x7FFF, 0xFF, 0), code("FM_ERR_INDEX")),
+        ("FM_CLIP", regs(0, 94 << 8, 1 << 8), code("FM_ERR_INDEX")),
+        ("FM_STATEMENT", regs(n, u16::from(k), 0), ok),
+        ("FM_CLIP", regs(0, 94 << 8, 1 << 8), ok),
+        ("FM_CLIP", regs(0, 94 << 8, 1 << 8), code("FM_ERR_CLIPPED")),
+        ("FM_FOLD", regs(0, 1 << 8, 0), code("FM_ERR_CLIPPED")),
     ]
 }
 
@@ -112,6 +117,7 @@ fn a_routine_on_a_closed_fm_returns_not_open_and_hands_the_state_back_too() {
             ("FM_FOLD", Regs::default()),
             ("FM_FOLDED", Regs::default()),
             ("FM_CURSOR", Regs::default()),
+            ("FM_CLIP", Regs::default()),
             ("FM_DRAW", Regs::default()),
         ] {
             let out = fm.rig.call(target, Regs { iy: IY, ..regs });

@@ -221,8 +221,8 @@ dp_next:
 	jr nz,dp_stmt
 	ret
 
-; Selects statement fv_fs, clears its folds and counts its lines at its width. Destroys all but IX
-; and IY.
+; Selects statement fv_fs, clears its folds and its clip and counts its lines at its width. Destroys
+; all but IX and IY.
 ft_reset:
 	ld a,(fv_fs)
 	call sel_index
@@ -243,7 +243,11 @@ rs_next:
 	djnz rs_loop
 	ld a,c
 	or a
-	call nz,ft_dirty
+	jr nz,rs_stale
+	call cl_flag
+	jr z,ft_count
+rs_stale:
+	call ft_dirty
 
 ; out: A = the lines statement fv_fs, selected, takes at its width. Destroys all but IX and IY.
 ft_count:

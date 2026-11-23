@@ -8,7 +8,7 @@ use crate::support::decoded;
 use crate::ui_support::{pack, same_frame};
 use mcui::canvas::{Canvas, GUTTER, STATEMENT_WIDTH, text_width};
 use mcui::expr::Expr;
-use mcui::fold::{Fit, Folds, fit, fit_one, layout};
+use mcui::fold::{Fit, Folds, fit, fit_one, fitted, layout};
 
 /// The far call's own labels, which are not stubs.
 const FAR_CALL_NAMES: [&str; 17] = [
@@ -355,4 +355,85 @@ fn fm_fit_asked_from_the_entry_page_folds_the_assertion_as_the_theorem_screen_do
         &app.frame(),
         &pack(&canvas.into_bitmap()),
     );
+}
+
+/// fm_fit and then fm_clip asked from the entry page for a conclusion the one-line preview cuts:
+/// the lines and the frame are the model's, and the clip is the draw page's own call.
+#[test]
+fn fm_clip_asked_from_the_entry_page_cuts_the_conclusion_as_the_list_preview_does() {
+    let built = with_library();
+    let library = built.library.as_ref().unwrap();
+    let (n, expr, width) = conclusions(library)
+        .enumerate()
+        .find_map(|(n, expr)| {
+            let width = (10..60).find(|&w| {
+                let plain = layout(&expr, &fit_one(&expr, w, 1), w);
+                plain.rows() > 1
+            })?;
+            Some((n, expr, width))
+        })
+        .expect("a conclusion that one line cuts");
+    let want = fitted(&expr, width, 1);
+    assert!(
+        want.pieces
+            .iter()
+            .any(|p| *p == mcui::fold::Piece::Ellipsis)
+    );
+    let mut app = App::start(built);
+    let loaded = app.far(
+        "far_fm_assertion",
+        In {
+            hl: n as u16,
+            ..In::default()
+        },
+    );
+    assert_eq!(loaded.status(), 0);
+    let widths = ((width as u16) << 8) | width as u16;
+    let fit_call = app.far(
+        "far_fm_fit",
+        In {
+            bc: 1 << 8,
+            de: widths,
+            ..In::default()
+        },
+    );
+    assert_eq!(fit_call.status(), 0);
+    let clip = app.far(
+        "far_fm_clip",
+        In {
+            bc: 1 << 8,
+            de: (width as u16) << 8,
+            ..In::default()
+        },
+    );
+    assert_eq!(clip.status(), 0);
+    assert_eq!(clip.page, BASE);
+    assert_eq!(usize::from(clip.regs.bc >> 8), want.rows());
+    app.far("far_ui_clear", In::default());
+    let drawn = app.far(
+        "far_fm_draw",
+        In {
+            hl: 1,
+            de: ((width as u16) << 8) | GUTTER as u16,
+            bc: (1 << 8) | 7,
+            ..In::default()
+        },
+    );
+    assert_eq!(drawn.status(), 0);
+    let mut canvas = Canvas::default();
+    canvas.layout(&want, GUTTER, 1, 1..7);
+    same_frame(
+        "the clipped conclusion",
+        &app.frame(),
+        &pack(&canvas.into_bitmap()),
+    );
+    let again = app.far(
+        "far_fm_clip",
+        In {
+            bc: 1 << 8,
+            de: (width as u16) << 8,
+            ..In::default()
+        },
+    );
+    assert_eq!(again.status(), 11, "FM_ERR_CLIPPED");
 }
