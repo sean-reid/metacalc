@@ -67,8 +67,8 @@ fm_count:
 	ld a,(fv_line)
 	ret
 
-; out: HL = the address of byte 7 of the selected statement's header, which lies in the header's
-; eight byte slot. Destroys AF.
+; in: fv_hdr. out: HL = the address of byte 7 of the selected statement's header. Only L changes, so
+; the header slots must stay 8-aligned: byte 7 then never crosses a 256-byte boundary. Destroys AF.
 fm_hdr7:
 	ld hl,(fv_hdr)
 	ld a,l

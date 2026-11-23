@@ -30,9 +30,11 @@
 ;               rewrite the width, the gap and the flags of the selected statement's records
 ;               (fold.inc): a token a fold hides has width 0 and gap 0, the first token of a
 ;               folded span has the ellipsis width, its gap and flags 4 | 80h, bit 7 marking the
-;               ellipsis, and the symbol id of a record with bit 7 set is undefined. A hidden token's width and gap add up to 0, so ly_scan and ly_draw
-;               always fit it on the line it follows, at any width and after a first token wider
-;               than the width, and a line starts only where a token did not fit; only fm_clip makes
+;               ellipsis. A record's symbol id is kept from load: the folds and the clip never
+;               write it, and it is reread whenever the folds are reapplied. A hidden token's
+;               width and gap add up to 0, so ly_scan and ly_draw always fit it on the line it
+;               follows, at any width and after a first token wider than the width, and a line
+;               starts only where a token did not fit; only fm_clip makes
 ;               token 0 an ellipsis, so the visible tokens are placed as the model places them and
 ;               fm_lay never reads the node table.
 ; FM_LOW is $1100 bytes from KERNEL_RAM_LOW + $100 in the same page, an overlay on the kernel's low
@@ -255,7 +257,7 @@
 ;                      FFh succeeds on an open fm. FM_ERR_INDEX: the table is not built or has no
 ;                      node A, and the cursor stays as it was. FM_ERR_CLIPPED: the selected
 ;                      statement is clipped and has the node.
-;   fm_clip       in:  B = the lines to keep, D = the width in pixels the statement was fitted at
+;   fm_clip       in:  B = the lines to keep, D = the width in pixels to lay the kept tokens out at
 ;                 out: A = status, B = the lines the statement takes after the call. Does what the
 ;                      model's Layout::clipped(width, rows) does to the selected statement as it is
 ;                      laid out, folds and all: a statement that already takes at most B lines is

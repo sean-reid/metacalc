@@ -49,7 +49,8 @@ cl_flag:
 ; record that becomes the ellipsis, fv_kp = the spacing flags of the visible token before it,
 ; fv_kn = the lines the cut statement takes. A hidden record has gap 0, a visible one at least 1.
 ; The cut at the start, an ellipsis alone, is the default and the answer when no token fits. It
-; returns early with carry set, before the last record, when a token starts a line past fv_kr.
+; returns early with carry set when a token starts a line past fv_kr; the normal return leaves carry
+; undefined.
 ; Destroys AF BC DE HL and writes fv_kl, fv_kc, fv_kp, fv_kn and fv_kb; it writes no record.
 clip_scan:
 	ld hl,(fv_tok)
