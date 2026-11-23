@@ -44,6 +44,13 @@ impl Kind {
     }
 }
 
+/// The preview row: waiting to be computed, or computed (a layout, or none for a statement over
+/// the caps and for an empty list).
+enum Preview {
+    Pending,
+    Settled(Option<Layout>),
+}
+
 pub struct List {
     library: usize,
     stage: usize,
@@ -53,7 +60,8 @@ pub struct List {
     top: usize,
     find: String,
     missed: bool,
-    preview: Option<Layout>,
+    preview: Preview,
+    computed: usize,
 }
 
 impl List {
@@ -67,10 +75,10 @@ impl List {
             top: 0,
             find: String::new(),
             missed: false,
-            preview: None,
+            preview: Preview::Pending,
+            computed: 0,
         };
         list.items = list.filtered(ctx);
-        list.refresh(ctx);
         Screen::List(list)
     }
 
@@ -90,13 +98,25 @@ impl List {
         self.items.get(self.cursor).copied()
     }
 
-    /// Recomputes what the preview row shows after the cursor moved.
-    fn refresh(&mut self, ctx: &Ctx) {
-        self.preview = self.current().and_then(|i| {
+    /// Computes the preview of the cursor's statement. Returns whether the row's pixels changed.
+    pub fn idle(&mut self, ctx: &Ctx) -> bool {
+        if matches!(self.preview, Preview::Settled(_)) {
+            return false;
+        }
+        self.computed += 1;
+        let layout = self.current().and_then(|i| {
             let statement = ctx.libs[self.library].statement(i);
             statement_within(&statement.conclusion)
                 .then(|| fitted(&statement.conclusion, TEXT_WIDTH, 1))
         });
+        let changed = layout.is_some();
+        self.preview = Preview::Settled(layout);
+        changed
+    }
+
+    /// How many previews this list has computed.
+    pub fn computed(&self) -> usize {
+        self.computed
     }
 
     /// Moves to the first item from `from` on whose label starts with the typed prefix.
@@ -115,7 +135,8 @@ impl List {
 
     /// Moves to the first visible assertion at or after `assertion`, or the last visible one when
     /// none follows.
-    pub(crate) fn land(&mut self, ctx: &Ctx, assertion: usize) {
+    pub(crate) fn land(&mut self, assertion: usize) {
+        let before = self.current();
         self.find.clear();
         self.missed = false;
         if !self.items.is_empty() {
@@ -123,10 +144,18 @@ impl List {
             self.cursor = at.min(self.items.len() - 1);
             self.top = reveal(self.top, self.cursor, LIST_ROWS);
         }
-        self.refresh(ctx);
+        self.unsettle(before);
+    }
+
+    /// Blanks the preview when the cursor is on another assertion than `before`.
+    fn unsettle(&mut self, before: Option<usize>) {
+        if self.current() != before {
+            self.preview = Preview::Pending;
+        }
     }
 
     pub fn press(&mut self, ctx: &Ctx, key: Key) -> Nav {
+        let before = self.current();
         match key {
             Key::Up | Key::Down | Key::Left | Key::Right => {
                 self.find.clear();
@@ -185,7 +214,7 @@ impl List {
             }
             _ => {}
         }
-        self.refresh(ctx);
+        self.unsettle(before);
         Nav::Stay
     }
 
@@ -219,7 +248,7 @@ impl List {
                 at == self.cursor,
             );
         }
-        if let Some(preview) = &self.preview {
+        if let Preview::Settled(Some(preview)) = &self.preview {
             canvas.layout(
                 preview,
                 1,
@@ -246,6 +275,7 @@ impl List {
             find: self.find.clone(),
             kind: self.kind,
             len: self.items.len(),
+            pending: matches!(self.preview, Preview::Pending),
         }
     }
 }

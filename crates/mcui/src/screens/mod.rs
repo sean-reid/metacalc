@@ -109,6 +109,8 @@ pub enum State {
         find: String,
         kind: Kind,
         len: usize,
+        /// The preview row is blank until the list is idle.
+        pending: bool,
     },
     Theorem {
         library: usize,
@@ -183,9 +185,17 @@ impl Screen {
     }
 
     /// Moves a list to `assertion` after the screen above it closed.
-    pub(crate) fn land(&mut self, ctx: &Ctx, assertion: usize) {
+    pub(crate) fn land(&mut self, assertion: usize) {
         if let Screen::List(list) = self {
-            list.land(ctx, assertion);
+            list.land(assertion);
+        }
+    }
+
+    /// Does the screen's pending work, and returns whether the frame changed.
+    pub(crate) fn idle(&mut self, ctx: &Ctx) -> bool {
+        match self {
+            Screen::List(list) => list.idle(ctx),
+            _ => false,
         }
     }
 

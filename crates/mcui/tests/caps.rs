@@ -205,19 +205,19 @@ fn a_refused_theorem_offers_dist_and_try_only_and_clear_goes_back() {
         }
     }
     for key in [Up, Down, Left, Right, Enter, F1, F3, F5, On, Letter('x')] {
-        ui.press(key);
+        ui.press_settled(key);
         assert!(ui.frame() == frame, "{key:?} changed the frame");
         assert_eq!(ui.state(), state, "{key:?}");
         assert_eq!(ui.depth(), 3, "{key:?}");
     }
-    ui.press(F2);
+    ui.press_settled(F2);
     assert!(matches!(ui.state(), State::Dist { ref label, .. } if label == "big"));
-    ui.press(Clear);
-    ui.press(F4);
+    ui.press_settled(Clear);
+    ui.press_settled(F4);
     assert!(matches!(ui.state(), State::Notice { ref title } if title == "Prove"));
     assert!(lines_are_drawn(&ui.frame(), &PROVE_NOTICE));
-    ui.press(Clear);
-    ui.press(Clear);
+    ui.press_settled(Clear);
+    ui.press_settled(Clear);
     assert_eq!(ui.depth(), 2);
     assert!(matches!(ui.state(), State::List { label: Some(ref l), .. } if l == "big"));
 }
@@ -248,7 +248,7 @@ fn try_from_the_list_on_a_refused_theorem_gives_the_prove_notice() {
     let mut ui = ui_over(proved_library(&shapes), &[], &[]);
     press(&mut ui, &[Enter, F2]);
     typed(&mut ui, "big");
-    ui.press(F4);
+    ui.press_settled(F4);
     assert!(matches!(ui.state(), State::Notice { ref title } if title == "Prove"));
     assert_eq!(ui.depth(), 3);
     assert!(lines_are_drawn(&ui.frame(), &PROVE_NOTICE));
@@ -280,7 +280,7 @@ fn a_saved_proof_of_a_theorem_now_past_a_cap_is_not_restored() {
     );
     assert_eq!(ui.saved_proofs().count(), 0);
     open(&mut ui, "big");
-    ui.press(F4);
+    ui.press_settled(F4);
     assert!(matches!(ui.state(), State::Notice { ref title } if title == "Prove"));
     assert_eq!(ui.saved_proofs().count(), 0);
 }
@@ -338,7 +338,7 @@ fn no_shipped_assertion_is_past_a_cap() {
 
 fn tried(shapes: &[Shape]) -> Ui {
     let mut ui = opened_in(proved_library(shapes), shapes);
-    ui.press(F4);
+    ui.press_settled(F4);
     ui
 }
 

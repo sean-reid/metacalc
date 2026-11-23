@@ -74,7 +74,7 @@ fn stop_pauses_and_opening_the_screen_again_resumes() {
         let mut ui = unchecked_ui(logic_bytes());
         press(&mut ui, &[F2]);
         steps(&mut ui, 5);
-        ui.press(pause);
+        ui.press_settled(pause);
         assert_eq!(ui.depth(), 1);
         assert_eq!(ui.step_check(), CheckStep::Idle);
         if pause == F1 {
@@ -95,7 +95,7 @@ fn a_finished_check_says_so_and_stays_finished() {
     assert_eq!(checking(ui.state()), (13, 13, 0, true));
     assert_eq!(ui.step_check(), CheckStep::Finished);
     check(&ui, "checking-finished");
-    ui.press(Clear);
+    ui.press_settled(Clear);
     check(&ui, "checking-finished-libraries");
 }
 
@@ -109,7 +109,7 @@ fn the_first_key_of_a_check_reads_stop_while_it_runs_and_done_when_it_is_finishe
     let frame = ui.frame();
     assert!(support::key_label_is(&frame, 0, "Done"));
     assert!(!support::key_label_is(&frame, 0, "Stop"));
-    ui.press(F1);
+    ui.press_settled(F1);
     assert_eq!(ui.depth(), 1);
     assert!(matches!(ui.state(), State::Libraries { .. }));
 }
@@ -121,7 +121,7 @@ fn a_bad_proof_fails_and_the_marks_follow() {
     assert_eq!(run_all(&mut ui), (12, 1));
     assert_eq!(checking(ui.state()), (13, 13, 1, true));
     check(&ui, "checking-failures");
-    ui.press(Clear);
+    ui.press_settled(Clear);
     check(&ui, "checking-failures-libraries");
     press(&mut ui, &[Enter, F2]);
     support::typed(&mut ui, "a1i");
@@ -148,7 +148,7 @@ fn a_full_check_marks_every_assertion_on_the_list_and_libraries_screens() {
     assert!(matches!(ui.state(), State::List { len: 13, .. }));
     press(&mut ui, &[Clear, Clear, F2]);
     run_all(&mut ui);
-    ui.press(Clear);
+    ui.press_settled(Clear);
     check(&ui, "checking-all-libraries");
     press(&mut ui, &[Enter, F3, F3, F3]);
     assert!(matches!(ui.state(), State::List { len: 0, .. }));
@@ -190,13 +190,13 @@ fn a_library_whose_checksum_is_wrong_says_so_before_it_is_opened_and_does_not_ru
     assert!(support::text_at(&frame, 1, 1, "logic", true));
     assert!(support::text_at(&frame, 95 - width, 1, "damaged", true));
     check(&ui, "libraries-damaged");
-    ui.press(F2);
+    ui.press_settled(F2);
     assert!(matches!(ui.state(), State::Notice { ref title } if title == "Verify"));
     let frame = ui.frame();
     assert!(support::key_label_is(&frame, 0, "Back"));
     assert!(support::text_at(&frame, 1, 0, "Verify", true));
     check(&ui, "checking-damaged");
-    ui.press(Clear);
+    ui.press_settled(Clear);
     assert_eq!(ui.depth(), 1);
     assert_eq!(ui.step_check(), CheckStep::Idle);
     press(&mut ui, &[Enter, F3, F3, F3]);
@@ -230,7 +230,7 @@ fn nothing_of_a_damaged_library_is_trusted_but_its_installed_table_is_kept() {
 #[test]
 fn on_does_nothing_off_the_checking_screen() {
     let mut ui = unchecked_ui(logic_bytes());
-    ui.press(On);
+    ui.press_settled(On);
     assert_eq!(ui.depth(), 1);
     press(&mut ui, &[Enter, On]);
     assert_eq!(ui.depth(), 2);
