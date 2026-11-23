@@ -5,7 +5,7 @@ use crate::damage::{libraries, named};
 use crate::rig::*;
 
 /// A job on `bytes` that has taken its CRC run and `steps` steps.
-fn stepped(bytes: &[u8], steps: u16) -> Job {
+pub fn stepped(bytes: &[u8], steps: u16) -> Job {
     let mut job = Job::new(bytes);
     let mut out = job.begin(count_of(bytes));
     if out.a == NEED_CRC {
@@ -19,7 +19,7 @@ fn stepped(bytes: &[u8], steps: u16) -> Job {
 }
 
 /// The first assertion of the library with a reference list.
-fn first_with_refs(bytes: &[u8]) -> u16 {
+pub fn first_with_refs(bytes: &[u8]) -> u16 {
     references(bytes)
         .iter()
         .position(|r| !r.is_empty())
@@ -211,5 +211,61 @@ fn begin_leaves_the_counters_the_first_failure_and_the_chunk_count_zero_on_every
         if on {
             job.release_on();
         }
+    }
+}
+
+#[test]
+fn a_refused_begin_on_a_ready_job_leaves_it_idle_and_end_writes_nothing() {
+    let small = named("demo0.mm").1;
+    let count = count_of(&small);
+    let long = long_name_axioms(40, 60);
+    let cases: [Case; 4] = [
+        (
+            "paused in kernel_init",
+            &long,
+            count_of(&long),
+            PAUSED,
+            true,
+            LIB_PAGE,
+        ),
+        (
+            "refused by kernel_init",
+            &small,
+            count,
+            REFUSED,
+            false,
+            0x90,
+        ),
+        (
+            "end above the count",
+            &small,
+            count + 1,
+            RANGE,
+            false,
+            LIB_PAGE,
+        ),
+        ("reader failing", &small, count, READER, false, LIB_PAGE),
+    ];
+    for (what, bytes, n, status, on, page) in cases {
+        let mut job = stepped(bytes, 0);
+        assert_eq!(job.byte("ck_state"), job.label_byte("CK_S_READY"), "{what}");
+        let before = job.raw();
+        if status == READER {
+            job.poke("lr_length", &[0, 0, 0]);
+        }
+        job.arg(page, n, 0);
+        let out = if on {
+            job.call_with_on("t_begin", 0).0
+        } else {
+            job.call("t_begin")
+        };
+        assert_eq!(out.a, status, "{what}");
+        if on {
+            job.release_on();
+        }
+        assert_eq!(job.byte("ck_state"), 0, "{what}: the state");
+        assert_eq!(job.step().a, BAD_STATE, "{what}");
+        assert_eq!(job.end().a, 0, "{what}");
+        assert_eq!(job.raw(), before, "{what}: ending writes nothing");
     }
 }
