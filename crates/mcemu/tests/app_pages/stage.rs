@@ -7,14 +7,15 @@
 //! scr_draw and the blit.
 
 use crate::app::*;
+use crate::builds::*;
 use crate::realos::BASE;
 use crate::shellrig::*;
 use mcemu::Stop;
 use std::path::Path;
 use std::process::Command;
 
-const BAD: u16 = 0xA5EC;
-const COUNTS: u16 = 0xA5E0;
+const BAD: u16 = 0xA64E;
+const COUNTS: u16 = 0xA640;
 const HOOKS: u16 = 0xA500;
 
 /// `push af`, then for each register named, `ld a,r`, `cp 80h`, `jr nc,+5`, `ld a,FFh`, `ld (BAD),a`.
@@ -47,11 +48,13 @@ fn hook(kind: u8, count: u16, far: u16) -> Vec<u8> {
     code
 }
 
-const ENTRIES: [(&str, u8); 4] = [
+const ENTRIES: [(&str, u8); 6] = [
     ("far_ui_text", 0),
     ("far_ui_text_centered", 0),
     ("far_ui_title", 1),
     ("far_ui_soft_keys", 2),
+    ("far_ui_list_row", 1),
+    ("far_ui_truncate", 1),
 ];
 
 fn watched(built: &'static Built) -> Shell {
@@ -64,7 +67,7 @@ fn watched(built: &'static Built) -> Shell {
             hook_stub(m, built, stub, at);
         }
     });
-    Shell { app }
+    Shell { app, patience: 1 }
 }
 
 fn key(shell: &mut Shell, scan: u8) {
@@ -74,9 +77,9 @@ fn key(shell: &mut Shell, scan: u8) {
     assert_eq!(shell.app.m.run_app(480_000).stop, Stop::Limit);
 }
 
-fn counts(shell: &mut Shell) -> [u16; 4] {
-    let b = shell.app.m.read_ram(COUNTS, 8);
-    [0, 2, 4, 6].map(|i| u16::from_le_bytes([b[i], b[i + 1]]))
+fn counts(shell: &mut Shell) -> [u16; 6] {
+    let b = shell.app.m.read_ram(COUNTS, 12);
+    [0, 2, 4, 6, 8, 10].map(|i| u16::from_le_bytes([b[i], b[i + 1]]))
 }
 
 fn clean(shell: &mut Shell, what: &str) {
@@ -89,22 +92,23 @@ fn clean(shell: &mut Shell, what: &str) {
 
 #[test]
 fn every_string_the_shell_hands_the_canvas_is_in_ram() {
-    for built in [plain(), with_library()] {
+    for built in [plain(), with_library(), three_stages()] {
         let mut shell = watched(built);
-        clean(&mut shell, "start");
-        let [text, centered, title, keys] = counts(&mut shell);
-        assert!(
-            text > 0 && title > 0,
-            "the start screen drew text and a title"
+        clean(&mut shell, "Libraries");
+        let [text, centered, title, keys, row, cut] = counts(&mut shell);
+        assert!(title > 0 && keys > 0 && row > 0, "Libraries drew its rows");
+        assert_eq!((text, centered), (0, 0));
+        assert_eq!(
+            cut > 0,
+            built.library.is_some(),
+            "a stage row cuts its name"
         );
-        assert_eq!((centered, keys), (0, 0));
         key(&mut shell, F3);
         clean(&mut shell, "About");
         assert!(counts(&mut shell)[1] >= 4, "About drew its centred lines");
         key(&mut shell, CLEAR);
         key(&mut shell, F1);
-        clean(&mut shell, "the Theorems notice");
-        assert!(counts(&mut shell)[3] > 0, "the notice drew its soft keys");
+        clean(&mut shell, "the list's notice");
         key(&mut shell, F1);
         key(&mut shell, F2);
         clean(&mut shell, "the Verify notice");
@@ -116,6 +120,19 @@ fn every_string_the_shell_hands_the_canvas_is_in_ram() {
         key(&mut shell, F4);
         clean(&mut shell, "the error notice");
     }
+}
+
+#[test]
+fn the_stage_about_hands_the_canvas_only_strings_in_ram() {
+    let mut shell = watched(three_stages());
+    key(&mut shell, F3);
+    clean(&mut shell, "the stage About");
+    let [_, centered, title, _, _, cut] = counts(&mut shell);
+    assert_eq!(
+        (centered, title, cut),
+        (4, 2, 4),
+        "four centred lines and a title bar, and three row names and the title cut"
+    );
 }
 
 fn region(shell: &mut Shell) -> (u16, usize) {
@@ -136,7 +153,7 @@ fn a_screen_draws_from_a_copy_of_its_own_block_and_nothing_else() {
     let mut shell = Shell::boot(plain(), Enter::Real);
     for (open, block, size) in [
         (F3, "about_block", "ABOUT_BLOCK_SIZE"),
-        (CLEAR, "start_block", "START_BLOCK_SIZE"),
+        (CLEAR, "libs_block", "LIBS_BLOCK_SIZE"),
         (F1, "notice_block", "NOTICE_BLOCK_SIZE"),
     ] {
         let (stage, area) = region(&mut shell);
@@ -261,9 +278,9 @@ fn a_block_the_area_already_holds_is_not_copied_again() {
 #[test]
 fn after_a_power_down_the_refresh_copies_the_block_again_even_when_the_tag_looks_valid() {
     for (open, block, model) in [
-        (Some(F3), "about_block", model::about(0)),
-        (Some(F1), "notice_block", model::unavailable("Theorems")),
-        (None, "start_block", model::start(None)),
+        (Some(F3), "about_block", model::about(plain())),
+        (Some(F1), "notice_block", model::unavailable("My proofs")),
+        (None, "libs_block", model::libraries(plain())),
     ] {
         let mut shell = Shell::boot(plain(), Enter::Real);
         if let Some(open) = open {

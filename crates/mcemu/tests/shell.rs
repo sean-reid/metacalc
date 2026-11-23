@@ -148,7 +148,7 @@ fn the_os_is_in_the_state_it_was_in_before_the_shell_ran() {
     let control = assemble_routine("wait_app.z80");
     for hold_on in [0, 200] {
         let msg = format!("ON held {hold_on} ms");
-        let start = start_pixels(None, 0);
+        let start = libraries_pixels(None);
         let (before, after, _) = visit_from_a_graph(&app, hold_on, Some(&start));
         assert!(!graph_draw(&before), "{msg}: a valid graph to start from");
         assert_eq!(after.state, before.state, "{msg}");
@@ -186,14 +186,14 @@ fn an_on_press_is_taken_by_the_app_and_none_is_left_when_it_leaves() {
     os.tap(KEY_GRAPH, 150, 2500);
     os.tap(KEY_CLEAR, 150, 800);
     assert_eq!(os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW, 0, "a valid graph");
-    os.launch_in_key_wait(&start_pixels(None, 0));
+    os.launch_in_key_wait(&libraries_pixels(None));
     os.m.press_key(Machine::KEY_ON);
     os.run_ms(200);
     os.m.release_key(Machine::KEY_ON);
     os.run_ms(300);
     assert_eq!(os.on_flags() & ON_INTERRUPT, 0, "app_key took the press");
     assert!(
-        os.screen() == start_pixels(None, 0),
+        os.screen() == libraries_pixels(None),
         "the app is still running and showing its screen"
     );
     assert_eq!(os.ram(GRAPH_FLAGS, 1)[0] & GRAPH_DRAW, 0, "not left yet");
@@ -222,7 +222,7 @@ fn the_graph_screen_after_the_app_is_the_graph_it_showed_before() {
     os.tap(KEY_GRAPH, 150, 2500);
     let graph = os.screen();
     os.tap(KEY_CLEAR, 150, 800);
-    visit(&mut os, 0, Some(&start_pixels(None, 0)));
+    visit(&mut os, 0, Some(&libraries_pixels(None)));
     os.tap(KEY_GRAPH, 150, 2500);
     assert!(
         os.screen() == graph,

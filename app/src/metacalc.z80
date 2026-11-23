@@ -4,21 +4,27 @@
 ;
 ; Start. far_init, the canvas font (fm_open needs it), then with LIBRARY: app_find_library,
 ; kernel_reset, lib_open on the library's chunk 0 and fm_open; the first status that is not 0 is kept
-; in appStatus. Then scr_init opens the start screen.
+; in appStatus. Then scr_init opens the Libraries screen, and an enter that fails there, which a
+; refused library does, pushes the error notice over it.
 ; Loop. The shell runs the screen stack of scr/scr.z80: scr_draw, ui_blit, the sentinel, app_key, the
 ; sentinel check, scr_key, and then what scr_key returns. SCR_RES_IDLE waits for the next key with
 ; no draw and no blit, SCR_RES_REDRAW draws and blits, SCR_RES_LEAVE leaves, and SCR_RES_FAILED,
 ; with B the status of an enter that failed, pushes the error notice with scr_push_frame.
 ; 2nd+QUIT leaves from any depth before the stack sees it.
-; Kinds, in screens.inc, screen_notice.inc and screen_about.inc, on this page:
-;   1 start   with LIBRARY row 0 the title, row 1 the label of the library's first assertion, rows
-;             2 to 6 its conclusion from fm_assertion and fm_draw, row 7 the hint; start_enter
-;             builds the assertion, start_draw draws, and a refused call leaves everything under
-;             the title out and shows its status as two hex digits on row 7 in place of the hint;
-;             without, row 0 the title and row 3 the hint. F3 opens About, F1 and ENTER and F2 a
-;             notice, CLEAR leaves.
-;   2 notice  a title and a line; F1, CLEAR and ENTER go back
-;   3 about   the version, two lines and the count of libraries; CLEAR and ENTER go back
+; Kinds, in screens.inc and the files it names, on this page:
+;   1 libraries   one row for each stage of the library and then My proofs, with each stage's
+;                 progress read from the status table (screen_libraries.inc, screen_counts.inc);
+;                 F3 opens About, or the stage's About when there is more than one stage, F1 and
+;                 ENTER and F2 a notice, CLEAR leaves
+;   2 notice      a title and a line; F1, CLEAR and ENTER go back
+;   3 about       the version, two lines and the count of libraries; CLEAR and ENTER go back
+;   4 stage       a stage's name, title and counts (screen_stage.inc); CLEAR and ENTER go back
+; Stages. With LIBRARY the build's stage table (stages.inc, from app/Makefile) says what the rows
+; are; STAGE_COUNT is 0 without one. The table is on this page, so the screens that draw it copy
+; the strings they need to APP_TEXT. The status table store (store.inc) is linked in on this page,
+; since it makes OS calls, and only Libraries and the stage About read it: libs_counts asks
+; store_has and never opens a table, so the screens never create one. The store destroys OP1 to
+; OP5 and needs IY, the OS flags pointer.
 ; Sentinel. The OS writes the screen's pixels over saveSScreen when auto power down fires in
 ; _GetKey, which destroys what the top screen built in saveSScreen. After every blit the shell stores
 ; in APP_SENTINEL, a byte of saveSScreen's tail, the complement of the frame's byte at the same
@@ -29,7 +35,7 @@
 ; Failure. SCR_RES_FAILED pushes the error notice, and one that comes while the error notice is on
 ; top, from popping it or from refreshing it, leaves by app_exit, so a screen whose enter
 ; keeps failing cannot hold the user. When the push of the error notice fails the shell leaves too.
-; Exit. CLEAR on the start screen, SCR_RES_LEAVE, and 2nd+QUIT leave through app_exit; 2nd+OFF is
+; Exit. CLEAR on the Libraries screen, SCR_RES_LEAVE, and 2nd+QUIT leave through app_exit; 2nd+OFF is
 ; the OS's. Every way out runs app_putaway, which fills SCR_STACK with spaces and SCR_VARS with
 ; zeros, the state the home screen draws as blank, zeroes cmdShadCur, the copy the home screen
 ; restores the cursor from, while editCursor equals editTop, that is while no entry text is pending
@@ -42,11 +48,11 @@
 ; screen 1:Quit returns to the home screen through the OS and 2:Goto through cxErrorEP, which
 ; leaves by app_exit. An auto power down calls none of them.
 ; RAM: the canvas's, fm's and the kernel's blocks in ram_map.inc, libPage (the flash page of
-; library chunk 0) and appStatus after it, and APP_BUF, which holds the reader's scratch and the
-; strings in glyph codes, APP_FRAME in its upper half, and APP_STAGE after it, which holds the
-; copy of the constant strings (strings.inc) of the screen last drawn, since the canvas cannot read
-; the entry page. The tag at its start is cleared at start and before the refresh that follows an
-; auto power down.
+; library chunk 0) and appStatus after it, and APP_BUF, which holds what the top screen's enter
+; and draw build: the counts, the strings in glyph codes and the error notice's frame, laid out in
+; ram_map.inc, and APP_STAGE after it, which holds the copy of the constant strings (strings.inc)
+; of the screen last drawn, since the canvas cannot read the entry page. The tag at its start is
+; cleared at start and before the refresh that follows an auto power down.
 
 #include "equates.inc"
 
@@ -66,15 +72,6 @@ far_table_end .equ $
 
 #define SCR_EMBEDDED
 #include "scr/scr.z80"
-
-HINT_ROW = 3
-HINT_COL = 1
-LABEL_ROW = 1
-FORMULA_ROW = 2
-FORMULA_END = 7
-LIBRARY_HINT_ROW = 7
-FORMULA_X = 3
-FORMULA_WIDTH = 92
 
 app_start:
 	ld hl, app_vectors
@@ -103,6 +100,10 @@ app_open:
 	ld hl, screen_kinds
 	ld de, screen_first
 	call scr_init
+	or a
+	jr z, app_draw
+	ld b, a
+	jr app_failed
 app_draw:
 	call scr_draw
 	call far_ui_blit
@@ -229,9 +230,22 @@ app_ret:
 
 #include "text.inc"
 #include "strings.inc"
+#ifdef LIBRARY
+#include "stages.inc"
+#else
+STAGE_COUNT .equ 0
+#endif
 #include "screens.inc"
+#ifdef LIBRARY
+#include "screen_counts.inc"
+#endif
+#include "screen_libraries.inc"
 #include "screen_notice.inc"
 #include "screen_about.inc"
+#include "screen_stage.inc"
+#ifdef LIBRARY
+#include "store.inc"
+#endif
 
 #define KEYS_SET_FONT far_ui_set_font
 #include "keys.inc"

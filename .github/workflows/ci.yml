@@ -159,7 +159,8 @@ jobs:
       - run: |
           for lib in "$RUNNER_TEMP"/libraries/*.mclib; do
             name=$(basename "$lib" .mclib)
-            make -s -C app BUILD="$RUNNER_TEMP/apps/$name" LIBRARY="$lib"
+            awk -v n="$name" '{ print } $1 == n { exit }' "$RUNNER_TEMP/libraries/stages.list" > "$RUNNER_TEMP/stages-$name.list"
+            make -s -C app BUILD="$RUNNER_TEMP/apps/$name" LIBRARY="$lib" STAGES="$RUNNER_TEMP/stages-$name.list"
             sh app/scripts/check-8xk.sh -p 3 -l "$lib" "$RUNNER_TEMP/apps/$name/metacalc.8xk"
             make -s -C probe BUILD="$RUNNER_TEMP/probe/$name" LIBRARY="$lib" kernchk
             sh app/scripts/check-8xk.sh -l "$lib" "$RUNNER_TEMP/probe/$name/kernchk.8xk" kernchk

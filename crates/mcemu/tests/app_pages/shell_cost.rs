@@ -5,23 +5,27 @@
 //! key at once.
 
 use crate::app::*;
+use crate::builds::*;
 use crate::realos::BASE;
 use crate::shellrig::*;
 use mcemu::Stop;
 
 const TAP: u32 = 120_000;
+/// The app's frame budget: no frame, warm or cold, takes more T-states than this on any screen or
+/// build. The ceilings below it are each screen's own, a little above what it takes.
+pub const FRAME_BUDGET: u32 = 300_000;
 const HOOK: u16 = 0xA640;
 const COUNT: u16 = 0xA660;
 /// The OS's code for the left arrow, which every screen ignores, and scr_key's own for KEY_LEFT.
 const LEFT_CODE: u8 = 0x02;
 
-fn driver_cost(app: &mut App) -> u32 {
+pub fn driver_cost(app: &mut App) -> u32 {
     app.m.load_ram(SCRATCH - 16, &[0xC9]);
     app.call(BASE, SCRATCH - 16, In::default()).tstates
 }
 
 /// The T-states of scr_draw and then ui_blit for the screen on top, the driver's own taken off.
-fn frame(app: &mut App) -> (u32, u32) {
+pub fn frame(app: &mut App) -> (u32, u32) {
     let driver = driver_cost(app);
     let draw = app.label("scr_draw");
     let draw = app.call(BASE, draw, In::default()).tstates - driver;
@@ -38,26 +42,36 @@ fn tap(app: &mut App, scan: u8) {
 
 /// The most T-states scr_draw and ui_blit may take together for each screen, a little above what
 /// they take on the fixture library.
-const START_PLAIN: u32 = 100_000;
-const START_LIBRARY: u32 = 113_000;
+const LIBRARIES_PLAIN: u32 = 126_000;
+const LIBRARIES_ONE: u32 = 133_400;
+const LIBRARIES_THREE: u32 = 138_000;
+const LIBRARIES_SIX: u32 = 140_500;
+const LIBRARIES_SIX_TABLE: u32 = 158_200;
+const LIBRARIES_THREE_TABLE: u32 = 146_800;
+const STAGE_ABOUT: u32 = 136_000;
 const ABOUT: u32 = 141_000;
-const NOTICE: u32 = 113_000;
+const NOTICE: u32 = 113_500;
 /// The same for the cold frame, the first one after a screen opens or after a power down, which
 /// copies the screen's strings into APP_STAGE first. That is the frame a user sees first.
-const START_PLAIN_COLD: u32 = 100_000;
-const START_LIBRARY_COLD: u32 = 113_200;
+const LIBRARIES_PLAIN_COLD: u32 = 127_400;
+const LIBRARIES_ONE_COLD: u32 = 134_800;
+const LIBRARIES_THREE_COLD: u32 = 139_300;
+const LIBRARIES_SIX_COLD: u32 = 141_800;
+const LIBRARIES_SIX_TABLE_COLD: u32 = 159_600;
+const LIBRARIES_THREE_TABLE_COLD: u32 = 148_200;
+const STAGE_ABOUT_COLD: u32 = 136_000;
 const ABOUT_COLD: u32 = 141_900;
-const NOTICE_COLD: u32 = 114_100;
+const NOTICE_COLD: u32 = 115_300;
 /// The most the loop may take around app_key for a key no screen answers, scr_key included.
 const IGNORED_KEY: u32 = 1_250;
 /// The most app_stage_block may take for a block the area already holds.
 const WARM_STAGE: u32 = 120;
 /// The most bytes each code page may use: entry, draw and data.
-const PAGES_PLAIN: [u32; 3] = [1_925, 15_000, 9_250];
-const PAGES_LIBRARY: [u32; 3] = [2_190, 15_000, 9_250];
+const PAGES_PLAIN: [u32; 3] = [2_200, 15_000, 9_250];
+const PAGES_LIBRARY: [u32; 3] = [4_100, 15_000, 9_250];
 
 /// Clears the staging tag, so that the next draw copies its screen's strings.
-fn go_cold(app: &mut App) {
+pub fn go_cold(app: &mut App) {
     let tag = app.label("APP_STAGE_TAG");
     app.m.load_ram(tag, &[0, 0]);
 }
@@ -69,33 +83,94 @@ fn go_cold(app: &mut App) {
 fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
     for (name, built, open, ceiling, cold_ceiling) in [
         (
-            "start, no library",
+            "Libraries, no library",
             plain(),
-            None,
-            START_PLAIN,
-            START_PLAIN_COLD,
+            &[][..],
+            LIBRARIES_PLAIN,
+            LIBRARIES_PLAIN_COLD,
         ),
         (
-            "start, fixture library",
+            "Libraries, one stage",
             with_library(),
-            None,
-            START_LIBRARY,
-            START_LIBRARY_COLD,
+            &[],
+            LIBRARIES_ONE,
+            LIBRARIES_ONE_COLD,
         ),
-        ("About, no library", plain(), Some(F3), ABOUT, ABOUT_COLD),
+        (
+            "Libraries, three stages",
+            three_stages(),
+            &[],
+            LIBRARIES_THREE,
+            LIBRARIES_THREE_COLD,
+        ),
+        (
+            "Libraries, six stages, six rows",
+            six_stages(),
+            &[],
+            LIBRARIES_SIX,
+            LIBRARIES_SIX_COLD,
+        ),
+        (
+            "Libraries, three stages, checked of total",
+            three_stages(),
+            &[],
+            LIBRARIES_THREE_TABLE,
+            LIBRARIES_THREE_TABLE_COLD,
+        ),
+        (
+            "Libraries, six stages, six rows of checked of total",
+            six_stages(),
+            &[],
+            LIBRARIES_SIX_TABLE,
+            LIBRARIES_SIX_TABLE_COLD,
+        ),
+        (
+            "Stage About",
+            three_stages(),
+            &[F3],
+            STAGE_ABOUT,
+            STAGE_ABOUT_COLD,
+        ),
+        ("About, no library", plain(), &[F3], ABOUT, ABOUT_COLD),
         (
             "About, fixture library",
             with_library(),
-            Some(F3),
+            &[F3],
             ABOUT,
             ABOUT_COLD,
         ),
-        ("Notice", plain(), Some(F1), NOTICE, NOTICE_COLD),
-        ("Notice, Verify", plain(), Some(F2), NOTICE, NOTICE_COLD),
+        ("Notice", plain(), &[F1], NOTICE, NOTICE_COLD),
+        (
+            "Notice, Pick a library",
+            plain(),
+            &[F2],
+            NOTICE,
+            NOTICE_COLD,
+        ),
+        (
+            "Notice, a stage's list",
+            three_stages(),
+            &[F1],
+            NOTICE,
+            NOTICE_COLD,
+        ),
+        ("Notice, Verify", three_stages(), &[F2], NOTICE, NOTICE_COLD),
     ] {
-        let mut app = App::boot(built);
-        if let Some(open) = open {
+        let tabled = name.ends_with("of total");
+        let data = if tabled {
+            alternating(built)
+        } else {
+            Vec::new()
+        };
+        let mut app = App::boot_with(built, |m| {
+            if tabled {
+                crate::table::install(m, &data);
+            }
+        });
+        for &open in open {
             tap(&mut app, open);
+        }
+        if !open.is_empty() {
             let depth = app.label("scr_count");
             assert_eq!(app.m.read_ram(depth, 1), [2], "{name}: the screen opened");
         }
@@ -109,6 +184,7 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
             "{name}: {} over {ceiling}",
             draw + blit
         );
+        assert!(draw + blit < FRAME_BUDGET, "{name}: over the frame budget");
         go_cold(&mut app);
         let (cold_draw, cold_blit) = frame(&mut app);
         println!(
@@ -121,6 +197,10 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
             "{name}: cold {} over {cold_ceiling}",
             cold_draw + cold_blit
         );
+        assert!(
+            cold_draw + cold_blit < FRAME_BUDGET,
+            "{name}: cold, over the frame budget"
+        );
     }
 }
 
@@ -130,8 +210,8 @@ fn staging_a_block_the_area_holds_costs_little() {
     let mut app = App::boot(plain());
     let at = app.label("app_stage_block");
     let input = In {
-        hl: app.label("start_block"),
-        bc: app.label("START_BLOCK_SIZE"),
+        hl: app.label("libs_block"),
+        bc: app.label("LIBS_BLOCK_SIZE"),
         ..In::default()
     };
     let driver = driver_cost(&mut app);
@@ -179,6 +259,7 @@ fn a_frame_of_the_error_notice_fits_its_ceiling() {
         draw + blit
     );
     assert!(draw + blit <= NOTICE, "{} over {NOTICE}", draw + blit);
+    assert!(draw + blit < FRAME_BUDGET, "over the frame budget");
     go_cold(&mut app);
     let (draw, blit) = frame(&mut app);
     println!(
@@ -190,6 +271,7 @@ fn a_frame_of_the_error_notice_fits_its_ceiling() {
         "cold {} over {NOTICE_COLD}",
         draw + blit
     );
+    assert!(draw + blit < FRAME_BUDGET, "cold, over the frame budget");
 }
 
 #[test]
@@ -237,4 +319,119 @@ fn the_code_pages_stay_within_their_ceilings() {
             );
         }
     }
+}
+
+/// The most T-states the Libraries screen's enter may take, one store_has and one count pass and the
+/// strings of each row: on the fixture with one stage, three and six, whose table is 20 bytes, and on
+/// ring's three stages.
+const ENTER_ONE: u32 = 21_900;
+const ENTER_THREE: u32 = 35_500;
+const ENTER_SIX: u32 = 57_700;
+const ENTER_RING: u32 = 231_000;
+/// The most T-states a cursor move may take: libs_key, which the frame the move redraws follows.
+const CURSOR_KEY: u32 = 150;
+
+/// A table of `built`'s library whose assertions alternate checked and unchecked, which gives
+/// every stage the longest text, checked of total.
+pub fn alternating(built: &Built) -> Vec<u8> {
+    let library = built.library.as_ref().unwrap();
+    let n = usize::from(crate::table::header_of(library).1);
+    crate::table::of(library, &(0..n).map(|i| (i % 2) as u8).collect::<Vec<u8>>())
+}
+
+/// The T-states of `libs_enter` on the top frame, the driver's own taken off.
+fn enter_cost(built: &'static Built) -> u32 {
+    let data = alternating(built);
+    let mut app = App::boot_with(built, |m| crate::table::install(m, &data));
+    let driver = driver_cost(&mut app);
+    let (enter, frame) = (app.label("libs_enter"), app.label("SCR_STACK"));
+    let done = app.call(
+        BASE,
+        enter,
+        In {
+            hl: frame,
+            ..In::default()
+        },
+    );
+    assert_eq!(done.status(), 0, "the enter succeeds");
+    done.tstates - driver
+}
+
+#[test]
+fn the_libraries_enter_on_the_fixture_fits_its_ceiling() {
+    for (name, built, ceiling) in [
+        ("one stage", with_library(), ENTER_ONE),
+        ("three stages", three_stages(), ENTER_THREE),
+        ("six stages", six_stages(), ENTER_SIX),
+    ] {
+        let cost = enter_cost(built);
+        println!("Libraries enter, {name}: {cost} T-states");
+        assert!(cost <= ceiling, "{name}: {cost} over {ceiling}");
+    }
+}
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn the_libraries_enter_on_ring_fits_its_ceiling() {
+    let cost = enter_cost(shipped_staged());
+    println!("Libraries enter, ring in three stages, a table: {cost} T-states");
+    assert!(cost <= ENTER_RING, "{cost} over {ENTER_RING}");
+}
+
+#[test]
+fn a_cursor_move_costs_little() {
+    let built = six_stages();
+    let mut app = App::boot(built);
+    let driver = driver_cost(&mut app);
+    let (key, frame) = (app.label("libs_key"), app.label("SCR_STACK"));
+    let down = app
+        .call(
+            BASE,
+            key,
+            In {
+                a: 2,
+                hl: frame,
+                ..In::default()
+            },
+        )
+        .tstates
+        - driver;
+    println!("libs_key, DOWN: {down} T-states");
+    assert!(down <= CURSOR_KEY, "{down} over {CURSOR_KEY}");
+}
+
+/// The most T-states scr_draw and ui_blit may take for ring's three stages with a table that leaves
+/// each under way, warm and cold.
+const LIBRARIES_RING: u32 = 162_800;
+const LIBRARIES_RING_COLD: u32 = 164_200;
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn a_frame_of_ring_in_three_stages_fits_its_warm_and_its_cold_ceiling() {
+    let built = shipped_staged();
+    let data = alternating(built);
+    let mut app = App::boot_with(built, |m| crate::table::install(m, &data));
+    let (draw, blit) = frame(&mut app);
+    go_cold(&mut app);
+    let (cold_draw, cold_blit) = frame(&mut app);
+    println!(
+        "Libraries, ring in three stages under way: {} T-states, cold {}",
+        draw + blit,
+        cold_draw + cold_blit
+    );
+    assert!(
+        draw + blit <= LIBRARIES_RING,
+        "{} over {LIBRARIES_RING}",
+        draw + blit
+    );
+    assert!(
+        cold_draw + cold_blit <= LIBRARIES_RING_COLD,
+        "cold {} over {LIBRARIES_RING_COLD}",
+        cold_draw + cold_blit
+    );
+    assert!(
+        cold_draw + cold_blit < FRAME_BUDGET,
+        "ring, cold, over the frame budget"
+    );
+    assert!(draw + blit < FRAME_BUDGET, "ring, over the frame budget");
 }

@@ -80,6 +80,9 @@ fn every_way_out_leaves_a_blank_home_screen_and_the_os_as_it_was() {
             .flat_map(|&(w, e, p)| [(w, e, p, 1), (w, e, p, 2)])
             .filter(|&(way, _, _, depth)| depth == 1 || way != "CLEAR")
         {
+            if kind == "refused library" && depth == 1 {
+                continue;
+            }
             let name = format!("{kind}, {way}, depth {depth}");
             let (mut os, before, text) = launched(&app.file, Some(&app.start));
             if depth == 2 {
@@ -260,17 +263,6 @@ fn the_app_leaves_banks_b_and_c_as_a_plain_waiting_app_does_but_for_what_it_decl
     }
 }
 
-/// Runs the reference OS until the auto power down fires, then wakes it with ON.
-fn power_down_and_wake(os: &mut RealOs) {
-    let mut seconds = 0;
-    while os.m.in_port(3) & POWER_DOWN == 0 {
-        assert!(seconds < 600, "no auto power down in 600 s");
-        os.run_ms(5_000);
-        seconds += 5;
-    }
-    os.tap(Machine::KEY_ON, 150, 3000);
-}
-
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn an_auto_power_down_is_not_a_way_out_and_the_state_survives_the_wake() {
@@ -280,13 +272,13 @@ fn an_auto_power_down_is_not_a_way_out_and_the_state_survives_the_wake() {
     let held = live(&mut os, 1);
     let theirs = context(&mut os);
     assert_ne!(theirs[0], before[0], "the app's context is installed");
-    power_down_and_wake(&mut os);
+    os.power_down_and_wake();
     assert_eq!(context(&mut os), theirs, "the app's context after the wake");
     for when in ["wake", "key"] {
         if when == "key" {
             os.m.load_ram(UI_FRAME, &[0xAA; 768]);
             os.tap(SCAN_DOWN, 150, 400);
-            assert!(os.screen() == app.start, "the start screen is up");
+            assert!(os.screen() == app.start, "the Libraries screen is up");
             assert_ne!(
                 read(&mut os, UI_FRAME, 768),
                 [0xAA; 768],
@@ -337,7 +329,7 @@ fn power_down_with(app: &Build, open: &[u8], depth: u8, shown: &mcglyph::Bitmap)
     assert!(os.screen() == pixels(shown), "the screen is open");
     dirty(&mut os, usize::from(depth));
     let held = live(&mut os, usize::from(depth));
-    power_down_and_wake(&mut os);
+    os.power_down_and_wake();
     let sentinel = label_in(&app.labels, "APP_SENTINEL");
     let frame_byte = label_in(&app.labels, "APP_SENTINEL_FRAME");
     assert_ne!(
@@ -346,7 +338,7 @@ fn power_down_with(app: &Build, open: &[u8], depth: u8, shown: &mcglyph::Bitmap)
         "the power down wrote the pixels over the sentinel"
     );
     os.m.load_ram(UI_FRAME, &[0xAA; 768]);
-    os.tap(SCAN_DOWN, 150, 400);
+    os.tap(SCAN_F4, 150, 400);
     assert_eq!(
         read(&mut os, UI_FRAME, 768),
         packed(shown),
@@ -383,14 +375,47 @@ fn an_auto_power_down_with_about_open_leaves_it_open_and_the_next_key_draws_it_w
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn an_auto_power_down_with_a_notice_open_leaves_it_open_and_the_next_key_draws_it_whole() {
-    power_down_with(shell(), &[SCAN_F1], 2, &mcui::unavailable_frame("Theorems"));
+    power_down_with(
+        shell(),
+        &[SCAN_F1],
+        2,
+        &mcui::unavailable_frame("My proofs"),
+    );
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn an_auto_power_down_on_the_start_screen_of_a_library_build_draws_it_whole_on_the_next_key() {
-    let start = start_model(Some(&fixture::library()), 0);
-    power_down_with(with_library(), &[], 1, &start);
+fn an_auto_power_down_on_the_libraries_screen_of_a_library_build_draws_it_whole_on_the_next_key() {
+    let library = fixture::library();
+    let shown = Shown::new("exit-app-lib", &library);
+    power_down_with(with_library(), &[], 1, &libraries_model(Some(&shown)));
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn an_auto_power_down_on_the_libraries_screen_of_a_staged_build_draws_it_whole_on_the_next_key() {
+    power_down_with(staged(), &[], 1, &staged_model(&[]));
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn an_auto_power_down_with_a_stage_about_open_leaves_it_open_and_the_next_key_draws_it_whole() {
+    power_down_with(staged(), &[SCAN_F3], 2, &staged_model(&[mcui::Key::F3]));
+}
+
+/// The model's frame for the staged build after `keys`.
+fn staged_model(keys: &[mcui::Key]) -> mcglyph::Bitmap {
+    let library = fixture::library();
+    let stages = staged_stages(&library);
+    let shown = Shown {
+        stages,
+        ..Shown::new("exit-app-staged", &library)
+    };
+    let mut ui = libraries_ui(Some(&shown));
+    for &key in keys {
+        ui.press(key);
+    }
+    ui.frame()
 }
 
 fn waiting_on_the_stub() -> Machine {

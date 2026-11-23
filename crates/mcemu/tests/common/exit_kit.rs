@@ -41,6 +41,7 @@ pub const APP_STACK_TOP: u16 = 0xFFE5;
 pub const SCAN_DOWN: u8 = 0x01;
 pub const SCAN_F3: u8 = 0x33;
 pub const SCAN_F1: u8 = 0x35;
+pub const SCAN_F4: u8 = 0x32;
 pub const POWER_DOWN: u8 = 0x10;
 pub const KEY_GRAPH: u8 = 0x31;
 pub const GRAPH_DRAW: u8 = 0x01;
@@ -55,17 +56,45 @@ pub struct Build {
 }
 
 pub fn build(name: &str, library: Option<&[u8]>, status: u8) -> Build {
+    build_staged(name, library, status, &[])
+}
+
+/// `build` with the stages `stages` as the build's stage list, kept beside the library under a name
+/// of its own and handed to the build as STAGES.
+pub fn build_staged(
+    name: &str,
+    library: Option<&[u8]>,
+    status: u8,
+    stages: &[mcui::Stage],
+) -> Build {
     let mut args = vec![];
     if let Some(bytes) = library {
         let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.mclib"));
         std::fs::write(&path, bytes).unwrap();
         args.push(format!("LIBRARY={}", path.display()));
+        if !stages.is_empty() {
+            let list = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.list"));
+            let text: String = stages
+                .iter()
+                .map(|s| format!("{} {} {}\n", s.name, s.end, s.title))
+                .collect();
+            std::fs::write(&list, text).unwrap();
+            args.push(format!("STAGES={}", list.display()));
+        }
     }
     let dir = make_app("app", name, &args);
     Build {
         file: std::fs::read(dir.join("metacalc.8xk")).unwrap(),
         labels: dir.join("metacalc.lab"),
-        start: start_pixels(library, status),
+        start: if status == 0 {
+            let shown = library.map(|bytes| Shown {
+                stages: stages.to_vec(),
+                ..Shown::new(name, bytes)
+            });
+            libraries_pixels(shown.as_ref())
+        } else {
+            error_pixels(status)
+        },
     }
 }
 
@@ -77,6 +106,32 @@ pub fn shell() -> &'static Build {
 pub fn with_library() -> &'static Build {
     static BUILD: OnceLock<Build> = OnceLock::new();
     BUILD.get_or_init(|| build("exit-app-lib", Some(&fixture::library()), 0))
+}
+
+/// The three stages the staged build is cut into.
+pub fn staged_stages(library: &[u8]) -> Vec<mcui::Stage> {
+    let count = usize::from(u16::from_le_bytes([library[14], library[15]]));
+    (1..=3)
+        .map(|n| mcui::Stage {
+            name: format!("s{n}"),
+            title: format!("Stage {n}"),
+            end: n * count / 3,
+        })
+        .collect()
+}
+
+/// The fixture library as three stages.
+pub fn staged() -> &'static Build {
+    static BUILD: OnceLock<Build> = OnceLock::new();
+    BUILD.get_or_init(|| {
+        let library = fixture::library();
+        build_staged(
+            "exit-app-staged",
+            Some(&library),
+            0,
+            &staged_stages(&library),
+        )
+    })
 }
 
 pub fn refused() -> &'static Build {
