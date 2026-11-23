@@ -26,7 +26,7 @@ const SCAN_MATH: u8 = 0x2F;
 const SCAN_PLUS: u8 = 0x0A;
 const SCAN_DEL: u8 = 0x38;
 const SCAN_LEFT: u8 = 0x02;
-/// What the text shadow holds in the cursor's cell while it is lit, so a blink does not show.
+/// What the text shadow holds in the cursor's cell while it is lit.
 const CURSOR_GLYPH: u8 = 0xE0;
 /// The OS's free-memory pointers, tempMem to newDataPtr, and the home edit buffer's four.
 const MEMORY: (u16, usize) = (0x9820, 20);
@@ -65,11 +65,29 @@ fn home(os: &mut RealOs) -> Home {
         cursor: cursor(os),
         cmd_cursor: read(os, CMD_CURSOR, 2),
         shad_cur: read(os, CMD_CUR, 2),
-        shadow: read(os, TEXT_SHADOW, 128)
-            .into_iter()
-            .map(|b| if b == CURSOR_GLYPH { b' ' } else { b })
-            .collect(),
+        shadow: shadow_without_cursor(os),
     }
+}
+
+/// The text shadow with the glyph at the cursor's cell, if lit, as a space, so a blink does not
+/// show; the same glyph anywhere else stays.
+fn shadow_without_cursor(os: &mut RealOs) -> Vec<u8> {
+    let at = cursor(os);
+    without_cursor(at, read(os, TEXT_SHADOW, 128))
+}
+
+fn without_cursor((row, col): (u8, u8), mut shadow: Vec<u8>) -> Vec<u8> {
+    let at = usize::from(row) * 16 + usize::from(col);
+    if shadow.get(at) == Some(&CURSOR_GLYPH) {
+        shadow[at] = b' ';
+    }
+    shadow
+}
+
+/// Whether the edit buffer holds an entry, before the cursor or after it: editTop, editCursor,
+/// editTail and editBtm are the first eight bytes.
+fn pending(edit: &[u8]) -> bool {
+    edit[..2] != edit[2..4] || edit[4..6] != edit[6..8]
 }
 
 /// The home screen's pointers to its buffer and to free memory, which a leak or a stale size word
@@ -81,9 +99,9 @@ fn pointers(os: &mut RealOs) -> (Vec<u8>, Vec<u8>) {
     )
 }
 
-/// The text on the screen without the cursor, which blinks and which an error screen removes.
+/// The text on the screen, from a shadow without the cursor's glyph.
 fn seen(shadow: &[u8]) -> String {
-    shadow_text(shadow).trim_end_matches('.').to_string()
+    shadow_text(shadow)
 }
 
 /// The app started after `keys`, with About open on top of the Libraries screen when `depth` is 2.
@@ -132,13 +150,29 @@ fn check_open_entries(starts: &[(&str, Vec<u8>)], builds: &[(&str, &Build)], dep
                 let (mut got, mut want) = (home(&mut os), home(&mut control));
                 let history = start.starts_with("lower row");
                 if HANDS_CLEAR[i] {
-                    assert_eq!(got.edit[..2], got.edit[2..4], "{name}: the entry is gone");
+                    assert!(!pending(&got.edit), "{name}: the entry is gone");
                     assert_eq!(seen(&got.shadow), "", "{name}: the screen is blank");
                     let row = if history { 6 } else { 0 };
                     assert_eq!(
                         got.cursor,
                         (row, 0),
                         "{name}: the cursor is on the entry's row"
+                    );
+                }
+                if !HANDS_CLEAR[i] {
+                    assert_ne!(
+                        seen(&want.shadow),
+                        "",
+                        "{name}: a plain app shows the entry"
+                    );
+                    assert_eq!(
+                        seen(&got.shadow),
+                        "",
+                        "{name}: the OS's own exit leaves the screen blank"
+                    );
+                    assert!(
+                        pending(&got.edit),
+                        "{name}: and the entry still pending, the known limit"
                     );
                 }
                 if !HANDS_CLEAR[i] || history {
@@ -286,9 +320,9 @@ fn known_limit_2nd_off_and_1_quit_keep_an_unentered_entry_the_screen_cannot_show
                 );
                 assert_eq!(
                     got.cmd_cursor, want.cmd_cursor,
-                    "{name}: the entry's length"
+                    "{name}: the cursor's offset in the entry"
                 );
-                assert_ne!(got.cmd_cursor, [0, 0], "{name}: and it is still pending");
+                assert!(pending(&got.edit), "{name}: the entry is still pending");
                 let (got, want) = (
                     after_enter_with(&mut os, &[0x24]),
                     after_enter_with(&mut control, &[0x24]),
@@ -437,7 +471,8 @@ fn after_enter_with(os: &mut RealOs, keys: &[u8]) -> ((u8, u8), Vec<u8>, Vec<usi
     for &key in keys {
         os.tap(key, 150, 600);
     }
-    after_enter(os)
+    let (at, shadow, rows) = after_enter(os);
+    (at, without_cursor(at, shadow), rows)
 }
 
 fn waiting_on_the_stub() -> Machine {
@@ -566,7 +601,7 @@ fn known_limit_a_pending_entry_on_a_lower_row_leaves_the_cursor_on_that_row_afte
             "{way}: as after a plain app and CLEAR"
         );
         assert_eq!(
-            seen(&read(&mut os, TEXT_SHADOW, 128)),
+            seen(&shadow_without_cursor(&mut os)),
             "",
             "{way}: the screen is blank"
         );

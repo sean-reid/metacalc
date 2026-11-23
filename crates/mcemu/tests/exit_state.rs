@@ -159,7 +159,6 @@ const OS_OWN: &[(u16, u16, &str)] = &[
     (0x9D76, 0x9D8B, "the error menu's text and its length, as 85E2h"),
     (0x8476, 0x8477, "indicCounter, the run indicator's counter: it counts time"),
     (0x8A2F, 0x8A30, "clockFlags: displayClock is set once a second, so it depends on the moment of the read"),
-    (0x8508, 0x8588, "textShadow: the app leaves the blank screen the header promises where a plain app leaves the earlier lines and an unentered entry"),
     (0x838D, 0x8390, "OS bookkeeping of the launched app: the same in identical runs, not timing"),
     (0x83E8, 0x83E9, "OS bookkeeping of the launched app, as 838Dh"),
     (0x8445, 0x8446, "kbdKey: MODE after 2nd for the app's 2nd+QUIT, CLEAR for the plain app"),
@@ -169,9 +168,23 @@ const OS_OWN: &[(u16, u16, &str)] = &[
     (0x859B, 0x85AA, "cxPrev, the OS's copy of the context it left"),
     (0x85E8, 0x85F0, "the launched app's name in the OS's name buffer"),
     (0x89F3, 0x89F4, "graphFlags: the app sets graphDraw on purpose"),
-    (0x9867, 0x9868, "the OS's copy of the launch budget byte, which only an exit through _JForceCmdNoChar writes"),
+    (0x9867, 0x9868, "the OS's copy of the launch budget byte: FFh in the app before and after every exit, 80h after a plain app's way out through _JForceCmdNoChar"),
     (0x9868, 0x9869, "an OS byte at 2nd+OFF, 66h for the app and 68h for the plain app; unattributed, no region declares it"),
     (0x8A0F, 0x8A10, "a flag the OS sets for 2nd+MODE, as 8445h"),
+];
+
+/// The text shadow cells that differ from a plain app's after each start, which are the cells its
+/// entry and its earlier lines occupy: the plain app keeps the text on the screen and the app's
+/// exit blanks it. The empty line has none.
+const SHADOW_CELLS: [&[(u16, u16)]; 3] = [
+    &[],
+    &[(0x8508, 0x8509)],
+    &[
+        (0x8508, 0x8509),
+        (0x8527, 0x8529),
+        (0x8547, 0x8549),
+        (0x8567, 0x8569),
+    ],
 ];
 
 /// Every region the app declares in ram_map.inc, in either bank, from the build's label file, and
@@ -217,8 +230,9 @@ fn the_app_leaves_banks_b_and_c_as_a_plain_waiting_app_does_but_for_what_it_decl
         ("an unentered 5", &[SCAN_5]),
         ("a lower row and an unentered 5", &LOWER_ROW_AND_5),
     ];
-    for ((start, keys), (way, exit, plain_exit)) in starts
+    for (((start, keys), cells), (way, exit, plain_exit)) in starts
         .into_iter()
+        .zip(SHADOW_CELLS)
         .flat_map(|s| EXITS.iter().map(move |e| (s, e)))
     {
         let way = &format!("{start}, {way}");
@@ -240,16 +254,20 @@ fn the_app_leaves_banks_b_and_c_as_a_plain_waiting_app_does_but_for_what_it_decl
         );
         masks.push(stack);
         let mut strays = vec![];
-        for i in 0..ours.len() {
-            let addr = 0x8000 + i as u16;
-            if ours[i] == theirs[i] || masks.iter().any(|&(b, e)| (b..e).contains(&addr)) {
+        for n in 0..ours.len() {
+            let addr = 0x8000 + n as u16;
+            let exempt = masks
+                .iter()
+                .chain(cells)
+                .any(|&(b, e)| (b..e).contains(&addr));
+            if ours[n] == theirs[n] || exempt {
                 continue;
             }
             match OS_OWN.iter().find(|&&(b, e, _)| (b..e).contains(&addr)) {
                 Some(&(b, _, why)) => {
                     allowed_seen.insert((b, why));
                 }
-                None => strays.push(format!("{addr:04X}={:02X}/{:02X}", ours[i], theirs[i])),
+                None => strays.push(format!("{addr:04X}={:02X}/{:02X}", ours[n], theirs[n])),
             }
         }
         masks.pop();
