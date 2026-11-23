@@ -199,7 +199,9 @@ impl Screen {
         }
     }
 
-    /// Rebuilds what a screen derives from its position, when the screen above it closed.
+    /// Rebuilds what a screen derives from its position, when the screen above it closed. A list
+    /// needs none: Checking, the only screen that changes marks, opens from Libraries, never over
+    /// a list.
     pub(crate) fn uncovered(&mut self, ctx: &Ctx) {
         if let Screen::Theorem(theorem) = self {
             theorem.refit(ctx);

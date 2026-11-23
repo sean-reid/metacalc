@@ -6,7 +6,8 @@ use mcglyph::Bitmap;
 use mcui::Key::{self, *};
 use mcui::canvas::{Canvas, TEXT_WIDTH};
 use mcui::data::{Installed, Lib};
-use mcui::fold::fitted;
+use mcui::expr::Expr;
+use mcui::fold::{self, Folds, Layout, Piece, fitted};
 use mcui::{CheckStep, Stage, State, Status, Statuses, Ui};
 use std::collections::{HashSet, VecDeque};
 use support::{
@@ -50,24 +51,71 @@ fn same_preview(a: &Bitmap, b: &Bitmap) -> bool {
     preview_rows().all(|y| (0..96).all(|x| a.get(x, y) == b.get(x, y)))
 }
 
-/// The preview row of `label` as the model computed it before the row waited for idle: the
-/// conclusion fitted to one row, drawn on an empty canvas.
-fn direct_preview(label: &str) -> Bitmap {
-    let bytes = logic_bytes();
-    let at = index_of(&bytes, label);
-    let table = statuses(&bytes, &[], &[]);
+/// The conclusion of `label` in `bytes` fitted to one row, and that layout drawn on an empty
+/// canvas.
+fn direct_in(bytes: &[u8], label: &str) -> (Layout, Expr, Bitmap) {
+    let at = index_of(bytes, label);
     let lib = Lib::new(
         Installed {
             name: "logic".into(),
-            bytes,
+            bytes: bytes.to_vec(),
         },
-        table,
+        statuses(bytes, &[], &[]),
     )
     .expect("the library loads");
-    let layout = fitted(&lib.statement(at).conclusion, TEXT_WIDTH, 1);
+    let conclusion = lib.statement(at).conclusion.clone();
+    let layout = fitted(&conclusion, TEXT_WIDTH, 1);
     let mut canvas = Canvas::default();
     canvas.layout(&layout, 1, 6, 6..7);
-    canvas.into_bitmap()
+    (layout, conclusion, canvas.into_bitmap())
+}
+
+fn direct_preview(label: &str) -> Bitmap {
+    direct_in(&logic_bytes(), label).2
+}
+
+const EDGE: &str = "( wwww -> ( wwww -> ph ) )";
+const FOLDED: &str = "( ph -> ( ph -> ( ph -> ( ph -> ph ) ) ) )";
+
+fn wide_bytes() -> Vec<u8> {
+    let src = format!(
+        "{}$v wwww $.\nfwww $f wff wwww $.\nfit-edge $a |- {EDGE} $.\nfit-fold $a |- {FOLDED} $.\n",
+        sectioned()
+    );
+    pack_all(&db(&src)).expect("the wide library packs")
+}
+
+fn unfolded_width(expr: &Expr) -> usize {
+    let layout = fold::layout(expr, &Folds::none(expr), 100_000);
+    assert_eq!(layout.rows(), 1);
+    let last = layout.lines[0].tokens.last().expect("a token");
+    last.x + last.width
+}
+
+#[test]
+fn the_settled_preview_pins_the_fit_width_at_the_edge_and_past_it() {
+    let bytes = wide_bytes();
+    for (label, edge) in [("fit-edge", true), ("fit-fold", false)] {
+        let (layout, conclusion, want) = direct_in(&bytes, label);
+        let width = unfolded_width(&conclusion);
+        if edge {
+            assert!(
+                width > TEXT_WIDTH - 8 && width <= TEXT_WIDTH,
+                "{label}: {width} px"
+            );
+            assert!(!layout.pieces.contains(&Piece::Ellipsis));
+        } else {
+            assert!(width > TEXT_WIDTH, "{label}: {width} px");
+            assert!(layout.pieces.contains(&Piece::Ellipsis));
+        }
+        let mut ui = ui_over(bytes.clone(), &[], &[]);
+        ui.press_settled(Enter);
+        label.chars().for_each(|c| ui.press(Letter(c)));
+        assert_eq!(self::label(&ui), label);
+        assert!(preview_blank(&ui.frame()));
+        assert!(ui.idle());
+        assert!(same_preview(&ui.frame(), &want), "{label}");
+    }
 }
 
 /// A list opened on the logic library and settled, the cursor on `keys`' last stop.

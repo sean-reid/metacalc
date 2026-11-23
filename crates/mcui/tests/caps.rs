@@ -324,9 +324,11 @@ fn a_statement_past_a_cap_settles_at_idle_with_the_row_still_blank() {
     let pending = |ui: &Ui| matches!(ui.state(), State::List { pending: true, .. });
     assert!(pending(&ui));
     let frame = ui.frame();
+    assert!((48..56).all(|y| (0..96).all(|x| !frame.get(x, y))));
     assert!(!ui.idle());
     assert!(!pending(&ui));
     assert_eq!(ui.frame(), frame);
+    assert!((48..56).all(|y| (0..96).all(|x| !ui.frame().get(x, y))));
     assert!(!ui.idle());
 }
 
