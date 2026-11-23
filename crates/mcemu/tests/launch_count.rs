@@ -67,7 +67,6 @@ fn an_app_on_the_default_budget_is_deleted_after_sixteen_launches() {
     for n in 1..=16 {
         assert!(launch_and_quit(&mut os), "launch {n} ran");
         let left = budget(&mut os);
-        println!("launch {n}: budget {left:02X?}");
         if n < 16 {
             assert_eq!(
                 u16::from_le_bytes([left[0], left[1]]),
@@ -76,8 +75,12 @@ fn an_app_on_the_default_budget_is_deleted_after_sixteen_launches() {
             );
         }
     }
+    assert_eq!(
+        os.m.read_flash(BASE, 0, 1),
+        [0x80],
+        "the app is installed after its 16th launch"
+    );
     assert!(!launch_and_quit(&mut os), "the 17th APPS press defragments");
-    println!("17th APPS press: {:?}", first_row(&mut os));
     os.run_ms(30_000);
     assert_eq!(os.m.read_flash(BASE, 0, 1), [0xFF], "the OS erased the app");
 }

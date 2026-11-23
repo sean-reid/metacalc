@@ -34,7 +34,7 @@ impl Machine {
 
     /// Writes page k of the app file to flash page `base - k`, and remembers how many pages that
     /// is for `launch`, per base page. On a real OS image it also marks the app unlimited, as the
-    /// OS's own install does.
+    /// OS's own install does; a base above 69h has no slot in the OS's table and is not marked.
     pub fn install_app(&mut self, file: &[u8], base: u8) -> Result<(), AppError> {
         self.check_base(base)?;
         let pages = decode_app(file)?;
