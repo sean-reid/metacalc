@@ -150,7 +150,7 @@ fn check_open_entries(starts: &[(&str, Vec<u8>)], builds: &[(&str, &Build)], dep
                 let (mut got, mut want) = (home(&mut os), home(&mut control));
                 let history = start.starts_with("lower row");
                 if HANDS_CLEAR[i] {
-                    assert_eq!(got.edit[..2], got.edit[2..4], "{name}: the entry is gone");
+                    assert!(!pending(&got.edit), "{name}: the entry is gone");
                     assert_eq!(seen(&got.shadow), "", "{name}: the screen is blank");
                     let row = if history { 6 } else { 0 };
                     assert_eq!(

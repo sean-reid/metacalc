@@ -174,8 +174,8 @@ const OS_OWN: &[(u16, u16, &str)] = &[
 ];
 
 /// The text shadow cells that differ from a plain app's after each start, which are the cells its
-/// entry, its earlier lines and the cursor occupy: the plain app keeps the text on the screen and
-/// the app's exit blanks it. The empty line has none.
+/// entry and its earlier lines occupy: the plain app keeps the text on the screen and the app's
+/// exit blanks it. The empty line has none.
 const SHADOW_CELLS: [&[(u16, u16)]; 3] = [
     &[],
     &[(0x8508, 0x8509)],
