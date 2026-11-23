@@ -2114,7 +2114,11 @@ fn assemble_key_apps(out: &Path) {
         font_dir.to_str().unwrap(),
         "-L",
     ];
-    for (src, name) in [("get_key_log", "get_key_log"), ("keys_app", "keys_app")] {
+    for (src, name) in [
+        ("get_key_log", "get_key_log"),
+        ("keys_app", "keys_app"),
+        ("keys_wait_app", "keys_wait_app"),
+    ] {
         spasm(
             &Path::new("tests/routines").join(format!("{src}.z80")),
             &out.join(format!("{name}.8xk")),

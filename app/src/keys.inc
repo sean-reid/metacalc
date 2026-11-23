@@ -1,6 +1,6 @@
 ; The app's one key wait: app_key waits for a key with the OS's _GetKey, sets the canvas font
 ; again, and returns the model's key (crates/mcui/src/key.rs). Every call into the OS that waits
-; for a key is here.
+; for a key is here; app_key_waiting, below it, does not wait.
 ;
 ; Needs equates.inc before it. It loads the address ui_font and calls KEYS_SET_FONT, which is
 ; ui_set_font unless the including file defines another routine first: the one that reaches
@@ -95,6 +95,41 @@ ak_on:
 	jr z,ak_on
 	res onInterrupt,(iy+onFlags)
 	jr ak_wait
+
+; The OS holds a key's scan code in kbdScanCode from its press until _GetKey takes it or until about
+; 40 ms after the release, and a key held between auto repeats has none.
+;
+; app_key_waiting   out: NZ when kbdScanCode holds a code, onInterrupt is set, ON is down or a key is
+;                        down; Z when none is. A pending 2nd or ALPHA is a code: app_key takes it and
+;                        waits for the key after it
+;                   reads kbdScanCode, the onInterrupt flag through IY, port 1 with every key group
+;                   selected, and port 4; takes nothing, so the next app_key sees the OS's key bytes
+;                   as they were
+;                   destroys A, B, C and the flags; turns interrupts off while it reads port 1 and
+;                   returns with them on. 193 T-states, 51 when the scan code or the flag answers
+
+app_key_waiting:
+	ld a,(kbdScanCode)
+	or a
+	ret nz
+	bit onInterrupt,(iy+onFlags)
+	ret nz
+	di
+	xor a
+	out (1),a
+	in a,(1)
+	ld c,a
+	ld a,0FFh
+	out (1),a
+	in a,(4)
+	ei
+	cpl
+	and 8
+	ld b,a
+	ld a,c
+	cpl
+	or b
+	ret
 
 ; In: A = the OS's code, HL = D pairs of code and value. Out: Z with HL at the value for a hit.
 ak_find:
