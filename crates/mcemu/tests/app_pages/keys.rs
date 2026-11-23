@@ -276,3 +276,141 @@ fn the_frames_the_keys_push_hold_the_notice_or_the_stage() {
         }
     }
 }
+
+/// The keys that close a notice: the model's own Notice pops on these three and ignores the rest.
+fn pops_a_notice(key: Option<Key>) -> bool {
+    matches!(key, Some(Key::F1 | Key::Clear | Key::Enter))
+}
+
+/// The notice that stands in for the model's theorem list or checking screen, opened by `open` on
+/// `row`: the model has no Notice there, so the oracle is the notice's rule, that the keys that
+/// close the model's Notice pop and the rest change nothing, over the model's frame for the
+/// Libraries screen under it and its own frame for the stand-in.
+#[test]
+fn every_key_the_app_can_produce_does_on_the_notices_of_a_stage_what_the_models_notice_does() {
+    for built in [three_stages(), six_stages()] {
+        for row in 0..built.stages.len() {
+            for open in [F1, ENTER, F2] {
+                for probe in &PROBES {
+                    let (mut shell, ui) = on_row(built, row);
+                    let title = if open == F2 {
+                        "Verify"
+                    } else {
+                        built.stage_name(row)
+                    };
+                    let at = format!(
+                        "{} stages, the notice of row {row} from {open:02X}, {}",
+                        built.stages.len(),
+                        probe.name
+                    );
+                    shell.tap(open);
+                    assert_eq!((shell.depth(), shell.top_kind()), (2, KIND_NOTICE), "{at}");
+                    shell.shows(&at, &model::unavailable(title));
+                    let blits = shell.blits();
+                    for &modifier in &probe.scans[..probe.scans.len() - 1] {
+                        shell.tap_modifier(modifier);
+                    }
+                    shell.tap(*probe.scans.last().unwrap());
+                    if pops_a_notice(probe.model) {
+                        assert_eq!(shell.depth(), 1, "{at}: popped");
+                        shell.shows(&at, &model::frame(&ui));
+                        assert_eq!(shell.blits(), blits + 1, "{at}: one frame");
+                    } else {
+                        assert_eq!(shell.depth(), 2, "{at}: stays");
+                        shell.shows(&at, &model::unavailable(title));
+                        assert_eq!(shell.blits(), blits, "{at}: no frame");
+                    }
+                }
+            }
+        }
+    }
+}
+
+const WALK: [u8; 34] = [
+    F3, CLEAR, ENTER, F1, F2, CLEAR, DOWN, F3, ENTER, F1, CLEAR, DOWN, F2, F1, UP, F3, CLEAR, DOWN,
+    DOWN, F3, CLEAR, F1, ENTER, F2, CLEAR, DOWN, F3, CLEAR, UP, UP, UP, UP, F3, CLEAR,
+];
+
+/// One session, one key after another, the screen and the model compared after each: a fixed walk
+/// through every kind of screen, then a pseudo-random stream of keys, never CLEAR on the Libraries
+/// screen, which leaves. A stage's list and checking screens are notices in the app; while one is
+/// open the oracle is the notice's rule (see above) and the model rests on the Libraries screen
+/// under it, which is rebuilt by replaying the keys it took.
+#[test]
+fn a_long_walk_through_every_kind_of_screen_in_one_session_is_the_models_at_every_step() {
+    let stream = [
+        UP, DOWN, F1, F2, F3, ENTER, CLEAR, F4, F5, LEFT, RIGHT, DOWN, F3, F1,
+    ];
+    for built in [three_stages(), six_stages()] {
+        let library = built.library.as_ref().unwrap();
+        let n = usize::from(crate::table::header_of(library).1);
+        let status: Vec<mcui::Status> = (0..n)
+            .map(|i| match i % 3 {
+                0 => mcui::Status::Checked,
+                _ => mcui::Status::Unchecked,
+            })
+            .collect();
+        let data = crate::table::of(library, &crate::table::values(built, &status));
+        let mut shell = booted(built, Some(&data));
+        let mut ui = model::ui(built, &status);
+        let mut log: Vec<Key> = Vec::new();
+        let mut stand_in: Option<String> = None;
+        let mut kinds = std::collections::BTreeSet::new();
+        let mut seed = 0x9E37_79B9_u32;
+        let mut keys = WALK.to_vec();
+        keys.extend([DOWN; 7]);
+        keys.extend([F3, CLEAR, UP, F2, CLEAR]);
+        for _ in 0..160 {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            keys.push(stream[seed as usize % stream.len()]);
+        }
+        for (step, &key) in keys.iter().enumerate() {
+            let at = format!("{} stages, step {step}", built.stages.len());
+            if let Some(title) = stand_in.clone() {
+                shell.tap(key);
+                if pops_a_notice(Some(key_of(key))) {
+                    stand_in = None;
+                    shell.shows(&at, &model::frame(&ui));
+                    assert_eq!(shell.depth(), 1, "{at}: popped");
+                } else {
+                    shell.shows(&at, &model::unavailable(&title));
+                    assert_eq!(shell.depth(), 2, "{at}: stays");
+                }
+            } else {
+                if key == CLEAR && shell.depth() == 1 {
+                    continue;
+                }
+                if press(&mut shell, &mut ui, built, key, &at) {
+                    stand_in = state_title(built, &ui);
+                    ui = model::ui(built, &status);
+                    for &k in &log {
+                        ui.press(k);
+                    }
+                } else {
+                    log.push(key_of(key));
+                }
+            }
+            kinds.insert(shell.top_kind());
+        }
+        let all: std::collections::BTreeSet<u8> =
+            [KIND_LIBRARIES, KIND_NOTICE, KIND_ABOUT, KIND_STAGE].into();
+        assert_eq!(
+            kinds,
+            all,
+            "{} stages: every kind was shown",
+            built.stages.len()
+        );
+    }
+}
+
+/// The title of the notice that stands in for the model's screen: the stage's name for its list,
+/// Verify for the checking screen.
+fn state_title(built: &Built, ui: &mcui::Ui) -> Option<String> {
+    match ui.state() {
+        mcui::State::List { stage, .. } => Some(built.stage_name(stage).to_string()),
+        mcui::State::Checking { .. } => Some("Verify".to_string()),
+        _ => None,
+    }
+}
