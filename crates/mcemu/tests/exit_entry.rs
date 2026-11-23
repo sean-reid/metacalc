@@ -84,6 +84,12 @@ fn without_cursor((row, col): (u8, u8), mut shadow: Vec<u8>) -> Vec<u8> {
     shadow
 }
 
+/// Whether the edit buffer holds an entry, before the cursor or after it: editTop, editCursor,
+/// editTail and editBtm are the first eight bytes.
+fn pending(edit: &[u8]) -> bool {
+    edit[..2] != edit[2..4] || edit[4..6] != edit[6..8]
+}
+
 /// The home screen's pointers to its buffer and to free memory, which a leak or a stale size word
 /// would move.
 fn pointers(os: &mut RealOs) -> (Vec<u8>, Vec<u8>) {
@@ -298,9 +304,9 @@ fn known_limit_2nd_off_and_1_quit_keep_an_unentered_entry_the_screen_cannot_show
                 );
                 assert_eq!(
                     got.cmd_cursor, want.cmd_cursor,
-                    "{name}: the entry's length"
+                    "{name}: the cursor's offset in the entry"
                 );
-                assert_ne!(got.cmd_cursor, [0, 0], "{name}: and it is still pending");
+                assert!(pending(&got.edit), "{name}: the entry is still pending");
                 let (got, want) = (
                     after_enter_with(&mut os, &[0x24]),
                     after_enter_with(&mut control, &[0x24]),
