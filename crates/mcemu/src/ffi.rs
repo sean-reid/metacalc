@@ -30,6 +30,10 @@ unsafe extern "C" {
     fn mcemu_key(calc: *mut Raw, scancode: i32, down: i32);
     fn mcemu_run(calc: *mut Raw, pc: u16, limit: i32, elapsed: *mut u32) -> u32;
     fn mcemu_pc(calc: *const Raw) -> u16;
+    fn mcemu_watch(calc: *mut Raw, start: u16, len: u32);
+    fn mcemu_unwatch(calc: *mut Raw);
+    fn mcemu_watch_len(calc: *mut Raw) -> usize;
+    fn mcemu_watch_take(calc: *mut Raw, out: *mut Write, cap: usize, lost: *mut usize) -> usize;
     fn mcemu_lcd(calc: *mut Raw, out: *mut u8, width: i32, height: i32) -> i32;
     fn mcemu_lcd_ram(calc: *mut Raw, out: *mut u8, width: i32, height: i32) -> i32;
 }
@@ -54,6 +58,25 @@ pub struct Regs {
     pub iff1: u8,
     pub iff2: u8,
     pub im: u8,
+}
+
+/// One write the CPU made into a watched range.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Write {
+    /// The CPU clock in T-states when the write ran, before the writing instruction's own cost
+    /// is added.
+    pub clock: u32,
+    /// The flat memory offset of `pc` under the bank mapping at the time of the write, flash
+    /// first and then RAM.
+    pub pc_physical: u32,
+    pub addr: u16,
+    /// The logical address of the writing instruction's first byte; an interrupt's pushes carry
+    /// the instruction that completed before it.
+    pub pc: u16,
+    /// The byte read back at `addr` after the write, so a write to flash or ROM records the byte
+    /// that stays.
+    pub value: u8,
 }
 
 pub struct Calc(NonNull<Raw>);
@@ -183,6 +206,28 @@ impl Calc {
     pub fn pc(&self) -> u16 {
         // SAFETY: the handle is live.
         unsafe { mcemu_pc(self.0.as_ptr()) }
+    }
+
+    pub fn watch(&mut self, start: u16, len: u32) {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_watch(self.0.as_ptr(), start, len) }
+    }
+
+    pub fn unwatch(&mut self) {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_unwatch(self.0.as_ptr()) }
+    }
+
+    /// Returns the writes recorded since the last call and the count the record had no room for.
+    pub fn take_writes(&mut self) -> (Vec<Write>, usize) {
+        // SAFETY: the handle is live.
+        let len = unsafe { mcemu_watch_len(self.0.as_ptr()) };
+        let mut out = vec![Write::default(); len];
+        let mut lost = 0;
+        // SAFETY: `out` has room for `len` records and `lost` outlives the call.
+        let n = unsafe { mcemu_watch_take(self.0.as_ptr(), out.as_mut_ptr(), len, &mut lost) };
+        out.truncate(n);
+        (out, lost)
     }
 
     pub fn lcd(&mut self, out: &mut [u8], width: usize, height: usize) -> bool {
