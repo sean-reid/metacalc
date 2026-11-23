@@ -26,7 +26,7 @@ const SCAN_MATH: u8 = 0x2F;
 const SCAN_PLUS: u8 = 0x0A;
 const SCAN_DEL: u8 = 0x38;
 const SCAN_LEFT: u8 = 0x02;
-/// What the text shadow holds in the cursor's cell while it is lit, so a blink does not show.
+/// What the text shadow holds in the cursor's cell while it is lit.
 const CURSOR_GLYPH: u8 = 0xE0;
 /// The OS's free-memory pointers, tempMem to newDataPtr, and the home edit buffer's four.
 const MEMORY: (u16, usize) = (0x9820, 20);
@@ -65,11 +65,23 @@ fn home(os: &mut RealOs) -> Home {
         cursor: cursor(os),
         cmd_cursor: read(os, CMD_CURSOR, 2),
         shad_cur: read(os, CMD_CUR, 2),
-        shadow: read(os, TEXT_SHADOW, 128)
-            .into_iter()
-            .map(|b| if b == CURSOR_GLYPH { b' ' } else { b })
-            .collect(),
+        shadow: shadow_without_cursor(os),
     }
+}
+
+/// The text shadow with the glyph at the cursor's cell, if lit, as a space, so a blink does not
+/// show; the same glyph anywhere else stays.
+fn shadow_without_cursor(os: &mut RealOs) -> Vec<u8> {
+    let at = cursor(os);
+    without_cursor(at, read(os, TEXT_SHADOW, 128))
+}
+
+fn without_cursor((row, col): (u8, u8), mut shadow: Vec<u8>) -> Vec<u8> {
+    let at = usize::from(row) * 16 + usize::from(col);
+    if shadow.get(at) == Some(&CURSOR_GLYPH) {
+        shadow[at] = b' ';
+    }
+    shadow
 }
 
 /// The home screen's pointers to its buffer and to free memory, which a leak or a stale size word
@@ -81,9 +93,9 @@ fn pointers(os: &mut RealOs) -> (Vec<u8>, Vec<u8>) {
     )
 }
 
-/// The text on the screen without the cursor, which blinks and which an error screen removes.
+/// The text on the screen, from a shadow without the cursor's glyph.
 fn seen(shadow: &[u8]) -> String {
-    shadow_text(shadow).trim_end_matches('.').to_string()
+    shadow_text(shadow)
 }
 
 /// The app started after `keys`, with About open on top of the Libraries screen when `depth` is 2.
@@ -437,7 +449,8 @@ fn after_enter_with(os: &mut RealOs, keys: &[u8]) -> ((u8, u8), Vec<u8>, Vec<usi
     for &key in keys {
         os.tap(key, 150, 600);
     }
-    after_enter(os)
+    let (at, shadow, rows) = after_enter(os);
+    (at, without_cursor(at, shadow), rows)
 }
 
 fn waiting_on_the_stub() -> Machine {
@@ -566,7 +579,7 @@ fn known_limit_a_pending_entry_on_a_lower_row_leaves_the_cursor_on_that_row_afte
             "{way}: as after a plain app and CLEAR"
         );
         assert_eq!(
-            seen(&read(&mut os, TEXT_SHADOW, 128)),
+            seen(&shadow_without_cursor(&mut os)),
             "",
             "{way}: the screen is blank"
         );
