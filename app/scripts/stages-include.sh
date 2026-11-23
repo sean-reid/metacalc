@@ -33,10 +33,13 @@ codes() {
 	printf '%s' "$1" | od -An -tx1 -v | awk '{ for (i = 1; i <= NF; i++) printf "%sUI_FONT_CH_%s", (n++ ? ", " : ""), toupper($i) }'
 }
 
-header=$(od -An -tu1 -j14 -N2 "$lib" | tr -s ' ')
-set -- $header
-[ "$#" -eq 2 ] || { echo "stages-include: $lib is too short for a library header" >&2; exit 1; }
-count=$(($1 + 256 * $2))
+count=0
+if [ -n "$list" ]; then
+	header=$(od -An -tu1 -j14 -N2 "$lib" | tr -s ' ')
+	set -- $header
+	[ "$#" -eq 2 ] || { echo "stages-include: $lib is too short for a library header" >&2; exit 1; }
+	count=$(($1 + 256 * $2))
+fi
 
 tab=$(printf '\t')
 n=0

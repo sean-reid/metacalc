@@ -5,6 +5,10 @@
 
 #[path = "app_pages/app.rs"]
 mod app;
+#[path = "app_pages/builds.rs"]
+mod builds;
+#[path = "app_pages/counts.rs"]
+mod counts;
 #[path = "app_pages/data.rs"]
 mod data;
 #[path = "app_pages/draw.rs"]
@@ -15,8 +19,12 @@ mod fixture;
 #[allow(dead_code)]
 #[path = "common/guard.rs"]
 mod guard;
+#[path = "app_pages/keys.rs"]
+mod keys;
 #[path = "common/refs.rs"]
 mod oracle;
+#[path = "app_pages/power.rs"]
+mod power;
 #[path = "app_pages/real.rs"]
 mod real;
 #[path = "common/realos.rs"]
@@ -37,8 +45,12 @@ mod shellrig;
 mod speed;
 #[path = "app_pages/stage.rs"]
 mod stage;
+#[path = "app_pages/store_rule.rs"]
+mod store_rule;
 #[path = "app_pages/stubs.rs"]
 mod stubs;
+#[path = "app_pages/table.rs"]
+mod table;
 
 #[allow(dead_code)]
 #[path = "fm/rig.rs"]

@@ -106,5 +106,9 @@ if grep -q STAGES_FROM_LIBRARY "$dir/elsewhere/stages.inc"; then
 	echo "test-stages: STAGES was given and the end is the library's" >&2
 	exit 1
 fi
+head -c 10 "$dir/ring.mclib" > "$dir/short.mclib"
+refuses 'is too short for a library header' LIBRARY="$dir/short.mclib" STAGES="$dir/elsewhere.list"
+build short LIBRARY="$dir/short.mclib" STAGES= > /dev/null
+echo "test-stages: a library too short to hold its count"
 echo "test-stages: a list given as STAGES"
 echo "test-stages: ok"

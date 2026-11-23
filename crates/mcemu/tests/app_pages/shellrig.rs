@@ -23,10 +23,15 @@ pub const MODE: u8 = 0x37;
 pub const LETTER: u8 = 0x2F;
 pub const ONE: u8 = 0x22;
 
-pub const KIND_START: u8 = 1;
+pub const KIND_LIBRARIES: u8 = 1;
 pub const KIND_NOTICE: u8 = 2;
 pub const KIND_ABOUT: u8 = 3;
+pub const KIND_STAGE: u8 = 4;
+pub const NOTICE_LIST: u8 = 0;
+pub const NOTICE_VERIFY: u8 = 1;
 pub const NOTICE_ERROR: u8 = 2;
+pub const NOTICE_PROOFS: u8 = 3;
+pub const NOTICE_PICK: u8 = 4;
 
 const TAP: u32 = 120_000;
 const BLITS: u16 = 0xA700;
@@ -35,7 +40,7 @@ const FLAG: u16 = 0xA720;
 const SCR_KEYS: u16 = 0xA730;
 const KEY_HOOK: u16 = 0xA6C0;
 const BLIT_HOOK: u16 = 0xA640;
-const ENTER_HOOK: u16 = 0xA660;
+const ENTER_HOOK: u16 = 0xA760;
 const SAVE_SCREEN: u16 = 0x86EC;
 
 /// `push hl`, `ld hl,(counter)`, `inc hl`, `ld (counter),hl`, `pop hl`, `jp then`.
@@ -112,7 +117,17 @@ fn patch_enter(m: &mut Machine, built: &Built, kind: u8, to: u16) {
 impl Shell {
     /// The app booted to its first key wait with a counter on the blit and on every kind's enter.
     pub fn boot(built: &'static Built, enter: Enter) -> Shell {
+        Shell::boot_with(built, enter, |_| {})
+    }
+
+    /// `boot` with `setup` run on the launched machine first, to put a status table in RAM.
+    pub fn boot_with(
+        built: &'static Built,
+        enter: Enter,
+        setup: impl FnOnce(&mut Machine),
+    ) -> Shell {
         let app = App::boot_with(built, |m| {
+            setup(m);
             m.load_ram(BLITS, &[0; 0x40]);
             // scr_key starts `ld c,SCR_AT_KEY`, `call scr_on_top`: five bytes the hook runs itself.
             let key = built.label("scr_key");
@@ -129,7 +144,8 @@ impl Shell {
             let far = built.label("far_page1");
             m.load_ram(BLIT_HOOK, &counting_hook(BLITS, far));
             hook_stub(m, built, "far_ui_blit", BLIT_HOOK);
-            let reals = ["start_enter", "notice_enter", "about_enter"].map(|n| built.label(n));
+            let reals = ["libs_enter", "notice_enter", "about_enter", "stage_enter"]
+                .map(|n| built.label(n));
             for (i, real) in reals.into_iter().enumerate() {
                 let at = ENTER_HOOK + 0x20 * i as u16;
                 let kind = i as u8 + 1;
@@ -324,13 +340,29 @@ impl Shell {
 
 /// The frames the host model draws, packed as the app's frame is.
 pub mod model {
-    use crate::fixture;
-    use crate::realos::start_model;
+    use crate::app::Built;
+    use crate::realos::libraries_ui;
     use crate::ui_support::pack;
-    use mcui::{Installed, Key, State, Statuses, Ui};
+    use mcui::{Key, State, Status, Ui};
 
-    pub fn start(library: Option<&[u8]>) -> Vec<u8> {
-        pack(&start_model(library, 0))
+    /// The model's interface for `built`, on the Libraries screen, with its status table as
+    /// `status` has it: none for every assertion unchecked.
+    pub fn ui(built: &Built, status: &[Status]) -> Ui {
+        let mut shown = built.shown();
+        if let Some(shown) = shown.as_mut() {
+            shown.status = status.to_vec();
+        }
+        libraries_ui(shown.as_ref())
+    }
+
+    /// The frame of `ui`.
+    pub fn frame(ui: &Ui) -> Vec<u8> {
+        pack(&ui.frame())
+    }
+
+    /// The Libraries screen of `built` with no status table.
+    pub fn libraries(built: &Built) -> Vec<u8> {
+        frame(&ui(built, &[]))
     }
 
     pub fn notice(title: &str, line: &str) -> Vec<u8> {
@@ -348,47 +380,19 @@ pub mod model {
         notice("Error", &format!("Status {status:02X}"))
     }
 
-    /// A model with `libraries` libraries open on its My proofs row, which opens About on F3.
-    pub fn ui(libraries: usize) -> Ui {
-        let installed: Vec<Installed> = (0..libraries)
-            .map(|n| Installed {
-                name: format!("lib{n}"),
-                bytes: fixture::library(),
-            })
-            .collect();
-        let tables = installed
-            .iter()
-            .map(|lib| {
-                mcpack::library::read(&lib.bytes)
-                    .expect("the library reads")
-                    .iter()
-                    .map(|_| mcui::Status::Checked)
-                    .collect()
-            })
-            .collect();
-        let mut ui = Ui::new(
-            installed,
-            Statuses {
-                libraries: tables,
-                my_proofs: 0,
-            },
-        )
-        .expect("the model loads");
-        for _ in 0..libraries {
+    /// The model's program About, which F3 opens on the My proofs row.
+    pub fn about(built: &Built) -> Vec<u8> {
+        let mut ui = ui(built, &[]);
+        let rows = built.stages.len().max(usize::from(built.library.is_some())) + 1;
+        for _ in 0..rows {
             ui.press(Key::Down);
         }
-        ui
-    }
-
-    /// The model's About screen with `libraries` libraries installed.
-    pub fn about(libraries: usize) -> Vec<u8> {
-        let mut ui = ui(libraries);
         ui.press(Key::F3);
         assert_eq!(
             ui.state(),
             State::About,
             "the model opened the program's About"
         );
-        pack(&ui.frame())
+        frame(&ui)
     }
 }

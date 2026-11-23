@@ -12,7 +12,7 @@ use mcui::canvas::{GUTTER, STATEMENT_WIDTH, TEXT_WIDTH};
 
 const NARROW: usize = 20;
 
-/// A machine whose app has opened the library and fm itself on the way to its start screen.
+/// A machine whose app has opened the library and fm itself on the way to its Libraries screen.
 pub fn opened_on(built: &'static Built) -> App {
     App::start(built)
 }

@@ -1,13 +1,16 @@
-//! The start screen, a key, a refused call, and leaving: the app's own path from `launch` through
+//! The Libraries screen, a key, a refused call, and leaving: the app's own path from `launch` through
 //! the kernel, the reader, fm and the canvas, compared with the model's canvas.
 
 use crate::app::*;
 use crate::fixture;
-use crate::realos::{BASE, KEY_CLEAR, start_model, start_pixels};
+use crate::realos::{
+    BASE, KEY_CLEAR, error_model, error_pixels, libraries_model, libraries_pixels,
+};
 use crate::ui_support::{pack, same_frame};
 use mcemu::{LCD_HEIGHT, LCD_WIDTH, Stop};
 
 const DOWN: u8 = 0x01;
+const F4: u8 = 0x32;
 const SECOND: u8 = 0x36;
 const MODE: u8 = 0x37;
 const TAP: u32 = 120_000;
@@ -16,10 +19,6 @@ const TAP: u32 = 120_000;
 const ST_BAD: u8 = 3;
 const FM_ERR_NO_MAP: u8 = 3;
 const FM_ERR_FONT: u8 = 4;
-/// fm_assertion's status for an assertion of more than 32 statements (FM_ERR_LIMIT), and the
-/// reader's for an assertion it has none of (ST_INDEX).
-const FM_ERR_LIMIT: u8 = 10;
-const ST_INDEX: u8 = 5;
 const ON_INTERRUPT_BIT: u8 = 0x10;
 
 fn lcd(app: &mut App) -> Vec<bool> {
@@ -37,33 +36,33 @@ fn tap(app: &mut App, scan: u8) {
     assert_eq!(app.m.run_app(2 * TAP).stop, Stop::Limit);
 }
 
-/// The start screen on the LCD, the frame and the page port for `built`.
-fn start_screen_is_the_models(built: &'static Built) {
+/// The Libraries screen on the LCD, the frame and the page port for `built`.
+fn libraries_screen_is_the_models(built: &'static Built) {
     let mut app = App::start(built);
-    let want = start_pixels(built.library.as_deref(), 0);
+    let want = libraries_pixels(built.shown().as_ref());
     assert!(lcd(&mut app) == want, "the LCD shows the frame");
     assert_eq!(app.m.in_port(0x06), BASE, "the app is on its entry page");
 }
 
 #[test]
-fn the_start_screen_is_the_frame_the_models_canvas_draws() {
-    start_screen_is_the_models(plain());
-    start_screen_is_the_models(with_library());
+fn the_libraries_screen_is_the_frame_the_models_canvas_draws() {
+    libraries_screen_is_the_models(plain());
+    libraries_screen_is_the_models(with_library());
 }
 
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib>"]
-fn the_start_screen_of_the_prop_library_is_the_frame_the_models_canvas_draws() {
-    start_screen_is_the_models(shipped("prop"));
+fn the_libraries_screen_of_the_prop_library_is_the_frame_the_models_canvas_draws() {
+    libraries_screen_is_the_models(shipped("prop"));
 }
 
 fn after_a_key(built: &'static Built) {
-    let want = pack(&start_model(built.library.as_deref(), 0));
+    let want = pack(&libraries_model(built.shown().as_ref()));
     let mut app = App::start(built);
     // What auto power down does to saveSScreen, and a frame that is not the screen's.
     app.m.load_ram(UI_VARS, &[0; 0x1A]);
     app.m.load_ram(UI_FRAME, &[0xAA; FRAME_LEN]);
-    tap(&mut app, DOWN);
+    tap(&mut app, F4);
     // ui_set_font keeps the table's address less one slot of 8 bytes.
     let font = (app.label("ui_font") - 8).to_le_bytes();
     assert_eq!(app.m.read_ram(UI_VARS + 0x14, 2), font, "the font pointer");
@@ -77,38 +76,48 @@ fn a_key_redraws_the_screen_with_the_font_set_again() {
     after_a_key(with_library());
 }
 
-/// The screen of a build whose library is refused: the title bar and the status as two hex digits
-/// on row 7, and nothing else.
+/// The screen of a build whose library is refused: the error notice with the status as two hex
+/// digits, over the Libraries screen, which a key on it leaves in place.
 fn refusal(name: &str, library: Vec<u8>, status: u8) {
     let built = refused(name, &library);
     let mut app = App::boot(built);
-    let want = pack(&start_model(Some(&library), status));
+    let want = pack(&error_model(status));
     same_frame(name, &app.frame(), &want);
-    assert!(
-        lcd(&mut app) == start_pixels(Some(&library), status),
-        "{name}: the LCD"
-    );
+    assert!(lcd(&mut app) == error_pixels(status), "{name}: the LCD");
     let font = (app.label("ui_font") - 8).to_le_bytes();
     app.m.load_ram(UI_VARS, &[0; 0x1A]);
     tap(&mut app, DOWN);
     assert_eq!(app.m.read_ram(UI_VARS + 0x14, 2), font);
     same_frame(&format!("{name} after a key"), &app.frame(), &want);
+    assert_eq!(
+        app.m.read_ram(app.label("scr_count"), 1),
+        [2],
+        "{name}: the depth"
+    );
 }
 
 #[test]
-fn a_library_the_reader_refuses_shows_its_status_in_place_of_the_formula() {
+fn a_library_the_reader_refuses_shows_the_error_notice_with_its_status() {
     let bad = fixture::with(&fixture::library(), |b| b[0] ^= 0xFF);
     refusal("magic", bad, ST_BAD);
 }
 
 #[test]
-fn a_library_fm_refuses_shows_its_status_in_place_of_the_formula() {
+fn a_library_fm_refuses_shows_the_error_notice_with_its_status() {
     refusal("no-map", fixture::plain(), FM_ERR_NO_MAP);
     let font = fixture::patched(|b| {
         let at = fixture::section(b);
         b[at] ^= 1;
     });
     refusal("font", font, FM_ERR_FONT);
+}
+
+#[test]
+fn back_from_the_error_notice_of_a_refused_library_leaves() {
+    let bad = fixture::with(&fixture::library(), |b| b[0] ^= 0xFF);
+    let mut app = App::boot(refused("magic-back", &bad));
+    app.m.press_key(KEY_CLEAR);
+    assert_eq!(app.m.run_app(3 * TAP).stop, Stop::Exited);
 }
 
 #[test]
@@ -129,9 +138,9 @@ fn quit_leaves_the_app_cleanly() {
 #[test]
 fn another_key_leaves_the_app_where_it_was() {
     let mut app = App::start(plain());
-    tap(&mut app, DOWN);
+    tap(&mut app, F4);
     assert_eq!(app.m.run_app(TAP).stop, Stop::Limit, "still running");
-    same_frame("after the key", &app.frame(), &pack(&start_model(None, 0)));
+    same_frame("after the key", &app.frame(), &pack(&libraries_model(None)));
 }
 
 /// A library whose first assertion has more essential hypotheses than fm holds.
@@ -143,29 +152,15 @@ fn too_many_statements() -> Vec<u8> {
     crate::support::pack_all(&crate::support::parse(&source))
 }
 
-/// A library of symbols and no assertion.
-fn no_assertions() -> Vec<u8> {
-    crate::support::pack_all(&crate::support::parse(
-        "$c wff |- $.\n$v ph $.\nwph $f wff ph $.\n",
-    ))
-}
-
 #[test]
-fn a_first_assertion_fm_refuses_leaves_no_label_above_its_status() {
-    refusal("too-many", too_many_statements(), FM_ERR_LIMIT);
-}
-
-#[test]
-fn a_library_with_no_assertion_shows_the_readers_status_for_its_first() {
-    let library = no_assertions();
-    assert!(
-        mcpack::library::decode(&library)
-            .unwrap()
-            .assertions
-            .is_empty(),
-        "the library has no assertion"
+fn a_first_assertion_fm_refuses_does_not_stop_the_libraries_screen() {
+    let built = around("too-many", &too_many_statements());
+    let mut app = App::boot(built);
+    same_frame(
+        "the stage row",
+        &app.frame(),
+        &pack(&libraries_model(built.shown().as_ref())),
     );
-    refusal("none", library, ST_INDEX);
 }
 
 #[test]
@@ -183,7 +178,7 @@ fn a_page_that_holds_no_library_is_refused_by_the_reader_across_the_pages() {
     let mut app = App::boot_with(built, |m| {
         m.load_flash(BASE, at + 1, &[0x01]);
     });
-    let want = pack(&start_model(built.library.as_deref(), ST_BAD));
+    let want = pack(&error_model(ST_BAD));
     same_frame("a library page with no library", &app.frame(), &want);
 }
 
@@ -219,7 +214,7 @@ fn the_font_is_set_before_the_kernel_and_fm_are_opened() {
     same_frame(
         "the screen",
         &app.frame(),
-        &pack(&start_model(built.library.as_deref(), 0)),
+        &pack(&libraries_model(built.shown().as_ref())),
     );
 }
 
