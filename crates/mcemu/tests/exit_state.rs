@@ -168,7 +168,7 @@ const OS_OWN: &[(u16, u16, &str)] = &[
     (0x859B, 0x85AA, "cxPrev, the OS's copy of the context it left"),
     (0x85E8, 0x85F0, "the launched app's name in the OS's name buffer"),
     (0x89F3, 0x89F4, "graphFlags: the app sets graphDraw on purpose"),
-    (0x9867, 0x9868, "the OS's copy of the launch budget byte, which only an exit through _JForceCmdNoChar writes"),
+    (0x9867, 0x9868, "the OS's copy of the launch budget byte: FFh in the app before and after every exit, 80h after a plain app's way out through _JForceCmdNoChar"),
     (0x9868, 0x9869, "an OS byte at 2nd+OFF, 66h for the app and 68h for the plain app; unattributed, no region declares it"),
     (0x8A0F, 0x8A10, "a flag the OS sets for 2nd+MODE, as 8445h"),
 ];
