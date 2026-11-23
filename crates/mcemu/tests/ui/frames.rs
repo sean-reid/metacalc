@@ -63,6 +63,23 @@ fn a_theorem_list_with_the_cursor_below_the_first_row() {
 }
 
 #[test]
+fn a_theorem_list_while_its_preview_waits() {
+    let ink = |ui: &Ui| {
+        let (_, calls) = ui.frame_calls();
+        calls.iter().filter(|c| matches!(c, Call::Ink(_))).count()
+    };
+    let mut ui = ui();
+    press(&mut ui, &[Enter]);
+    let settled = ink(&ui);
+    ui.press(Down);
+    assert!(matches!(ui.state(), State::List { pending: true, .. }));
+    let frame = ui.frame();
+    assert!((48..56).all(|y| (0..96).all(|x| !frame.get(x, y))));
+    assert!(ink(&ui) < settled);
+    assert!(replay("list-pending", &ui) >= 4);
+}
+
+#[test]
 fn a_theorem_list_with_a_find_prefix_that_matches_nothing() {
     let mut ui = ui();
     press(&mut ui, &[Enter, F2]);

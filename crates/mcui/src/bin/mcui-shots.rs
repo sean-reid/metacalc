@@ -20,21 +20,22 @@ struct Shots {
 
 impl Shots {
     fn press(&mut self, keys: &[Key]) {
-        keys.iter().for_each(|&k| self.ui.press(k));
+        keys.iter().for_each(|&k| self.ui.press_settled(k));
     }
 
     fn times(&mut self, key: Key, n: usize) {
-        (0..n).for_each(|_| self.ui.press(key));
+        (0..n).for_each(|_| self.ui.press_settled(key));
     }
 
     fn typed(&mut self, text: &str) {
-        text.chars().for_each(|c| self.ui.press(Key::Letter(c)));
+        text.chars()
+            .for_each(|c| self.ui.press_settled(Key::Letter(c)));
     }
 
     /// Back to the libraries screen with the first row highlighted.
     fn home(&mut self) {
         while self.ui.depth() > 1 {
-            self.ui.press(Key::Clear);
+            self.ui.press_settled(Key::Clear);
         }
         self.times(Key::Up, 10);
     }
@@ -52,17 +53,17 @@ impl Shots {
                 return;
             }
             let here = at(&self.ui);
-            self.ui.press(Key::Down);
+            self.ui.press_settled(Key::Down);
             if at(&self.ui) != here {
                 continue;
             }
             loop {
                 let here = at(&self.ui);
-                self.ui.press(Key::Right);
+                self.ui.press_settled(Key::Right);
                 if at(&self.ui) != here {
                     break;
                 }
-                self.ui.press(Key::Up);
+                self.ui.press_settled(Key::Up);
                 assert_ne!(at(&self.ui), here, "no folded subexpression");
             }
         }
@@ -75,7 +76,7 @@ impl Shots {
             {
                 return;
             }
-            self.ui.press(Key::Down);
+            self.ui.press_settled(Key::Down);
         }
         panic!("no candidate {label}");
     }
@@ -98,7 +99,7 @@ impl Shots {
         self.press(&[Key::Enter, Key::F2]);
         self.typed(label);
         while !matches!(self.ui.state(), State::List { label: Some(ref l), .. } if l == label) {
-            self.ui.press(Key::Down);
+            self.ui.press_settled(Key::Down);
         }
         self.press(&[Key::Enter]);
     }
