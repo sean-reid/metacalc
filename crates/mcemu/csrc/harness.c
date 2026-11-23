@@ -9,6 +9,7 @@
 #include "scancodes.h"
 #include "tilem.h"
 #include "xz/xz.h"
+#include "watch.h"
 
 void *tilem_malloc(size_t s) { void *p = malloc(s); if (!p) abort(); return p; }
 void *tilem_malloc0(size_t s) { void *p = calloc(1, s); if (!p) abort(); return p; }
@@ -108,6 +109,7 @@ typedef struct {
 	int stuck;
 	double us;
 	dword clock_at_bank;
+	McWatch *watch;
 } McState;
 
 #define MAX_MACHINES 512
@@ -151,6 +153,7 @@ static void release_state(TilemCalc *calc)
 	McState *st = state_of(calc);
 
 	if (st) {
+		mc_watch_free(calc, st->watch);
 		pthread_mutex_lock(&states_lock);
 		st->calc = NULL;
 		pthread_mutex_unlock(&states_lock);
@@ -295,6 +298,7 @@ uint32_t mcemu_run_time(TilemCalc *calc, int microseconds)
 {
 	running = calc;
 	bank_time(calc);
+	mc_watch_run(calc, state_of(calc)->watch);
 	return tilem_z80_run_time(calc, microseconds, NULL);
 }
 
@@ -333,6 +337,7 @@ int mcemu_run_to(TilemCalc *calc, uint32_t physical, int limit)
 
 	running = calc;
 	bank_time(calc);
+	mc_watch_run(calc, state_of(calc)->watch);
 	tilem_z80_run(calc, limit, NULL);
 	tilem_z80_remove_breakpoint(calc, target);
 	tilem_z80_remove_breakpoint(calc, vector);
@@ -396,6 +401,7 @@ uint32_t mcemu_run(TilemCalc *calc, uint16_t pc, int limit, uint32_t *elapsed)
 	calc->z80.halted = 0;
 	calc->z80.r.pc.d = pc;
 	start = calc->z80.clock;
+	mc_watch_run(calc, state_of(calc)->watch);
 	reason = tilem_z80_run(calc, limit, NULL);
 	*elapsed = calc->z80.clock - start;
 	return reason;
@@ -415,6 +421,7 @@ uint32_t mcemu_resume(TilemCalc *calc, int limit, uint32_t *elapsed)
 	running = calc;
 	bank_time(calc);
 	memset(state_of(calc)->banks, 0, sizeof state_of(calc)->banks);
+	mc_watch_run(calc, state_of(calc)->watch);
 	reason = tilem_z80_run(calc, limit, NULL);
 	*elapsed = calc->z80.clock - start;
 	return reason;
@@ -422,6 +429,12 @@ uint32_t mcemu_resume(TilemCalc *calc, int limit, uint32_t *elapsed)
 
 /* Copies the bit sets of values written to ports 5, 6 and 7 since this machine's last run or resume began. */
 void mcemu_banks(TilemCalc *calc, uint8_t out[3][32]) { memcpy(out, state_of(calc)->banks, sizeof state_of(calc)->banks); }
+
+/* Records every write the CPU makes into `len` logical addresses from `start`, changed value or not. */
+void mcemu_watch(TilemCalc *calc, uint16_t start, uint32_t len) { mc_watch_arm(calc, &state_of(calc)->watch, start, len); }
+void mcemu_unwatch(TilemCalc *calc) { mc_watch_disarm(calc, state_of(calc)->watch); }
+size_t mcemu_watch_len(TilemCalc *calc) { return mc_watch_len(state_of(calc)->watch); }
+size_t mcemu_watch_take(TilemCalc *calc, McWrite *out, size_t cap, size_t *lost) { return mc_watch_take(state_of(calc)->watch, out, cap, lost); }
 
 /* Forces bit 7 of the LCD status port on, as a controller that never finishes would. */
 void mcemu_stick_lcd_busy(TilemCalc *calc, int on) { state_of(calc)->stuck = on; }
