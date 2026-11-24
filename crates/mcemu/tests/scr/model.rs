@@ -14,6 +14,8 @@ pub struct Keyed {
     pub res: u8,
     pub status: u8,
     pub calls: Vec<Rec>,
+    /// The carry of scr_idle: more work pending on the screen that is on top afterwards.
+    pub more: bool,
 }
 
 struct Queue<'a> {
@@ -46,6 +48,7 @@ impl Mirror {
             de,
             a,
             b,
+            sp: 0,
         }
         .given()
     }
@@ -86,19 +89,40 @@ impl Mirror {
     pub fn push_frame(&mut self, new: Frame, statuses: &[u8]) -> Keyed {
         let mut calls = vec![];
         let (res, status) = self.push(new, &mut calls, &mut Queue { statuses, next: 0 });
-        Keyed { res, status, calls }
+        Keyed {
+            res,
+            status,
+            calls,
+            more: false,
+        }
     }
 
     pub fn press(&mut self, key: u8, ch: u8, act: Act, statuses: &[u8]) -> Keyed {
-        let mut q = Queue { statuses, next: 0 };
         let mut calls = vec![self.rec(Routine::Key, self.frames.len() - 1, 0, key, ch)];
+        self.apply(act, &mut calls, &mut Queue { statuses, next: 0 })
+    }
+
+    /// An idle routine that returns `act` and carry `more`: the action is applied as a key's is.
+    /// Stay and an unknown action pass the carry on; a push, pop or jump that succeeds answers
+    /// carry set; a leave and a failure answer carry clear.
+    pub fn idle(&mut self, act: Act, more: bool, statuses: &[u8]) -> Keyed {
+        let mut calls = vec![self.rec(Routine::Idle, self.frames.len() - 1, 0, 0, 0)];
+        let mut keyed = self.apply(act, &mut calls, &mut Queue { statuses, next: 0 });
+        keyed.more = match act {
+            Act::Push(_) | Act::Pop | Act::Jump(_) => keyed.res == IDLE || keyed.res == DRAW,
+            _ => more,
+        };
+        keyed
+    }
+
+    fn apply(&mut self, act: Act, calls: &mut Vec<Rec>, q: &mut Queue) -> Keyed {
         let (res, status) = match act {
             Act::Stay | Act::Other(_) => (IDLE, 0),
             Act::Redraw => (DRAW, 0),
-            Act::Push(new) => self.push(new, &mut calls, &mut q),
+            Act::Push(new) => self.push(new, calls, q),
             Act::Pop if self.frames.len() > 1 => {
                 self.frames.pop();
-                match self.enter(&mut calls, &mut q) {
+                match self.enter(calls, q) {
                     0 => (DRAW, 0),
                     status => (FAILED, status),
                 }
@@ -106,7 +130,7 @@ impl Mirror {
             Act::Pop => (LEAVE, 0),
             Act::Jump(de) if self.frames.len() > 1 => {
                 self.frames.pop();
-                match self.enter(&mut calls, &mut q) {
+                match self.enter(calls, q) {
                     0 => {
                         let i = self.frames.len() - 1;
                         calls.push(self.rec(Routine::Land, i, de, 0, 0));
@@ -117,7 +141,12 @@ impl Mirror {
             }
             Act::Jump(_) => (IDLE, 0),
         };
-        Keyed { res, status, calls }
+        Keyed {
+            res,
+            status,
+            calls: std::mem::take(calls),
+            more: false,
+        }
     }
 }
 
@@ -192,6 +221,29 @@ impl Pair {
             &want,
             &out,
             log,
+        );
+        want
+    }
+
+    /// One scr_idle on both: the fake idle routine returns `act` and carry `more`. Compared as
+    /// `key` is, and the carry as well.
+    pub fn idle(&mut self, act: Act, more: bool, statuses: &[u8]) -> Keyed {
+        let want = self.mirror.idle(act, more, statuses);
+        let (out, log) = self.rig.idle(act, more, statuses);
+        self.key_spent = out.tstates;
+        self.agree(
+            &format!(
+                "{act:?} from idle with carry {more} at depth {}",
+                self.mirror.frames.len()
+            ),
+            &want,
+            &out,
+            log,
+        );
+        assert_eq!(
+            out.carry(),
+            want.more,
+            "{act:?} from idle with carry {more}: carry"
         );
         want
     }

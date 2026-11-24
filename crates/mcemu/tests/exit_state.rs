@@ -15,6 +15,8 @@ mod support;
 
 #[path = "common/exit_kit.rs"]
 mod kit;
+#[path = "common/regions.rs"]
+mod regions;
 
 use kit::*;
 use mcemu::{Machine, STUB_ROM, Stop};
@@ -187,35 +189,9 @@ const SHADOW_CELLS: [&[(u16, u16)]; 3] = [
     ],
 ];
 
-/// Every region the app declares in ram_map.inc, in either bank, from the build's label file, and
-/// the kernel's and fm's blocks, whose sizes carry other names.
+/// Every region the app declares in ram_map.inc, from the build's label file.
 fn declared(app: &Build) -> Vec<(u16, u16)> {
-    let labels = std::fs::read_to_string(&app.labels).unwrap();
-    let value = |name: &str| {
-        labels.lines().find_map(|line| {
-            let (key, v) = line.split_once(" = ")?;
-            (key == name).then(|| u16::from_str_radix(&v[1..], 16).unwrap())
-        })
-    };
-    let mut regions: Vec<(u16, u16)> = labels
-        .lines()
-        .filter_map(|line| line.split_once(" = ")?.0.strip_suffix("_SIZE"))
-        .filter_map(|name| Some((value(name)?, value(name)? + value(&format!("{name}_SIZE"))?)))
-        .collect();
-    for (base, size) in [
-        ("KERNEL_RAM_LOW", "LOW_SIZE"),
-        ("KERNEL_RAM_HIGH", "HIGH_SIZE"),
-    ] {
-        regions.push((
-            value(base).unwrap(),
-            value(base).unwrap() + value(size).unwrap(),
-        ));
-    }
-    assert!(
-        regions.len() >= 10,
-        "ram_map.inc declares its regions: {regions:04X?}"
-    );
-    regions
+    regions::declared(&std::fs::read_to_string(&app.labels).unwrap())
 }
 
 /// Banks B and C as the OS has them mapped at its idle, 8000h to FFFFh.

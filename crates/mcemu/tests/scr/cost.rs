@@ -21,6 +21,7 @@ fn framework_cost(pair: &mut Pair, act: Act, statuses: &[u8]) -> u32 {
             Routine::Draw => "draw",
             Routine::Key => "key",
             Routine::Land => "land",
+            Routine::Idle => "idle",
         };
         pair.rig.arm(statuses);
         let regs = Regs {

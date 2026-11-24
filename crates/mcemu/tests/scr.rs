@@ -6,6 +6,8 @@ mod cost;
 mod failing;
 #[path = "scr/guards.rs"]
 mod guards;
+#[path = "scr/idle.rs"]
+mod idle;
 #[path = "scr/model.rs"]
 mod model;
 #[path = "scr/push.rs"]

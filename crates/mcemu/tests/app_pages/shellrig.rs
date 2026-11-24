@@ -116,7 +116,7 @@ pub struct Shell {
 }
 
 fn patch_enter(m: &mut Machine, built: &Built, kind: u8, to: u16) {
-    let at = usize::from(built.label("screen_kinds") - 0x4000) + usize::from(kind - 1) * 8;
+    let at = usize::from(built.label("screen_kinds") - 0x4000) + usize::from(kind - 1) * 10;
     m.load_flash(BASE, at, &to.to_le_bytes());
 }
 
