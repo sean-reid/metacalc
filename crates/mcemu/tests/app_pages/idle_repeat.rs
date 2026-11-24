@@ -158,7 +158,7 @@ fn on_the_reference_os_holding_down_with_100_ms_of_work_after_each_key_still_rep
 /// are the plain wait's, and the branch's with no work pending are the same within one interrupt
 /// period.
 #[test]
-#[ignore = "needs the reference ROM image"]
+#[ignore = "needs the reference ROM image and the history of the commit the branch was cut from"]
 fn on_the_reference_os_holding_down_repeats_at_the_times_main_does() {
     let main = three_stages_from(main_tree(), "pages-main-three");
     let mut times = Vec::new();

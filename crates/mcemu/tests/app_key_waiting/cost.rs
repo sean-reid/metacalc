@@ -10,20 +10,17 @@ const COST_NONE: u32 = 274;
 const COST_KEY: u32 = 287;
 const COST_ON: u32 = 284;
 const COST_BOTH: u32 = 287;
-/// The least each port path takes, a little under the count the emulator prints: nothing 269,
-/// ON down 279, a key down 282, ON and a key down 282. The paths with a settle delay are 50
-/// T-states shorter without it, which the emulator cannot otherwise check. The ON path's floor is
-/// over the nothing path's ceiling, so the call cannot pass for ON by answering as it does for
-/// nothing.
+/// The least each port path takes, a little under what the emulator prints (nothing 269, ON down
+/// 279, a key down 282, both 282). The ON floor is over the nothing path's ceiling, so ON cannot
+/// pass by answering as nothing does.
 const FLOOR_NONE: u32 = 266;
 const FLOOR_KEY: u32 = 279;
 const FLOOR_ON: u32 = 276;
 const FLOOR_BOTH: u32 = 279;
 
-/// `with_on` measures the paths with ON down, which only the stub OS takes: the reference OS's
-/// outputs.rs twins press ON with interrupts off and reach the call, but this measurement masks
-/// every interrupt source with port 3 before the call, and with ON down that leaves the reference
-/// OS in its own code at 096Dh, so the call is never reached in 100,000 T-states.
+/// `with_on` measures the paths with ON down, which only the stub does: with ON down the cost
+/// harness's mask of every interrupt source leaves the reference OS in its own code, so the call is
+/// never reached in 100,000 T-states, though outputs.rs reaches it there with the sources unmasked.
 fn assert_cost(mut rig: Rig, name: &str, with_on: bool) {
     for speed in [Speed::Mhz6, Speed::Mhz15] {
         let none = rig.cost(speed, |r| r.poke(KBD_SCAN, &[0]));
@@ -68,8 +65,8 @@ fn assert_cost(mut rig: Rig, name: &str, with_on: bool) {
             "{name} {speed:?} T-states: nothing {none}, scan code {code}, ON flag {flag}, \
              key down {held}, ON down {on}, ON and key down {both}"
         );
-        assert!(code <= COST_CODE, "scan code path {code}");
-        assert!(flag <= COST_FLAG, "break flag path {flag}");
+        assert!((49..=COST_CODE).contains(&code), "scan code path {code}");
+        assert!((97..=COST_FLAG).contains(&flag), "break flag path {flag}");
         let mut paths = vec![
             ("nothing", none, FLOOR_NONE, COST_NONE),
             ("key", held, FLOOR_KEY, COST_KEY),

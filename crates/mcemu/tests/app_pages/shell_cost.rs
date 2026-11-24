@@ -323,6 +323,7 @@ fn the_loop_around_a_key_no_screen_answers_costs_little() {
 /// The same measurement on the commit the branch was cut from, the figure the one above prints as
 /// its before.
 #[test]
+#[ignore = "needs the history of the commit the branch was cut from"]
 fn the_loop_around_a_key_no_screen_answers_cost_what_main_did() {
     let main = plain_from(main_tree(), "pages-main-plain");
     let (per_key, wait, overhead) = ignored_key("main", main);
