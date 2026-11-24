@@ -104,9 +104,17 @@ ak_on:
 ;                        waits for the key after it
 ;                   reads kbdScanCode, the onInterrupt flag through IY, port 1 with every key group
 ;                   selected, and port 4; takes nothing, so the next app_key sees the OS's key bytes
-;                   as they were
-;                   destroys A, B, C and the flags; turns interrupts off while it reads port 1 and
-;                   returns with them on. 193 T-states, 51 when the scan code or the flag answers
+;                   as they were. Leaves port 1 at FFh, every group deselected
+;                   destroys A, B, C and the flags
+;                   needs interrupts on at the call and returns with them on; the port reads run
+;                   with them off. The formula routines run with interrupts off and must not call it
+;                   T-states, measured in the emulator from the call to the instruction after
+;                   it, so they include the call and the OS's wait states (1 per opcode fetch from
+;                   flash, 1 per stack write): 51 on the scan code, 79 on the break flag, 243 on
+;                   the port path, at 6 and at 15 MHz. The Z80 table gives 28, 53 and 193 for the
+;                   routine alone, without the 17 of the call
+;                   two push af / pop af pairs (42 T-states) between the group write and the read
+;                   let the keypad lines settle at 15 MHz
 
 app_key_waiting:
 	ld a,(kbdScanCode)
@@ -117,6 +125,10 @@ app_key_waiting:
 	di
 	xor a
 	out (1),a
+	push af
+	pop af
+	push af
+	pop af
 	in a,(1)
 	ld c,a
 	ld a,0FFh

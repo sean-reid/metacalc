@@ -2102,7 +2102,7 @@ fn assemble_page_ports(out: &Path) {
 }
 
 /// The apps that wait for keys: one logging what the OS's `_GetKey` returns, one running
-/// `app_key` over the canvas.
+/// `app_key` over the canvas, one driving `app_key_waiting` and `app_key` in rounds.
 fn assemble_key_apps(out: &Path) {
     println!("cargo:rerun-if-changed=../../app/src/keys.inc");
     let font_dir = out.join("ui_font");

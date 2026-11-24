@@ -8,8 +8,10 @@
 ; 0 is set. The scan code, the key byte and the ON flags byte are copied to PRE just before the
 ; calls and to POST just after. FLAGS bit 1 keeps CMD set, so rounds follow one another and each
 ; app_key return is logged at LOG; bit 2 makes the calls with interrupts off from the labels
-; kw_pre and kw_post, for the cost, once CMD is 2, with the interrupt
-; sources masked so none is taken inside the call.
+; kw_pre and kw_post, for the cost, once CMD is 2, with the interrupt sources masked so none is
+; taken inside the call; bit 3 replaces the calls with polling: app_key_waiting after every
+; interrupt until it answers NZ, then app_key. IFF is 1 when interrupts were on after the last
+; call; BEND is 1 from the end of the busy loop until the next round.
 CMD     = 0A800h
 BUSY    = 0A802h
 INTS    = 0A804h
@@ -18,6 +20,8 @@ CALLS   = 0A806h
 DONE    = 0A808h
 KEYA    = 0A809h
 KEYB    = 0A80Ah
+IFF     = 0A80Bh
+BEND    = 0A80Ch
 WRES    = 0A810h
 PRE     = 0A820h
 POST    = 0A824h
@@ -38,6 +42,8 @@ main:
 	halt
 	jr main
 go:
+	xor a
+	ld (BEND), a
 	ld a, (INTS)
 	or a
 	jr z, b_di
@@ -59,6 +65,18 @@ bi:
 	or l
 	jr nz, bo
 b_end:
+	ld a, 1
+	ld (BEND), a
+	ld a, (FLAGS)
+	bit 3, a
+	jr z, no_poll
+poll:
+	call app_key_waiting
+	jr nz, no_wait
+	ei
+	halt
+	jr poll
+no_poll:
 	ld de, PRE
 	call snapshot
 	ld a, (CALLS)
@@ -98,6 +116,12 @@ wdone:
 wz:
 	ld (hl), a
 	inc hl
+	ld a, i
+	ld a, 0
+	jp po, wiff
+	inc a
+wiff:
+	ld (IFF), a
 	djnz wl
 no_wait:
 	ld de, POST
