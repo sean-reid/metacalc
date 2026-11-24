@@ -30,7 +30,8 @@ pub struct NoRoom;
 
 impl Machine {
     /// Runs a stub entry with HL and DE set and returns the registers it ended with. The
-    /// registers the machine had go back afterwards.
+    /// registers the machine had go back afterwards, and a write watch is suspended for the
+    /// run, so its record is as it was.
     fn call_stub(&mut self, entry: u16, hl: u16, de: u16, bc: u16) -> Regs {
         let saved = self.calc.regs();
         let mut r = saved;
@@ -39,7 +40,11 @@ impl Machine {
         r.bc = bc;
         r.pc = entry;
         self.calc.set_regs(&r);
+        let armed = self.calc.suspend_watch();
         let run = self.run(entry, LIMIT);
+        if armed {
+            self.calc.resume_watch();
+        }
         assert_eq!(run.stop, Stop::Halted, "a stub entry ends in its HALT");
         let out = self.calc.regs();
         self.calc.set_regs(&saved);

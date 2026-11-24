@@ -26,6 +26,10 @@ typedef struct {
 void mc_watch_arm(TilemCalc *calc, McWatch **slot, uint16_t start, uint32_t len);
 /* Stops recording and keeps what was recorded. */
 void mc_watch_disarm(TilemCalc *calc, McWatch *w);
+/* Stops recording and keeps the range and the record; returns whether a watch was armed. */
+int mc_watch_suspend(TilemCalc *calc, McWatch *w);
+/* Starts recording again on the same range, into the same record. */
+void mc_watch_resume(TilemCalc *calc, McWatch *w);
 /* Called as a run begins, so a write by the first instruction has its address. */
 void mc_watch_run(TilemCalc *calc, McWatch *w);
 size_t mc_watch_len(const McWatch *w);

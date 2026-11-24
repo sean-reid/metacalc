@@ -11,6 +11,8 @@ struct McWatch {
 	int op_bp;
 	int boundary;
 	uint16_t pc;
+	uint16_t start;
+	uint32_t span;
 	McWrite *rec;
 	size_t len;
 	size_t lost;
@@ -71,6 +73,15 @@ static void remove_hooks(TilemCalc *calc, McWatch *w)
 	}
 }
 
+static void add_hooks(TilemCalc *calc, McWatch *w)
+{
+	w->pc = calc->z80.r.pc.w.l;
+	w->boundary = 0;
+	w->write_bp = tilem_z80_add_breakpoint(calc, TILEM_BREAK_MEM_WRITE, w->start, w->start + w->span - 1, 0xffff, note_write, w);
+	w->exec_bp = tilem_z80_add_breakpoint(calc, TILEM_BREAK_MEM_EXEC, 0, 0xffff, 0xffff, note_pc, w);
+	w->op_bp = tilem_z80_add_breakpoint(calc, TILEM_BREAK_EXECUTE, 0, 0xffffffff, 0xffffffff, note_boundary, w);
+}
+
 void mc_watch_arm(TilemCalc *calc, McWatch **slot, uint16_t start, uint32_t len)
 {
 	McWatch *w = *slot;
@@ -79,12 +90,24 @@ void mc_watch_arm(TilemCalc *calc, McWatch **slot, uint16_t start, uint32_t len)
 		abort();
 	remove_hooks(calc, w);
 	w->len = w->lost = 0;
-	w->pc = calc->z80.r.pc.w.l;
-	w->boundary = 0;
-	w->write_bp = tilem_z80_add_breakpoint(calc, TILEM_BREAK_MEM_WRITE, start, start + len - 1, 0xffff, note_write, w);
-	w->exec_bp = tilem_z80_add_breakpoint(calc, TILEM_BREAK_MEM_EXEC, 0, 0xffff, 0xffff, note_pc, w);
-	w->op_bp = tilem_z80_add_breakpoint(calc, TILEM_BREAK_EXECUTE, 0, 0xffffffff, 0xffffffff, note_boundary, w);
+	w->start = start;
+	w->span = len;
+	add_hooks(calc, w);
 	*slot = w;
+}
+
+int mc_watch_suspend(TilemCalc *calc, McWatch *w)
+{
+	if (!w || !w->write_bp)
+		return 0;
+	remove_hooks(calc, w);
+	return 1;
+}
+
+void mc_watch_resume(TilemCalc *calc, McWatch *w)
+{
+	if (w && !w->write_bp)
+		add_hooks(calc, w);
 }
 
 void mc_watch_disarm(TilemCalc *calc, McWatch *w)
