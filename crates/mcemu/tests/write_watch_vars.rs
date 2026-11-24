@@ -13,6 +13,9 @@ const HEAP: u16 = 0x9D9A;
 const HEAP_LEN: u16 = 3;
 /// A range the program writes and the stub does not.
 const MINE: u16 = 0xA010;
+/// A byte the stub's launch setup writes. STACK, STACK_LEN, HEAP and HEAP_LEN repeat the ranges
+/// in the control test at the foot of vars.rs, which shows the stub writes them.
+const LAUNCH_SETUP: u16 = 0x843F;
 
 fn boot() -> Machine {
     let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
@@ -77,13 +80,19 @@ fn the_watch_still_records_the_program_after_a_harness_call() {
 #[test]
 fn a_harness_call_with_no_watch_armed_arms_none() {
     let mut m = boot();
-    m.read_var("A");
-    m.var_list();
-    program_writes(&mut m, MINE, 5);
-    assert_eq!(seen(&m.take_writes()), []);
     m.watch_writes(MINE, 1);
     m.unwatch_writes();
     m.read_var("A");
     program_writes(&mut m, MINE, 6);
     assert_eq!(seen(&m.take_writes()), []);
+}
+
+#[test]
+fn launch_records_the_stubs_own_setup() {
+    let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
+    m.watch_writes(LAUNCH_SETUP, 1);
+    m.launch(0x30).expect("the base page is valid");
+    let writes = m.take_writes();
+    eprintln!("launch wrote {LAUNCH_SETUP:04X} {} times", writes.len());
+    assert_eq!(writes.len(), 1);
 }

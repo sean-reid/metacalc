@@ -291,9 +291,9 @@ impl Machine {
     }
 
     /// Records every write the CPU makes into the `len` logical addresses from `addr`, changed
-    /// or not, by app or OS code, except the writes of a stub entry the harness runs for itself
-    /// (`var_list`, `read_var` and the other variable calls). Replaces a watch already armed and
-    /// clears its record.
+    /// or not, by app or OS code. The stub's writes inside a variable call (`var_list`, `read_var`,
+    /// `create_var` and the like) are left out; `launch` runs the stub for the program and is
+    /// recorded. Replaces a watch already armed and clears its record.
     pub fn watch_writes(&mut self, addr: u16, len: u16) {
         assert!(
             len > 0 && usize::from(addr) + usize::from(len) <= 0x1_0000,

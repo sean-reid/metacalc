@@ -216,3 +216,57 @@ impl Machine {
         self.ram_page(1).fill(0);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::STUB_ROM;
+
+    // The ranges repeat the constants in tests/write_watch_vars.rs, which watch them across the
+    // public calls.
+    const STACK: (u16, u16) = (0xFFFD, 2);
+    const HEAP: (u16, u16) = (0x9D9A, 3);
+
+    /// Runs `entry` the way `call_stub` does, with the watch left armed, and returns the writes.
+    fn written_by(m: &mut Machine, entry: u16, hl: u16, range: (u16, u16)) -> Vec<crate::Write> {
+        let mut r = m.calc.regs();
+        r.hl = hl;
+        r.de = 0;
+        r.bc = 0;
+        r.pc = entry;
+        m.calc.set_regs(&r);
+        m.watch_writes(range.0, range.1);
+        let run = m.run(entry, LIMIT);
+        assert_eq!(run.stop, Stop::Halted, "a stub entry ends in its HALT");
+        let writes = m.take_writes();
+        eprintln!("{entry:04X} wrote {} times in {range:04X?}", writes.len());
+        writes
+    }
+
+    fn boot() -> Machine {
+        let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
+        m.create_var("A", &[1, 2, 3]).expect("room for A");
+        m
+    }
+
+    #[test]
+    fn find_writes_the_stack_range_the_integration_test_watches() {
+        let mut m = boot();
+        m.set_name(APPVAR, "A");
+        assert!(!written_by(&mut m, stub::HOST_FIND, 0, STACK).is_empty());
+    }
+
+    #[test]
+    fn init_writes_the_stack_range_the_integration_test_watches() {
+        let mut m = boot();
+        assert!(!written_by(&mut m, stub::HOST_INIT, 0, STACK).is_empty());
+    }
+
+    #[test]
+    fn create_writes_the_heap_range_the_integration_test_watches() {
+        let mut m = boot();
+        m.set_name(APPVAR, "B");
+        let writes = written_by(&mut m, stub::HOST_CREATE, 1, HEAP);
+        assert!(!writes.is_empty());
+    }
+}
