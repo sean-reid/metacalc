@@ -15,7 +15,8 @@ const COST_BOTH: u32 = 287;
 const COST_FULL_MIN: u32 = 255;
 
 /// `with_on` measures the paths with ON down, which only the stub OS takes: on the reference OS an
-/// ON key pressed while the app has interrupts off leaves the OS in its handler for good.
+/// ON key pressed while the app has interrupts off puts the OS in its own code, and the app does
+/// not reach the call in 100,000 T-states.
 fn assert_cost(mut rig: Rig, name: &str, with_on: bool) {
     for speed in [Speed::Mhz6, Speed::Mhz15] {
         let none = rig.cost(speed, |r| r.poke(KBD_SCAN, &[0]));

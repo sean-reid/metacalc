@@ -254,11 +254,48 @@ fn second_key(real: bool, off: bool) -> Second {
     }
 }
 
+/// With the first key held until 500 ms after the last slice, so that the shell waits in app_key
+/// for the second, the OS reports nothing for it: scr_key is not called.
+fn a_second_key_is_not_reported_while_the_first_is_held(real: bool, off: bool) {
+    let mut rig = in_slice(real, &slices(8, off), 1, 30_000);
+    let keys = rig.shell.scr_keys();
+    rig.m().press_key(DOWN);
+    rig.until("the shell takes the key", 900_000, |r| {
+        r.shell.scr_keys() == keys + 1
+    });
+    rig.until("slice 2", 900_000, |r| {
+        r.state().in_slice && r.state().logged == 3
+    });
+    rig.m().press_key(UP);
+    rig.until("the work ends", 3_000_000, |r| {
+        let s = r.state();
+        s.logged == 8 && !s.in_slice
+    });
+    rig.step(500_000);
+    println!(
+        "{} OS, slices {}: scr_key calls with two keys down through the end of the work and 500 ms after: {}",
+        if real { "reference" } else { "stub" },
+        if off {
+            "interrupts off"
+        } else {
+            "interrupts on"
+        },
+        rig.shell.scr_keys() - (keys + 1)
+    );
+    assert_eq!(rig.scan_code(), 0, "the OS holds no code");
+    assert_eq!(
+        rig.shell.scr_keys(),
+        keys + 1,
+        "the second key was not reported"
+    );
+}
+
 /// A second key goes unseen while the first is held, and once the first is up it is taken when the
 /// slice running at the release ends, which with interrupts off is the OS's one scan in the gap
 /// between two slices.
 fn a_second_key_is_taken_through_its_scan_code(real: bool) {
     for off in [false, true] {
+        a_second_key_is_not_reported_while_the_first_is_held(real, off);
         let got = second_key(real, off);
         let way = if off {
             "interrupts off"
