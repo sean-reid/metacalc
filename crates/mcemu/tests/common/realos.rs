@@ -30,7 +30,7 @@ pub const GRAPH_FLAGS: usize = OS_FLAGS + 3;
 /// The bit of port 3 that is set while the calculator is powered down.
 const POWERED_DOWN: u8 = 0x10;
 
-fn rom() -> Option<Vec<u8>> {
+pub fn rom() -> Option<Vec<u8>> {
     let path = Path::new(&std::env::var_os("HOME")?).join("ti84-rom/84PSE_v243.rom");
     std::fs::read(path).ok()
 }

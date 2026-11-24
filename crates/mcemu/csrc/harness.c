@@ -433,6 +433,8 @@ void mcemu_banks(TilemCalc *calc, uint8_t out[3][32]) { memcpy(out, state_of(cal
 /* Records every write the CPU makes into `len` logical addresses from `start`, changed value or not. */
 void mcemu_watch(TilemCalc *calc, uint16_t start, uint32_t len) { mc_watch_arm(calc, &state_of(calc)->watch, start, len); }
 void mcemu_unwatch(TilemCalc *calc) { mc_watch_disarm(calc, state_of(calc)->watch); }
+int mcemu_watch_suspend(TilemCalc *calc) { return mc_watch_suspend(calc, state_of(calc)->watch); }
+void mcemu_watch_resume(TilemCalc *calc) { mc_watch_resume(calc, state_of(calc)->watch); }
 size_t mcemu_watch_len(TilemCalc *calc) { return mc_watch_len(state_of(calc)->watch); }
 size_t mcemu_watch_take(TilemCalc *calc, McWrite *out, size_t cap, size_t *lost) { return mc_watch_take(state_of(calc)->watch, out, cap, lost); }
 
