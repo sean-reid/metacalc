@@ -178,6 +178,60 @@ twin!(
     a_press_seen_only_on_the_port_goes_to_app_key
 );
 
+/// A key pressed while the shell loops through 3 ms slices that run with interrupts off, at twelve
+/// different phases, each after 100 ms with every key up so that APP_HELD is clear. The OS scans the
+/// keypad every 9.2 ms, so at some idle points the key is down with no code held, which only the
+/// port shows; at others the code is held. Either way the shell takes the key before the next call
+/// of scr_idle and acts on it once. The keys differ from one press to the next, since the stub
+/// reports a key only when it differs from the last one it took.
+fn a_press_the_os_has_not_scanned_is_taken_before_the_next_slice(real: bool) {
+    let mut sc = script(&[KIND_LIBRARIES], &[Slice::ms(3).off().more()]);
+    sc.forever = true;
+    let mut rig = in_slice(real, &sc, 0, 0);
+    let (mut port_only, mut scanned) = (0, 0);
+    let mut seen = Vec::new();
+    for (i, key) in [LEFT, RIGHT, F4, LETTER]
+        .into_iter()
+        .cycle()
+        .take(12)
+        .enumerate()
+    {
+        rig.step(100_000 + 700 * i as u32);
+        assert_eq!(rig.held(), 0, "press {i}: the byte is clear");
+        let keys = rig.shell.scr_keys();
+        rig.m().press_key(key);
+        rig.run_to_label("app_idle", 3_000_000);
+        let (code, calls) = (rig.scan_code(), rig.state().calls);
+        rig.run_to_label("scr_key", 3_000_000);
+        assert_eq!(
+            rig.state().calls,
+            calls,
+            "press {i}: scr_idle was not called before the key was taken"
+        );
+        rig.m().release_key(key);
+        rig.step(1_000);
+        assert_eq!(rig.shell.scr_keys(), keys + 1, "press {i}: acted on once");
+        seen.push(code);
+        if code == 0 {
+            port_only += 1;
+        } else {
+            scanned += 1;
+        }
+    }
+    println!(
+        "{} OS: idle points with the key down and no code {port_only}, with a code {scanned}: {seen:02X?}",
+        if real { "reference" } else { "stub" }
+    );
+    assert!(port_only >= 9, "{port_only} presses seen only on the port");
+    assert!(scanned >= 1, "{scanned} presses already scanned");
+}
+
+twin!(
+    a_press_the_os_has_not_scanned_by_the_end_of_an_interrupts_off_slice_is_taken_before_the_next_slice,
+    on_the_reference_os_a_press_the_os_has_not_scanned_is_taken_before_the_next_slice,
+    a_press_the_os_has_not_scanned_is_taken_before_the_next_slice
+);
+
 /// What a second key did while the handled one (Down) was held, then after Down was released.
 struct Second {
     /// Scr_key calls in the 600 ms after the press with Down still held.
