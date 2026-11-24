@@ -140,6 +140,7 @@ fn an_action_from_idle_is_applied_as_the_same_action_from_a_key() {
                 idled.rig.peek(idled.rig.label("SCR_NEW"), 16),
                 "{at}: scr_new"
             );
+            assert_eq!(klog[0].routine, Routine::Key, "{at}");
             assert_eq!(klog.len(), ilog.len(), "{at}: calls");
             let (kfirst, ifirst) = (&klog[0], &ilog[0]);
             assert_eq!(
@@ -256,9 +257,9 @@ fn every_routine_of_every_kind_is_reached_through_its_own_slot_of_a_ten_byte_row
 }
 
 #[test]
-fn the_stack_use_of_idle_stays_within_what_the_header_states() {
-    let mut worst = 0;
-    let mut worst_stay = 0;
+fn the_stack_use_of_idle_is_what_the_header_states() {
+    // Inside scr_dispatch and at a routine's entry, for a stay or a redraw and for the rest.
+    let (mut stay, mut moved) = ((0, 0), (0, 0));
     for depth in [1, 8] {
         for spec in [Spec::Stay, Spec::Redraw, Spec::Push, Spec::Pop, Spec::Jump] {
             for statuses in [&[][..], &[3, 0][..]] {
@@ -266,18 +267,22 @@ fn the_stack_use_of_idle_stays_within_what_the_header_states() {
                     let mut pair = Pair::opened(REAL, depth);
                     let act = spec.act(&mut pair);
                     pair.mirror.press(1, 0, act, statuses);
-                    let (out, _) = pair.rig.idle(act, more, statuses);
-                    worst = worst.max(out.stack);
-                    if matches!(spec, Spec::Stay | Spec::Redraw) {
-                        worst_stay = worst_stay.max(out.stack);
-                    }
+                    let (out, log) = pair.rig.idle(act, more, statuses);
+                    let class = if matches!(spec, Spec::Stay | Spec::Redraw) {
+                        &mut stay
+                    } else {
+                        &mut moved
+                    };
+                    *class = (class.0.max(out.stack), class.1.max(Rig::entry_stack(&log)));
                 }
             }
         }
     }
-    println!("scr_idle reached {worst} bytes of stack, {worst_stay} for a stay or a redraw");
-    assert!(worst <= 12, "{worst}");
-    assert!(worst_stay <= 10, "{worst_stay}");
+    println!(
+        "scr_idle reached {stay:?} bytes of stack for a stay or a redraw, {moved:?} for the rest"
+    );
+    assert_eq!(stay, (10, 4));
+    assert_eq!(moved, (12, 6));
 }
 
 /// T-states of scr_idle beyond the driver's and the fakes' own, at 6 MHz with the flash and RAM

@@ -51,19 +51,21 @@ fn a_call_notices_a_change_at_either_end_of_every_guarded_range() {
 
 #[test]
 fn the_stack_use_stays_within_what_the_header_states() {
-    let mut worst = 0;
+    let (mut worst, mut entry) = (0, 0);
     for depth in [1, 8] {
         for act in [Act::Stay, Act::Push([1; 16]), Act::Pop, Act::Jump(1)] {
             for statuses in [&[][..], &[3, 0][..]] {
                 let mut pair = Pair::opened(REAL, depth);
                 pair.mirror.press(1, 0, act, statuses);
-                let (out, _) = pair.rig.key(1, 0, act, statuses);
+                let (out, log) = pair.rig.key(1, 0, act, statuses);
                 worst = worst.max(out.stack);
+                entry = entry.max(Rig::entry_stack(&log));
             }
         }
     }
-    println!("scr_key reached {worst} bytes of stack");
-    assert!(worst <= 10, "{worst}");
+    println!("scr_key reached {worst} bytes of stack, {entry} at a routine's entry");
+    assert_eq!(worst, 10);
+    assert_eq!(entry, 4);
 }
 
 /// An interrupt after every `step` T-states of one call, up to past its measured length. Every

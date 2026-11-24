@@ -12,11 +12,11 @@
 ; above the open ones hold stale bytes.
 ;
 ; Kinds. scr_init is given a table of 10 byte rows, one per kind, the row of kind k at table +
-; (k-1)*10, five little-endian addresses: enter, draw, key, land, idle. Only the top screen has derived
-; state, so a screen that becomes the top is entered again from its frame. A kind that is not in
-; the table, or kind 0, is a wild jump. Every routine of a kind may destroy every register but
-; IY and gets the frame as HL, the frame's address in SCR_STACK, which holds only until the stack
-; changes:
+; (k-1)*10, five little-endian addresses: enter, draw, key, land, idle. Only the top screen has
+; derived state, so a screen that becomes the top is entered again from its frame. A kind that is
+; not in the table, or kind 0, is a wild jump. Every routine of a kind may destroy every register
+; but IY and gets the frame as HL, the frame's address in SCR_STACK, which holds only until the
+; stack changes:
 ;   enter  in HL = frame. out A = 0, or a nonzero status when the screen cannot be built.
 ;   draw   in HL = frame. Draws the whole frame into the canvas.
 ;   key    in A = the key (a KEY_ code), B = its character for KEY_LETTER, HL = frame.
@@ -29,21 +29,24 @@
 ;          was pending and nothing changed. A kind with no work points idle at a routine that
 ;          returns A = SCR_STAY with carry clear.
 ;
-; Contracts the code does not check: scr_init runs before any other routine; a kind is 1 to 255 and
-; has a row in the table; a key or idle routine that returns SCR_PUSH has filled scr_new with a frame whose
-; kind is not 0; after SCR_RES_FAILED from a pop or a jump the uncovered screen has not been entered,
-; so the caller runs scr_refresh, or leaves, before the next scr_key or scr_idle.
+; Contracts the code does not check: scr_init runs before any other routine; a kind is 1 to 255
+; and has a row in the table; a key or idle routine that returns SCR_PUSH has filled scr_new with a
+; frame whose kind is not 0; after SCR_RES_FAILED from a pop or a jump the uncovered screen has
+; not been entered, so the caller runs scr_refresh, or leaves, before the next scr_key or
+; scr_idle; an idle routine does not return SCR_JUMP while one screen is open, since that changes
+; nothing and answers carry set, and the caller would call it again until a key came.
 ;
 ; Variables. SCR_USED (41) bytes of SCR_VARS, laid out in ram.inc; scr_new is the frame a key
-; or idle routine writes before it returns SCR_PUSH. Nothing is kept in a register across a call of a
-; kind's routine. Only the stack, the variables and scr_new hold state, so all of it survives a
+; or idle routine writes before it returns SCR_PUSH. Nothing is kept in a register across a call
+; of a kind's routine. Only the stack, the variables and scr_new hold state, so all of it survives a
 ; key wait and an auto power down, except the derived state of the top screen: scr_refresh builds
 ; it again. The framework never touches IY, the shadow registers or IX, never changes the
 ; interrupt state, and works with interrupts on.
 ;
-; Stack: counting the caller's return address, scr_key and the other routines use at most 10 bytes
-; inside scr_dispatch and at most 4 at the entry of a kind's routine. scr_idle uses at most 12 and
-; at most 6 when its action is a push, a pop or a jump. The routines add their own.
+; Stack: counting the caller's return address, scr_key, scr_push_frame, scr_draw and scr_refresh
+; use at most 10 bytes inside scr_dispatch and 4 at the entry of a kind's routine. scr_idle uses
+; the same, except that when its action is a push, a pop or a jump it uses at most 12 inside
+; scr_dispatch and 6 at the entry. The routines add their own.
 ;
 ; Routines:
 ;   scr_init     in HL = the kind table, DE = the first frame, 16 bytes outside SCR_STACK. Clears

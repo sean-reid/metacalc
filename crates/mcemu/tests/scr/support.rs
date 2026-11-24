@@ -100,11 +100,14 @@ pub struct Rec {
     pub de: u16,
     pub a: u8,
     pub b: u8,
+    /// SP at the routine's first instruction.
+    pub sp: u16,
 }
 
 impl Rec {
     /// The record with the registers the routine was not given set to 0.
     pub fn given(mut self) -> Rec {
+        self.sp = 0;
         if self.routine != Routine::Key {
             (self.a, self.b) = (0, 0);
         }
@@ -379,7 +382,7 @@ impl Rig {
         let end = u16::from_le_bytes([end[0], end[1]]);
         let bytes = self.peek(start, usize::from(end - start));
         bytes
-            .chunks(24)
+            .chunks(32)
             .map(|r| Rec {
                 routine: match r[0] {
                     1 => Routine::Enter,
@@ -395,8 +398,18 @@ impl Rig {
                 de: u16::from_le_bytes([r[20], r[21]]),
                 a: r[22],
                 b: r[23],
+                sp: u16::from_le_bytes([r[24], r[25]]),
             })
             .collect()
+    }
+
+    /// Bytes of stack in use at the first instruction of the deepest routine in `log`, the return
+    /// address of the call under test included.
+    pub fn entry_stack(log: &[Rec]) -> usize {
+        log.iter()
+            .map(|r| usize::from(SP - r.sp))
+            .max()
+            .unwrap_or(0)
     }
 
     pub fn depth(&mut self) -> usize {

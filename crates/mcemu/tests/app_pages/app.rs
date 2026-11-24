@@ -253,6 +253,8 @@ pub struct In {
     pub bc: u16,
     pub de: u16,
     pub hl: u16,
+    /// The flags register.
+    pub f: u8,
 }
 
 /// What it came back with, the T-states the driver's call and halt took included.
@@ -317,11 +319,7 @@ impl App {
 
     /// The app installed on the reference OS and started from the APPS menu, left at its key wait.
     pub fn on_real_os(built: &'static Built) -> App {
-        let mut app = App::with(started_on_real_os(built), built);
-        // The driver, its callee's buffer and a stack of 64 bytes, all in A800h to AA0Fh.
-        app.driver = 0xA800;
-        app.stack = 0xAA00;
-        app.scratch = vec![(0xA800, 0xA810), (0xA9C0, 0xAA00)];
+        let mut app = App::on_real_os_in(started_on_real_os(built), built);
         let screen = libraries_pixels(built.shown().as_ref());
         let lcd = app.m.lcd();
         let lit: Vec<bool> = (0..64)
@@ -329,6 +327,17 @@ impl App {
             .map(|(x, y)| lcd.pixel(x, y))
             .collect();
         assert!(lit == screen, "the app has not reached its key wait");
+        app
+    }
+
+    /// `m`, the reference OS with `built` waiting for a key, as an App with the driver and stack
+    /// `call` and `timed` use there: a driver, its callee's buffer and a stack of 64 bytes, all in
+    /// A800h to AA0Fh.
+    pub fn on_real_os_in(m: Machine, built: &'static Built) -> App {
+        let mut app = App::with(m, built);
+        app.driver = 0xA800;
+        app.stack = 0xAA00;
+        app.scratch = vec![(0xA800, 0xA810), (0xA9C0, 0xAA00)];
         app
     }
 
@@ -349,7 +358,7 @@ impl App {
             .load_ram(self.driver, &[0xCD, lo, hi, 0x76, 0x18, 0xFD]);
         self.m.out_port(0x06, page);
         self.m.set_regs(&Regs {
-            af: u16::from(input.a) << 8,
+            af: u16::from(input.a) << 8 | u16::from(input.f),
             bc: input.bc,
             de: input.de,
             hl: input.hl,
@@ -409,7 +418,7 @@ impl App {
             .load_ram(self.driver, &[0xCD, lo, hi, 0xC3, slo, shi]);
         self.m.out_port(0x06, page);
         self.m.set_regs(&Regs {
-            af: u16::from(input.a) << 8,
+            af: u16::from(input.a) << 8 | u16::from(input.f),
             bc: input.bc,
             de: input.de,
             hl: input.hl,

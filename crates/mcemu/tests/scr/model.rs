@@ -48,6 +48,7 @@ impl Mirror {
             de,
             a,
             b,
+            sp: 0,
         }
         .given()
     }

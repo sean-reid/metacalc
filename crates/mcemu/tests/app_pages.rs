@@ -35,6 +35,8 @@ mod power;
 mod real;
 #[path = "common/realos.rs"]
 mod realos;
+#[path = "common/regions.rs"]
+mod regions;
 #[path = "app_pages/room.rs"]
 mod room;
 #[path = "app_pages/screen.rs"]

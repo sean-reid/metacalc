@@ -1,8 +1,8 @@
 ; The screen framework with a call driver and five fake kinds. Each fake routine appends a record
 ; to the log at FK_LOG, then fills every register, the shadow set and IX included, with junk and
 ; returns what the test scripted:
-;   record, 24 bytes: routine (1 enter, 2 draw, 3 key, 4 land, 5 idle), the fake's kind, the frame address,
-;   the frame's 16 bytes, DE, A, B as the routine got them.
+;   record, 32 bytes: routine (1 enter, 2 draw, 3 key, 4 land, 5 idle), the fake's kind, the frame address,
+;   the frame's 16 bytes, DE, A, B as the routine got them, SP at its first instruction, 6 spare.
 ;   enter returns the next byte of the queue at FK_STATQ; key returns the action at FK_SCRIPT, DE
 ;   from FK_SCRIPT+2, and for SCR_PUSH copies the 16 bytes at FK_SCRIPT+4 to scr_new. idle returns
 ;   the same, and carry set when FK_SCRIPT+1 is 1.
@@ -40,10 +40,15 @@ FK_IN_B		.equ $A067
 FK_RID		.equ $A068
 FK_RET_A	.equ $A069
 FK_OVER		.equ $A06A
+FK_IN_SP	.equ $A06C
 FK_LOG		.equ $A100
 FK_LOG_END	.equ $A400
 FK_TABLE	.equ $A400
 IRQ_HANDLER	.equ $AE00
+
+#if (FK_TABLE + (255 * 10)) > IRQ_HANDLER
+ .error "the kind table of 255 rows of 10 bytes must end below IRQ_HANDLER"
+#endif
 
 .org $4000
 	jp call_entry
@@ -170,6 +175,12 @@ fk_write:
 	ld a,(FK_IN_B)
 	ld (hl),a
 	inc hl
+	ld de,(FK_IN_SP)
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	ld de,7
+	add hl,de
 	ld (FK_LOGP),hl
 fk_dispatch:
 	ld a,(FK_RID)
@@ -208,6 +219,7 @@ fk_key_done:
 	ret
 
 #macro FK_STUB(routine, id)
+	ld (FK_IN_SP),sp
 	ld (FK_IN_DE),de
 	ld (FK_IN_A),a
 	ld a,b
