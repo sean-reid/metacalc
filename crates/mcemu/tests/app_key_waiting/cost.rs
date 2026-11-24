@@ -7,6 +7,9 @@ use mcemu::Speed;
 const COST_CODE: u32 = 55;
 const COST_FLAG: u32 = 85;
 const COST_FULL: u32 = 250;
+/// The port path with its settle delay, which the emulator cannot otherwise check: without the
+/// delay it is 50 T-states shorter.
+const COST_FULL_MIN: u32 = 235;
 
 fn assert_cost(mut rig: Rig, name: &str) {
     for speed in [Speed::Mhz6, Speed::Mhz15] {
@@ -32,6 +35,10 @@ fn assert_cost(mut rig: Rig, name: &str) {
             "the port path was not taken: {none} {held}"
         );
         assert!(none <= COST_FULL && held <= COST_FULL, "{none} {held}");
+        assert!(
+            none >= COST_FULL_MIN && held >= COST_FULL_MIN,
+            "the settle delay is missing: {none} {held}"
+        );
         rig.m().release_key(DOWN);
         rig.step(100_000);
     }
