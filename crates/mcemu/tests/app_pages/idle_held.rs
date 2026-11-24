@@ -125,9 +125,10 @@ fn with_the_byte_clear(real: bool, script: &Script) -> Rig {
     rig
 }
 
-/// After the byte is clear, a key pressed inside an interrupts-off slice and still down at its end
-/// is a press the OS has not scanned, so the shell takes it through app_key and acts on it once.
-fn a_press_seen_only_on_the_port_goes_to_app_key(real: bool) {
+/// After the byte is clear, a key pressed inside an interrupts-off slice and still down at its end is
+/// a new press: the OS has not scanned it during the slice, and the shell takes it when the slice
+/// ends and acts on it once.
+fn a_new_press_in_an_interrupts_off_slice_is_taken_when_it_ends(real: bool) {
     let mut all: Vec<Slice> = (0..3).map(|_| Slice::ms(150).more()).collect();
     all.extend((0..5).map(|i| {
         let s = Slice::ms(150).off();
@@ -173,9 +174,9 @@ fn a_press_seen_only_on_the_port_goes_to_app_key(real: bool) {
 }
 
 twin!(
-    a_press_seen_only_on_the_port_with_the_byte_clear_goes_to_app_key_and_is_acted_on_once,
-    on_the_reference_os_a_press_seen_only_on_the_port_goes_to_app_key_and_is_acted_on_once,
-    a_press_seen_only_on_the_port_goes_to_app_key
+    a_new_press_in_an_interrupts_off_slice_with_the_byte_clear_is_taken_when_the_slice_ends_and_acted_on_once,
+    on_the_reference_os_a_new_press_in_an_interrupts_off_slice_is_taken_when_the_slice_ends,
+    a_new_press_in_an_interrupts_off_slice_is_taken_when_it_ends
 );
 
 /// A key pressed while the shell loops through 3 ms slices that run with interrupts off, at twelve
