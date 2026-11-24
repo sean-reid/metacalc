@@ -10,9 +10,10 @@ use crate::shellrig::*;
 const SCR_PUSH: u8 = 2;
 const CARRY: u8 = 1;
 
-/// Every declared RAM region's bytes (banks B and C), from the build's labels, with the bytes the call itself writes
-/// set to 0: scr_vec, which each dispatch writes with the routine it calls, and the driver's own
-/// ranges.
+/// Every declared RAM region's bytes, from the build's labels, with the bytes the call itself
+/// writes set to 0: scr_vec, which each dispatch writes with the routine it calls, and the driver's
+/// own ranges. The 0x8000 filter skips labels whose base is in flash. Bank C is read as mapped at
+/// the call, which is the OS's page, so the kernel's RAM page is not compared.
 fn snapshot(app: &mut App) -> Vec<(u16, Vec<u8>)> {
     let labels = app.built.labels.clone();
     let vec = app.label("scr_vec");
