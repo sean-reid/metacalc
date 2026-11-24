@@ -99,9 +99,13 @@ ak_on:
 ; The OS holds a key's scan code in kbdScanCode from its press until _GetKey takes it or until about
 ; 40 ms after the release, and a key held between auto repeats has none.
 ;
-; app_key_waiting   out: NZ when kbdScanCode holds a code, onInterrupt is set, ON is down or a key is
-;                        down; Z when none is. A pending 2nd or ALPHA is a code: app_key takes it and
-;                        waits for the key after it
+; app_key_waiting   out: Z, carry clear, A = 0: nothing; the port read showed every key and ON up
+;                        NZ, carry clear: a scan code is held, A = it; app_key returns that key at
+;                        once. A pending 2nd or ALPHA is a code: app_key takes it and waits for the
+;                        key after it
+;                        NZ, carry set: no scan code. A bit 3 is set when onInterrupt is set or ON is
+;                        down, bit 0 when a key is down on the port. When onInterrupt is set the
+;                        port is not read and bit 0 is clear
 ;                   reads kbdScanCode, the onInterrupt flag through IY, port 1 with every key group
 ;                   selected, and port 4; takes nothing, so the next app_key sees the OS's key bytes
 ;                   as they were. Leaves port 1 at FFh, every group deselected
@@ -110,9 +114,9 @@ ak_on:
 ;                   with them off. The formula routines run with interrupts off and must not call it
 ;                   T-states, measured in the emulator from the call to the instruction after
 ;                   it, so they include the call and the OS's wait states (1 per opcode fetch from
-;                   flash, 1 per stack write): 51 on the scan code, 79 on the break flag, 243 on
-;                   the port path, at 6 and at 15 MHz. The Z80 table gives 28, 53 and 193 for the
-;                   routine alone, without the 17 of the call
+;                   flash, 1 per stack write), the same at 6 and at 15 MHz: 51 on the scan code, 99 on
+;                   the break flag, 269 when nothing is down, 279 with ON down, 282 with a key down
+;                   whether or not ON is
 ;                   two push af / pop af pairs (42 T-states) between the group write and the read
 ;                   let the keypad lines settle at 15 MHz
 
@@ -121,7 +125,11 @@ app_key_waiting:
 	or a
 	ret nz
 	bit onInterrupt,(iy+onFlags)
-	ret nz
+	jr z,akw_port
+	ld a,8
+	scf
+	ret
+akw_port:
 	di
 	xor a
 	out (1),a
@@ -139,8 +147,14 @@ app_key_waiting:
 	and 8
 	ld b,a
 	ld a,c
-	cpl
-	or b
+	inc a
+	ld a,b
+	jr z,akw_keyless
+	or 1
+akw_keyless:
+	or a
+	ret z
+	scf
 	ret
 
 ; app_tick   waits for the next interrupt and returns

@@ -12,6 +12,8 @@ mod held;
 mod modifiers;
 #[path = "app_key_waiting/on.rs"]
 mod on;
+#[path = "app_key_waiting/outputs.rs"]
+mod outputs;
 #[path = "app_key_waiting/repeat.rs"]
 mod repeat;
 #[path = "app_key_waiting/rig.rs"]

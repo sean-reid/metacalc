@@ -8,26 +8,33 @@
 ; refused library does, pushes the error notice over it.
 ; Loop. The shell runs the screen stack of scr/scr.z80. After every frame (scr_draw, ui_blit, the
 ; sentinel) and after every key the stack answered SCR_RES_IDLE to with no refresh, it goes through
-; the idle point, and then blocks in app_key. The idle point asks app_key_waiting. NZ goes to
-; app_key. Z asks app_error_open and calls scr_idle, which does the top screen's pending work:
-; SCR_RES_REDRAW draws and blits, SCR_RES_LEAVE and SCR_RES_FAILED are handled as scr_key's are
-; below, and SCR_RES_IDLE goes back to the idle point while the carry says more work is pending
-; and to app_key when it is clear. A key is looked for between every two idle calls, and a screen
-; with nothing pending costs one app_key_waiting and one scr_idle for each frame or key. After
-; app_key the shell runs the sentinel check, scr_key, and then what scr_key returns:
-; SCR_RES_IDLE goes to the idle point with no draw and no blit, SCR_RES_REDRAW draws and blits,
-; SCR_RES_LEAVE leaves, and SCR_RES_FAILED, with B the status of an enter that failed, pushes the
-; error notice with scr_push_frame. 2nd+QUIT leaves from any depth before the stack sees it.
+; the idle point, and then blocks in app_key. The idle point asks app_key_waiting. A scan code goes
+; to app_key. With no scan code, a key down on the port goes to app_key when APP_HELD is 0, since
+; it is a press the OS has not scanned yet, and counts as no key when APP_HELD is not 0. APP_HELD,
+; "the key I handled may still be down", is 1 from the start, since the key that launched the app
+; may still be down, and after every app_key; it is cleared where app_key_waiting answers Z. With
+; no key waiting the shell asks app_error_open and calls scr_idle, which does the top screen's
+; pending work: SCR_RES_REDRAW draws and blits, SCR_RES_LEAVE and SCR_RES_FAILED are handled as
+; scr_key's are below, and SCR_RES_IDLE goes back to the idle point while the carry says more work
+; is pending and to app_key when it is clear. A key is looked for between every two idle calls, and
+; a screen with nothing pending costs one app_key_waiting and one scr_idle for each frame or key,
+; and leaves key repeat and auto power down to app_key. After app_key the shell runs the sentinel
+; check, scr_key, and then what scr_key returns: SCR_RES_IDLE goes to the idle point with no draw
+; and no blit, SCR_RES_REDRAW draws and blits, SCR_RES_LEAVE leaves, and SCR_RES_FAILED, with B the
+; status of an enter that failed, pushes the error notice with scr_push_frame. 2nd+QUIT leaves from
+; any depth before the stack sees it.
 ; Interrupts. app_key_waiting needs them on at its call. The first frame comes to the idle point
 ; with them off, as the app is entered, so the shell turns them on after every frame's arm; every
 ; other way in has them on, since app_key returns with them on and the framework, the screens and the
 ; blit leave them as they found them. A kind's idle routine returns with them on, also when it ran
-; its slice with them off.
+; its slice with them off. A tap that starts and ends inside one slice that runs with them off is
+; never scanned and is lost; a key still down at the end of such a slice is taken.
 ; Sentinel and work. Idle work runs before the sentinel check of the next key; the OS writes over
 ; saveSScreen only when auto power down fires inside _GetKey, so no idle call sees it overwritten.
-; A key still down when the shell reaches the idle point after handling it, a pending 2nd or ALPHA
-; and ON all send the shell to app_key with work pending, which then waits for the next press or
-; auto repeat.
+; ON is ignored while work is pending: with no scan code and onInterrupt set or ON down, the shell
+; clears onInterrupt and goes on to scr_idle, and when scr_idle answers carry clear app_key takes ON
+; as it does on a screen with nothing pending. A pending 2nd or ALPHA is a scan code, so it sends the
+; shell to app_key and the work waits for the key after it.
 ; Kinds, in screens.inc and the files it names, on this page:
 ;   1 libraries   one row for each stage of the library and then My proofs, with each stage's
 ;                 progress read from the status table (screen_libraries.inc, screen_counts.inc);
@@ -114,6 +121,8 @@ app_start:
 	ld (appStatus), a
 #endif
 app_open:
+	ld a, 1
+	ld (APP_HELD), a
 	ld hl, screen_kinds
 	ld de, screen_first
 	call scr_init
@@ -128,7 +137,19 @@ app_draw:
 	ei
 app_idle:
 	call app_key_waiting
-	jr nz, app_wait
+	jr z, app_none
+	jr nc, app_wait
+	bit 0, a
+	jr z, app_on
+	ld a, (APP_HELD)
+	or a
+	jr z, app_wait
+app_on:
+	res onInterrupt, (iy + onFlags)
+	jr app_work
+app_none:
+	ld (APP_HELD), a
+app_work:
 	call app_error_open
 	ld e, a
 	push de
@@ -143,6 +164,8 @@ app_idled:
 	jr nz, app_result
 app_wait:
 	call app_key
+	ld hl, APP_HELD
+	ld (hl), 1
 	cp KEY_QUIT
 	jr z, app_exit
 	ld c, a
@@ -189,7 +212,7 @@ app_failed:
 	call screen_make
 	call scr_push_frame
 	cp SCR_RES_REDRAW
-	jr z, app_draw
+	jp z, app_draw
 app_exit:
 	di
 	call app_putaway

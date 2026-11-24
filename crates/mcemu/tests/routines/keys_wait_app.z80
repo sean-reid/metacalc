@@ -4,9 +4,10 @@
 
 ; Rounds for app_key_waiting, started by the test writing 1 to CMD: busy for BUSY outer passes
 ; of about 3,370 T-states with interrupts on when INTS is not 0, then CALLS calls of
-; app_key_waiting, one result byte each at WRES (0 for Z, 1 for NZ), then app_key unless FLAGS bit
-; 0 is set. The scan code, the key byte and the ON flags byte are copied to PRE just before the
-; calls and to POST just after. FLAGS bit 1 keeps CMD set, so rounds follow one another and each
+; app_key_waiting, one result byte each at WRES (0 for Z, 1 for NZ), at WCAR (the carry) and at
+; WACC (A), each call made with A = 80h, NZ and carry set so a bare ret answers none of the
+; cases, then app_key unless FLAGS bit 0 is set. The scan code, the key byte and the ON flags
+; byte are copied to PRE just before the calls and to POST just after. FLAGS bit 1 keeps CMD set, so rounds follow one another and each
 ; app_key return is logged at LOG; bit 2 makes the calls with interrupts off from the labels
 ; kw_pre and kw_post, for the cost, once CMD is 2, with the interrupt sources masked so none is
 ; taken inside the call; bit 3 replaces the calls with polling: app_key_waiting after every
@@ -23,6 +24,8 @@ KEYB    = 0A80Ah
 IFF     = 0A80Bh
 BEND    = 0A80Ch
 WRES    = 0A810h
+WCAR    = 0A830h
+WACC    = 0A840h
 PRE     = 0A820h
 POST    = 0A824h
 LOG     = 0A900h
@@ -106,16 +109,35 @@ kw_post:
 	out (3), a
 	jr wdone
 wcall:
+	ld a, 80h
+	or a
+	scf
 	call app_key_waiting
+	push af
+	pop de
 wdone:
 	pop bc
 	pop hl
+	ld a, e
+	and 40h
 	ld a, 0
-	jr z, wz
+	jr nz, wz
 	inc a
 wz:
 	ld (hl), a
-	inc hl
+	push bc
+	ld bc, WCAR-WRES
+	add hl, bc
+	ld a, e
+	and 1
+	ld (hl), a
+	ld bc, WACC-WCAR
+	add hl, bc
+	ld (hl), d
+	ld bc, WACC-WRES-1
+	or a
+	sbc hl, bc
+	pop bc
 	ld a, i
 	ld a, 0
 	jp po, wiff

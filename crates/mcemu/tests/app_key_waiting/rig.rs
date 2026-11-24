@@ -17,6 +17,8 @@ const KEYB: usize = 0xA80A - RAM_BASE;
 const IFF: usize = 0xA80B - RAM_BASE;
 const BEND: usize = 0xA80C - RAM_BASE;
 const WRES: usize = 0xA810 - RAM_BASE;
+const WCAR: usize = 0xA830 - RAM_BASE;
+const WACC: usize = 0xA840 - RAM_BASE;
 const PRE: usize = 0xA820 - RAM_BASE;
 const POST: usize = 0xA824 - RAM_BASE;
 const LOG: usize = 0xA900 - RAM_BASE;
@@ -60,6 +62,9 @@ pub enum Rig {
 #[derive(Debug)]
 pub struct Out {
     pub wres: Vec<u8>,
+    /// The carry and A after each call.
+    pub carry: Vec<u8>,
+    pub acc: Vec<u8>,
     pub pre: Vec<u8>,
     pub post: Vec<u8>,
     pub done: u8,
@@ -165,6 +170,8 @@ impl Rig {
     pub fn out(&mut self, calls: usize) -> Out {
         Out {
             wres: self.ram(WRES, calls),
+            carry: self.ram(WCAR, calls),
+            acc: self.ram(WACC, calls),
             pre: self.ram(PRE, 3),
             post: self.ram(POST, 3),
             done: self.ram(DONE, 1)[0],
@@ -202,6 +209,17 @@ impl Rig {
     /// The T-states of one call of app_key_waiting made with interrupts off, from the call to the
     /// instruction after it, at `speed`, once `setup` has set the world up.
     pub fn cost(&mut self, speed: Speed, setup: impl FnOnce(&mut Rig)) -> u32 {
+        self.cost_late(speed, setup, |_| {})
+    }
+
+    /// `cost`, with `late` run once the app spins with interrupts off waiting for the host, so
+    /// that the OS has not scanned what it does.
+    pub fn cost_late(
+        &mut self,
+        speed: Speed,
+        setup: impl FnOnce(&mut Rig),
+        late: impl FnOnce(&mut Rig),
+    ) -> u32 {
         let page = if matches!(self, Rig::Stub(_)) {
             STUB_BASE
         } else {
@@ -212,8 +230,15 @@ impl Rig {
         self.start_round(0, true, SKIP_KEY | COST, 1);
         let (pre, post) = (Rig::label("kw_pre"), Rig::label("kw_post"));
         self.step(30_000);
+        late(self);
         self.poke(CMD, &[2]);
-        let reached = self.m().run_to(page, pre, 100_000);
+        let mut vectors = 0;
+        let reached = loop {
+            match self.m().run_to(page, pre, 100_000) {
+                Reached::Vector38 if vectors < 20 => vectors += 1,
+                other => break other,
+            }
+        };
         assert_eq!(reached, Reached::Target, "the app never reached the call");
         let t0 = self.m().clock();
         assert_eq!(self.m().run_to(page, post, 100_000), Reached::Target);
