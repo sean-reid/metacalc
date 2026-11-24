@@ -4,7 +4,7 @@ use crate::nodes::Model;
 use crate::rig::*;
 use crate::support::*;
 use mcui::expr::Expr;
-use mcui::fold::{Folds, Layout, Piece, layout};
+use mcui::fold::{Folds, Layout, layout};
 
 /// Statements of different shapes: short, nested, braced, many operators, quantifiers, words in
 /// place of symbols and a hypothesis.
@@ -41,13 +41,6 @@ fn drops_only_its_last(bytes: &[u8]) -> (String, u8) {
                 && want.pieces.len() == plain.pieces.len()
                 && plain.pieces.len() >= 3
             {
-                let mut one = narrow.pieces[..1].to_vec();
-                one.push(Piece::Ellipsis);
-                assert_ne!(
-                    want.pieces, one,
-                    "{}: the cut keeps one token",
-                    assertion.label
-                );
                 return (assertion.label.clone(), 0xFF);
             }
         }

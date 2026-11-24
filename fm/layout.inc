@@ -69,7 +69,7 @@ fm_count:
 
 ; in: fv_hdr. out: HL = the address of byte 7 of the selected statement's header. Only L changes, so
 ; byte 7 must not cross a 256-byte boundary: the slots at FM_HDR are 8-aligned, and fv_nohdr, at
-; FM_RAM+$D7, ends with byte 7 at $DE. Destroys AF.
+; FM_RAM+$D7, ends with byte 7 at FM_RAM+$DE. Destroys AF.
 fm_hdr7:
 	ld hl,(fv_hdr)
 	ld a,l
