@@ -4,7 +4,7 @@
 
 use crate::app::*;
 use crate::builds::*;
-use crate::realos::{BASE, RealOs, started_on_real_os};
+use crate::realos::{BASE, RealOs};
 use crate::shellrig::*;
 
 const SCR_PUSH: u8 = 2;
