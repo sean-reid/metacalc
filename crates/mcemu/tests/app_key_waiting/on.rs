@@ -48,6 +48,12 @@ fn assert_on(
     if let Some(f) = flagged {
         assert_eq!(flag, f, "the OS's break flag before the call");
     }
+    if release.is_some() && flagged == Some(true) {
+        assert_eq!(
+            out.pre[0], 0,
+            "no scan code is held, so only the flag answers"
+        );
+    }
     match waiting {
         Some(w) => assert_eq!(out.wres, [u8::from(w)]),
         None => assert_eq!(out.wres[0] == 1, flag),
@@ -101,11 +107,11 @@ fn on_the_reference_os_an_on_tap_in_the_busy_loop_is_waiting_exactly_when_the_os
 
 #[test]
 fn on_released_before_app_key_runs_is_waiting_by_the_break_flag_alone() {
-    assert_on(Rig::stub, true, -100, Some(-50), Some(true), Some(true));
+    assert_on(Rig::stub, true, -150, Some(-50), Some(true), Some(true));
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn on_the_reference_os_on_released_before_app_key_runs_is_waiting_by_the_break_flag_alone() {
-    assert_on(Rig::real, true, -100, Some(-50), Some(true), Some(true));
+    assert_on(Rig::real, true, -150, Some(-50), Some(true), Some(true));
 }
