@@ -21,6 +21,11 @@ const BUDGET_TABLE: usize = 0x1E50;
 const TOP_APP_PAGE: u8 = 0x69;
 const UNLIMITED: [u8; 2] = [0x80, 0x00];
 
+/// The offset in page 7Eh of the launch budget of the app on `base`, which is 69h or below.
+fn budget_slot(base: u8) -> usize {
+    BUDGET_TABLE + 2 * usize::from(TOP_APP_PAGE - base)
+}
+
 impl Machine {
     fn check_base(&self, base: u8) -> Result<(), AppError> {
         if base <= FIRST_PROTECTED {
@@ -34,19 +39,34 @@ impl Machine {
 
     /// Writes page k of the app file to flash page `base - k`, and remembers how many pages that
     /// is for `launch`, per base page. On a real OS image it also marks the app unlimited, as the
-    /// OS's own install does; a base above 69h has no slot in the OS's table and is not marked.
+    /// OS's own install does, and refuses a base above 69h, which has no slot in the OS's table.
+    /// The table address is the SE image's with that half of the sector active; a slot holding
+    /// anything but FFh FFh or the mark is refused, and nothing is written.
     pub fn install_app(&mut self, file: &[u8], base: u8) -> Result<(), AppError> {
         self.check_base(base)?;
+        if self.os && base > TOP_APP_PAGE {
+            return Err(AppError(
+                "the OS's launch table has no slot for the base page",
+            ));
+        }
         let pages = decode_app(file)?;
         if pages.len() > usize::from(base - FIRST_PROTECTED) {
             return Err(AppError("the pages do not fit below the base page"));
         }
+        if self.os {
+            let slot = budget_slot(base);
+            let held = self.read_flash(BUDGET_PAGE, slot, 2);
+            if held != [0xFF, 0xFF] && held != UNLIMITED {
+                return Err(AppError(
+                    "the launch table is not where this image keeps it",
+                ));
+            }
+        }
         for (k, page) in pages.iter().enumerate() {
             self.load_flash(base - k as u8, 0, page);
         }
-        if self.os && base <= TOP_APP_PAGE {
-            let slot = BUDGET_TABLE + 2 * usize::from(TOP_APP_PAGE - base);
-            self.load_flash(BUDGET_PAGE, slot, &UNLIMITED);
+        if self.os {
+            self.load_flash(BUDGET_PAGE, budget_slot(base), &UNLIMITED);
         }
         self.apps.insert(base, pages.len());
         Ok(())
