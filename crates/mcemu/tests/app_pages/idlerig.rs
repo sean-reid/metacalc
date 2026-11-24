@@ -10,10 +10,11 @@ use crate::shellrig::*;
 use mcemu::{Machine, STUB_ROM, Stop};
 
 const CODE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/idle_script.bin"));
+const DEFINES: &str = include_str!(concat!(env!("OUT_DIR"), "/idle_script.defs"));
 const STUB_OS_LABELS: &str = include_str!(concat!(env!("OUT_DIR"), "/os.lab"));
 
-/// Where the routine and its state sit; build.rs assembles the routine for IDLE and the same
-/// counters the rig keeps (BLITS_AT and KEYS_AT in shellrig.rs).
+/// Where the routine and its state sit; build.rs assembles the routine for ENTRY = IDLE, STATE and
+/// the rig's counters BLITS and SCR_KEYS (shellrig.rs), and install checks they are the same.
 pub const IDLE: u16 = 0xB700;
 pub const STATE: u16 = 0xB800;
 const LOG: u16 = STATE + 16;
@@ -138,6 +139,21 @@ pub struct OsState {
     pub mask: u8,
 }
 
+/// What app_key_waiting answered.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Answer {
+    pub a: u8,
+    pub zero: bool,
+    pub carry: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Where {
+    OsKeyWait,
+    WaitingForOnUp,
+    Elsewhere(u8, u16),
+}
+
 pub struct State {
     pub calls: u16,
     pub logged: u8,
@@ -174,8 +190,28 @@ pub(crate) use twin;
 pub struct Rig {
     pub shell: Shell,
     pub real: bool,
+    /// Slices the script has: the bytes of SLICES the test wrote.
+    slices: usize,
     /// Microseconds run since the rig started.
     pub t: u32,
+}
+
+/// Panics unless the defines build.rs gave the routine are the Rust constants of the rig.
+fn assert_defines() {
+    let want = [
+        ("ENTRY", IDLE),
+        ("STATE", STATE),
+        ("BLITS", BLITS),
+        ("KEYS", SCR_KEYS),
+    ];
+    let got: Vec<(&str, u16)> = DEFINES
+        .lines()
+        .map(|l| {
+            let (name, value) = l.split_once("=$").expect("a define NAME=$ADDRESS");
+            (name, u16::from_str_radix(value, 16).unwrap())
+        })
+        .collect();
+    assert_eq!(got, want, "build.rs and idlerig.rs place the routine alike");
 }
 
 /// Panics when the routine's range overlaps a region of the app, a driver or a hook, or, on the
@@ -210,6 +246,7 @@ fn assert_os_leaves_it(m: &mut Machine) {
 }
 
 fn install(m: &mut Machine, built: &Built, script: &Script) {
+    assert_defines();
     assert_free(built);
     assert!(script.slices.len() <= MAX_SLICES);
     m.load_ram(STATE, &vec![0; usize::from(END - STATE)]);
@@ -218,7 +255,7 @@ fn install(m: &mut Machine, built: &Built, script: &Script) {
     state[0] = script.slices.len() as u8;
     state[2] = u8::from(script.forever);
     state[8..10].copy_from_slice(&built.label("scr_new").to_le_bytes());
-    state[10..12].copy_from_slice(&built.label("app_tick").to_le_bytes());
+    state[10..12].copy_from_slice(&built.try_label("app_tick").unwrap_or(0).to_le_bytes());
     state[13] = u8::from(script.restart);
     m.load_ram(STATE, &state);
     for (i, slice) in script.slices.iter().enumerate() {
@@ -226,6 +263,41 @@ fn install(m: &mut Machine, built: &Built, script: &Script) {
     }
     for &kind in &script.kinds {
         patch_idle(m, built, kind, IDLE);
+    }
+}
+
+/// The ranges of the routine's RAM the routine and the test write: its code, its state and log,
+/// and the slices the test wrote.
+fn written(slices: usize) -> [(u16, u16); 3] {
+    [
+        (IDLE, IDLE + CODE.len() as u16),
+        (STATE, SLICES),
+        (SLICES, SLICES + 32 * slices as u16),
+    ]
+}
+
+impl Drop for Rig {
+    /// Every byte of the routine's range that neither it nor the test wrote is still 0, and the
+    /// code is the code, so nothing else ran over it.
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            return;
+        }
+        let ranges = written(self.slices);
+        let bytes = self.ram(IDLE, usize::from(END - IDLE));
+        for (i, &b) in bytes.iter().enumerate() {
+            let at = IDLE + i as u16;
+            let ours = ranges.iter().any(|&(from, to)| (from..to).contains(&at));
+            assert!(
+                ours || b == 0,
+                "{at:04X} holds {b:02X} outside what the routine writes"
+            );
+        }
+        assert_eq!(
+            &bytes[..CODE.len()],
+            CODE,
+            "the routine's code is as it was loaded"
+        );
     }
 }
 
@@ -245,6 +317,7 @@ impl Rig {
                 patience: 1,
             },
             real: false,
+            slices: script.slices.len(),
             t: 0,
         }
     }
@@ -273,6 +346,7 @@ impl Rig {
                 patience: 1,
             },
             real: true,
+            slices: script.slices.len(),
             t: 0,
         };
         rig.until("the first frame", 2_000_000, |r| r.shell.blits() >= 1);
@@ -403,6 +477,23 @@ impl Rig {
         }
     }
 
+    /// Starts the app again after it left and runs to the idle point of its first frame: from the
+    /// APPS menu on the reference OS, where the home screen has run for a second and the key that
+    /// starts the app is still down on return, and by `launch` on the stub.
+    pub fn launch_again(&mut self) {
+        if self.real {
+            self.step(1_000_000);
+            self.m().press_key(KEY_APPS);
+            self.step(150_000);
+            self.m().release_key(KEY_APPS);
+            self.step(600_000);
+            self.m().press_key(KEY_2);
+        } else {
+            self.m().launch(BASE).expect("the app launches");
+        }
+        self.run_to_label("app_idle", 6_000_000);
+    }
+
     pub fn scan_code(&mut self) -> u8 {
         self.ram(KBD_SCAN, 1)[0]
     }
@@ -449,18 +540,50 @@ impl Rig {
 
     pub fn run_to_label(&mut self, label: &str, limit: u32) {
         let at = self.shell.app.label(label);
+        self.run_to_addr(label, at, limit);
+    }
+
+    /// Runs until the instruction at `at` on the app's page is next; `what` names it.
+    pub fn run_to_addr(&mut self, what: &str, at: u16, limit: u32) {
         let start = self.m().clock();
         loop {
             match self.m().run_to(BASE, at, limit) {
                 mcemu::Reached::Target => return,
                 mcemu::Reached::Vector38 => {}
-                mcemu::Reached::Limit => panic!("the app never reached {label}"),
+                mcemu::Reached::Limit => panic!("the app never reached {what}"),
             }
             let spent = self.m().clock().wrapping_sub(start);
             assert!(
                 spent < limit,
-                "the app never reached {label} in {limit} T-states"
+                "the app never reached {what} in {limit} T-states"
             );
+        }
+    }
+
+    /// Runs to the instruction after the call of app_key_waiting at the idle point and returns the
+    /// registers there: A, the flags, and so what the call answered.
+    pub fn answer_at_the_idle_point(&mut self) -> Answer {
+        let at = self.shell.app.label("app_idle") + 3;
+        self.run_to_addr("the return of app_key_waiting", at, 6_000_000);
+        let af = self.m().regs().af;
+        Answer {
+            a: (af >> 8) as u8,
+            zero: af & 0x40 != 0,
+            carry: af & 1 != 0,
+        }
+    }
+
+    /// Where the app is: in the OS's key wait, in app_key's wait for ON to go up, or in other code
+    /// of the app.
+    pub fn whereabouts(&mut self) -> Where {
+        let (page, pc) = self.at();
+        let on = self.shell.app.label("ak_on");
+        if page == BASE && (on..on + 9).contains(&pc) {
+            Where::WaitingForOnUp
+        } else if (self.real && page != BASE) || (!self.real && Rig::in_stub_key_wait(pc)) {
+            Where::OsKeyWait
+        } else {
+            Where::Elsewhere(page, pc)
         }
     }
 

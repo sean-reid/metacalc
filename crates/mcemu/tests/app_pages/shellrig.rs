@@ -46,11 +46,22 @@ const IDLES: u16 = 0xB542;
 const KEY_HOOK: u16 = 0xB4C0;
 const BLIT_HOOK: u16 = 0xB440;
 const ENTER_HOOK: u16 = 0xB560;
-const WAITING_HOOK: u16 = 0xB5E0;
-const IDLE_HOOK: u16 = 0xB5F0;
+const WAITING_HOOK: u16 = 0xB5D8;
+const IDLE_HOOK: u16 = 0xB5E8;
 /// The first and the end of the RAM the rig's counters and hooks use.
 pub const HOOKS: (u16, u16) = (BLIT_HOOK, 0xB600);
 const SAVE_SCREEN: u16 = 0x86EC;
+
+/// Loads a hook at `at`, which must end by `limit`, where the next hook or the end of the rig's RAM
+/// begins.
+fn put(m: &mut Machine, at: u16, limit: u16, code: &[u8]) {
+    assert!(
+        usize::from(at) + code.len() <= usize::from(limit),
+        "the {} byte hook at {at:04X} runs past {limit:04X}",
+        code.len()
+    );
+    m.load_ram(at, code);
+}
 
 /// `push hl`, `ld hl,(counter)`, `inc hl`, `ld (counter),hl`, `pop hl`, `jp then`.
 fn counting_hook(counter: u16, then: u16) -> Vec<u8> {
@@ -120,7 +131,7 @@ pub enum Enter {
 /// the counters of blits, of scr_key calls, of each kind's enter, of app_key_waiting and of
 /// scr_idle, and the failing enters `enter` asks for.
 pub fn install_hooks(m: &mut Machine, built: &Built, enter: Enter) {
-    m.load_ram(BLITS, &[0; 0x40]);
+    m.load_ram(BLITS, &[0; (ENTER_HOOK - BLITS) as usize]);
     // scr_key starts `ld c,SCR_AT_KEY`, `call scr_on_top`: five bytes the hook runs itself.
     let key = built.label("scr_key");
     let [c0, c1] = SCR_KEYS.to_le_bytes();
@@ -129,12 +140,12 @@ pub fn install_hooks(m: &mut Machine, built: &Built, enter: Enter) {
     let hook = [
         0xE5, 0x2A, c0, c1, 0x23, 0x22, c0, c1, 0xE1, 0x0E, 0x04, 0xCD, o0, o1, 0xC3, r0, r1,
     ];
-    m.load_ram(KEY_HOOK, &hook);
+    put(m, KEY_HOOK, BLITS, &hook);
     let [h0, h1] = KEY_HOOK.to_le_bytes();
     m.load_flash(BASE, usize::from(key - 0x4000), &[0xC3, h0, h1]);
     count_idle_point(m, built);
     let far = built.label("far_page1");
-    m.load_ram(BLIT_HOOK, &counting_hook(BLITS, far));
+    put(m, BLIT_HOOK, KEY_HOOK, &counting_hook(BLITS, far));
     hook_stub(m, built, "far_ui_blit", BLIT_HOOK);
     let reals =
         ["libs_enter", "notice_enter", "about_enter", "stage_enter"].map(|n| built.label(n));
@@ -160,7 +171,7 @@ pub fn install_hooks(m: &mut Machine, built: &Built, enter: Enter) {
             }
             _ => counting_hook(counter, real),
         };
-        m.load_ram(at, &hook);
+        put(m, at, (at + 0x20).min(WAITING_HOOK), &hook);
         patch_enter(m, built, kind, at);
     }
 }
@@ -198,7 +209,7 @@ fn count_idle_point(m: &mut Machine, built: &Built) {
     let mut hook = counting_hook(WAITING, 0);
     hook.truncate(9);
     hook.extend([0x3A, 0x3F, 0x84, 0xC3, w0, w1]);
-    m.load_ram(WAITING_HOOK, &hook);
+    put(m, WAITING_HOOK, IDLE_HOOK, &hook);
     jump(m, WAITING_HOOK, waiting);
     let idle = built.label("scr_idle");
     let [o0, o1] = built.label("scr_on_top").to_le_bytes();
@@ -206,7 +217,7 @@ fn count_idle_point(m: &mut Machine, built: &Built) {
     let mut hook = counting_hook(IDLES, 0);
     hook.truncate(9);
     hook.extend([0x0E, 0x08, 0xCD, o0, o1, 0xC3, r0, r1]);
-    m.load_ram(IDLE_HOOK, &hook);
+    put(m, IDLE_HOOK, HOOKS.1, &hook);
     jump(m, IDLE_HOOK, idle);
 }
 

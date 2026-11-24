@@ -176,9 +176,8 @@ twin!(
 fn a_held_key_is_acted_on_before_the_next_slice(real: bool) {
     let mut rig = in_slice(real, &slices(5, false), 1, 30_000);
     let keys = rig.shell.scr_keys();
+    assert!(rig.state().in_slice, "the slice was running at the press");
     rig.tap_when_taken(DOWN);
-    let pressed = rig.t;
-    let _ = pressed;
     let after = begun_over(&mut rig, 1_500_000);
     println!(
         "slices begun after the key: {:?}",

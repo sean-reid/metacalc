@@ -31,6 +31,7 @@ fn the_launch_key_down_at_the_first_idle_point_does_not_park_the_work(real: bool
     );
     assert_eq!(rig.held(), 1, "still set while the key is down");
     assert_eq!(rig.scan_code(), 0, "and no code came");
+    let begun_at_release = rig.state().logged;
     rig.m().release_key(LAUNCH_KEY);
     let released = rig.t;
     let flips = rig.until("the byte clears", 1_000_000, |r| r.held() == 0);
@@ -39,9 +40,12 @@ fn the_launch_key_down_at_the_first_idle_point_does_not_park_the_work(real: bool
         ms(released),
         ms(flips)
     );
+    let after = begun_over(&mut rig, 400_000);
     assert!(
-        rig.state().in_slice || rig.state().logged >= 2,
-        "the work went on"
+        !after.is_empty() && rig.state().logged > begun_at_release,
+        "slices began after the release: {} before it, {} now",
+        begun_at_release,
+        rig.state().logged
     );
     rig.step(1_500_000);
     assert_eq!(rig.state().logged, 6, "every slice ran");
@@ -62,7 +66,24 @@ fn a_handled_key_still_down_does_not_park_the_work(real: bool) {
     rig.m().press_key(DOWN);
     let pressed = rig.t;
     assert!(rig.state().in_slice, "the slice was running at the press");
-    assert_eq!(rig.scan_code(), 0, "and the OS had not scanned it");
+    rig.step(20_000);
+    assert!(rig.state().in_slice, "and still is");
+    assert_eq!(
+        rig.scan_code(),
+        DOWN,
+        "the slice runs with interrupts on, so the OS has scanned the key and holds its code"
+    );
+    assert_eq!(rig.shell.scr_keys(), keys, "the shell has not taken it yet");
+    let answer = rig.answer_at_the_idle_point();
+    assert_eq!(
+        answer,
+        Answer {
+            a: DOWN,
+            zero: false,
+            carry: false
+        },
+        "the shell takes the key through its scan code when the slice ends"
+    );
     rig.until("the shell takes the key", 900_000, |r| {
         r.shell.scr_keys() == keys + 1
     });
@@ -111,7 +132,7 @@ twin!(
 /// Slice `k` begun, `into` microseconds of it gone, with the byte APP_HELD clear: the first key is
 /// pressed 30 ms into slice 1, handled at its end and released, and the rig runs on until the byte
 /// is clear.
-fn with_the_byte_clear(real: bool, script: &Script) -> Rig {
+pub fn with_the_byte_clear(real: bool, script: &Script) -> Rig {
     let mut rig = in_slice(real, script, 1, 30_000);
     let keys = rig.shell.scr_keys();
     rig.m().press_key(DOWN);
@@ -146,7 +167,13 @@ fn a_new_press_in_an_interrupts_off_slice_is_taken_when_it_ends(real: bool) {
     rig.m().press_key(UP);
     let pressed = rig.t;
     assert!(rig.state().in_slice, "the slice was running at the press");
-    assert_eq!(rig.scan_code(), 0, "the OS has not scanned the key");
+    rig.step(20_000);
+    assert!(rig.state().in_slice, "and still is");
+    assert_eq!(
+        rig.scan_code(),
+        0,
+        "the slice runs with interrupts off, so the OS has not scanned the key"
+    );
     assert_eq!(rig.held(), 0);
     rig.until("the shell takes the key", 900_000, |r| {
         assert_eq!(r.shell.scr_keys(), keys, "taken only after the slice");
@@ -223,8 +250,11 @@ fn a_press_the_os_has_not_scanned_is_taken_before_the_next_slice(real: bool) {
         "{} OS: idle points with the key down and no code {port_only}, with a code {scanned}: {seen:02X?}",
         if real { "reference" } else { "stub" }
     );
-    assert!(port_only >= 9, "{port_only} presses seen only on the port");
-    assert!(scanned >= 1, "{scanned} presses already scanned");
+    assert_eq!(
+        (port_only, scanned),
+        (10, 2),
+        "presses seen only on the port, presses already scanned"
+    );
 }
 
 twin!(

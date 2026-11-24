@@ -438,6 +438,11 @@ fn main() {
             &[],
         );
     }
+    let (_, _, idle_defines) = ROUTINES
+        .iter()
+        .find(|(_, name, _)| *name == "idle_script.bin")
+        .expect("the idle routine is built");
+    fs::write(out.join("idle_script.defs"), idle_defines.join("\n")).unwrap();
     for (src, name, defines) in OS_ROUTINES {
         spasm(
             &Path::new("tests/routines").join(src),

@@ -73,6 +73,7 @@ twin!(
 fn on_tap(real: bool, hold: u32) {
     let mut rig = in_slice(real, &slices(8, false), 1, 20_000);
     let keys = rig.shell.scr_keys();
+    assert!(rig.state().in_slice, "the slice was running at the press");
     rig.m().press_key(Machine::KEY_ON);
     let mut flagged = None;
     rig.watch(hold * 1000, |r| {
