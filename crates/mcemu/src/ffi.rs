@@ -32,6 +32,8 @@ unsafe extern "C" {
     fn mcemu_pc(calc: *const Raw) -> u16;
     fn mcemu_watch(calc: *mut Raw, start: u16, len: u32);
     fn mcemu_unwatch(calc: *mut Raw);
+    fn mcemu_watch_suspend(calc: *mut Raw) -> i32;
+    fn mcemu_watch_resume(calc: *mut Raw);
     fn mcemu_watch_len(calc: *mut Raw) -> usize;
     fn mcemu_watch_take(calc: *mut Raw, out: *mut Write, cap: usize, lost: *mut usize) -> usize;
     fn mcemu_lcd(calc: *mut Raw, out: *mut u8, width: i32, height: i32) -> i32;
@@ -216,6 +218,17 @@ impl Calc {
     pub fn unwatch(&mut self) {
         // SAFETY: the handle is live.
         unsafe { mcemu_unwatch(self.0.as_ptr()) }
+    }
+
+    /// Stops recording without clearing the record; returns whether a watch was armed.
+    pub fn suspend_watch(&mut self) -> bool {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_watch_suspend(self.0.as_ptr()) != 0 }
+    }
+
+    pub fn resume_watch(&mut self) {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_watch_resume(self.0.as_ptr()) }
     }
 
     /// Returns the writes recorded since the last call and the count the record had no room for.
