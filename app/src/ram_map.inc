@@ -43,7 +43,10 @@
 ;   APP_BUF           B     the shell's 256 byte buffer for what the top screen's enter or draw builds
 ;                           again, in saveSScreen after FM_SCRATCH, since the OS writes the screen's
 ;                           pixels into saveSScreen at an auto power down. Its variables follow the
-;                           regions, from APP_COUNTS to APP_FRAME, each placed by APP_VAR
+;                           regions, from APP_COUNTS to APP_FRAME, each placed by APP_VAR. What the
+;                           screen builds is every one but APP_HELD, the shell's flag byte: a screen
+;                           never builds it again, and a power down's overwrite of it is harmless
+;                           because the shell sets it after every app_key, the only call that waits
 ;   APP_STAGE         B     the shell's staging area for constant strings, 128 bytes in saveSScreen
 ;                           after APP_BUF: the canvas reads a string with its own page mapped, so the
 ;                           entry page copies the strings of the screen it draws here first

@@ -28,13 +28,20 @@
 ; other way in has them on, since app_key returns with them on and the framework, the screens and the
 ; blit leave them as they found them. A kind's idle routine returns with them on, also when it ran
 ; its slice with them off. A tap that starts and ends inside one slice that runs with them off is
-; never scanned and is lost; a key still down at the end of such a slice is taken.
+; never scanned and is lost. A key still down at the end of such a slice is taken at once while
+; APP_HELD is 0, as a press the OS has not scanned. While APP_HELD is not 0 it is taken through its
+; scan code at a later idle point: the OS sets no scan code for a second key while the first is
+; held, so the press is taken at the end of the slice running when the first key goes up.
 ; Sentinel and work. Idle work runs before the sentinel check of the next key; the OS writes over
 ; saveSScreen only when auto power down fires inside _GetKey, so no idle call sees it overwritten.
 ; ON is ignored while work is pending: with no scan code and onInterrupt set or ON down, the shell
-; clears onInterrupt and goes on to scr_idle, and when scr_idle answers carry clear app_key takes ON
-; as it does on a screen with nothing pending. A pending 2nd or ALPHA is a scan code, so it sends the
-; shell to app_key and the work waits for the key after it.
+; clears onInterrupt and goes on to scr_idle. The one case where ON does not go on to scr_idle is no
+; scan code, ON and a key both down and APP_HELD 0, which goes to app_key by the key's rule. When
+; scr_idle answers carry clear while ON is still down, the OS has flagged that press once and the
+; shell has cleared the flag, so app_key waits in _GetKey with ON down, where a screen with nothing
+; pending is in app_key's wait for ON to go up; once ON is up the OS state is the same in both. A
+; pending 2nd or ALPHA is a scan code, so it sends the shell to app_key and the work waits for the
+; key after it.
 ; Kinds, in screens.inc and the files it names, on this page:
 ;   1 libraries   one row for each stage of the library and then My proofs, with each stage's
 ;                 progress read from the status table (screen_libraries.inc, screen_counts.inc);
@@ -74,9 +81,12 @@
 ; RAM: the canvas's, fm's and the kernel's blocks in ram_map.inc, libPage (the flash page of
 ; library chunk 0) and appStatus after it, and APP_BUF, which holds what the top screen's enter
 ; and draw build: the counts, the strings in glyph codes and the error notice's frame, laid out in
-; ram_map.inc, and APP_STAGE after it, which holds the copy of the constant strings (strings.inc)
-; of the screen last drawn, since the canvas cannot read the entry page. The tag at its start is
-; cleared at start and before the refresh that follows an auto power down.
+; ram_map.inc. APP_HELD, one byte in APP_BUF, is the shell's and no screen builds it again; an auto
+; power down's overwrite of it happens only inside _GetKey and the shell sets it after every
+; app_key, so the overwritten value is never read. APP_STAGE follows APP_BUF, which holds the copy
+; of the constant strings (strings.inc) of the screen last drawn, since the canvas cannot read the
+; entry page. The tag at its start is cleared at start and before the refresh that follows an auto
+; power down.
 
 #include "equates.inc"
 

@@ -26,8 +26,9 @@
 ; ON is never returned. The OS sets onInterrupt when ON goes down and _GetKey then returns 0 at
 ; once, on every call, until the flag is clear. app_key waits for ON to come up with interrupts
 ; off for the read and the clear, clears the flag and waits for a key again. A press that lands
-; after the clear sets the flag again and is taken the same way by the next wait; a press made
-; between waits is for the long job that polls ON.
+; after the clear sets the flag again and is taken the same way by the next wait. The shell clears
+; the flag at every idle point that reports ON, so a press made between waits reaches a routine
+; that polls the flag only when it lands inside an idle slice.
 ;
 ; The OS copies the screen's pixels over UI_VARS when auto power down fires inside _GetKey, and
 ; the font pointer, two bytes, is the one thing in it that holds state between calls; app_key sets the canvas font
@@ -106,17 +107,23 @@ ak_on:
 ;                        NZ, carry set: no scan code. A bit 3 is set when onInterrupt is set or ON is
 ;                        down, bit 0 when a key is down on the port. When onInterrupt is set the
 ;                        port is not read and bit 0 is clear
-;                   reads kbdScanCode, the onInterrupt flag through IY, port 1 with every key group
-;                   selected, and port 4; takes nothing, so the next app_key sees the OS's key bytes
-;                   as they were. Leaves port 1 at FFh, every group deselected
-;                   destroys A, B, C and the flags
-;                   needs interrupts on at the call and returns with them on; the port reads run
-;                   with them off. The formula routines run with interrupts off and must not call it
+;                   takes nothing, so the next app_key sees the OS's key bytes as they were.
+;                   Each exit reads, destroys and leaves the interrupts as follows:
+;                   scan code: reads kbdScanCode only; destroys A and the flags; touches no port and
+;                     leaves the interrupt state as it was
+;                   break flag: reads kbdScanCode and the onInterrupt flag through IY; destroys A
+;                     and the flags; touches no port and leaves the interrupt state as it was
+;                   port: reads those two, then port 1 with every key group selected and port 4;
+;                     leaves port 1 at FFh, every group deselected; destroys A, B, C and the flags;
+;                     the reads run with interrupts off and it returns with them on
+;                   needs interrupts on at the call for the port exit. The formula routines run with
+;                   interrupts off and must not call it
 ;                   T-states, measured in the emulator from the call to the instruction after
 ;                   it, so they include the call and the OS's wait states (1 per opcode fetch from
 ;                   flash, 1 per stack write), the same at 6 and at 15 MHz: 51 on the scan code, 99 on
 ;                   the break flag, 269 when nothing is down, 279 with ON down, 282 with a key down
-;                   whether or not ON is
+;                   whether or not ON is; the ON figures are the stub's, the reference ROM's are not
+;                   measured
 ;                   two push af / pop af pairs (42 T-states) between the group write and the read
 ;                   let the keypad lines settle at 15 MHz
 
@@ -161,9 +168,12 @@ akw_keyless:
 ;             in: interrupts on or off. out: interrupts on. destroys nothing, the flags included;
 ;             the shadow registers are the OS's to change
 ;             stack: 2 bytes, its return address; an interrupt taken in the halt pushes its own on top
-;             length: with the app in its loop on the reference ROM, 298 consecutive ticks took 55,537
-;             to 55,665 T-states at 6 MHz and 139,152 to 139,156 at 15 MHz, 9.28 ms each, so 11 ticks
-;             are about 102 ms
+;             an interrupt already pending when it is called with interrupts off ends the tick at
+;             once; the halt ends on any interrupt the OS has unmasked, and the figures below are
+;             for the timer; it returns only while some source is unmasked
+;             length: with the app in its loop on the reference ROM, 298 consecutive ticks took
+;             55,661 to 55,665 T-states at 6 MHz and 139,152 to 139,156 at 15 MHz, 9.28 ms each, so
+;             11 ticks are about 102 ms
 
 app_tick:
 	ei
