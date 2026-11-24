@@ -2102,7 +2102,7 @@ fn assemble_page_ports(out: &Path) {
 }
 
 /// The apps that wait for keys: one logging what the OS's `_GetKey` returns, one running
-/// `app_key` over the canvas.
+/// `app_key` over the canvas, one driving `app_key_waiting` and `app_key` in rounds.
 fn assemble_key_apps(out: &Path) {
     println!("cargo:rerun-if-changed=../../app/src/keys.inc");
     let font_dir = out.join("ui_font");
@@ -2117,7 +2117,11 @@ fn assemble_key_apps(out: &Path) {
         font_dir.to_str().unwrap(),
         "-L",
     ];
-    for (src, name) in [("get_key_log", "get_key_log"), ("keys_app", "keys_app")] {
+    for (src, name) in [
+        ("get_key_log", "get_key_log"),
+        ("keys_app", "keys_app"),
+        ("keys_wait_app", "keys_wait_app"),
+    ] {
         spasm(
             &Path::new("tests/routines").join(format!("{src}.z80")),
             &out.join(format!("{name}.8xk")),

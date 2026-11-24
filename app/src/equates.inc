@@ -19,6 +19,7 @@ _PutC            = 4504h
 _ClrLCDFull      = 4540h
 _GrBufCpy        = 486Ah
 _GetKey          = 4972h
+kbdScanCode      = 843Fh
 curRow           = 844Bh
 curCol           = 844Ch
 _NewLine         = 452Eh
