@@ -25,6 +25,8 @@ E_BAD_CALL        .equ $FF
 
 kbdScanCode       .equ $843F
 kbdKey            .equ $8445
+kbdRelease        .equ $8443
+RELEASE_SCANS     .equ 5
 cxMain            .equ $858D
 CX_VECTORS        .equ 12
 gkMods            .equ $8446
@@ -107,7 +109,9 @@ isr_no_on:
 	reti
 
 ; Sets kbdScanCode to the one key that is down if it is not the one taken last, tracked in
-; kbdKey. Two or more keys down change nothing until one is up; no key down forgets the last.
+; kbdKey. Two or more keys down change nothing until one is up; no key down forgets the last, and
+; clears kbdScanCode when RELEASE_SCANS scans have passed with no key down, as the OS does about 40
+; ms after a release (a scan is 9.2 ms).
 scan_keys:
 	ld de,0
 	ld l,0
@@ -137,6 +141,8 @@ scan_up:
 	jr z,scan_idle
 	dec a
 	ret nz
+	ld a,RELEASE_SCANS
+	ld (kbdRelease),a
 	ld a,(kbdKey)
 	cp l
 	ret z
@@ -146,6 +152,13 @@ scan_up:
 	ret
 scan_idle:
 	ld (kbdKey),a
+	ld a,(kbdRelease)
+	or a
+	ret z
+	dec a
+	ld (kbdRelease),a
+	ret nz
+	ld (kbdScanCode),a
 	ret
 
 ; rst 28h: the two bytes after the call site name the entry point. Registers survive except

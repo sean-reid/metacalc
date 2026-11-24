@@ -1,0 +1,166 @@
+#include "equates.inc"
+#define APP_NAME "keywait1"
+#include "header.inc"
+
+; Rounds for app_key_waiting, started by the test writing 1 to CMD: busy for BUSY outer passes
+; of about 3,370 T-states with interrupts on when INTS is not 0, then CALLS calls of
+; app_key_waiting, one result byte each at WRES (0 for Z, 1 for NZ), then app_key unless FLAGS bit
+; 0 is set. The scan code, the key byte and the ON flags byte are copied to PRE just before the
+; calls and to POST just after. FLAGS bit 1 keeps CMD set, so rounds follow one another and each
+; app_key return is logged at LOG; bit 2 makes the calls with interrupts off from the labels
+; kw_pre and kw_post, for the cost, once CMD is 2, with the interrupt sources masked so none is
+; taken inside the call; bit 3 replaces the calls with polling: app_key_waiting after every
+; interrupt until it answers NZ, then app_key. IFF is 1 when interrupts were on after the last
+; call; BEND is 1 from the end of the busy loop until the next round.
+CMD     = 0A800h
+BUSY    = 0A802h
+INTS    = 0A804h
+FLAGS   = 0A805h
+CALLS   = 0A806h
+DONE    = 0A808h
+KEYA    = 0A809h
+KEYB    = 0A80Ah
+IFF     = 0A80Bh
+BEND    = 0A80Ch
+WRES    = 0A810h
+PRE     = 0A820h
+POST    = 0A824h
+LOG     = 0A900h
+kbdKey  = 08445h
+
+start:
+	ld hl, ui_font
+	call ui_set_font
+	xor a
+	ld (CMD), a
+	ld (DONE), a
+main:
+	ei
+	ld a, (CMD)
+	or a
+	jr nz, go
+	halt
+	jr main
+go:
+	xor a
+	ld (BEND), a
+	ld a, (INTS)
+	or a
+	jr z, b_di
+	ei
+	jr b_go
+b_di:
+	di
+b_go:
+	ld hl, (BUSY)
+	ld a, h
+	or l
+	jr z, b_end
+bo:
+	ld b, 0
+bi:
+	djnz bi
+	dec hl
+	ld a, h
+	or l
+	jr nz, bo
+b_end:
+	ld a, 1
+	ld (BEND), a
+	ld a, (FLAGS)
+	bit 3, a
+	jr z, no_poll
+poll:
+	call app_key_waiting
+	jr nz, no_wait
+	ei
+	halt
+	jr poll
+no_poll:
+	ld de, PRE
+	call snapshot
+	ld a, (CALLS)
+	or a
+	jr z, no_wait
+	ld b, a
+	ld hl, WRES
+wl:
+	push hl
+	push bc
+	ld a, (FLAGS)
+	bit 2, a
+	jr z, wcall
+wspin:
+	di
+	ld a, (CMD)
+	cp 2
+	jr nz, wspin
+	in a, (3)
+	ld d, a
+	xor a
+	out (3), a
+kw_pre:
+	call app_key_waiting
+kw_post:
+	ld a, d
+	out (3), a
+	jr wdone
+wcall:
+	call app_key_waiting
+wdone:
+	pop bc
+	pop hl
+	ld a, 0
+	jr z, wz
+	inc a
+wz:
+	ld (hl), a
+	inc hl
+	ld a, i
+	ld a, 0
+	jp po, wiff
+	inc a
+wiff:
+	ld (IFF), a
+	djnz wl
+no_wait:
+	ld de, POST
+	call snapshot
+	ld a, (FLAGS)
+	bit 0, a
+	jr nz, no_key
+	call app_key
+	ld (KEYA), a
+	ld a, b
+	ld (KEYB), a
+no_key:
+	ld hl, DONE
+	ld e, (hl)
+	inc (hl)
+	ld d, 0
+	ld hl, LOG
+	add hl, de
+	ld a, (KEYA)
+	ld (hl), a
+	ld a, (FLAGS)
+	bit 1, a
+	jp nz, main
+	xor a
+	ld (CMD), a
+	jp main
+
+; Copies the scan code, the key byte and the ON flags byte to DE.
+snapshot:
+	ld a, (kbdScanCode)
+	ld (de), a
+	inc de
+	ld a, (kbdKey)
+	ld (de), a
+	inc de
+	ld a, (089F0h + onFlags)
+	ld (de), a
+	ret
+
+#define UI_EMBEDDED
+#include "keys.inc"
+#include "ui.z80"
