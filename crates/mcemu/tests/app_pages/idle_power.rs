@@ -73,9 +73,10 @@ fn on_the_reference_os_work_that_never_ends_holds_off_the_power_down_until_it_en
     println!(
         "{run} s with work pending, no power down; scr_idle calls {first} after 5 s, {last} at the end"
     );
+    assert_eq!(run, 610, "the run lasts twice the control and a minute");
     assert!(
-        u32::from(last) >= run * 8,
-        "the work ran: {last} calls in {run} s"
+        (5_900..=6_050).contains(&last),
+        "the work ran: {last} calls in {run} s, 5,976 measured"
     );
     assert_eq!((rig.shell.blits(), rig.shell.scr_keys()), (1, 0));
 

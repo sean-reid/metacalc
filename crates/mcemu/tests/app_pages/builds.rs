@@ -5,12 +5,22 @@ use crate::shellrig::*;
 use mcui::{Key, State};
 use std::sync::OnceLock;
 
+/// The ends of the fixture library cut at `parts` stages of equal size, the last being its count.
+fn ends(library: &[u8], parts: usize) -> Vec<usize> {
+    let count = crate::table::header_of(library).1 as usize;
+    (1..=parts).map(|n| n * count / parts).collect()
+}
+
 /// The fixture library cut at `parts` ends of equal size, the last being its count.
 fn cut(name: &str, parts: usize) -> &'static Built {
     let library = crate::fixture::library();
-    let count = crate::table::header_of(&library).1 as usize;
-    let ends: Vec<usize> = (1..=parts).map(|n| n * count / parts).collect();
-    staged(name, &library, &ends)
+    staged(name, &library, &ends(&library, parts))
+}
+
+/// `three_stages` built from the tree whose `app` directory is `source`.
+pub fn three_stages_from(source: &std::path::Path, name: &str) -> &'static Built {
+    let library = crate::fixture::library();
+    staged_from(source, name, &library, &ends(&library, 3))
 }
 
 /// The fixture library as three stages.

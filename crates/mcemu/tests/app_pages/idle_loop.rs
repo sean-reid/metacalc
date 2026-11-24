@@ -276,6 +276,8 @@ twin!(
 /// The most T-states one trip round the idle point may take with an empty slice: app_key_waiting,
 /// app_error_open, scr_idle and the routine's own bookkeeping.
 const ITERATION: u32 = 2_246;
+/// The least: a trip with an empty slice takes 2,202 T-states.
+const ITERATION_FLOOR: u32 = 2_150;
 
 #[test]
 fn a_trip_round_the_idle_point_with_an_empty_slice_costs_little() {
@@ -294,6 +296,7 @@ fn a_trip_round_the_idle_point_with_an_empty_slice_costs_little() {
         &script(&[KIND_LIBRARIES], &slices),
     );
     rig.run_to_label("app_idle", 6_000_000);
+    let before = (rig.shell.key_waiting_calls(), rig.shell.idle_calls());
     let mut last = rig.m().clock();
     let mut each = Vec::new();
     for _ in 0..6 {
@@ -304,10 +307,19 @@ fn a_trip_round_the_idle_point_with_an_empty_slice_costs_little() {
         last = now;
     }
     println!("a trip round the idle point with an empty slice: {each:?} T-states");
-    let worst = *each[1..].iter().max().unwrap();
+    let after = (rig.shell.key_waiting_calls(), rig.shell.idle_calls());
+    assert_eq!(
+        (after.0 - before.0, after.1 - before.1),
+        (6, 6),
+        "each trip is one app_key_waiting and one scr_idle"
+    );
+    let (best, worst) = (
+        *each[1..].iter().min().unwrap(),
+        *each[1..].iter().max().unwrap(),
+    );
     assert!(worst <= ITERATION, "{worst} over {ITERATION}");
     assert!(
-        worst > 1_000,
-        "{worst}: the trip includes app_key_waiting and scr_idle"
+        best >= ITERATION_FLOOR,
+        "{best} under {ITERATION_FLOOR}: the trip includes app_key_waiting and scr_idle"
     );
 }
