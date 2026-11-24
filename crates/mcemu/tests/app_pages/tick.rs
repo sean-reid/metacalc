@@ -124,6 +124,11 @@ fn ticks(rig: &mut Rig, n: usize) -> (Vec<u32>, Vec<u32>) {
     (periods, taken)
 }
 
+/// The range of a tick in T-states, a little outside the 55,659 to 55,665 and 139,152 to 139,156
+/// the stub and the reference OS print over 298 ticks.
+const TICK_6: (u32, u32) = (55_650, 55_675);
+const TICK_15: (u32, u32) = (139_140, 139_170);
+
 struct Spread {
     min: u32,
     max: u32,
@@ -172,10 +177,22 @@ fn the_length_of_a_tick(real: bool) {
             s.interrupts.1,
             100_000.0 * mhz / s.mean
         );
+        let (low, high) = if mhz == 6.0 {
+            (TICK_6.0, TICK_6.1)
+        } else {
+            (TICK_15.0, TICK_15.1)
+        };
         assert!(
-            s.min > 1_000,
-            "a tick waits for an interrupt: {} T-states",
-            s.min
+            s.min >= low && s.max <= high,
+            "{} to {} T-states at {mhz} MHz, expected within {low} to {high}",
+            s.min,
+            s.max
+        );
+        assert_eq!(s.interrupts, (1, 1), "one interrupt ends each tick");
+        let eleven_ms = 11.0 * s.mean / mhz / 1_000.0;
+        assert!(
+            (100.0..=105.0).contains(&eleven_ms),
+            "11 ticks take {eleven_ms:.2} ms"
         );
     }
     rig.m().set_speed(Speed::Mhz6);
