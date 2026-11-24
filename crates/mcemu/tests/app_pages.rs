@@ -27,10 +27,16 @@ mod idle;
 mod idle_held;
 #[path = "app_pages/idle_keys.rs"]
 mod idle_keys;
+#[path = "app_pages/idle_launch.rs"]
+mod idle_launch;
 #[path = "app_pages/idle_loop.rs"]
 mod idle_loop;
 #[path = "app_pages/idle_on.rs"]
 mod idle_on;
+#[path = "app_pages/idle_onend.rs"]
+mod idle_onend;
+#[path = "app_pages/idle_onkey.rs"]
+mod idle_onkey;
 #[path = "app_pages/idle_power.rs"]
 mod idle_power;
 #[path = "app_pages/idle_repeat.rs"]

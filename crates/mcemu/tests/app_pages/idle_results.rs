@@ -131,3 +131,65 @@ twin!(
     on_the_reference_os_an_idle_pop_of_the_error_notice_onto_a_screen_that_fails_leaves,
     popping_the_error_notice_onto_a_screen_that_fails_leaves
 );
+
+/// A routine that says more work is pending as it leaves: scr_idle answers carry clear for the
+/// leave, so the shell does not call it again, and the app leaves after one call of each.
+fn an_idle_pop_with_carry_set_leaves_without_looping(real: bool) {
+    let mut rig = Rig::new(
+        real,
+        three_stages(),
+        Enter::Real,
+        &script(&[KIND_LIBRARIES], &[Slice::ms(20).answers(POP).more()]),
+    );
+    rig.run_until_left(2_000_000);
+    rig.assert_put_away();
+    let s = rig.state();
+    assert_eq!((s.calls, s.logged), (1, 1), "the routine ran once");
+    assert_eq!(
+        (rig.shell.key_waiting_calls(), rig.shell.idle_calls()),
+        (1, 1),
+        "one trip round the idle point"
+    );
+}
+
+twin!(
+    an_idle_pop_with_one_screen_open_and_carry_set_leaves_after_one_trip,
+    on_the_reference_os_an_idle_pop_with_carry_set_leaves_after_one_trip,
+    an_idle_pop_with_carry_set_leaves_without_looping
+);
+
+/// The same for a failure: the push's enter fails with carry set, the error notice is pushed, and
+/// the one trip after it is the notice's own, which has no work, so the shell waits for a key.
+fn an_idle_failure_with_carry_set_does_not_loop(real: bool) {
+    let slice = Slice::ms(20).pushes(KIND_NOTICE, NOTICE_LIST).more();
+    let mut rig = Rig::new(
+        real,
+        three_stages(),
+        Enter::FailNotices(STATUS),
+        &script(&[KIND_LIBRARIES], &[slice]),
+    );
+    rig.until("the error notice", 2_000_000, |r| {
+        r.shell.depth() == 2 && r.shell.blits() == 2
+    });
+    rig.step(1_000_000);
+    let frames = rig.shell.frames();
+    assert_eq!(frames[1][..3], [KIND_NOTICE, NOTICE_ERROR, STATUS]);
+    let s = rig.state();
+    assert_eq!((s.calls, s.logged), (1, 1), "the routine ran once");
+    assert_eq!(
+        (rig.shell.key_waiting_calls(), rig.shell.idle_calls()),
+        (2, 2),
+        "one trip for the routine and one for the error notice"
+    );
+    assert_eq!(
+        rig.whereabouts(),
+        Where::OsKeyWait,
+        "the shell waits in the OS for a key"
+    );
+}
+
+twin!(
+    an_idle_failure_with_carry_set_pushes_the_error_notice_and_waits_for_a_key,
+    on_the_reference_os_an_idle_failure_with_carry_set_pushes_the_error_notice_and_waits,
+    an_idle_failure_with_carry_set_does_not_loop
+);
