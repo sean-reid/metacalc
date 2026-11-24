@@ -52,6 +52,7 @@ fn on_the_reference_os_work_that_never_ends_holds_off_the_power_down_until_it_en
         &Script {
             slices: vec![Slice::ms(100).more()],
             forever: true,
+            restart: false,
             kinds: vec![KIND_LIBRARIES],
         },
     );

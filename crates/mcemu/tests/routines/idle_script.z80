@@ -11,6 +11,9 @@
 ;         +8 DEST      word, the address of scr_new
 ;         +10 TICK     word, the address of app_tick
 ;         +12 IFF      scratch
+;         +13 RESTART  not 0: a call that finds the KEYS counter changed since the last call starts
+;                      the script again at slice 0
+;         +14 LASTKEYS word, the KEYS counter at the last restart
 ; LOG     at STATE + 16, 8 bytes for each slice run: index, BLITS and KEYS counter words, 1 when
 ;         interrupts were on at entry, then 2 spare
 ; SLICES  at STATE + 272, 32 bytes each: +0 passes (word, one pass is 3,356 T-states), +2 mode (0 burns
@@ -27,6 +30,8 @@ OVER     = STATE + 7
 DEST     = STATE + 8
 TICK     = STATE + 10
 IFFSAVE  = STATE + 12
+RESTART  = STATE + 13
+LASTKEYS = STATE + 14
 LOG      = STATE + 16
 SLICES   = STATE + 272
 LOGMAX   = 32
@@ -39,6 +44,19 @@ idle:
 	inc a
 s_off:
 	ld (IFFSAVE), a
+	ld a, (RESTART)
+	or a
+	jr z, s_kept
+	ld hl, (KEYS)
+	ld de, (LASTKEYS)
+	or a
+	sbc hl, de
+	jr z, s_kept
+	ld hl, (KEYS)
+	ld (LASTKEYS), hl
+	xor a
+	ld (INDEX), a
+s_kept:
 	ld hl, (CALLS)
 	inc hl
 	ld (CALLS), hl

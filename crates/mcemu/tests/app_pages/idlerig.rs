@@ -3,6 +3,7 @@
 //! routines/idle_script.z80 in RAM, which burns the time and answers the action a slice says.
 
 use crate::app::*;
+pub use crate::realos::KEY_2 as LAUNCH_KEY;
 use crate::realos::{BASE, KEY_2, KEY_APPS, ON_INTERRUPT, RealOs};
 use crate::regions::declared;
 use crate::shellrig::*;
@@ -23,6 +24,8 @@ const END: u16 = SLICES + 32 * MAX_SLICES as u16;
 pub const PASS: u32 = 3_356;
 /// The OS's break flag byte and the scan code byte.
 pub const KBD_SCAN: u16 = 0x843F;
+/// The OS's byte for the key it last reported.
+pub const KBD_KEY: u16 = 0x8445;
 const FLAGS: u16 = 0x89F0;
 pub const APD_TIMERS: u16 = 0x8448;
 
@@ -110,6 +113,8 @@ impl Slice {
 pub struct Script {
     pub slices: Vec<Slice>,
     pub forever: bool,
+    /// The script starts again at slice 0 after every scr_key call.
+    pub restart: bool,
     pub kinds: Vec<u8>,
 }
 
@@ -121,6 +126,16 @@ pub struct Ran {
     pub blits: u16,
     pub keys: u16,
     pub ints_on: bool,
+}
+
+/// The OS bytes an ON press can change.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct OsState {
+    pub flags: u8,
+    pub scan: u8,
+    pub key: u8,
+    pub timers: (u8, u8),
+    pub mask: u8,
 }
 
 pub struct State {
@@ -135,6 +150,7 @@ pub fn script(kinds: &[u8], slices: &[Slice]) -> Script {
     Script {
         slices: slices.to_vec(),
         forever: false,
+        restart: false,
         kinds: kinds.to_vec(),
     }
 }
@@ -203,6 +219,7 @@ fn install(m: &mut Machine, built: &Built, script: &Script) {
     state[2] = u8::from(script.forever);
     state[8..10].copy_from_slice(&built.label("scr_new").to_le_bytes());
     state[10..12].copy_from_slice(&built.label("app_tick").to_le_bytes());
+    state[13] = u8::from(script.restart);
     m.load_ram(STATE, &state);
     for (i, slice) in script.slices.iter().enumerate() {
         m.load_ram(SLICES + 32 * i as u16, &slice.bytes());
@@ -235,14 +252,21 @@ impl Rig {
     /// The app on the reference OS, started from the APPS menu with a tap short enough that the
     /// key is up before the first frame is done. Returns when the first frame is blitted.
     pub fn real(built: &'static Built, enter: Enter, script: &Script) -> Rig {
+        Rig::real_launched(built, enter, script, false)
+    }
+
+    /// `real`, with the key that starts the app still down when it returns if `hold`.
+    pub fn real_launched(built: &'static Built, enter: Enter, script: &Script, hold: bool) -> Rig {
         let mut os = RealOs::boot(&built.file);
         assert_os_leaves_it(&mut os.m);
         install_hooks(&mut os.m, built, enter);
         install(&mut os.m, built, script);
         os.tap(KEY_APPS, 150, 600);
         os.m.press_key(KEY_2);
-        os.run_ms(20);
-        os.m.release_key(KEY_2);
+        if !hold {
+            os.run_ms(20);
+            os.m.release_key(KEY_2);
+        }
         let mut rig = Rig {
             shell: Shell {
                 app: App::on_real_os_in(os.m, built),
@@ -253,6 +277,25 @@ impl Rig {
         };
         rig.until("the first frame", 2_000_000, |r| r.shell.blits() >= 1);
         rig.t = 0;
+        rig
+    }
+
+    /// The app started with `LAUNCH_KEY` down and taken by the OS, as the key that starts it from
+    /// the APPS menu is: on the reference OS the menu takes the key's code and the app is
+    /// entered with the key still down; on the stub the key is pressed after the launch and the
+    /// OS's last-key byte is set, so the stub's scan does not set a code for it.
+    pub fn launched_holding(
+        real: bool,
+        built: &'static Built,
+        enter: Enter,
+        script: &Script,
+    ) -> Rig {
+        if real {
+            return Rig::real_launched(built, enter, script, true);
+        }
+        let mut rig = Rig::stub(built, enter, script);
+        rig.m().press_key(LAUNCH_KEY);
+        rig.m().load_ram(KBD_KEY, &[LAUNCH_KEY]);
         rig
     }
 
@@ -367,6 +410,29 @@ impl Rig {
     /// The OS's ON break flag.
     pub fn on_flag(&mut self) -> bool {
         self.ram(FLAGS + 9, 1)[0] & ON_INTERRUPT != 0
+    }
+
+    /// The shell's APP_HELD byte, from the build's label file.
+    pub fn held(&mut self) -> u8 {
+        let at = self.shell.app.label("APP_HELD");
+        self.ram(at, 1)[0]
+    }
+
+    /// The OS's state an ON press leaves: the flag byte of onInterrupt, the scan code, the key
+    /// byte, the two power down timer bytes and the interrupt mask port.
+    pub fn os_state(&mut self) -> OsState {
+        let flags = self.ram(FLAGS + 9, 1)[0];
+        let timers = self.apd_timers();
+        let scan = self.scan_code();
+        let key = self.ram(KBD_KEY, 1)[0];
+        let mask = self.m().in_port(3);
+        OsState {
+            flags,
+            scan,
+            key,
+            timers,
+            mask,
+        }
     }
 
     pub fn apd_timers(&mut self) -> (u8, u8) {

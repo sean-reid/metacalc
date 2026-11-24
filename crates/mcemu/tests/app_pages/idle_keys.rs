@@ -1,16 +1,14 @@
-//! Keys that arrive while a screen has work pending: which are acted on, when the work goes on, and
-//! the hazard of a key still down when the shell reaches the idle point. Times are printed in
-//! milliseconds from the start of the rig.
+//! Keys that arrive while a screen has work pending: which are acted on and when the work goes on.
+//! Times are printed in milliseconds from the start of the rig.
 
 use crate::builds::*;
 use crate::idlerig::*;
 use crate::shellrig::*;
-use mcemu::Machine;
 
-const SLICE_MS: u32 = 150;
+pub const SLICE_MS: u32 = 150;
 
 /// `n` slices of 150 ms, each with more work pending but the last, with interrupts on or off.
-fn slices(n: usize, off: bool) -> Script {
+pub fn slices(n: usize, off: bool) -> Script {
     let all: Vec<Slice> = (0..n)
         .map(|i| {
             let s = Slice::ms(SLICE_MS);
@@ -21,12 +19,12 @@ fn slices(n: usize, off: bool) -> Script {
     script(&[KIND_LIBRARIES], &all)
 }
 
-fn ms(us: u32) -> String {
+pub fn ms(us: u32) -> String {
     format!("{:.1}", f64::from(us) / 1000.0)
 }
 
 /// When the slices began after `from`, in the order they did, watching for `us`.
-fn begun_over(rig: &mut Rig, us: u32) -> Vec<u32> {
+pub fn begun_over(rig: &mut Rig, us: u32) -> Vec<u32> {
     let mut seen = usize::from(rig.state().logged);
     let mut at = Vec::new();
     rig.watch(us, |r| {
@@ -40,7 +38,7 @@ fn begun_over(rig: &mut Rig, us: u32) -> Vec<u32> {
 }
 
 /// The rig with slice `k` running and `into` microseconds of it gone.
-fn in_slice(real: bool, script: &Script, k: u8, into: u32) -> Rig {
+pub fn in_slice(real: bool, script: &Script, k: u8, into: u32) -> Rig {
     let mut rig = Rig::new(real, three_stages(), Enter::Real, script);
     rig.until("the slice", 3_000_000, |r| {
         let s = r.state();
@@ -49,74 +47,6 @@ fn in_slice(real: bool, script: &Script, k: u8, into: u32) -> Rig {
     rig.step(into);
     rig
 }
-
-struct Held {
-    pressed: u32,
-    handled: u32,
-    released: u32,
-    before: u8,
-    after: Vec<u32>,
-}
-
-/// Presses `scan` during slice 1 of eight and holds it `hold` ms past the point where the shell
-/// handled it, then releases it and presses nothing more for 2.5 s.
-fn held_past_the_handling(real: bool, scan: u8, hold: u32) -> (Rig, Held) {
-    let mut rig = in_slice(real, &slices(8, false), 1, 30_000);
-    let keys = rig.shell.scr_keys();
-    rig.m().press_key(scan);
-    let pressed = rig.t;
-    rig.until("the shell takes the key", 900_000, |r| {
-        r.shell.scr_keys() == keys + 1
-    });
-    let handled = rig.t;
-    rig.step(hold * 1000);
-    rig.m().release_key(scan);
-    let released = rig.t;
-    let before = rig.state().logged;
-    let after = begun_over(&mut rig, 2_500_000);
-    let held = Held {
-        pressed,
-        handled,
-        released,
-        before,
-        after,
-    };
-    println!(
-        "{} OS, {hold} ms held past the handling: pressed at {}, handled at {}, released at {}; \
-         slices begun by then {}, begun in the 2.5 s after: {} at {:?}",
-        if real { "reference" } else { "stub" },
-        ms(held.pressed),
-        ms(held.handled),
-        ms(held.released),
-        held.before,
-        held.after.len(),
-        held.after.iter().map(|&t| ms(t)).collect::<Vec<_>>()
-    );
-    (rig, held)
-}
-
-fn a_key_down_at_the_idle_point_leaves_the_work_waiting(real: bool) {
-    let (mut rig, held) = held_past_the_handling(real, DOWN, 100);
-    assert_eq!(
-        held.before, 2,
-        "no slice began between the key's press and its release"
-    );
-    assert_eq!(held.after.len(), 0, "the remaining slices do not run");
-    assert_eq!(rig.shell.scr_keys(), 1, "and the key was acted on once");
-    let (page, pc) = rig.at();
-    println!("after the release the app waits at page {page:02X}, {pc:04X}");
-    if real {
-        assert_ne!(page, crate::realos::BASE, "in the OS's key wait");
-    } else {
-        assert!(Rig::in_stub_key_wait(pc), "in the stub's key wait");
-    }
-}
-
-twin!(
-    a_key_still_down_when_the_shell_has_handled_it_sends_it_to_app_key_with_work_pending,
-    on_the_reference_os_a_key_still_down_when_the_shell_has_handled_it_leaves_work_pending,
-    a_key_down_at_the_idle_point_leaves_the_work_waiting
-);
 
 fn a_late_tap_is_handled_and_the_work_goes_on(real: bool) {
     let script = slices(8, false);
@@ -207,11 +137,7 @@ fn a_tap_inside_an_interrupts_off_slice_is_lost(real: bool) {
     assert!(!saw, "the OS never scanned: interrupts were off");
     rig.until("slice 3", 3_000_000, |r| r.state().logged == 4);
     rig.step(600_000);
-    assert_eq!(
-        rig.shell.scr_keys(),
-        keys,
-        "the tap is lost, which the owner accepted"
-    );
+    assert_eq!(rig.shell.scr_keys(), keys, "the tap is lost");
 }
 
 twin!(
@@ -276,47 +202,6 @@ twin!(
     a_key_pressed_during_a_slice_is_acted_on_before_the_next_slice_and_once,
     on_the_reference_os_a_key_pressed_during_a_slice_is_acted_on_before_the_next_slice_and_once,
     a_held_key_is_acted_on_before_the_next_slice
-);
-
-fn on_during_idle_work(real: bool) {
-    let mut rig = in_slice(real, &slices(6, false), 1, 20_000);
-    let keys = rig.shell.scr_keys();
-    rig.m().press_key(Machine::KEY_ON);
-    let mut flagged = None;
-    rig.watch(100_000, |r| {
-        if flagged.is_none() && r.on_flag() {
-            flagged = Some(r.t);
-        }
-    });
-    rig.m().release_key(Machine::KEY_ON);
-    let released = rig.t;
-    let slice_end = rig.state().in_slice;
-    println!(
-        "ON held 100 ms from {} ms: break flag set at {:?}, slice still running at the release: {slice_end}",
-        ms(released - 100_000),
-        flagged.map(ms)
-    );
-    let after = begun_over(&mut rig, 2_000_000);
-    println!("slices begun in the 2 s after the release: {}", after.len());
-    println!("slices begun in all: {}", rig.state().logged);
-    assert_eq!(rig.shell.scr_keys(), keys, "ON is no key");
-    assert!(!rig.on_flag(), "app_key cleared the break flag");
-    let blocked = rig.state().logged;
-    rig.tap_when_taken(DOWN);
-    let more = begun_over(&mut rig, 1_500_000);
-    println!("after the next key, slices begun: {}", more.len());
-    assert_eq!(rig.shell.scr_keys(), keys + 1);
-    assert_eq!(
-        u8::try_from(more.len()).unwrap() + blocked,
-        6,
-        "the remaining slices ran after the key"
-    );
-}
-
-twin!(
-    on_during_idle_work_stops_the_work_until_the_next_key,
-    on_the_reference_os_on_during_idle_work_stops_the_work_until_the_next_key,
-    on_during_idle_work
 );
 
 fn second_quit_during_idle_work_leaves(real: bool) {

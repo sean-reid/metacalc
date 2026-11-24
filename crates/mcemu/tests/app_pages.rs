@@ -23,12 +23,18 @@ mod fixture;
 mod guard;
 #[path = "app_pages/idle.rs"]
 mod idle;
+#[path = "app_pages/idle_held.rs"]
+mod idle_held;
 #[path = "app_pages/idle_keys.rs"]
 mod idle_keys;
 #[path = "app_pages/idle_loop.rs"]
 mod idle_loop;
+#[path = "app_pages/idle_on.rs"]
+mod idle_on;
 #[path = "app_pages/idle_power.rs"]
 mod idle_power;
+#[path = "app_pages/idle_repeat.rs"]
+mod idle_repeat;
 #[path = "app_pages/idle_results.rs"]
 mod idle_results;
 #[path = "app_pages/idlerig.rs"]
