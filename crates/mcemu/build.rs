@@ -19,6 +19,11 @@ const ROUTINES: &[(&str, &str, &[&str])] = &[
     ("keys.z80", "keys.bin", &["RESULT=$A000"]),
     ("count.z80", "count.bin", &["ENTRY=$9000"]),
     ("on_key.z80", "on_key.bin", &["RESULT=$A000"]),
+    (
+        "idle_script.z80",
+        "idle_script.bin",
+        &["ENTRY=$B700", "STATE=$B800", "BLITS=$B500", "KEYS=$B530"],
+    ),
 ];
 
 /// Routines that call the stub's OS services: source, output name, spasm defines.

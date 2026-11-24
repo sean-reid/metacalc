@@ -23,6 +23,16 @@ mod fixture;
 mod guard;
 #[path = "app_pages/idle.rs"]
 mod idle;
+#[path = "app_pages/idle_keys.rs"]
+mod idle_keys;
+#[path = "app_pages/idle_loop.rs"]
+mod idle_loop;
+#[path = "app_pages/idle_power.rs"]
+mod idle_power;
+#[path = "app_pages/idle_results.rs"]
+mod idle_results;
+#[path = "app_pages/idlerig.rs"]
+mod idlerig;
 #[path = "app_pages/keys.rs"]
 mod keys;
 #[path = "app_pages/numbers.rs"]
@@ -59,6 +69,8 @@ mod store_rule;
 mod stubs;
 #[path = "app_pages/table.rs"]
 mod table;
+#[path = "app_pages/tick.rs"]
+mod tick;
 #[path = "app_pages/wide_cost.rs"]
 mod wide_cost;
 

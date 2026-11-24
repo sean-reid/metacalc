@@ -63,12 +63,12 @@ const STAGE_ABOUT_COLD: u32 = 136_000;
 const ABOUT_COLD: u32 = 141_900;
 const NOTICE_COLD: u32 = 115_300;
 /// The most the loop may take around app_key for a key no screen answers, scr_key included.
-const IGNORED_KEY: u32 = 1_250;
+const IGNORED_KEY: u32 = 2_480;
 /// The most app_stage_block may take for a block the area already holds.
 const WARM_STAGE: u32 = 120;
 /// The most bytes each code page may use: entry, draw and data.
-const PAGES_PLAIN: [u32; 3] = [2_300, 15_300, 9_250];
-const PAGES_LIBRARY: [u32; 3] = [4_190, 15_300, 9_250];
+const PAGES_PLAIN: [u32; 3] = [2_330, 15_300, 9_250];
+const PAGES_LIBRARY: [u32; 3] = [4_220, 15_300, 9_250];
 
 /// Clears the staging tag, so that the next draw copies its screen's strings.
 pub fn go_cold(app: &mut App) {

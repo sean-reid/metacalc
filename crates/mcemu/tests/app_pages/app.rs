@@ -298,7 +298,7 @@ impl App {
         App::with(m, built)
     }
 
-    fn with(m: Machine, built: &'static Built) -> App {
+    pub fn with(m: Machine, built: &'static Built) -> App {
         App {
             m,
             built,
