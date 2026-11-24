@@ -4,7 +4,7 @@ use crate::nodes::Model;
 use crate::rig::*;
 use crate::support::*;
 use mcui::expr::Expr;
-use mcui::fold::{Folds, Layout, layout};
+use mcui::fold::{Folds, Layout, Piece, layout};
 
 /// Statements of different shapes: short, nested, braced, many operators, quantifiers, words in
 /// place of symbols and a hypothesis.
@@ -19,8 +19,8 @@ const SHAPES: [(&str, u8); 8] = [
     ("syl3", 0),
 ];
 
-/// The first conclusion of the library for which some width below its natural one cuts only its
-/// last piece.
+/// The first conclusion of three pieces or more for which some width below its natural one cuts
+/// only its last piece, which keeps more than the one token a cut to the first piece keeps.
 fn drops_only_its_last(bytes: &[u8]) -> (String, u8) {
     let (model, library) = (Model::new(bytes), decoded(bytes));
     for (n, assertion) in library.assertions.iter().enumerate() {
@@ -37,8 +37,17 @@ fn drops_only_its_last(bytes: &[u8]) -> (String, u8) {
         for width in (1..nat).rev() {
             let narrow = layout(&expr, &Folds::none(&expr), width);
             let want = narrow.clipped(width, 1);
-            if narrow.rows() > 1 && want.pieces.len() == plain.pieces.len() && want.pieces.len() > 1
+            if narrow.rows() > 1
+                && want.pieces.len() == plain.pieces.len()
+                && plain.pieces.len() >= 3
             {
+                let mut one = narrow.pieces[..1].to_vec();
+                one.push(Piece::Ellipsis);
+                assert_ne!(
+                    want.pieces, one,
+                    "{}: the cut keeps one token",
+                    assertion.label
+                );
                 return (assertion.label.clone(), 0xFF);
             }
         }
@@ -93,7 +102,7 @@ impl Cuts {
     fn note(&mut self, plain: &Layout, want: &Layout) {
         let kept = want.pieces.len() - 1;
         self.one_kept += usize::from(kept == 1);
-        self.last_dropped += usize::from(kept + 1 == plain.pieces.len());
+        self.last_dropped += usize::from(kept > 1 && kept + 1 == plain.pieces.len());
     }
 }
 
@@ -188,6 +197,8 @@ fn clips_every_width_of_a_statement_whose_cut_drops_only_the_last_token() {
     let (model, n) = (Model::new(&bytes), index(&bytes, &label));
     let mut fm = Fm::new(&bytes);
     let expr = model.expr(n, k);
+    let pieces = layout(&expr, &Folds::none(&expr), 255).pieces.len();
+    assert!(pieces >= 3, "{label} has {pieces} pieces");
     let mut tally = Tally::default();
     let mut cuts = Cuts::default();
     for width in 1..=natural(&expr) {
