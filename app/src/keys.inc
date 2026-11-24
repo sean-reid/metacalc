@@ -143,6 +143,19 @@ app_key_waiting:
 	or b
 	ret
 
+; app_tick   waits for the next interrupt and returns
+;             in: interrupts on or off. out: interrupts on. destroys nothing, the flags included;
+;             the shadow registers are the OS's to change
+;             stack: 2 bytes, its return address; an interrupt taken in the halt pushes its own on top
+;             length: with the app in its loop on the reference ROM, 298 consecutive ticks took 55,537
+;             to 55,665 T-states at 6 MHz and 139,152 to 139,156 at 15 MHz, 9.28 ms each, so 11 ticks
+;             are about 102 ms
+
+app_tick:
+	ei
+	halt
+	ret
+
 ; In: A = the OS's code, HL = D pairs of code and value. Out: Z with HL at the value for a hit.
 ak_find:
 	cp (hl)
