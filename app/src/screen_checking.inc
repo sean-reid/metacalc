@@ -31,19 +31,19 @@
 ; Interrupts and speed: at every return of checking_enter, checking_idle, checking_key and checking_draw
 ; both are as at the call. The kernel calls inside (check_begin, check_step, check_crc_step, check_end) go
 ; at 15 MHz with interrupts off, ck_fast saving the speed and ck_slow giving it back, the caller's state
-; restored after each; far_lib_read turns interrupts off for its hops and restores them; the store and the
-; OS's lookups run at the caller's speed. checking_idle executes no DI or EI and writes no port 20h.
-; checking_draw makes no kernel call and does not blit; far_ui_clear and lib_read, through far_lib_label,
-; turn interrupts off for their copies and restore them, and no other draw call touches either.
-; Stack, from the shell's call of scr_idle in app_work to its return with interrupts off at the call: the
-; bytes written below the stack pointer there, scr_idle's return address counted. 4 are on the stack when
-; checking_idle starts (the return addresses of scr_idle and of checking_idle), so its own use is 4 fewer;
-; the shell's dispatch peaks at 10 before it, what a call that does nothing measures. By call (a step that
-; stays, a step that redraws, a chunk, the one that ends the CRC run, the finishing step, one after the
-; finish): stub OS 28, 28, 14, 30, 28, 10 (deepest 30); reference OS 42, 42, 14, 44, 42, 10 (deepest 44).
-; Cost of scr_draw and ui_blit for a frame, cold, in T-states. Stub OS: 130,171 reading, 149,463 in the
-; steps with a label, 125,129 finished and 128,488 for the damaged notice; warm, the first three are 1,921
-; less and the notice 2,641. Reference OS: 131,341, 155,820 and 129,141.
+; restored after each; far_lib_read, and far_ui_clear and lib_read through far_lib_label in the draw, turn
+; interrupts off for their hops or copies and restore them; the store and the OS's lookups run at the
+; caller's speed. checking_idle executes no DI or EI and writes no port 20h; checking_draw makes no kernel
+; call, does not blit and touches neither elsewhere.
+; Stack, from the shell's call of scr_idle to its return, interrupts off at the call: bytes written below
+; the stack pointer there, scr_idle's return address counted. The shell's dispatch peaks at 10 before
+; checking_idle, which starts with 4 on the stack; a figure above 10 is checking_idle's, its own use 4
+; fewer. By call (stay, redraw, chunk, CRC run's end, finishing step, after the finish): stub OS 28, 28,
+; 14, 30, 28, 10; reference OS 42, 42, 14, 44, 42, 10. The deepest, 30 and 44, includes the ON and
+; CK_PAUSED stops, and on the stub OS a table lost, a reader failure and the damaged notice; the reference
+; OS ran prop. An interrupt adds the handler's bytes: with interrupts on, at most 32 stub, 52 reference.
+; Cost of scr_draw and ui_blit for a frame, cold, in T-states. Stub OS: 130,171 reading, 149,463 steps with
+; a label, 125,129 finished, 128,488 damaged notice. Reference OS: 131,341, 155,820, 129,141.
 ; checking_draw   clears the canvas, stages checking_block, builds the strings in APP_TEXT and draws. done
 ;                 is N less the first count of the job and failed the third. The label is the library's
 ;                 label of the first assertion with value 0 from the job's cursor ck_i, found by
