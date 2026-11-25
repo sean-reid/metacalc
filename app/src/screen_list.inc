@@ -31,28 +31,43 @@
 ; follows a lost row.
 ;
 ; list_enter   in: HL = the frame. out: A = the status of libs_counts, which derives the counts the title
-;              reads, or of the reader's assertion count; else 0. Reads the status table once (store_has),
-;              the reader for the trees and the first section title, sets the preview pending and LV_COUNT
-;              to LIST_WAIT.
+;              reads, or of the reader's assertion count; else 0. Then asks the store once more
+;              (store_has) whether the table is the library's, the reader whether it has trees and
+;              where the first section title starts, and sets the preview pending and LV_COUNT to
+;              LIST_WAIT.
 ; list_key     UP, DOWN, LEFT and RIGHT move the cursor one row or five, never past either end, move the
 ;              first row shown as little as it must to keep the cursor on screen, answer SCR_REDRAW with
 ;              the preview pending and LV_COUNT at LIST_WAIT, and answer SCR_STAY when nothing moved,
 ;              touching nothing. ENTER, F1, F2, F3 and F4, and F5 when LV_SECT is 1, push the notice
 ;              NOTICE_LIST of the stage. CLEAR pops. Every other key stays.
-; list_idle    in: HL = the frame. out: A and carry as scr_idle takes them. LV_COUNT above 0: one app_tick,
-;              one off the count, SCR_STAY with carry set. Count 0 and the preview pending: fm_statement of
-;              the cursor's conclusion (after fm_open when fm answers FM_ERR_NOT_OPEN), fm_fit to one line
-;              at LIST_WIDTH pixels, fm_clip to one line when it took more, then LVP_ROW and SCR_REDRAW with
-;              carry clear. An empty stage and any fm status other than 0, which is what the model's
-;              statement_within says for a statement past its caps (FM_ERR_LIMIT), settle as LVP_NONE and
-;              answer SCR_STAY with carry clear. Settled: SCR_STAY with carry clear and nothing touched.
+; list_idle    in: HL = the frame. out: A and carry as scr_idle takes them. LV_COUNT above 0: one off the
+;              count, one app_tick, SCR_STAY with carry set. Count 0 and the preview pending: fm_statement
+;              of the cursor's conclusion (after fm_open when fm answers FM_ERR_NOT_OPEN), fm_fit to one
+;              line at LIST_WIDTH pixels, fm_clip to one line when it took more, then LVP_ROW and
+;              SCR_REDRAW with carry clear. An empty stage and any fm status other than 0, which is what
+;              the model's statement_within says for a statement past its caps (FM_ERR_LIMIT), settle as
+;              LVP_NONE and answer SCR_STAY with carry clear. Settled: SCR_STAY with carry clear and
+;              nothing touched. The first call after a key is made about one frame later, so the fit
+;              starts 11 timer interrupts after it: 579,258 T-states on the reference OS.
 ; list_draw    in: HL = the frame. Clears the canvas, stages list_block, draws the title, the rows, the
-;              preview when LV_PREVIEW is LVP_ROW and the keys. It reads the mark of each row with one
-;              store_get, five at most for a frame, and the label with one lib_label.
-; Interrupts and speed: at every return of list_enter, list_key, list_idle and list_draw both are as at the
-; call. fm's sessions and the reader's reads turn interrupts off for their own length and give the caller's
-; state back; list_idle runs at the shell's speed, writes no port 20h and executes no DI or EI. app_tick
-; is entered with interrupts on and returns with them on.
+;              preview when LV_PREVIEW is LVP_ROW, by one fm_draw and no fit, and the keys. It reads the
+;              label of each row with one lib_label and, when LV_TABLE is 1, its mark with one
+;              store_get, five of each at most for a frame.
+; Interrupts and speed: list_enter, list_key and list_draw return with both as at the call, and so does
+; list_idle but for the tick path, which returns with interrupts on, as the shell calls it, because
+; app_tick ends in ei. fm's sessions and the reader's reads turn interrupts off for their own length and
+; give the caller's state back; the screen writes no port 20h and executes no DI.
+; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted,
+; measured on the app's own path with interrupts masked for each call. Stub OS: list_key 4 for a move and
+; for a key at an end, 6 for the keys that push the notice, 2 for CLEAR, a letter and F5 with no sections;
+; list_enter 22; list_idle 8 for the fit and for a tick, which holds app_tick's return address and the
+; interrupt handler's pushes, and 2 settled; list_draw 26. Reference OS: the same but 6 for F5 where a
+; stage has sections, list_enter 36, a tick 14 and list_draw 34, which holds the OS's lookup of the table.
+; An interrupt that lands in a call adds the handler's bytes.
+; Cost, in T-states at 6 MHz on the reference OS: ring's list opens in 460,448 (libs_key, list_enter and a
+; cold frame) and a cursor move takes 223,026 by a row and 227,608 by a page with its frame; the idle
+; call that lays out a preview takes a median of 77,110 and at most 1,125,822 over ring, and 68,803 and
+; 331,402 over prop.
 
 LIST_ROWS	.equ 5
 LIST_WAIT	.equ 11

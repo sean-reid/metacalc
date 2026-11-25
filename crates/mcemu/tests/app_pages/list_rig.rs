@@ -283,3 +283,13 @@ pub fn proofs_three() -> &'static Built {
         staged("pages-list-proofs", &library, &[n / 3, 2 * n / 3, n])
     })
 }
+
+/// Asserts that a deterministic cost is within a percent above and two below what it measured when
+/// its ceiling was set, so a change to the code that costs time or saves it is seen.
+pub fn within(what: &str, got: u32, measured: u32) {
+    let (low, high) = (measured - measured / 50, measured + measured / 100);
+    assert!(
+        (low..=high).contains(&got),
+        "{what}: {got} T-states, measured {measured} (allowed {low} to {high})"
+    );
+}

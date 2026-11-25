@@ -107,6 +107,8 @@ mod list_power;
 mod list_preview;
 #[path = "app_pages/list_real.rs"]
 mod list_real;
+#[path = "app_pages/list_real_cost.rs"]
+mod list_real_cost;
 #[path = "app_pages/list_rig.rs"]
 mod list_rig;
 #[path = "app_pages/list_wait.rs"]

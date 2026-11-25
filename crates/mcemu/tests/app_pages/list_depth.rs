@@ -7,7 +7,7 @@ use crate::app::*;
 use crate::checkrig::{Run, WAIT};
 use crate::list_rig::*;
 use crate::shellrig::*;
-use mcui::{Key, Status};
+use mcui::Key;
 use std::collections::BTreeMap;
 
 /// What one traced call did.
@@ -101,9 +101,8 @@ fn kept(what: &str, calls: &[Trace], masked: bool, on_exit: bool) -> u16 {
 
 /// The list of the fixture on stage 1, opened by ENTER whose enter is traced, settled, and every
 /// key traced at the cursor of a list long enough for each move.
-pub fn key_depths(mask: bool) -> BTreeMap<&'static str, u16> {
+pub fn key_depths(mask: bool, rig: &Rig) -> BTreeMap<&'static str, u16> {
     let mut found = BTreeMap::new();
-    let built = with_library();
     let keys: [(&str, u8, Key); 12] = [
         ("up", UP, Key::Up),
         ("down", DOWN, Key::Down),
@@ -119,7 +118,7 @@ pub fn key_depths(mask: bool) -> BTreeMap<&'static str, u16> {
         ("letter", LETTER, Key::Letter('A')),
     ];
     for (name, scan, _) in keys {
-        let mut list = Lister::open(built, None, 0);
+        let mut list = (rig.open)();
         list.settle();
         list.key(RIGHT, Key::Right);
         list.settle();
@@ -133,18 +132,42 @@ pub fn key_depths(mask: bool) -> BTreeMap<&'static str, u16> {
     found
 }
 
+impl Lister {
+    /// Puts the open list on its last assertion by writing the cursor and the top into the frame as
+    /// the model has them after paging to the end, and lets its preview settle.
+    pub fn jump_to_the_end(&mut self) {
+        while self.pos().cursor + 1 < self.pos().len {
+            self.ui.press(Key::Right);
+            self.log.push(Key::Right);
+        }
+        let pos = self.pos();
+        let frame = self.run.shell.app.label("SCR_STACK") + 16;
+        let (cursor, top) = (
+            (pos.cursor as u16).to_le_bytes(),
+            (pos.top as u16).to_le_bytes(),
+        );
+        self.run
+            .m()
+            .load_ram(frame + 2, &[cursor[0], cursor[1], top[0], top[1]]);
+        let (count, preview) = (
+            self.run.shell.app.label("LV_COUNT"),
+            self.run.shell.app.label("LV_PREVIEW"),
+        );
+        self.run.m().load_ram(count, &[0]);
+        self.run.m().load_ram(preview, &[PENDING]);
+        self.tap(LETTER);
+        self.settle();
+    }
+}
+
 /// A move that keeps the cursor where it is, at each end, traced too.
-pub fn end_depths(mask: bool) -> Vec<u16> {
-    let built = with_library();
+pub fn end_depths(mask: bool, rig: &Rig) -> Vec<u16> {
     let mut all = Vec::new();
     for (scan, ends) in [(UP, true), (LEFT, true), (DOWN, false), (RIGHT, false)] {
-        let mut list = Lister::open(built, None, 0);
+        let mut list = (rig.open)();
         list.settle();
         if !ends {
-            for _ in 0..8 {
-                list.key(RIGHT, Key::Right);
-                list.settle();
-            }
+            list.jump_to_the_end();
         }
         list.run.m().press_key(scan);
         let t = list.trace("list_key", mask);
@@ -155,10 +178,9 @@ pub fn end_depths(mask: bool) -> Vec<u16> {
     vec![kept("list_key at an end", &all, mask, false)]
 }
 
-pub fn enter_depths(mask: bool) -> u16 {
-    let built = crate::builds::three_stages();
+pub fn enter_depths(mask: bool, rig: &Rig) -> u16 {
     let mut all = Vec::new();
-    let mut list = Lister::at_stage(built, None, 1);
+    let mut list = (rig.before)();
     list.run.m().press_key(ENTER);
     all.push(list.trace("list_enter", mask));
     list.run.m().release_key(ENTER);
@@ -173,9 +195,8 @@ pub fn enter_depths(mask: bool) -> u16 {
 
 /// Every kind of idle call: a tick, the fit, and a settled list, which the shell asks once after a
 /// key that redraws nothing.
-pub fn idle_depths(mask: bool) -> BTreeMap<&'static str, u16> {
-    let built = with_library();
-    let mut list = Lister::open(built, None, 0);
+pub fn idle_depths(mask: bool, rig: &Rig) -> BTreeMap<&'static str, u16> {
+    let mut list = (rig.open)();
     let mut classes: BTreeMap<&'static str, Vec<Trace>> = BTreeMap::new();
     let mut trace_one = |list: &mut Lister, classes: &mut BTreeMap<&'static str, Vec<Trace>>| {
         let at = list.run.shell.app.label("list_idle");
@@ -208,8 +229,8 @@ pub fn idle_depths(mask: bool) -> BTreeMap<&'static str, u16> {
         .collect()
 }
 
-pub fn draw_depths(mask: bool, built: &'static Built, table: Option<(&[u8], &[Status])>) -> u16 {
-    let mut list = Lister::at_stage(built, table, 0);
+pub fn draw_depths(mask: bool, rig: &Rig) -> u16 {
+    let mut list = (rig.before)();
     let mut all = Vec::new();
     for (scan, key) in [(ENTER, Key::Enter), (DOWN, Key::Down)] {
         list.run.m().press_key(scan);
@@ -227,22 +248,118 @@ pub fn draw_depths(mask: bool, built: &'static Built, table: Option<(&[u8], &[St
     kept("list_draw", &all, mask, false)
 }
 
+/// How a test gets the list it traces: one just opened by ENTER, and the Libraries screen with the
+/// cursor on the stage to open.
+pub struct Rig {
+    pub name: &'static str,
+    pub open: fn() -> Lister,
+    pub before: fn() -> Lister,
+}
+
+/// The greatest depth each routine's calls reached, in bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Figures {
+    pub keys: BTreeMap<&'static str, u16>,
+    pub ends: u16,
+    pub enter: u16,
+    pub idle: BTreeMap<&'static str, u16>,
+    pub draw: u16,
+}
+
+/// The figures of one pass over every routine, with interrupts masked for each call or as the app
+/// runs them.
+pub fn figures(rig: &Rig, mask: bool) -> Figures {
+    let figures = Figures {
+        keys: key_depths(mask, rig),
+        ends: end_depths(mask, rig)[0],
+        enter: enter_depths(mask, rig),
+        idle: idle_depths(mask, rig),
+        draw: draw_depths(mask, rig),
+    };
+    println!(
+        "{}, interrupts {}: {figures:?}",
+        rig.name,
+        if mask { "masked" } else { "as the app runs" }
+    );
+    assert_eq!(
+        figures.idle.len(),
+        3,
+        "a tick, a fit and a settled call were all traced: {:?}",
+        figures.idle
+    );
+    figures
+}
+
+/// Asserts the masked figures are `want` and that an interrupt that lands in a call only adds to them.
+pub fn traced(rig: &Rig, want: &Figures) {
+    let masked = figures(rig, true);
+    assert_eq!(&masked, want, "{}: the depths", rig.name);
+    let live = figures(rig, false);
+    for (name, depth) in &live.keys {
+        assert!(*depth >= masked.keys[name], "{name}");
+    }
+    for (name, depth) in &live.idle {
+        assert!(*depth >= masked.idle[name], "{name}");
+    }
+    assert!(live.enter >= masked.enter && live.draw >= masked.draw && live.ends >= masked.ends);
+}
+
+/// The stub OS's figures: the stack each routine writes, the caller's return address counted.
+pub fn stub_figures() -> Figures {
+    Figures {
+        keys: BTreeMap::from([
+            ("clear", 2),
+            ("down", 4),
+            ("enter", 6),
+            ("f1", 6),
+            ("f2", 6),
+            ("f3", 6),
+            ("f4", 6),
+            ("f5", 2),
+            ("left", 4),
+            ("letter", 2),
+            ("right", 4),
+            ("up", 4),
+        ]),
+        ends: 4,
+        enter: 22,
+        idle: BTreeMap::from([("fit", 8), ("settled", 2), ("tick", 8)]),
+        draw: 26,
+    }
+}
+
+/// The fixture's status table with every other assertion checked, and the model's marks for it, so
+/// that every frame reads the table.
+pub fn alternating_marks(built: &Built) -> (Vec<u8>, Vec<mcui::Status>) {
+    let n = usize::from(crate::table::header_of(built.library.as_ref().unwrap()).1);
+    let status = (0..n)
+        .map(|i| {
+            if i % 2 == 1 {
+                mcui::Status::Checked
+            } else {
+                mcui::Status::Unchecked
+            }
+        })
+        .collect();
+    (crate::shell_cost::alternating(built), status)
+}
+
 #[test]
 fn the_lists_routines_keep_interrupts_and_speed_and_the_stack_balanced_and_write_these_depths() {
-    for mask in [true, false] {
-        let keys = key_depths(mask);
-        let ends = end_depths(mask);
-        let enter = enter_depths(mask);
-        let idle = idle_depths(mask);
-        let draw = draw_depths(mask, with_library(), None);
-        println!(
-            "stub, interrupts {}: list_key {keys:?} at the ends {ends:?}, list_enter {enter}, list_idle {idle:?}, list_draw {draw}",
-            if mask { "masked" } else { "as the app runs" }
-        );
-        assert_eq!(
-            idle.len(),
-            3,
-            "a tick, a fit and a settled call were all traced: {idle:?}"
-        );
-    }
+    traced(
+        &Rig {
+            name: "stub",
+            open: || {
+                let built = with_library();
+                let (data, status) = alternating_marks(built);
+                Lister::open(built, Some((&data, &status)), 0)
+            },
+            before: || {
+                let built = crate::builds::three_stages();
+                let (data, status) = alternating_marks(built);
+                Lister::at_stage(built, Some((&data, &status)), 1)
+            },
+        },
+        &stub_figures(),
+    );
 }

@@ -101,6 +101,13 @@ pub fn the_fit(app: &mut App) -> u32 {
 /// and a mark to draw and a Libraries row a name and a progress text, and the list's frame has six
 /// rows, so it costs more than the 161,900 of cost_stages.rs.
 pub const MOVE_CEILING: u32 = 190_400;
+/// The least the same move takes, 187,206 by a row: a list that drew no row or no mark would take less.
+pub const MOVE_FLOOR: u32 = 186_000;
+/// The most and the least the idle call that lays out a preview takes on the fixture's first two
+/// previews after a move, 50,843 and 47,576.
+pub const FIT_RANGE: (u32, u32) = (47_000, 51_100);
+/// The most a settled frame, scr_draw and ui_blit, takes: 200,314 after the move by a row.
+pub const SETTLED_CEILING: u32 = 201_000;
 
 #[test]
 fn a_cursor_move_and_the_frame_it_redraws_cost_what_the_ceiling_says() {
@@ -119,6 +126,11 @@ fn a_cursor_move_and_the_frame_it_redraws_cost_what_the_ceiling_says() {
             m.total()
         );
         assert!(m.total() < FRAME_BUDGET, "{name}: over the frame budget");
+        assert!(
+            m.total() >= MOVE_FLOOR,
+            "{name}: {} under {MOVE_FLOOR}",
+            m.total()
+        );
         worst = worst.max(m.total());
         let fit = the_fit(&mut app);
         let (draw, blit) = frame_of(&mut app);
@@ -126,7 +138,11 @@ fn a_cursor_move_and_the_frame_it_redraws_cost_what_the_ceiling_says() {
             "list, preview after the move by {name}: idle {fit}, then the settled frame {} (scr_draw {draw}, ui_blit {blit})",
             draw + blit
         );
-        assert!(draw + blit < FRAME_BUDGET);
+        assert!(
+            (FIT_RANGE.0..=FIT_RANGE.1).contains(&fit),
+            "{name}: the fit took {fit}"
+        );
+        assert!(draw + blit <= SETTLED_CEILING, "{name}: {}", draw + blit);
     }
     assert!(worst <= MOVE_CEILING, "{worst} over {MOVE_CEILING}");
 }
