@@ -34,6 +34,9 @@ plotSScreen       .equ $9340
 
 PORT_KEYS         .equ $01
 PORT_STATUS       .equ $02
+HAS_SPEED         .equ $80
+PORT_SPEED        .equ $20
+SETTLE_COUNT      .equ $1016
 PORT_INT_STATUS   .equ $04
 ON_LATCH          .equ $01
 ON_LEVEL          .equ $08
@@ -76,17 +79,49 @@ JUNK_HL2          .equ $A127
 	ld sp,$FFFF
 	jp $4000
 
-; Sets the OS break flag when the ON latch on port 4 is up and ON is still down and IY holds the
-; flags pointer; a tap over before the handler runs sets nothing. Acknowledges the timer and keypad sources the way the
-; hardware needs: the mask on port 3 written as zero and then again. Scans the keys, so a key is
-; only seen while interrupts are on. Keeps the main registers and IX and IY; the shadow set is
-; left changed.
+; An ON press or release raises the ON latch on port 4. The handler then waits at 6 MHz, with
+; interrupts off, until the ON level on port 4 has read the same SETTLE_COUNT times in a row, a
+; wait of about 46.7 ms that the reference OS makes at either edge and that holds up the timer and
+; the key scan meanwhile. It sets the OS break flag when ON then reads down and IY holds the
+; flags pointer, so a press that ends before the wait does sets nothing. Acknowledges the timer and
+; keypad sources the way the hardware needs: the mask on port 3 written as zero and then again.
+; Scans the keys, so a key is only seen while interrupts are on. Keeps the main registers and IX
+; and IY, and the speed; the shadow set is left changed.
 isr:
 	ex af,af'
 	exx
 	in a,(PORT_INT_STATUS)
-	and ON_LATCH | ON_LEVEL
-	cp ON_LATCH
+	and ON_LATCH
+	jr z,isr_no_on
+	in a,(PORT_STATUS)
+	and HAS_SPEED
+	jr z,isr_settle
+	in a,(PORT_SPEED)
+	ld e,a
+	xor a
+	out (PORT_SPEED),a
+isr_settle:
+	ld b,0
+isr_restart:
+	ld hl,SETTLE_COUNT
+isr_wait:
+	in a,(PORT_INT_STATUS)
+	and ON_LEVEL
+	cp b
+	ld b,a
+	jr nz,isr_restart
+	dec hl
+	ld a,l
+	or h
+	jr nz,isr_wait
+	in a,(PORT_STATUS)
+	and HAS_SPEED
+	jr z,isr_settled
+	ld a,e
+	out (PORT_SPEED),a
+isr_settled:
+	ld a,b
+	or a
 	jr nz,isr_no_on
 	push iy
 	pop hl
