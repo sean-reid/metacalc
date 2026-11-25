@@ -63,6 +63,14 @@ fn print_sections(library: &library::Library) {
             shapes.axioms.len()
         );
     }
+    if let Some(kinds) = &sections.kinds {
+        let theorems = kinds.theorems.iter().filter(|&&t| t).count();
+        println!(
+            "kinds: {} bytes, {theorems} theorems, {} axioms",
+            size(library::KINDS),
+            kinds.theorems.len() - theorems
+        );
+    }
 }
 
 pub fn pack(db: &Database, roots: &[String], output: &Path) -> Result<ExitCode, ExitCode> {

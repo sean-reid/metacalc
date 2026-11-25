@@ -20,6 +20,7 @@ pub enum SectionError {
     Glyphs,
     Trees,
     Shapes,
+    Kinds,
 }
 
 impl std::fmt::Display for SectionError {
@@ -33,6 +34,7 @@ impl std::fmt::Display for SectionError {
             SectionError::Shapes => {
                 "the shapes section is damaged or does not match the parse trees"
             }
+            SectionError::Kinds => "the kinds section is damaged or does not fit the assertions",
         })
     }
 }

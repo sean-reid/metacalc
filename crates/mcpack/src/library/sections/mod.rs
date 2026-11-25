@@ -1,11 +1,12 @@
 //! The sections after the last record and the trailer that locates them.
 
 use super::{Assertion, CHUNK, PackError};
-use crate::mm::{Database, StmtId, Sym};
+use crate::mm::{Database, Kind, StmtId, Sym};
 use std::collections::HashMap;
 
 mod frame;
 mod glyphs;
+mod kinds;
 mod shapes;
 mod titles;
 mod trees;
@@ -16,6 +17,7 @@ use frame::table;
 pub use frame::table as locate;
 pub use frame::{Entry, SectionError};
 pub use glyphs::{GlyphMap, Glyphs};
+pub use kinds::Kinds;
 pub use shapes::{SHAPE_CAPACITY, Shapes};
 pub use titles::Title;
 pub(super) use titles::select as select_titles;
@@ -31,6 +33,7 @@ pub const TITLES: u8 = 1;
 pub const GLYPHS: u8 = 2;
 pub const TREES: u8 = 3;
 pub const SHAPES: u8 = 4;
+pub const KINDS: u8 = 5;
 
 /// What a library carries after its records.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -41,6 +44,7 @@ pub struct Sections {
     pub glyphs: Option<GlyphMap>,
     pub trees: Option<Trees>,
     pub shapes: Option<Shapes>,
+    pub kinds: Option<Kinds>,
 }
 
 /// A library's own parts, which the sections are read against.
@@ -117,12 +121,16 @@ pub(crate) fn read(bytes: &[u8], ctx: &Ctx) -> Result<Option<Sections>, SectionE
         (None, None) => None,
         _ => return Err(SectionError::Shapes),
     };
+    let kinds = find(KINDS)
+        .map(|entry| kinds::decode(bytes, entry, ctx.assertions.len()))
+        .transpose()?;
     Ok(Some(Sections {
         table,
         titles,
         glyphs,
         trees,
         shapes,
+        kinds,
     }))
 }
 
@@ -157,5 +165,11 @@ pub(super) fn append(
         trees::encode(&mut writer, trees)?;
         shapes::encode(&mut writer, trees.shapes())?;
     }
+    let theorems: Vec<bool> = input
+        .assertions
+        .iter()
+        .map(|&id| input.db.stmt(id).kind == Kind::Theorem)
+        .collect();
+    kinds::encode(&mut writer, &theorems)?;
     writer.finish().map_err(|_| PackError::SectionTooLarge)
 }
