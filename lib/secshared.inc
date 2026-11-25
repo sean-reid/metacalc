@@ -214,16 +214,28 @@ lsx_shapes:
 	ld de,(ls_sh+3)
 	or a
 	sbc hl,de
-	jp z,lsx_shapes_end
+	jp z,lsx_kinds
 	jp nc,lsx_bad_section
-lsx_shapes_end:
-	xor a
-	ret
+	jr lsx_kinds
 lsx_shapes_alone:
 	ld a,b
 	and LS_SHAPES
-	ret z
+	jr z,lsx_kinds
 	jp lsx_bad_section
+lsx_kinds:
+	ld a,(ls_have)
+	and LS_KINDS
+	ret z
+	ld hl,ls_kd
+	ld c,2
+	call lsx_head
+	ret nz
+	ld hl,(lr_hdr)
+	ld de,(lr_count)
+	or a
+	sbc hl,de
+	jp nz,lsx_bad_section
+	ret
 
 ; in: A:HL = the bytes between a section's start and its first item, DE = the section's
 ; struct. Sets the struct's first item and checks it is not past the section's end.

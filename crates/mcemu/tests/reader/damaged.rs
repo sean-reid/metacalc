@@ -59,7 +59,7 @@ pub fn offset_of(bytes: &[u8], id: u8) -> u32 {
 fn a_refusal_at_open_is_the_hosts_refusal_for_the_same_bytes() {
     let good = base();
     let (count, first) = rows(&good);
-    assert_eq!(count, 4);
+    assert_eq!(count, 5);
     let titles = row_of(&good, TITLES);
     let glyphs = row_of(&good, GLYPHS);
     let trees = row_of(&good, TREES);
@@ -70,7 +70,7 @@ fn a_refusal_at_open_is_the_hosts_refusal_for_the_same_bytes() {
         ("version 0", with(&good, |b| b[at + 1] = 0), ST_TRAILER),
         ("version 255", with(&good, |b| b[at + 1] = 255), ST_TRAILER),
         ("255 rows", with(&good, |b| b[at] = 255), ST_TABLE),
-        ("one row too many", with(&good, |b| b[at] = 5), ST_TABLE),
+        ("one row too many", with(&good, |b| b[at] = 6), ST_TABLE),
         (
             "a row at the file's end",
             with(&good, |b| put32(b, titles + 1, len)),
@@ -201,7 +201,10 @@ fn rows_the_reader_skips_or_does_not_need_open_as_the_decoder_opens_them() {
     });
     let (mut rig, status, host) = both(&unknown);
     assert_eq!((status, host), (ST_OK, true));
-    assert_eq!(rig.sections(), (ST_OK, HAVE_TITLES | HAVE_GLYPHS));
+    assert_eq!(
+        rig.sections(),
+        (ST_OK, HAVE_TITLES | HAVE_GLYPHS | HAVE_KINDS)
+    );
     assert!(decoded(&unknown).sections.unwrap().trees.is_none());
     assert_eq!(rig.syntax_count().0, ST_NONE);
     let at = good.len() - TRAILER_LEN;
@@ -226,7 +229,7 @@ fn with_rows(good: &[u8], rows: usize) -> Vec<u8> {
     let at_titles = offset_of(good, TITLES);
     with(good, |b| {
         b.truncate(at);
-        for id in 0..rows - 4 {
+        for id in 0..rows - 5 {
             b.push(20 + id as u8);
             b.extend(at_titles.to_le_bytes());
             b.extend(0u32.to_le_bytes());
@@ -243,7 +246,10 @@ fn the_table_holds_28_rows_and_the_host_alone_accepts_a_29th() {
     assert_eq!((status, host), (ST_OK, true), "28 rows");
     assert_eq!(
         rig.sections(),
-        (ST_OK, HAVE_TITLES | HAVE_GLYPHS | HAVE_TREES | HAVE_SHAPES)
+        (
+            ST_OK,
+            HAVE_TITLES | HAVE_GLYPHS | HAVE_TREES | HAVE_SHAPES | HAVE_KINDS
+        )
     );
     let (_, status, host) = both(&with_rows(&good, 29));
     assert_eq!(
@@ -306,7 +312,10 @@ fn a_glyph_map_for_another_font_or_symbol_count_opens_and_is_unusable() {
     assert_eq!(rig.glyphs().0, ST_GLYPHS);
     assert_eq!(
         rig.sections(),
-        (ST_OK, HAVE_TITLES | HAVE_GLYPHS | HAVE_TREES | HAVE_SHAPES)
+        (
+            ST_OK,
+            HAVE_TITLES | HAVE_GLYPHS | HAVE_TREES | HAVE_SHAPES | HAVE_KINDS
+        )
     );
     assert_eq!(rig.title_count().0, ST_OK, "the other sections still read");
     let counted = with(&good, |b| b[start + 2] += 1);
@@ -410,9 +419,14 @@ fn a_hostile_byte_in_the_trailer_or_table_never_opens_for_the_reader_what_the_de
                 (false, false) => agreed += 1,
                 (false, true) => panic!("byte {at} ^ {flip:#x}: the reader refuses with {status}"),
                 (true, false) => {
+                    let row = (at - first) / ENTRY_LEN;
+                    let length = (at - first) % ENTRY_LEN >= 5;
+                    let padding = row == 3 && length;
                     assert!(
-                        refuses_somewhere(&mut rig),
-                        "byte {at} ^ {flip:#x}: the decoder refuses and no lookup does"
+                        padding || refuses_somewhere(&mut rig),
+                        "byte {at} (row {}, column {}) ^ {flip:#x}: the decoder refuses and no lookup does",
+                        (at - first) / ENTRY_LEN,
+                        (at - first) % ENTRY_LEN
                     );
                     lazy += 1;
                 }

@@ -52,6 +52,7 @@ LR_VAR(lr_consts, $16, 1)
 LR_VAR(lr_nsyms, $17, 1)
 LR_VAR(lr_count, $18, 2)
 LR_VAR(lr_dir, $1A, 3)
+LR_VAR(ls_kd, $1D, 3)
 
 LR_AT($20)
 LR_VAR(lr_dn, $20, 2)
@@ -112,6 +113,7 @@ LS_GLYPHS           .equ 2
 LS_TREES            .equ 4
 LS_FONT             .equ 8
 LS_SHAPES           .equ 16
+LS_KINDS            .equ 32
 LS_FIRST            .equ 6
 
 ls_lo               .equ lr_n

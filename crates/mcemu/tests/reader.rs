@@ -22,6 +22,8 @@ mod interleave;
 mod interrupts;
 #[path = "reader/isolation.rs"]
 mod isolation;
+#[path = "reader/kinds.rs"]
+mod kinds;
 #[path = "reader/lastrecord.rs"]
 mod lastrecord;
 #[path = "reader/libraries.rs"]

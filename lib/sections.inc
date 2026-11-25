@@ -192,6 +192,8 @@ lsx_check:
 	jr z,lsx_keep
 	cp 4
 	jr z,lsx_keep_shapes
+	cp 5
+	jr z,lsx_keep_kinds
 	jr lsx_ends
 lsx_keep:
 	ld hl,ls_have
@@ -221,6 +223,40 @@ lsx_keep_shapes:
 	ldir
 	ld a,(hl)
 	or a
+	jp nz,lsx_bad_section
+	jr lsx_ends
+lsx_keep_kinds:
+	ld hl,ls_have
+	ld a,(hl)
+	or LS_KINDS
+	ld (hl),a
+	ld hl,(lr_bufp)
+	inc hl
+	ld de,ls_kd
+	ld bc,3
+	ldir
+	inc hl
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	inc hl
+	ld a,(hl)
+	inc hl
+	or (hl)
+	jp nz,lsx_bad_section
+	ld hl,(lr_count)
+	ld bc,7
+	add hl,bc
+	rr h
+	rr l
+	srl h
+	rr l
+	srl h
+	rr l
+	inc hl
+	inc hl
+	or a
+	sbc hl,de
 	jp nz,lsx_bad_section
 lsx_ends:
 	ld hl,(lr_bufp)

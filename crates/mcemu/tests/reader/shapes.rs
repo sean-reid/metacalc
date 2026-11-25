@@ -2,7 +2,7 @@ use crate::damaged::{offset_of, put32, reseal, row_of, rows, with};
 use crate::secrig::*;
 use crate::sections::*;
 use crate::support::*;
-use mcpack::library::{CHUNK, ENTRY_LEN, SHAPES, TREES, decode};
+use mcpack::library::{CHUNK, ENTRY_LEN, SHAPES, TRAILER_MAGIC, TRAILER_VERSION, TREES, decode};
 
 fn base() -> Vec<u8> {
     headed(60, 2, 0)
@@ -45,7 +45,10 @@ fn a_library_without_a_shapes_section_opens_as_before() {
         b[first + 2 * ENTRY_LEN] = 41;
     }));
     assert_eq!((status, host), (ST_OK, true));
-    assert_eq!(rig.sections(), (ST_OK, HAVE_TITLES | HAVE_GLYPHS));
+    assert_eq!(
+        rig.sections(),
+        (ST_OK, HAVE_TITLES | HAVE_GLYPHS | HAVE_KINDS)
+    );
     assert_eq!(rig.shapes().0, ST_NONE);
     assert_eq!(rig.shape(0).0, ST_NONE);
 }
@@ -161,7 +164,9 @@ fn with_section(good: &[u8], at: usize, section: &[u8]) -> Vec<u8> {
     out.resize(at, 0);
     out.extend_from_slice(section);
     let table = out.len();
-    out.extend_from_slice(&good[first..]);
+    out.extend_from_slice(&good[first..first + 4 * ENTRY_LEN]);
+    out.extend_from_slice(&[4, TRAILER_VERSION]);
+    out.extend_from_slice(TRAILER_MAGIC);
     let row = table + (row_of(good, SHAPES) - first);
     put32(&mut out, row + 1, at as u32);
     put32(&mut out, row + 5, section.len() as u32);
@@ -204,7 +209,7 @@ fn longer(item: &[u8], extra: usize) -> Vec<u8> {
 fn an_item_that_crosses_a_16_kb_chunk_is_refused_as_the_decoder_refuses_it() {
     let good = base();
     let items = items_of(&good);
-    assert_eq!(rows(&good).0, 4);
+    assert_eq!(rows(&good).0, 5);
     let section = section_of(&items, 0, 0);
     assert_eq!(section.len(), 22);
     let whole = with_section(&good, 2 * CHUNK - 24, &section_of(&items, 0, 0));
