@@ -214,27 +214,44 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
         println!("{class:?}: {calls} calls, {least} to {most} bytes");
     }
     // The least and greatest depth and the fewest calls of each class on the stub OS.
-    let stub: [(Class, (u16, u16, usize)); 7] = [
+    let stub: [(Class, (u16, u16, usize)); 11] = [
         (Class::StepStays, (28, 28, 100)),
         (Class::StepRedraws, (28, 28, 2)),
         (Class::Chunk, (14, 14, 10)),
         (Class::EndsCrcRun, (30, 30, 2)),
         (Class::Finishing, (28, 28, 1)),
         (Class::AfterFinish, (10, 10, 1)),
-        (Class::Other, (16, 28, 6)),
+        (Class::StopOn, (28, 28, 1)),
+        (Class::PausedStep, (28, 28, 1)),
+        (Class::PausedRead, (28, 28, 1)),
+        (Class::FailedStep, (26, 26, 2)),
+        (Class::Damaged, (16, 16, 1)),
     ];
-    assert_eq!(stub.map(|c| c.0), WITH_OTHER);
+    assert_eq!(
+        classes.keys().copied().collect::<Vec<_>>(),
+        stub.map(|c| c.0).to_vec(),
+        "the classes of call, none unclassified"
+    );
     for (class, (least, most, calls)) in stub {
         let got = classes
             .get(&class)
             .unwrap_or_else(|| panic!("no call of {class:?}"));
         assert_eq!((got.0, got.1), (least, most), "{class:?}: bytes of depth");
-        assert!(
-            got.2 >= calls,
-            "{class:?}: {} calls, at least {calls}",
-            got.2
-        );
+        if LEAVES.contains(&class) {
+            assert_eq!(got.2, calls, "{class:?}: calls");
+        } else {
+            assert!(
+                got.2 >= calls,
+                "{class:?}: {} calls, at least {calls}",
+                got.2
+            );
+        }
     }
+    let inside = inside_by_class(&every);
+    println!("the depth at the return of checking_idle, by class: {inside:?}");
+    let expected: std::collections::BTreeMap<Class, std::collections::BTreeSet<u16>> =
+        STUB_INSIDE.map(|(c, v)| (c, v.into())).into();
+    assert_eq!(inside, expected, "the depth at the return of checking_idle");
     assert_eq!(
         deepest, 30,
         "the deepest call is the one that ends the CRC run"
@@ -262,12 +279,32 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
 
 /// The greatest depth of each class seen with interrupts on: an interrupt adds up to four bytes
 /// to a step and two to a chunk in this run, which the handler's pushes make.
-const STUB_LIVE: [(Class, u16); 7] = [
+const STUB_LIVE: [(Class, u16); 11] = [
     (Class::StepStays, 32),
     (Class::StepRedraws, 28),
     (Class::Chunk, 16),
     (Class::EndsCrcRun, 30),
     (Class::Finishing, 28),
     (Class::AfterFinish, 10),
-    (Class::Other, 28),
+    (Class::StopOn, 28),
+    (Class::PausedStep, 28),
+    (Class::PausedRead, 28),
+    (Class::FailedStep, 26),
+    (Class::Damaged, 16),
+];
+
+/// The depth of each class when checking_idle returns, before the shell acts on its answer: the
+/// screen's own share, which a push around check_end at ki_leave deepens.
+const STUB_INSIDE: [(Class, [u16; 1]); 11] = [
+    (Class::StepStays, [28]),
+    (Class::StepRedraws, [28]),
+    (Class::Chunk, [14]),
+    (Class::EndsCrcRun, [30]),
+    (Class::Finishing, [28]),
+    (Class::AfterFinish, [10]),
+    (Class::StopOn, [24]),
+    (Class::PausedStep, [26]),
+    (Class::PausedRead, [16]),
+    (Class::FailedStep, [26]),
+    (Class::Damaged, [16]),
 ];

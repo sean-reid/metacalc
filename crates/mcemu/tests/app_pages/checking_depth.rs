@@ -13,9 +13,13 @@ pub struct Sample {
     pub action: u8,
     pub carry: bool,
     pub depth: u16,
+    /// The same depth at the return of checking_idle, before the shell acts on its answer.
+    pub inside: u16,
     pub before: u8,
     pub after: u8,
     pub shell: u16,
+    /// Whether APP_ON was set when scr_idle was called.
+    pub on: bool,
     /// Whether the checking screen was still the top one at the return.
     pub stays: bool,
 }
@@ -30,18 +34,26 @@ pub enum Class {
     EndsCrcRun,
     Finishing,
     AfterFinish,
+    /// Popped because APP_ON was set at the call.
+    StopOn,
+    /// Popped with APP_ON clear, by the job's CK_PAUSED, from the steps.
+    PausedStep,
+    /// Popped with APP_ON clear, by the job's CK_PAUSED, from the CRC run.
+    PausedRead,
+    /// Replaced by an error notice, from the steps.
+    FailedStep,
+    /// Replaced by the damaged notice, from the CRC run.
+    Damaged,
     Other,
 }
 
-/// The classes of `Class` with the calls that stop the screen last.
-pub const WITH_OTHER: [Class; 7] = [
-    Class::StepStays,
-    Class::StepRedraws,
-    Class::Chunk,
-    Class::EndsCrcRun,
-    Class::Finishing,
-    Class::AfterFinish,
-    Class::Other,
+/// The classes of calls that leave the screen.
+pub const LEAVES: [Class; 5] = [
+    Class::StopOn,
+    Class::PausedStep,
+    Class::PausedRead,
+    Class::FailedStep,
+    Class::Damaged,
 ];
 
 const PHASE_STEP: u8 = 0;
@@ -51,7 +63,14 @@ const PHASE_DONE: u8 = 2;
 impl Sample {
     pub fn class(&self) -> Class {
         if !self.stays {
-            return Class::Other;
+            return match (self.on, self.before, self.action, self.carry) {
+                (true, PHASE_STEP | PHASE_READ, REDRAW, true) => Class::StopOn,
+                (false, PHASE_STEP, REDRAW, true) => Class::PausedStep,
+                (false, PHASE_READ, REDRAW, true) => Class::PausedRead,
+                (false, PHASE_STEP, REDRAW, false) => Class::FailedStep,
+                (false, PHASE_READ, REDRAW, false) => Class::Damaged,
+                _ => Class::Other,
+            };
         }
         match (self.before, self.after, self.action, self.carry) {
             (PHASE_STEP, PHASE_STEP, STAY, true) => Class::StepStays,
@@ -71,6 +90,18 @@ pub fn by_class(samples: &[Sample]) -> std::collections::BTreeMap<Class, (u16, u
     for s in samples {
         let entry = classes.entry(s.class()).or_insert((u16::MAX, 0, 0));
         *entry = (entry.0.min(s.depth), entry.1.max(s.depth), entry.2 + 1);
+    }
+    classes
+}
+
+/// The `inside` depths each class of `samples` takes.
+pub fn inside_by_class(
+    samples: &[Sample],
+) -> std::collections::BTreeMap<Class, std::collections::BTreeSet<u16>> {
+    let mut classes: std::collections::BTreeMap<Class, std::collections::BTreeSet<u16>> =
+        Default::default();
+    for s in samples {
+        classes.entry(s.class()).or_default().insert(s.inside);
     }
     classes
 }
@@ -134,15 +165,32 @@ pub fn idle_calls(
             set_interrupts(run, 0);
         }
         let before_phase = run.byte("CKS_PHASE");
+        let on = run.byte("APP_ON") != 0;
         let sp = run.m().regs().sp;
         let kept = run.m().read_ram(sp - 256, 256);
         let fill: Vec<u8> = (0..=255u8).map(|i| with.byte(i)).collect();
         run.m().load_ram(sp - 256, &fill);
         let on_screen = run.top_kind() == KIND_CHECKING;
-        let mut shell = 0;
+        let lowest = |after: &[u8]| {
+            after
+                .iter()
+                .zip(&fill)
+                .position(|(a, f)| a != f)
+                .map_or(0, |i| 256 - i as u16)
+        };
+        let (mut shell, mut inside) = (0, 0);
         if on_screen {
             run.run_to_addr("the call of checking_idle", idle, WAIT);
-            shell = sp - run.m().regs().sp;
+            let entry = run.m().regs().sp;
+            shell = sp - entry;
+            let ret = run.m().read_ram(entry, 2);
+            let ret = u16::from_le_bytes([ret[0], ret[1]]);
+            run.m().load_ram(entry, &back.to_le_bytes());
+            run.run_to_addr("the return of checking_idle", back, WAIT);
+            let mut regs = run.m().regs();
+            regs.pc = ret;
+            run.m().set_regs(&regs);
+            inside = lowest(&run.m().read_ram(sp - 256, 256));
         }
         run.run_to_addr("the return of scr_idle", back, WAIT);
         let regs = run.m().regs();
@@ -166,18 +214,16 @@ pub fn idle_calls(
         );
         let after = run.m().read_ram(sp - 256, 256);
         run.m().load_ram(sp - 256, &kept);
-        let lowest = after
-            .iter()
-            .zip(&fill)
-            .position(|(a, f)| a != f)
-            .map_or(0, |i| 256 - i as u16);
+        let lowest = lowest(&after);
         let sample = Sample {
             action: (regs.af >> 8) as u8,
             carry: regs.af & 1 != 0,
             depth: lowest,
+            inside,
             before: before_phase,
             after: run.byte("CKS_PHASE"),
             shell,
+            on,
             stays: run.top_kind() == KIND_CHECKING,
         };
         all.push(sample);

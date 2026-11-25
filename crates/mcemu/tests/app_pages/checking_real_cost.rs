@@ -5,7 +5,8 @@
 
 use crate::app::*;
 use crate::checking_depth::{
-    Class, Fill, SHELL_STACK, Sample, WITH_OTHER, agreed, by_class, idle_calls, live_depths,
+    Class, Fill, LEAVES, SHELL_STACK, Sample, agreed, by_class, idle_calls, inside_by_class,
+    live_depths,
 };
 use crate::checking_real::*;
 use crate::checkrig::*;
@@ -22,26 +23,40 @@ const ROM_FRAME_STEPS: (u32, u32) = (152_800, 158_900);
 const ROM_FRAME_FINISHED: (u32, u32) = (126_600, 131_700);
 /// The least and greatest bytes an idle call of each class writes below the stack pointer
 /// scr_idle was called with on the reference OS, interrupts off at the call, and the fewest calls
-/// of the class in prop's check.
-const ROM_DEPTHS: [(Class, (u16, u16, usize)); 7] = [
+/// of the class in prop's check, exactly for the classes that leave the screen.
+const ROM_DEPTHS: [(Class, (u16, u16, usize)); 8] = [
     (Class::StepStays, (42, 42, 700)),
     (Class::StepRedraws, (42, 42, 20)),
     (Class::Chunk, (14, 14, 25)),
     (Class::EndsCrcRun, (44, 44, 1)),
     (Class::Finishing, (42, 42, 1)),
     (Class::AfterFinish, (10, 10, 1)),
-    (Class::Other, (40, 40, 2)),
+    (Class::StopOn, (40, 40, 1)),
+    (Class::PausedRead, (40, 40, 1)),
+];
+
+/// The depth of each class when checking_idle returns, before the shell acts on its answer.
+const ROM_INSIDE: [(Class, [u16; 1]); 8] = [
+    (Class::StepStays, [42]),
+    (Class::StepRedraws, [42]),
+    (Class::Chunk, [14]),
+    (Class::EndsCrcRun, [44]),
+    (Class::Finishing, [42]),
+    (Class::AfterFinish, [10]),
+    (Class::StopOn, [16]),
+    (Class::PausedRead, [16]),
 ];
 
 /// The greatest depth of each class seen with interrupts on.
-const ROM_LIVE: [(Class, u16); 7] = [
+const ROM_LIVE: [(Class, u16); 8] = [
     (Class::StepStays, 52),
     (Class::StepRedraws, 46),
     (Class::Chunk, 22),
     (Class::EndsCrcRun, 44),
     (Class::Finishing, 42),
     (Class::AfterFinish, 10),
-    (Class::Other, 46),
+    (Class::StopOn, 46),
+    (Class::PausedRead, 40),
 ];
 
 /// The T-states of scr_draw and then ui_blit for the screen on top, the driver's own taken off.
@@ -216,18 +231,31 @@ fn on_the_reference_os_every_idle_call_keeps_the_interrupts_the_speed_and_the_st
         deepest, 44,
         "the deepest call is the one that ends the CRC run"
     );
-    assert_eq!(ROM_DEPTHS.map(|c| c.0), WITH_OTHER);
+    assert_eq!(
+        classes.keys().copied().collect::<Vec<_>>(),
+        ROM_DEPTHS.map(|c| c.0).to_vec(),
+        "the classes of call, none unclassified"
+    );
     for (class, (least, most, calls)) in ROM_DEPTHS {
         let got = classes
             .get(&class)
             .unwrap_or_else(|| panic!("no call of {class:?}"));
         assert_eq!((got.0, got.1), (least, most), "{class:?}: bytes of depth");
-        assert!(
-            got.2 >= calls,
-            "{class:?}: {} calls, at least {calls}",
-            got.2
-        );
+        if LEAVES.contains(&class) {
+            assert_eq!(got.2, calls, "{class:?}: calls");
+        } else {
+            assert!(
+                got.2 >= calls,
+                "{class:?}: {} calls, at least {calls}",
+                got.2
+            );
+        }
     }
+    let inside = inside_by_class(&all);
+    println!("the depth at the return of checking_idle, by class: {inside:?}");
+    let expected: std::collections::BTreeMap<Class, std::collections::BTreeSet<u16>> =
+        ROM_INSIDE.map(|(c, v)| (c, v.into())).into();
+    assert_eq!(inside, expected, "the depth at the return of checking_idle");
     let live_most = live_depths(&all, &live);
     assert_eq!(
         live_most,
