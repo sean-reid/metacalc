@@ -190,6 +190,21 @@ fn a_closure_after_a_release_does_not_send_the_shell_to_app_key(real: bool) {
         b.at.held,
         b.after.iter().map(|p| p.held).collect::<Vec<_>>()
     );
+    let gaps = (
+        us_between(b.before.clock, b.at.clock),
+        us_between(b.at.clock, b.after[0].clock),
+    );
+    let key_down = if real { 8_400..=8_650 } else { 9_200..=9_350 };
+    assert!(
+        key_down.contains(&gaps.0),
+        "{} us from the point with Down held to the closure's",
+        gaps.0
+    );
+    assert!(
+        (9_200..=9_350).contains(&gaps.1),
+        "{} us from the closure's point to the next",
+        gaps.1
+    );
     assert!(
         b.before.port_only(),
         "Down was still down at the point before"

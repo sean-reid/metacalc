@@ -175,17 +175,23 @@ fn a_new_press_in_an_interrupts_off_slice_is_taken_when_it_ends(real: bool) {
         "the slice runs with interrupts off, so the OS has not scanned the key"
     );
     assert_eq!(rig.held(), 0);
-    rig.until("the shell takes the key", 900_000, |r| {
-        if r.state().in_slice {
-            assert_eq!(r.shell.scr_keys(), keys, "taken only after the slice");
-        }
-        !r.state().in_slice
-    });
+    rig.until("the slice ends", 900_000, |r| !r.state().in_slice);
     let slice_ended = rig.t;
+    let begun = rig.state().logged;
     rig.until("the key is acted on", 400_000, |r| {
         r.shell.scr_keys() == keys + 1
     });
     let taken = rig.t;
+    assert_eq!(
+        rig.state().logged,
+        begun,
+        "no slice began between the slice's end and the key"
+    );
+    assert!(
+        taken - slice_ended <= 1_000,
+        "acted on {} us after the slice",
+        taken - slice_ended
+    );
     println!(
         "{} OS: pressed {} in slice {}, the slice ended {}, acted on {} ({} ms after the slice)",
         if real { "reference" } else { "stub" },

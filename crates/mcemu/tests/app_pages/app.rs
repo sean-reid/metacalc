@@ -177,7 +177,11 @@ pub fn main_tree() -> &'static Path {
             ])
             .output()
             .expect("git runs");
-        assert!(archive.status.success(), "git archive {MAIN} failed");
+        assert!(
+            archive.status.success(),
+            "git archive {MAIN} failed: {}",
+            String::from_utf8_lossy(&archive.stderr)
+        );
         let mut tar = Command::new("tar")
             .arg("-x")
             .arg("-C")

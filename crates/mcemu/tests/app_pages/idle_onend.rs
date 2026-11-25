@@ -182,6 +182,10 @@ fn holding_on_after_the_work(real: bool, work: bool) -> (u32, u16, Where) {
         rig.held()
     );
     assert_eq!(rig.shell.scr_keys(), keys, "ON reached no screen");
+    if work {
+        assert!(samples >= 3_000, "{samples} samples in 2 s");
+        assert_eq!(waits, samples, "in the OS's key wait at every sample");
+    }
     rig.m().release_key(Machine::KEY_ON);
     rig.step(200_000);
     assert_eq!(rig.whereabouts(), Where::OsKeyWait, "after the release");
