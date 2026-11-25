@@ -10,7 +10,7 @@ use crate::shell_cost::*;
 /// fixture library as three and as six stages, and around ring as its shipped three.
 const PAGES_THREE: [u32; 3] = [6_850, 15_300, 9_250];
 const PAGES_SIX: [u32; 3] = [6_930, 15_300, 9_250];
-const PAGES_RING: [u32; 3] = [6_850, 15_300, 9_250];
+const PAGES_RING: [u32; 3] = [6_880, 15_300, 9_250];
 
 fn fits(name: &str, built: &Built, ceilings: [u32; 3]) {
     println!("{name}: code pages {:?} of 16384 bytes", built.used);

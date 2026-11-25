@@ -204,7 +204,9 @@ fn with_no_table_every_row_is_unchecked_and_none_is_made() {
     let mut list = Lister::open(built, None, 1);
     list.settle();
     for _ in 0..4 {
-        for (_, right) in rows_of(&list.ui) {
+        let rows = rows_of(&list.ui);
+        assert!(!rows.is_empty());
+        for (_, right) in rows {
             assert_eq!(right, "?");
         }
         list.key(RIGHT, Key::Right);
@@ -230,7 +232,9 @@ fn a_table_of_another_library_is_not_read() {
         0,
         "another library's table is refused"
     );
-    for (_, right) in rows_of(&list.ui) {
+    let rows = rows_of(&list.ui);
+    assert_eq!(rows.len(), 5);
+    for (_, right) in rows {
         assert_eq!(
             right, "?",
             "the model's rows are unchecked, and so are the app's"
@@ -309,4 +313,35 @@ fn labels_cut_to_the_room_their_mark_leaves_and_a_stage_name_cut_to_the_room_its
         list.settle();
     }
     assert!(cut >= 4, "{cut} labels were cut by the model");
+}
+
+/// A page lands on the last assertion from five before it, from four before it (one past it) and the
+/// page back on the first from five and from four, and stops one short of it from six: the clamp of
+/// each at, a row either side of, its boundary.
+#[test]
+fn a_page_at_the_boundary_of_either_end_lands_where_the_model_lands() {
+    let built = with_library();
+    let last = count_of(built) - 1;
+    for (from, scan, key) in [
+        (last - 6, RIGHT, Key::Right),
+        (last - 5, RIGHT, Key::Right),
+        (last - 4, RIGHT, Key::Right),
+        (6, LEFT, Key::Left),
+        (5, LEFT, Key::Left),
+        (4, LEFT, Key::Left),
+    ] {
+        let mut list = Lister::open(built, None, 0);
+        for _ in 0..from {
+            assert!(list.key(DOWN, Key::Down));
+        }
+        assert_eq!(list.pos().cursor, from, "the precondition puts the cursor there");
+        assert!(list.key(scan, key));
+        let landed = list.pos().cursor;
+        assert_eq!(
+            landed,
+            if scan == RIGHT { (from + 5).min(last) } else { from.saturating_sub(5) }
+        );
+        list.same_position(&format!("from {from} by {scan:02X}"));
+        list.settle();
+    }
 }

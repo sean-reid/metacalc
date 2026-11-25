@@ -21,6 +21,8 @@
 ;   LV_COUNT    the ticks the row must still be still, from LIST_WAIT, 11 (about 102 ms)
 ;   LV_PREVIEW  LVP_PENDING, the row is blank; LVP_ROW, fm holds the laid out conclusion of the cursor's
 ;               assertion and the draw shows it; LVP_NONE, settled with nothing to show
+; The draw keeps its own (LV_STAGE, LV_ROW, LV_CUR, LV_TOP, LV_END, LV_AT, LV_MARK and the strings it builds)
+; after these.
 ; The laid out row is fm's: fm_statement, fm_fit and fm_clip leave the statement, folded and cut to one
 ; line, in fm's RAM (FM_RAM, FM_LOW), and a settled draw calls fm_draw on it without fitting again.
 ; Only a kernel entry closes fm or overwrites that RAM, and none runs while a list is the top screen: the

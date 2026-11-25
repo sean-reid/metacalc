@@ -1,6 +1,6 @@
 //! The list on the reference OS with the shipped libraries, ignored in the default run: every
 //! assertion of prop and of ring walked against the model, the wait and the key repeat, a key during
-//! the slowest fit, what each step costs against its budget, and the owner's flows.
+//! the slowest fit, what each step costs against its budget, and what a user does with a list.
 
 use crate::app::*;
 use crate::checking_real::launched;

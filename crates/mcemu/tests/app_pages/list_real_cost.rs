@@ -1,4 +1,4 @@
-//! The list's budgets and its owner flows on the reference OS, ignored in the default run: opening
+//! The list's budgets and the flows a user tries on the reference OS, ignored in the default run: opening
 //! it and a cursor move with their frames against the 300 ms and 50 ms budgets, the marks after a
 //! partial check, and the stack, interrupts and speed of each routine.
 
@@ -55,7 +55,7 @@ fn timed_frame(app: &mut App) -> (u32, u32) {
     (draw, blit)
 }
 
-/// The budgets of the brief on the reference OS at 6 MHz: a cursor move with its frame inside
+/// The budgets on the reference OS at 6 MHz: a cursor move with its frame inside
 /// 50 ms, 300,000 T-states, and opening the list inside 300 ms, 1,800,000.
 const MOVE_BUDGET: u32 = 300_000;
 const OPEN_BUDGET: u32 = 1_800_000;
@@ -244,7 +244,7 @@ fn on_the_reference_os_every_routine_of_the_list_keeps_interrupts_and_speed_and_
     crate::list_depth::traced(&rig, &want);
 }
 
-/// What the owner will try after this lands, on each stage of the shipped build: open the list, move
+/// What a user does with the list, on each stage of the shipped build: open the list, move
 /// by row and by page to both ends, every soft key's notice and the way back, and CLEAR to Libraries
 /// with the stage's row where it was.
 #[test]

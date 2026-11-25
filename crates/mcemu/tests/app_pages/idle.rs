@@ -52,7 +52,7 @@ fn snapshot(app: &mut App) -> Vec<(u16, Vec<u8>)> {
 }
 
 /// One scr_idle, which must answer SCR_STAY with carry clear and leave every region as it was.
-fn idles_to_nothing(app: &mut App, on_real_os: bool, what: &str) {
+pub fn idles_to_nothing(app: &mut App, on_real_os: bool, what: &str) {
     let before = snapshot(app);
     let at = app.label("scr_idle");
     let input = In {

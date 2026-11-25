@@ -252,3 +252,10 @@ fn a_library_with_no_trees_is_flat_in_the_app_as_it_is_in_the_model() {
     assert_eq!(list.var("LV_FLAT"), 0, "a library with trees is not flat");
     list.settle();
 }
+
+#[test]
+fn a_settled_list_idles_to_nothing_and_changes_no_byte_of_any_region() {
+    let mut list = Lister::open(with_library(), None, 0);
+    assert!(list.settle());
+    crate::idle::idles_to_nothing(&mut list.run.shell.app, false, "a settled list");
+}

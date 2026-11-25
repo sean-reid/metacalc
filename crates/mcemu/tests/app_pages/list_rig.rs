@@ -176,7 +176,7 @@ impl Lister {
         frames.last().unwrap()[..6].try_into().unwrap()
     }
 
-    /// Runs until the preview is no longer pending, which is when idle has answered once with the
+    /// Runs until the preview is settled, which is when idle has answered once with the
     /// count at 0, and returns whether a frame was blitted for it. The model does its idle work
     /// and the frame is compared with its.
     pub fn settle(&mut self) -> bool {

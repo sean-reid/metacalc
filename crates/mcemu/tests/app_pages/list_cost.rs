@@ -1,6 +1,7 @@
-//! What the list costs: a cursor move with the frame it redraws, a settled frame, the idle call that
-//! lays out a preview, and the enter. Printed on every passing run, with a ceiling a little above each
-//! figure, on the stub OS here and on the reference OS in list_real.rs.
+//! What the list costs on the stub OS: a cursor move with the frame it redraws, a settled frame and
+//! the idle call that lays out a preview. Printed on every passing run, with a ceiling a little above
+//! each figure. The reference OS's figures, and the cost of opening the list, are in list_real.rs and
+//! list_real_cost.rs.
 
 use crate::app::*;
 use crate::builds::*;
