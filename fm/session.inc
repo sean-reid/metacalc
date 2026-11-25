@@ -42,6 +42,14 @@ fm_clip:
 	ld ix,clip_body
 	jr fm_enter
 
+fm_step:
+	ld ix,step_body
+	jr fm_enter
+
+fm_span:
+	ld ix,span_body
+	jr fm_enter
+
 ; fm_cursor takes the node in A, which fm_enter's interrupt reads destroy: the stub moves it to E,
 ; which an interrupt leaves alone, as it leaves the other routines' arguments.
 fm_cursor:
@@ -98,10 +106,10 @@ fe_own:
 	pop hl
 	jp (ix)
 
-; in: A = status, B = result. Restores port 5, SP and the interrupt state, and sets the zero flag
-; exactly when A is 0.
+; in: A = status, B and C = results. Restores port 5, SP and the interrupt state, and sets the zero flag
+; exactly when A is 0. Destroys DE.
 fm_leave:
-	ld c,a
+	ld e,a
 	ld a,(fv_iff)
 	ld d,a
 	ld a,(fv_p5)
@@ -111,7 +119,7 @@ fl_window:
 fl_window_end:
 	ld a,d
 	or a
-	ld a,c
+	ld a,e
 	jr z,fl_off
 	or a
 	ei

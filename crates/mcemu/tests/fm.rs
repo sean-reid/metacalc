@@ -47,6 +47,8 @@ mod secrig;
 mod session;
 #[path = "fm/speed.rs"]
 mod speed;
+#[path = "fm/step.rs"]
+mod step;
 #[path = "fm/store.rs"]
 mod store;
 #[allow(dead_code)]
