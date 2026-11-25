@@ -4,9 +4,7 @@
 //! its length, so that no handler's pushes are in the figure.
 
 use crate::app::*;
-use crate::builds::*;
 use crate::checkrig::{Run, WAIT};
-use crate::list_rig::*;
 use crate::shellrig::*;
 use crate::theorem_frames::find;
 use crate::theorem_rig::*;
@@ -86,39 +84,70 @@ pub fn trace_here(run: &mut Run, label: &str, mask: bool, speed: u8) -> Trace {
 
 /// The greatest depth over `calls`, asserting that every call kept interrupts as they were at the call
 /// and returned with the speed port as it was set to `speed`.
-fn kept(what: &str, calls: &[Trace], speed: u8) -> u16 {
+fn kept(what: &str, calls: &[Trace], speed: u8, mask: bool) -> u16 {
     assert!(!calls.is_empty(), "{what}: no call was traced");
     for (n, t) in calls.iter().enumerate() {
-        assert_eq!(t.iff.0, 0, "{what}, call {n}: masked at the call");
-        assert_eq!(t.iff.1, 0, "{what}, call {n}: interrupts at the return");
+        assert_eq!(
+            t.iff.0,
+            u8::from(!mask),
+            "{what}, call {n}: the state at the call"
+        );
+        assert_eq!(
+            t.iff.1, t.iff.0,
+            "{what}, call {n}: interrupts at the return"
+        );
         assert_eq!(t.speed, (speed, speed), "{what}, call {n}: the speed");
     }
     calls.iter().map(|t| t.depth).max().unwrap()
 }
 
 /// The depths of each routine, in bytes, at `speed`.
-pub fn figures(speed: u8) -> BTreeMap<String, u16> {
+pub fn figures(speed: u8, mask: bool) -> BTreeMap<String, u16> {
     let built = with_library();
     let lib = lib_of(built);
     let (n, _) = find(&lib, |f| f.hyps >= 6 && f.rows > 6 && !f.large);
     let (plain, _) = find(&lib, |f| f.hyps == 0 && !f.large);
+    figures_of(
+        &|n| {
+            let mut walker = Walker::on_list(built, None, 0);
+            walker.goto(n);
+            walker
+        },
+        (n, plain),
+        speed,
+        mask,
+    )
+}
+
+/// `figures` for a library: `before(n)` gives both on the list with the cursor on assertion `n`, `n`
+/// being an assertion with several statements and `plain` one with none but the conclusion.
+pub fn figures_of(
+    before: &dyn Fn(usize) -> Walker,
+    (n, plain): (usize, usize),
+    speed: u8,
+    mask: bool,
+) -> BTreeMap<String, u16> {
+    let at = |n: usize| {
+        let mut walker = before(n);
+        walker.open();
+        walker
+    };
     let mut found = BTreeMap::new();
     let mut put = |name: &str, calls: &[Trace]| {
-        found.insert(name.to_string(), kept(name, calls, speed));
+        found.insert(name.to_string(), kept(name, calls, speed, mask));
     };
-    let mut walker = Walker::on_list(built, None, 0);
-    walker.goto(n);
+    let mut walker = before(n);
     walker.list.run.m().press_key(ENTER);
-    let pushed = walker.trace("list_key", true, speed);
+    let pushed = walker.trace("list_key", mask, speed);
     assert_eq!(pushed.action, 2, "the list's ENTER pushes");
-    let entered = walker.trace("theorem_enter", true, speed);
+    let entered = walker.trace("theorem_enter", mask, speed);
     assert_eq!(entered.action, 0, "the enter is built");
     walker.list.run.m().release_key(ENTER);
     walker.list.run.run(1_000_000);
     put("list_key enter", &[pushed]);
     put("enter on a push", &[entered]);
     walker.list.run.m().press_key(DOWN);
-    let draw = walker.trace("theorem_draw", true, speed);
+    let draw = walker.trace("theorem_draw", mask, speed);
     walker.list.run.m().release_key(DOWN);
     walker.list.run.run(1_000_000);
     put("draw", &[draw]);
@@ -136,34 +165,66 @@ pub fn figures(speed: u8) -> BTreeMap<String, u16> {
         ("clear", CLEAR),
         ("letter", LETTER),
     ] {
-        let mut walker = Walker::at(built, None, 0, n);
+        let mut walker = at(n);
         for _ in 0..4 {
             walker.press(LEFT, Key::Left);
         }
         walker.press(DOWN, Key::Down);
         walker.list.run.m().press_key(scan);
-        let t = walker.trace("theorem_key", true, speed);
+        let t = walker.trace("theorem_key", mask, speed);
         walker.list.run.m().release_key(scan);
         put(&format!("key {name}"), &[t]);
     }
-    let mut walker = Walker::at(built, None, 0, n);
-    walker.list.tap(F2);
+    let mut walker = at(n);
+    walker.tap(F2);
     walker.list.run.run(300_000);
     walker.list.run.m().press_key(CLEAR);
-    let t = walker.trace("theorem_enter", true, speed);
+    let t = walker.trace("theorem_enter", mask, speed);
     walker.list.run.m().release_key(CLEAR);
     put("enter on an uncovering", &[t]);
-    let mut walker = Walker::at(built, None, 0, plain);
+    let mut walker = at(plain);
     walker.list.run.m().press_key(DOWN);
-    let t = walker.trace("theorem_key", true, speed);
+    let t = walker.trace("theorem_key", mask, speed);
     walker.list.run.m().release_key(DOWN);
     put("key at the root of a short statement", &[t]);
     found
 }
 
+/// The stack each routine writes, counting the caller's return address, as the header states them; the
+/// enter's is 20 on the stub OS and 34 on the reference OS, whose lookup of the status table is deeper.
+pub fn depths(enter: u16) -> BTreeMap<String, u16> {
+    [
+        ("draw", 26),
+        ("enter on a push", enter),
+        ("enter on an uncovering", enter),
+        ("key at the root of a short statement", 14),
+        ("key clear", 2),
+        ("key down", 14),
+        ("key enter", 14),
+        ("key f1", 14),
+        ("key f2", 6),
+        ("key f3", 6),
+        ("key f4", 6),
+        ("key f5", 2),
+        ("key left", 14),
+        ("key letter", 2),
+        ("key right", 14),
+        ("key up", 14),
+    ]
+    .map(|(name, depth)| (name.to_string(), depth))
+    .into()
+}
+
 #[test]
 fn the_routines_return_with_interrupts_and_speed_as_they_were_and_the_stack_balanced() {
     for speed in [0, 1] {
-        println!("speed {speed}: {:?}", figures(speed));
+        figures(speed, false);
+        let mut got = figures(speed, true);
+        assert_eq!(
+            got.remove("list_key enter"),
+            Some(8),
+            "speed {speed}: the list's push"
+        );
+        assert_eq!(got, depths(20), "speed {speed}");
     }
 }

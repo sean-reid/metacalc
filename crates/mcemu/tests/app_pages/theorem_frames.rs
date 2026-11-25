@@ -3,7 +3,6 @@
 //! the soft keys push and the screens CLEAR goes back to.
 
 use crate::app::*;
-use crate::builds::*;
 use crate::list_rig::*;
 use crate::shellrig::*;
 use crate::table;
@@ -28,10 +27,15 @@ pub fn sweep(built: &'static Built, stage: usize, limit: usize) -> Counts {
     let lib = lib_of(built);
     let mut walker = Walker::on_list(built, None, stage);
     let mut counts = Counts::default();
-    let end = built.stages.get(stage).map_or(lib.len(), |s| s.end).min(limit);
+    let end = built
+        .stages
+        .get(stage)
+        .map_or(lib.len(), |s| s.end)
+        .min(limit);
     for n in 0..end {
         if n > 0 {
-            assert!(walker.list.key(DOWN, Key::Down));
+            assert!(walker.key(DOWN, Key::Down));
+            walker.hold_preview();
         }
         walker.open();
         let want = facts(&lib, n);
@@ -53,6 +57,7 @@ pub fn sweep(built: &'static Built, stage: usize, limit: usize) -> Counts {
         counts.scrolls += usize::from(want.rows > 6);
         counts.large += usize::from(want.large);
         walker.back();
+        walker.hold_preview();
     }
     counts
 }
@@ -139,7 +144,9 @@ fn the_keys_one_at_a_time_on_assertions_chosen_for_each() {
     let lib = lib_of(built);
     let mut changed = BTreeMap::new();
     let plain = find(&lib, |f| f.hyps == 0 && !f.large && f.rows <= 6);
-    let hyps = find(&lib, |f| f.hyps > 0 && f.hyps < 6 && !f.large && f.rows <= 6);
+    let hyps = find(&lib, |f| {
+        f.hyps > 0 && f.hyps < 6 && !f.large && f.rows <= 6
+    });
     let many = find(&lib, |f| f.hyps >= 6 && !f.large);
     let folded = find(&lib, |f| f.folded && f.hyps == 0);
     let scroll = find(&lib, |f| f.rows > 6 && !f.large);
@@ -166,7 +173,14 @@ fn the_keys_one_at_a_time_on_assertions_chosen_for_each() {
         run(&mut walker, &keys, &mut changed);
     }
     println!("{changed:?}");
-    for (key, floor) in [("Up", 17), ("Down", 25), ("Left", 17), ("Right", 24), ("Enter", 15), ("F1", 14)] {
+    for (key, floor) in [
+        ("Up", 17),
+        ("Down", 25),
+        ("Left", 17),
+        ("Right", 24),
+        ("Enter", 15),
+        ("F1", 14),
+    ] {
         assert!(changed[key].1 >= floor, "{key}: {:?}", changed[key]);
     }
 }
@@ -194,7 +208,11 @@ fn a_one_node_statement_scrolls_a_row_a_key_and_the_cursor_stays() {
     println!("scroll {changed:?}");
     let spare = f.rows - 6;
     assert!(start < spare, "the view starts short of the last row");
-    assert_eq!(changed["Down"].1, spare - start, "Down scrolls to the last row, one row a key");
+    assert_eq!(
+        changed["Down"].1,
+        spare - start,
+        "Down scrolls to the last row, one row a key"
+    );
     assert_eq!(changed["Up"].1, spare, "and Up back to the first");
 }
 
@@ -214,7 +232,14 @@ fn long_seeded_walks_of_the_keys_are_the_models_on_the_fixture() {
         run(&mut walker, &random_keys(seed, 150), &mut changed);
     }
     println!("walk {changed:?}");
-    for (key, floor) in [("Up", 40), ("Down", 40), ("Left", 60), ("Right", 68), ("Enter", 30), ("F1", 30)] {
+    for (key, floor) in [
+        ("Up", 40),
+        ("Down", 40),
+        ("Left", 60),
+        ("Right", 68),
+        ("Enter", 30),
+        ("F1", 30),
+    ] {
         assert!(changed[key].1 >= floor, "{key}: {:?}", changed[key]);
     }
 }
@@ -229,12 +254,9 @@ fn the_title_carries_each_of_the_four_marks_and_thm_or_ax() {
         .find_map(|_| {
             let status = table::random_status(n, &mut seed, 70, 6);
             let values = table::values(built, &status);
-            (0..4).all(|v| values.contains(&v)).then(|| {
-                (
-                    table::of(built.library.as_ref().unwrap(), &values),
-                    status,
-                )
-            })
+            (0..4)
+                .all(|v| values.contains(&v))
+                .then(|| (table::of(built.library.as_ref().unwrap(), &values), status))
         })
         .expect("a table with all four marks");
     let mut seen = std::collections::BTreeSet::new();
@@ -242,7 +264,7 @@ fn the_title_carries_each_of_the_four_marks_and_thm_or_ax() {
     let end = built.stages[2].end;
     for i in 0..end {
         if i > 0 {
-            assert!(walker.list.key(DOWN, Key::Down));
+            assert!(walker.key(DOWN, Key::Down));
         }
         walker.open();
         for call in walker.list.ui.frame_calls().1 {
@@ -255,7 +277,10 @@ fn the_title_carries_each_of_the_four_marks_and_thm_or_ax() {
     let seen: Vec<String> = seen.into_iter().collect();
     println!("titles: {seen:?}");
     for glyph in [mcglyph::CHECK, '?', mcglyph::CROSS, '~'] {
-        assert!(seen.iter().any(|t| t.starts_with(glyph)), "the mark {glyph} is drawn: {seen:?}");
+        assert!(
+            seen.iter().any(|t| t.starts_with(glyph)),
+            "the mark {glyph} is drawn: {seen:?}"
+        );
     }
     assert!(seen.iter().any(|t| t.ends_with("thm")) && seen.iter().any(|t| t.ends_with(" ax")));
 }
@@ -287,9 +312,31 @@ fn the_title_with_no_table_is_unchecked_for_an_axiom_and_a_theorem() {
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn the_first_frame_of_every_assertion_of_prop_and_ring_is_the_models() {
-    for name in ["prop", "ring"] {
+    for (name, want) in [
+        (
+            "prop",
+            Counts {
+                all: 779,
+                hyps: 565,
+                folded: 3,
+                scrolls: 1,
+                large: 0,
+            },
+        ),
+        (
+            "ring",
+            Counts {
+                all: 3326,
+                hyps: 1603,
+                folded: 53,
+                scrolls: 10,
+                large: 0,
+            },
+        ),
+    ] {
         let counts = sweep(shipped(name), 0, usize::MAX);
         println!("{name}: {counts:?}");
+        assert_eq!(counts, want, "{name}: the model's counts");
     }
 }
 
@@ -309,7 +356,21 @@ fn long_seeded_walks_are_the_models_on_the_largest_assertions_of_ring() {
     for (seed, (nodes, n)) in by_size.into_iter().take(6).enumerate() {
         println!("ring: assertion {n} ({}), {nodes} nodes", lib.label(n));
         let mut walker = Walker::at(built, None, 0, n);
-        run(&mut walker, &random_keys(seed as u64 + 11, 300), &mut changed);
+        run(
+            &mut walker,
+            &random_keys(seed as u64 + 11, 300),
+            &mut changed,
+        );
     }
     println!("walk {changed:?}");
+    for (key, floor) in [
+        ("Up", 150),
+        ("Down", 160),
+        ("Left", 150),
+        ("Right", 225),
+        ("Enter", 125),
+        ("F1", 100),
+    ] {
+        assert!(changed[key].1 >= floor, "{key}: {:?}", changed[key]);
+    }
 }

@@ -3,7 +3,6 @@
 //! and with a failing fm_open, and a frame the refit has to clamp.
 
 use crate::app::*;
-use crate::builds::*;
 use crate::list_rig::*;
 use crate::shellrig::*;
 use crate::theorem_frames::find;
@@ -67,7 +66,11 @@ fn clear_goes_back_to_the_list_where_it_was_with_a_pending_preview_and_then_to_l
     walker.goto(n);
     walker.list.settle();
     let before = walker.list.frame_bytes();
-    assert_ne!((before[2], before[4]), (0, 0), "the cursor and the top have moved");
+    assert_ne!(
+        (before[2], before[4]),
+        (0, 0),
+        "the cursor and the top have moved"
+    );
     walker.open();
     for (scan, key) in [(DOWN, Key::Down), (LEFT, Key::Left), (ENTER, Key::Enter)] {
         walker.press(scan, key);
@@ -76,8 +79,11 @@ fn clear_goes_back_to_the_list_where_it_was_with_a_pending_preview_and_then_to_l
     assert_eq!(walker.list.frame_bytes(), before, "cursor and top");
     assert_eq!(walker.list.seen, (PENDING, 11), "blank, the wait begins");
     assert!(walker.list.settle(), "the preview is laid out again");
-    assert!(walker.list.key(CLEAR, Key::Clear), "Libraries is drawn");
-    assert_eq!((walker.list.run.depth(), walker.list.run.top_kind()), (1, KIND_LIBRARIES));
+    assert!(walker.key(CLEAR, Key::Clear), "Libraries is drawn");
+    assert_eq!(
+        (walker.list.run.depth(), walker.list.run.top_kind()),
+        (1, KIND_LIBRARIES)
+    );
 }
 
 #[test]
@@ -93,11 +99,15 @@ fn an_auto_power_down_on_the_screen_brings_back_the_models_refit() {
         let blits = walker.list.run.blits();
         let at = walker.list.run.shell.app.label("TV_TOTAL");
         walker.list.run.m().load_ram(at, &[0xFF, 0xFF]);
-        walker.list.tap(LETTER);
+        walker.tap(LETTER);
         let frame = walker.list.run.next_blit();
         walker.list.run.run(2_000);
         assert_eq!(walker.var16("TV_TOTAL"), f.rows, "{how}: the enter ran");
-        assert_eq!(walker.list.run.blits(), blits + 1, "{how}: one frame for the refresh");
+        assert_eq!(
+            walker.list.run.blits(),
+            blits + 1,
+            "{how}: one frame for the refresh"
+        );
         walker.list.ui.press(Key::F2);
         walker.list.ui.press(Key::Clear);
         walker.list.log.extend([Key::F2, Key::Clear]);
@@ -148,15 +158,18 @@ fn a_cursor_the_frame_holds_past_the_statements_is_clamped_by_the_enter() {
     let last = lib.statement(n).conclusion.len() - 1;
     assert!(last >= 3, "the conclusion has nodes to go to");
     while node_of(&walker) != last {
-        assert!(next_node(&mut walker), "the keys reach the conclusion's last node");
+        assert!(
+            next_node(&mut walker),
+            "the keys reach the conclusion's last node"
+        );
     }
     let stack = walker.list.run.shell.app.label("SCR_STACK") + 32;
     walker.list.run.m().load_ram(stack + 4, &[99, 250]);
     let depth = walker.list.run.depth();
-    walker.list.tap(F2);
+    walker.tap(F2);
     walker.list.run.next_blit();
     walker.list.run.run(300_000);
-    walker.list.tap(CLEAR);
+    walker.tap(CLEAR);
     let frame = walker.list.run.next_blit();
     walker.list.run.run(2_000);
     assert_eq!(walker.list.run.depth(), depth);
@@ -164,8 +177,16 @@ fn a_cursor_the_frame_holds_past_the_statements_is_clamped_by_the_enter() {
     walker.list.ui.press(Key::Clear);
     walker.list.log.extend([Key::F2, Key::Clear]);
     same_frame("clamped", &frame, &walker.list.shown());
-    assert_eq!(walker.frame()[4], f.hyps as u8, "the statement is clamped to the conclusion");
-    assert_eq!(usize::from(walker.frame()[5]), last, "and the node to the last");
+    assert_eq!(
+        walker.frame()[4],
+        f.hyps as u8,
+        "the statement is clamped to the conclusion"
+    );
+    assert_eq!(
+        usize::from(walker.frame()[5]),
+        last,
+        "and the node to the last"
+    );
     walker.same_position("clamped");
 }
 
@@ -202,14 +223,30 @@ fn a_theorem_opened_right_after_a_check_opens_fm_again_once() {
     let ready = usize::from(list.run.shell.app.label("KV_READY") - 0xC000);
     list.run.shell.app.m.ram_page(3)[ready..ready + 2].fill(0);
     list.count_fm_calls();
-    let mut walker = Walker { list, stage: 0, built };
+    let mut walker = Walker {
+        list,
+        stage: 0,
+        built,
+    };
     walker.open();
-    assert_eq!(walker.list.fm_calls()[0], 1, "fm_open ran once, in the theorem's enter");
-    assert_eq!(walker.var("TV_TABLE"), 1, "the check's table is the library's");
+    assert_eq!(
+        walker.list.fm_calls()[0],
+        1,
+        "fm_open ran once, in the theorem's enter"
+    );
+    assert_eq!(
+        walker.var("TV_TABLE"),
+        1,
+        "the check's table is the library's"
+    );
     walker.back();
     walker.goto(2);
     walker.open();
-    assert_eq!(walker.list.fm_calls()[0], 1, "and not again while fm is open");
+    assert_eq!(
+        walker.list.fm_calls()[0],
+        1,
+        "and not again while fm is open"
+    );
 }
 
 /// The statuses fm and the reader refuse the theorem's enter with, the call each is answered at, and
@@ -256,7 +293,7 @@ fn a_theorem_that_fails_to_enter_on_a_push_leaves_the_list_with_the_error_notice
         walker.goto(2);
         let before = walker.list.run.frames();
         refuse(&mut walker, stub, status);
-        walker.list.tap(ENTER);
+        walker.tap(ENTER);
         error_frames(&mut walker, 3, status, &at);
         assert!(walker.list.fail_calls(0) >= 1, "{at}: the refusal ran");
         assert_eq!(
@@ -264,11 +301,19 @@ fn a_theorem_that_fails_to_enter_on_a_push_leaves_the_list_with_the_error_notice
             before[..2],
             "{at}: Libraries and the list are as they were"
         );
-        walker.list.tap(CLEAR);
+        walker.tap(CLEAR);
         walker.list.run.next_blit();
         walker.list.run.run(2_000);
-        assert_eq!((walker.list.run.depth(), walker.list.run.top_kind()), (2, KIND_LIST), "{at}");
-        same_frame(&at, &walker.list.run.frame(), &model::frame(&walker.list.replayed()));
+        assert_eq!(
+            (walker.list.run.depth(), walker.list.run.top_kind()),
+            (2, KIND_LIST),
+            "{at}"
+        );
+        same_frame(
+            &at,
+            &walker.list.run.frame(),
+            &model::frame(&walker.list.replayed()),
+        );
     }
 }
 
@@ -282,14 +327,18 @@ fn a_theorem_that_fails_to_enter_on_an_uncovering_keeps_its_frame_under_the_erro
         let at = format!("{stub}");
         let mut walker = Walker::at(built, None, 0, 4);
         walker.press(DOWN, Key::Down);
-        walker.list.tap(F2);
+        walker.tap(F2);
         walker.list.run.next_blit();
         walker.list.run.run(300_000);
         let frames = walker.list.run.frames();
         refuse(&mut walker, stub, status);
-        walker.list.tap(CLEAR);
+        walker.tap(CLEAR);
         error_frames(&mut walker, 4, status, &at);
-        assert_eq!(walker.list.run.frames()[..3], frames[..3], "{at}: the theorem's frame is kept");
+        assert_eq!(
+            walker.list.run.frames()[..3],
+            frames[..3],
+            "{at}: the theorem's frame is kept"
+        );
     }
 }
 
@@ -308,8 +357,12 @@ fn a_status_from_fm_inside_a_key_pushes_the_error_notice_and_changes_nothing() {
         walker.press(DOWN, Key::Down);
         let frames = walker.list.run.frames();
         walker.list.fail_at(0, stub, 1, status);
-        walker.list.tap(scan);
+        walker.tap(scan);
         error_frames(&mut walker, 4, status, &at);
-        assert_eq!(walker.list.run.frames()[..3], frames[..3], "{at}: nothing changed");
+        assert_eq!(
+            walker.list.run.frames()[..3],
+            frames[..3],
+            "{at}: nothing changed"
+        );
     }
 }

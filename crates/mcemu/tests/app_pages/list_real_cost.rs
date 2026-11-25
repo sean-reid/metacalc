@@ -225,8 +225,8 @@ fn on_the_reference_os_every_routine_of_the_list_keeps_interrupts_and_speed_and_
         keys: std::collections::BTreeMap::from([
             ("clear", 2),
             ("down", 4),
-            ("enter", 6),
-            ("f1", 6),
+            ("enter", 8),
+            ("f1", 8),
             ("f2", 6),
             ("f3", 6),
             ("f4", 6),

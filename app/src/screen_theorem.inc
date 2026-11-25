@@ -46,9 +46,26 @@
 ; theorem_key    UP, DOWN, LEFT, RIGHT, ENTER and F1 as the model's press; F2, F3 and F4 push the notice
 ;                NOTICE_LIST; CLEAR pops; every other key, F5 and the letters, stays. On the too large
 ;                screen only F2, F4 and CLEAR act. Answers SCR_REDRAW when the cursor, the scroll or a
-;                fold changed, else SCR_STAY. A status from fm pushes the error notice.
-; Interrupts and speed: every routine returns with both as at the call; fm's sessions turn interrupts off
-; for their own length, and the enter's fit with them, so a tap inside it is lost.
+;                fold changed, else SCR_STAY: a move between nodes a fold hides, or a fold of one, changes the
+;                model's state and not its frame, and is answered with SCR_REDRAW and the same frame. A status
+;                from fm pushes the error notice.
+; theorem_push   in: HL = a list's frame. Fills scr_new with the theorem frame for the list's cursor, from
+;                list_key. Out: A = SCR_PUSH.
+; Interrupts and speed: every routine returns with both as at the call, and the screen writes no port 20h and
+; executes no DI. fm's sessions and the reader's reads turn interrupts off for their own length and give the
+; caller's state back, so the longest stretch with interrupts off is one session: 1,282,260 T-states in an open,
+; the fit of ring's rglcom4d, and 78,040 in a key, a blit. The fit runs in the enter, so a tap inside it is lost.
+; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, with
+; interrupts masked: list_key 8 for ENTER and F1; theorem_enter 20 on the stub OS and 34 on the reference OS,
+; whose lookup of the table is deeper, for a push and for an uncovering; theorem_key 14 for a move or a fold,
+; 6 for F2 to F4, 2 for CLEAR, F5 and a letter; theorem_draw 26. An interrupt that lands in a call adds the
+; handler's bytes.
+; Cost, in T-states at 6 MHz on the reference OS: the key that opens an assertion, the enter and the first frame
+; take a median of 332,318 and at most 770,485 over prop's 779 assertions, and 302,518 and at most 1,808,784
+; (301.5 ms, rglcom4d) over ring's 3,326, 6 of them over 200 ms and one over 300 ms; a cursor move with its
+; frame, over every node of ring's 50 largest assertions and of every 97th of the rest, takes 275,281 at the
+; median and 337,104 at most (df-rng, Down to node 63), 520 of 4,872 over 300,000; a fold with its frame
+; 321,753 and 391,103, 285 of 322 over.
 
 THM_ROWS	.equ 6
 THM_LARGE_ROW	.equ 2

@@ -157,6 +157,8 @@ mod theorem_caps;
 mod theorem_depth;
 #[path = "app_pages/theorem_frames.rs"]
 mod theorem_frames;
+#[path = "app_pages/theorem_real.rs"]
+mod theorem_real;
 #[path = "app_pages/theorem_return.rs"]
 mod theorem_return;
 #[path = "app_pages/theorem_rig.rs"]

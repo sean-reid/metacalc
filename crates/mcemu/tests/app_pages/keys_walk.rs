@@ -18,10 +18,10 @@ const WALK_CHECKING: [u8; 34] = [
     DOWN, F3, CLEAR, F1, ENTER, F2, CLEAR, DOWN, F3, CLEAR, UP, UP, UP, UP, F3, CLEAR,
 ];
 
-/// The keys the stream sent inside a list and inside a stage's notice, 95 and 150 at the least over
+/// The keys the stream sent inside a list and inside a stage's notice, 91 and 110 at the least over
 /// the two walks and two builds.
 const IN_LIST_FLOOR: usize = 90;
-const IN_NOTICE_FLOOR: usize = 140;
+const IN_NOTICE_FLOOR: usize = 100;
 
 /// The model on Libraries again and taken through `log`, with no idle work: the list it was on, with
 /// its preview pending.

@@ -100,7 +100,80 @@ pub struct Walker {
     pub built: &'static Built,
 }
 
+/// Runs until the blit that is under way has been counted, which an interrupt taken in the 2,000
+/// T-states after it can delay.
+fn wait_for_blits(list: &mut Lister, want: u16) {
+    for _ in 0..200 {
+        if list.run.blits() >= want {
+            return;
+        }
+        list.run.run(2_000);
+    }
+    panic!("the blit was never counted");
+}
+
+/// `Lister::tap` that waits for scr_key's counter, which an interrupt taken in the 100 T-states after
+/// the key is let go can delay.
+pub fn tap(list: &mut Lister, scan: u8) {
+    let code = u16::from(code_of(scan));
+    let before = list.run.scr_keys();
+    list.run.m().press_key(scan);
+    loop {
+        list.run.run_to("scr_key", LIMIT);
+        if list.run.m().regs().af >> 8 == code {
+            break;
+        }
+        list.run.m().resume(1);
+    }
+    list.run.m().release_key(scan);
+    for _ in 0..200 {
+        if list.run.scr_keys() > before {
+            break;
+        }
+        list.run.m().resume(100);
+    }
+    assert_eq!(
+        list.run.scr_keys(),
+        before + 1,
+        "{scan:02X} reached scr_key"
+    );
+}
+
 impl Walker {
+    /// Taps `scan` as `tap` does.
+    pub fn tap(&mut self, scan: u8) {
+        tap(&mut self.list, scan);
+    }
+
+    /// Taps `scan` and does the model's `key`, as `Lister::key` does, and compares the frame the key
+    /// redraws, or the absence of one, and the depth. Returns whether a frame was drawn.
+    pub fn key(&mut self, scan: u8, key: Key) -> bool {
+        let list = &mut self.list;
+        let blits = list.run.blits();
+        let (before, depth) = (list.shown(), list.ui.depth());
+        tap(list, scan);
+        list.ui.press(key);
+        list.log.push(key);
+        let want = list.shown();
+        let drew = want != before || list.ui.depth() != depth;
+        if drew {
+            let frame = list.run.next_blit();
+            list.seen = (list.var("LV_PREVIEW"), list.var("LV_COUNT"));
+            same_frame(&format!("after {scan:02X}"), &frame, &want);
+            wait_for_blits(list, blits + 1);
+            list.run.run(2_000);
+        } else {
+            list.run.run(300_000);
+        }
+        assert_eq!(
+            list.run.blits(),
+            blits + u16::from(drew),
+            "after {scan:02X}: the blits"
+        );
+        assert_eq!(list.run.depth(), list.ui.depth(), "after {scan:02X}: depth");
+        drew
+    }
+
     /// Both on the list of `stage`, settled.
     pub fn on_list(
         built: &'static Built,
@@ -125,14 +198,22 @@ impl Walker {
                 () if at >= n + 5 => (LEFT, Key::Left),
                 () => (UP, Key::Up),
             };
-            assert!(self.list.key(scan, key), "the list moves");
+            assert!(self.key(scan, key), "the list moves");
+            self.hold_preview();
         }
+    }
+
+    /// Keeps the list's preview from settling before the next key, which a long library's slow keys
+    /// would let it do: the wait is set to its largest.
+    pub fn hold_preview(&mut self) {
+        let at = self.list.run.shell.app.label("LV_COUNT");
+        self.list.run.m().load_ram(at, &[255]);
     }
 
     /// ENTER on the list: the theorem screen of the cursor's assertion.
     pub fn open(&mut self) {
         assert_eq!(self.list.run.top_kind(), KIND_LIST);
-        assert!(self.list.key(ENTER, Key::Enter), "the screen is drawn");
+        assert!(self.key(ENTER, Key::Enter), "the screen is drawn");
         assert_eq!(self.list.run.top_kind(), KIND_THEOREM);
         self.same_position("opened");
     }
@@ -171,7 +252,7 @@ impl Walker {
         let list = &mut self.list;
         let blits = list.run.blits();
         let (state, depth) = (list.ui.state(), list.ui.depth());
-        list.tap(scan);
+        tap(list, scan);
         list.ui.press(key);
         list.log.push(key);
         let want = list.shown();
@@ -179,12 +260,21 @@ impl Walker {
         if drew {
             let frame = list.run.next_blit();
             same_frame(&format!("after {scan:02X}"), &frame, &want);
+            wait_for_blits(list, blits + 1);
             list.run.run(2_000);
         } else {
             list.run.run(300_000);
-            same_frame(&format!("after {scan:02X}, none drawn"), &list.run.frame(), &want);
+            same_frame(
+                &format!("after {scan:02X}, none drawn"),
+                &list.run.frame(),
+                &want,
+            );
         }
-        assert_eq!(list.run.blits(), blits + u16::from(drew), "after {scan:02X}: the blits");
+        assert_eq!(
+            list.run.blits(),
+            blits + u16::from(drew),
+            "after {scan:02X}: the blits"
+        );
         assert_eq!(list.run.depth(), list.ui.depth(), "after {scan:02X}: depth");
         self.same_position(&format!("after {scan:02X}"));
         drew
@@ -225,9 +315,11 @@ impl Walker {
     pub fn back(&mut self) {
         let list = &mut self.list;
         let depth = list.run.depth();
-        list.tap(CLEAR);
+        tap(list, CLEAR);
+        let blits = list.run.blits();
         let frame = list.run.next_blit();
         list.seen = (list.var("LV_PREVIEW"), list.var("LV_COUNT"));
+        wait_for_blits(list, blits + 1);
         list.run.run(2_000);
         list.log.push(Key::Clear);
         let pending = list.replayed();
@@ -247,8 +339,9 @@ impl Walker {
     pub fn excursion(&mut self, scan: u8, key: Key) {
         let depth = self.list.run.depth();
         let blits = self.list.run.blits();
-        self.list.tap(scan);
+        self.tap(scan);
         let frame = self.list.run.next_blit();
+        wait_for_blits(&mut self.list, blits + 1);
         self.list.run.run(2_000);
         same_frame(
             &format!("{scan:02X}"),
@@ -261,7 +354,7 @@ impl Walker {
         self.list.ui.press(key);
         self.list.log.push(key);
         assert_eq!(self.list.ui.depth(), depth + 1, "the model pushed a screen");
-        assert!(self.list.key(CLEAR, Key::Clear), "the screen comes back");
+        assert!(self.key(CLEAR, Key::Clear), "the screen comes back");
         assert_eq!(self.list.run.top_kind(), KIND_THEOREM);
         assert_eq!(self.list.run.depth(), depth);
         self.same_position("after the notice");

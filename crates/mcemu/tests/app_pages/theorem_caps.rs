@@ -3,8 +3,6 @@
 //! assertion one unit inside it.
 
 use crate::app::*;
-use crate::builds::*;
-use crate::list_rig::*;
 use crate::shellrig::*;
 use crate::theorem_rig::*;
 use mcui::Key;
@@ -51,7 +49,11 @@ pub fn caps_library() -> Vec<u8> {
     let three = vec![wide(254), wide(254), wide(254)];
     src += &assertion("tokens768", &three, &wide(2));
     src += &assertion("tokens769", &three, &wide(3));
-    src += &assertion("stmt255", &[], &format!("|- -. {}", "F ".repeat(253).trim_end()));
+    src += &assertion(
+        "stmt255",
+        &[],
+        &format!("|- -. {}", "F ".repeat(253).trim_end()),
+    );
     let two = vec![chain(127), chain(127)];
     src += &assertion("nodes384", &two, &chain(127));
     src += &assertion("nodes385", &two, &chain(128));
@@ -74,7 +76,7 @@ fn fm_refuses_exactly_what_the_models_caps_refuse_for_each_way_past_a_cap() {
     walker.goto(first);
     for (i, (label, over, what)) in CASES.into_iter().enumerate() {
         if i > 0 {
-            assert!(walker.list.key(DOWN, Key::Down));
+            assert!(walker.key(DOWN, Key::Down));
         }
         assert_eq!(lib.label(first + i), label);
         walker.open();
@@ -83,7 +85,13 @@ fn fm_refuses_exactly_what_the_models_caps_refuse_for_each_way_past_a_cap() {
         assert_eq!(walker.var("TV_LARGE") == 1, over, "{what}: the app");
         if over {
             assert_eq!(walker.frame()[4..8], [0; 4], "{what}");
-            for (scan, key) in [(UP, Key::Up), (DOWN, Key::Down), (LEFT, Key::Left), (ENTER, Key::Enter), (F1, Key::F1)] {
+            for (scan, key) in [
+                (UP, Key::Up),
+                (DOWN, Key::Down),
+                (LEFT, Key::Left),
+                (ENTER, Key::Enter),
+                (F1, Key::F1),
+            ] {
                 assert!(!walker.press(scan, key), "{what}: {scan:02X} stays");
             }
             for (scan, key) in [(F2, Key::F2), (F4, Key::F4)] {

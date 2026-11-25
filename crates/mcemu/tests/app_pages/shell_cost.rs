@@ -62,6 +62,9 @@ const LIBRARIES_THREE_TABLE_COLD: u32 = 148_200;
 const STAGE_ABOUT_COLD: u32 = 136_000;
 const ABOUT_COLD: u32 = 141_900;
 const NOTICE_COLD: u32 = 116_300;
+/// The theorem screen's frame of the first assertion's conclusion, which has no hypothesis.
+const THEOREM: u32 = 129_000;
+const THEOREM_COLD: u32 = 130_400;
 /// The most the loop may take around app_key for a key no screen answers, scr_key included.
 const IGNORED_KEY: u32 = 2_575;
 /// The least: it takes 2,562 with the idle point.
@@ -69,8 +72,8 @@ const IGNORED_KEY_FLOOR: u32 = 2_512;
 /// The most app_stage_block may take for a block the area already holds.
 const WARM_STAGE: u32 = 120;
 /// The most bytes each code page may use: entry, draw and data.
-const PAGES_PLAIN: [u32; 3] = [2_640, 15_300, 9_250];
-const PAGES_LIBRARY: [u32; 3] = [6_820, 15_300, 9_250];
+const PAGES_PLAIN: [u32; 3] = [2_760, 15_560, 9_250];
+const PAGES_LIBRARY: [u32; 3] = [8_330, 15_560, 9_250];
 
 /// Clears the staging tag, so that the next draw copies its screen's strings.
 pub fn go_cold(app: &mut App) {
@@ -152,9 +155,16 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
         (
             "Notice, a stage's list",
             three_stages(),
-            &[F1, F1],
+            &[F1, F2],
             NOTICE,
             NOTICE_COLD,
+        ),
+        (
+            "Theorem, a stage's first assertion",
+            three_stages(),
+            &[F1, F1],
+            THEOREM,
+            THEOREM_COLD,
         ),
     ] {
         let tabled = name.ends_with("of total");

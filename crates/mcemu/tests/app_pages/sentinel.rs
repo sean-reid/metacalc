@@ -53,7 +53,7 @@ fn an_intact_sentinel_runs_no_refresh_and_no_blit_for_an_ignored_key() {
     for built in [plain(), with_library()] {
         let mut shell = booted(built, Enter::Real);
         let library = built.library.is_some();
-        for (n, open) in [None, Some(F3), Some(CLEAR), Some(F1), Some(F1)]
+        for (n, open) in [None, Some(F3), Some(CLEAR), Some(F1), Some(F2)]
             .into_iter()
             .enumerate()
         {
@@ -137,7 +137,7 @@ fn a_power_down_while_a_stages_notice_is_open_over_its_list_refreshes_it_on_the_
     refreshed(
         built,
         Enter::Real,
-        &[F1, F1],
+        &[F1, F2],
         KIND_NOTICE,
         &model::unavailable(built.stage_name(0)),
     );
