@@ -17,6 +17,8 @@ const PHASE_LEAVE: u8 = 3;
 const UNSET: u8 = 0x7F;
 /// The notice's number for CK_READER with the reader's status 1: (CK_READER - CK_REFUSED) * 32 + 1.
 const READER_FAILED: u16 = 0x61;
+/// The job's statuses check_begin answers with.
+const CK_NEED_CRC: u16 = 2;
 const SCR_STAY: u8 = 0;
 const SCR_POP: u8 = 3;
 const TRIES: usize = 20_000;
@@ -154,6 +156,66 @@ fn checking_enter_returns_with_interrupts_on_and_the_speed_it_had_for_every_answ
             "a failing status answers the notice's number and starts nothing"
         );
         as_at_the_call(&mut run, &regs, speed, "a failing status");
+    }
+}
+
+/// The registers at the return of check_begin, from its first instruction, which the machine is on.
+fn begin_returns(run: &mut Run) -> mcemu::Regs {
+    let sp = run.m().regs().sp;
+    let back = run.m().read_ram(sp, 2);
+    let back = u16::from_le_bytes([back[0], back[1]]);
+    run.run_to_addr("the return of check_begin", back, WAIT);
+    run.m().regs()
+}
+
+/// The enter of a library with no table, whose header read fails after check_begin has answered
+/// CK_NEED_CRC: the reader's length is cut to 8 bytes at that return, so the 4 bytes at offset 8 are
+/// past it and check_begin's own read, of offset 4, is not. The enter takes the kn_reader exit,
+/// calls check_end and answers the notice's number for CK_READER, at both speeds.
+#[test]
+fn checking_enter_returns_with_interrupts_on_and_the_speed_it_had_when_the_header_read_fails() {
+    for speed in SPEEDS {
+        let mut run = opened(padded(), None, speed);
+        call_of(&mut run, "checking_enter", |_| true);
+        let phase = run.shell.app.label("CKS_PHASE");
+        let length = run.shell.app.label("lr_length");
+        let (reader, end) = (
+            run.shell.app.label("kn_reader"),
+            run.shell.app.label("check_end"),
+        );
+        let begin = run.shell.app.label("check_begin");
+        let whole = run.m().read_ram(length, 3);
+        assert!(
+            whole[0] != 0 || whole[1] != 0,
+            "a library longer than 8: {whole:02X?}"
+        );
+        let regs = through(&mut run, speed, |r| {
+            r.m().load_ram(phase, &[UNSET]);
+            r.run_to_addr("check_begin", begin, WAIT);
+            let answered = begin_returns(r);
+            assert_eq!(
+                answered.af >> 8,
+                CK_NEED_CRC,
+                "check_begin read its CRC and wants it run"
+            );
+            assert_eq!(
+                r.m().read_ram(length, 3),
+                whole,
+                "check_begin left the length alone"
+            );
+            r.m().load_ram(length, &[8, 0, 0]);
+            r.run_to_addr("the reader's failure", reader, WAIT);
+            assert_eq!(r.byte("CKS_PHASE"), UNSET, "nothing started");
+            r.run_to_addr("check_end", end, WAIT);
+        });
+        let status = regs.af >> 8;
+        println!("speed {speed}: the enter answers {status:02X}");
+        assert_eq!(
+            status, READER_FAILED,
+            "CK_READER with the reader's status 1"
+        );
+        assert_eq!(run.byte("CKS_PHASE"), UNSET, "no phase was set");
+        as_at_the_call(&mut run, &regs, speed, "the header read failing");
     }
 }
 

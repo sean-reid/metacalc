@@ -264,25 +264,39 @@ fn a_table_lost_between_two_steps_replaces_the_screen_with_the_error_notice() {
     }
 }
 
-/// A library the kernel refuses at the start of the job, which a zero length in the reader's state
-/// makes it do, fails the enter, so the error notice is pushed over Libraries with the job's
-/// CK_REFUSED class and the kernel's status, and CLEAR on it returns to Libraries.
+/// A library whose flash page the kernel refuses at the start of the job (a page past 7F in the
+/// enter's call) fails check_begin with CK_REFUSED and the kernel's status 1, so the error notice
+/// is pushed over Libraries with that status, and CLEAR on it returns to Libraries. The reader's
+/// state is untouched, so Libraries can be entered again after the failure and the status shown
+/// is the job's.
 #[test]
 fn a_library_the_kernel_refuses_at_begin_shows_the_error_notice_over_libraries() {
+    const CK_REFUSED: u16 = 5;
+    const ST_MALFORMED: u16 = 1;
     let built = proofs();
     let mut run = Run::boot(built, Some(&empty_table(built)));
     let libraries = run.frame();
-    let length = run.shell.app.label("lr_length");
-    let saved = run.m().read_ram(length, 3);
-    run.m().load_ram(length, &[0, 0, 0]);
-    // CK_REFUSED, class 0, with ST_MALFORMED as its detail.
-    let status = 0x01;
+    let page = run.shell.app.label("libPage");
+    let saved = run.m().read_ram(page, 1);
+    run.m().load_ram(page, &[0x80]);
     run.tap(F2);
+    let begin = run.shell.app.label("check_begin");
+    run.run_to_addr("check_begin", begin, WAIT);
+    let sp = run.m().regs().sp;
+    let back = run.m().read_ram(sp, 2);
+    run.run_to_addr("its return", u16::from_le_bytes([back[0], back[1]]), WAIT);
+    let regs = run.m().regs();
+    assert_eq!(
+        (regs.af >> 8, regs.bc >> 8),
+        (CK_REFUSED, ST_MALFORMED),
+        "check_begin answers CK_REFUSED with the kernel's status"
+    );
+    let status = 0x01;
     let frame = run.next_blit();
     assert_eq!((run.depth(), run.top_kind()), (2, KIND_NOTICE));
     assert_eq!(run.frames()[1][..3], [KIND_NOTICE, NOTICE_ERROR, status]);
     same_frame("the kernel's refusal", &frame, &error_frame(status));
-    run.m().load_ram(length, &saved);
+    run.m().load_ram(page, &saved);
     run.tap(CLEAR);
     let back = run.next_blit();
     same_frame("Libraries", &back, &libraries);
