@@ -257,7 +257,7 @@ fn measure(built: &'static Built, row: usize, every: u8) -> (f64, Timing) {
 /// several figures of steps between two frames.
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_the_frames_of_a_check_cost_under_ten_percent_of_the_job() {
+fn on_the_reference_os_the_frames_of_a_check_stay_within_their_share_of_the_job() {
     let built = shipped_staged();
     for every in [16u8, 24, 32, 36, 40, 48, 64] {
         for row in 0..3 {
