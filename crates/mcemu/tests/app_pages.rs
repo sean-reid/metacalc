@@ -23,6 +23,8 @@ mod fixture;
 mod guard;
 #[path = "app_pages/idle.rs"]
 mod idle;
+#[path = "app_pages/idle_bounce.rs"]
+mod idle_bounce;
 #[path = "app_pages/idle_held.rs"]
 mod idle_held;
 #[path = "app_pages/idle_keys.rs"]
