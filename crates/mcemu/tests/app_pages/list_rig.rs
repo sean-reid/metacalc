@@ -100,12 +100,12 @@ impl Lister {
             let frame = self.run.next_blit();
             self.seen = (self.var("LV_PREVIEW"), self.var("LV_COUNT"));
             same_frame(&format!("after {scan:02X}"), &frame, &want);
-            self.run.run(2_000);
             let mut spent = 0;
             while self.run.blits() == blits && spent < 20_000 {
                 self.run.run(500);
                 spent += 500;
             }
+            self.run.run(2_000);
         } else {
             self.run.run(300_000);
         }

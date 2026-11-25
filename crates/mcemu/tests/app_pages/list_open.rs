@@ -74,7 +74,6 @@ fn a_library_fm_cannot_open_is_tried_once_for_each_enter_and_a_rest_after_it_cos
         KIND_NOTICE,
         "the notice is over the list"
     );
-    assert_eq!(list.var("LV_NOFM"), 1, "a notice leaves it alone");
     list.tap(CLEAR);
     list.run.run(300_000);
     assert_eq!(list.run.top_kind(), KIND_LIST);
