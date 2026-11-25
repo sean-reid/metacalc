@@ -41,11 +41,11 @@ fn a_pushed_frame_whose_enter_fails_leaves_the_stack_as_it_was() {
 }
 
 #[test]
-fn a_pushed_frame_that_fails_twice_reports_the_second_status() {
+fn a_pushed_frame_that_fails_twice_reports_the_first_status() {
     let mut pair = Pair::opened(REAL, MAX_DEPTH);
     let new = pair.fresh(1);
     let pushed = pair.push_frame(new, &[5, 6]);
-    assert_eq!((pushed.res, pushed.status), (FAILED, 6));
+    assert_eq!((pushed.res, pushed.status), (FAILED, 5));
 }
 
 #[test]
