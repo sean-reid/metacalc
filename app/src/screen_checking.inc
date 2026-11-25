@@ -1,62 +1,54 @@
-; Kind 5, the checking screen as Checking in crates/mcui/src/screens/checking.rs draws it: the stage's
-; name and done/total in the title bar, "Checking" or "All checked", the bar, the label of the next
-; assertion to check, "N failed", "ON pauses" and Stop or Done over F1; while the library's CRC is
-; read, "Reading library" in place of the first line, the chunks read of the chunks in the library in
-; the bar, and no label and no failed count. It runs the check job (check.inc) between keys: idle does
-; one unit of the job for each call, so the shell looks for a key between every two.
-;
+; Kind 5, the checking screen as Checking in crates/mcui/src/screens/checking.rs draws it: the stage's name
+; and done/total in the title bar, "Checking" or "All checked", the bar, the label of the next assertion to
+; check, "N failed", "ON pauses" and Stop or Done over F1. While the library's CRC is read, "Reading
+; library" replaces the first line, the bar counts the chunks read of the chunks in the library, and there
+; is no label and no failed count. It runs the check job (check.inc) between keys: idle does one unit of the
+; job per call, so the shell looks for a key between every two.
 ; Frame: byte 1 the stage, byte 2 1 once the check has finished. Position only: the enter runs
 ; check_begin for the stage's end N and derives the phase in CKS_PHASE:
 ;   CKP_STEP    the table is counted: idle calls check_step
 ;   CKP_READ    the library has no table: idle calls check_crc_step, which reads the CRC and then opens it
 ;   CKP_DONE    nothing is left to check: idle touches nothing
 ;   CKP_LEAVE   ON stopped kernel_init: idle calls check_end and pops
-; checking_enter   out: A = 0, or the number of the error notice's status when check_begin fails:
-;                  ((class - CK_REFUSED) * 32) + detail, with class the job's status and detail its B
-;                  masked to 5 bits, or 0 for CK_RANGE and CK_BAD_STATE. CK_REFUSED shows the kernel's
-;                  status as 00 to 1F, CK_STORE the store's as 20 to 3F, CK_RANGE 40, CK_READER the
-;                  reader's as 60 to 7F and CK_BAD_STATE 80. A finished frame whose table is counted
-;                  stays finished, so a refresh after a power down shows "All checked" with no CRC run.
-; checking_idle    in: HL = the frame. out: A and carry as scr_idle takes them. APP_ON set, which it
-;                  clears, or CK_PAUSED, calls check_end and answers SCR_POP. CKP_DONE answers
-;                  SCR_STAY with carry clear and touches nothing, APP_ON included. Stepping: one
-;                  check_step; CK_MORE answers SCR_STAY with carry set, SCR_REDRAW with carry set every
-;                  CKS_EVERY steps since the last frame; CK_DONE calls check_end, sets the frame's
-;                  byte 2 and answers SCR_REDRAW with carry clear. Reading: one check_crc_step;
-;                  CK_MORE answers SCR_REDRAW with carry set, CK_READY starts the steps and answers the
-;                  same, CK_REFUSED with B = 1, the CRC being wrong, replaces the screen with
-;                  NOTICE_DAMAGED. A status that stops the job (CK_STORE, CK_READER, CK_REFUSED
-;                  otherwise, CK_BAD_STATE) calls check_end and replaces the screen with the error
-;                  notice. A replaced screen is the same frame rewritten as the notice, entered again
-;                  with scr_refresh, and the answer is SCR_REDRAW with carry clear, so CLEAR on the
-;                  notice returns to Libraries.
-; checking_key     F1 and CLEAR call check_end and pop; every other key stays.
-; Interrupts and speed. At every return of checking_enter, checking_idle, checking_key and
-; checking_draw both are as at the call. Inside:
-;   checking_enter  check_begin: each kernel call runs at 15 MHz, ck_fast saving the speed and ck_slow
-;                   giving it back, with interrupts off inside the call and the caller's state back
-;                   after it. far_lib_read turns interrupts off for its hops and restores them.
-;   checking_idle   the kernel calls of check_step, check_crc_step and check_end as above; the store
-;                   and the OS's lookups run at the caller's speed with interrupts as they were. The
-;                   routine executes no DI or EI and writes no port 20h itself.
-;   checking_key    check_end calls kernel_reset at 15 MHz, ck_slow restores the speed; interrupts
-;                   are untouched.
-;   checking_draw   far_ui_clear and lib_read, through far_lib_label, turn interrupts off for their
-;                   copies and restore them; the other draw calls and the store's lookup touch
-;                   neither. It makes no kernel call and does not blit: the shell's far_ui_blit does.
-; Stack, bytes written below the stack pointer an idle call was called with, its return address
-; counted: on the stub OS 32 for the deepest call, whichever status it answers. On the reference OS
-; the OS's lookups run on the same stack and the figure varies with them: 52 at most, reached by a
-; step (42 to 52), 22 to 46 for a frame or a chunk and 10 for the call after the finish. An
-; interrupt adds the handler's pushes.
+; checking_enter  out: A = 0, or the number of the error notice's status when check_begin fails: ((class -
+;                 CK_REFUSED) * 32) + detail, with class the job's status and detail its B masked to 5 bits,
+;                 or 0 for CK_RANGE and CK_BAD_STATE. CK_REFUSED shows the kernel's status as 00 to 1F,
+;                 CK_STORE the store's as 20 to 3F, CK_RANGE 40, CK_READER the reader's as 60 to 7F and
+;                 CK_BAD_STATE 80. A finished frame whose table is counted stays finished, so a refresh
+;                 after a power down shows "All checked" with no CRC run.
+; checking_idle   in: HL = the frame. out: A and carry as scr_idle takes them. APP_ON set, which it clears,
+;                 or CK_PAUSED, calls check_end and answers SCR_POP. CKP_DONE answers SCR_STAY with carry
+;                 clear and touches nothing, APP_ON included. Stepping: one check_step; CK_MORE answers
+;                 SCR_STAY with carry set, or SCR_REDRAW with carry set every CKS_EVERY steps since the last
+;                 frame; CK_DONE calls check_end, sets the frame's byte 2 and answers SCR_REDRAW with carry
+;                 clear. Reading: one check_crc_step; CK_MORE answers SCR_REDRAW with carry set, CK_READY
+;                 starts the steps and answers the same, CK_REFUSED with B = 1, the CRC being wrong,
+;                 replaces the screen with NOTICE_DAMAGED. Any other stopping status (CK_STORE, CK_READER,
+;                 CK_REFUSED, CK_BAD_STATE) calls check_end and replaces the screen with the error notice. A
+;                 replaced screen is the frame rewritten as the notice and entered with scr_refresh; the
+;                 answer is SCR_REDRAW with carry clear, so CLEAR on it returns to Libraries.
+; checking_key    F1 and CLEAR call check_end and pop; every other key stays.
+; Interrupts and speed: at every return of checking_enter, checking_idle, checking_key and checking_draw
+; both are as at the call. The kernel calls inside (check_begin, check_step, check_crc_step, check_end) go
+; at 15 MHz with interrupts off, ck_fast saving the speed and ck_slow giving it back, the caller's state
+; restored after each; far_lib_read turns interrupts off for its hops and restores them; the store and the
+; OS's lookups run at the caller's speed. checking_idle executes no DI or EI and writes no port 20h.
+; checking_draw makes no kernel call and does not blit; far_ui_clear and lib_read, through far_lib_label,
+; turn interrupts off for their copies and restore them, and no other draw call touches either.
+; Stack, from the shell's call of scr_idle in app_work to its return with interrupts off at the call: the
+; bytes written below the stack pointer there, scr_idle's return address counted. 4 are on the stack when
+; checking_idle starts (the return addresses of scr_idle and of checking_idle), so its own use is 4 fewer;
+; the shell's dispatch peaks at 10 before it, what a call that does nothing measures. By call (a step that
+; stays, a step that redraws, a chunk, the one that ends the CRC run, the finishing step, one after the
+; finish): stub OS 28, 28, 14, 30, 28, 10 (deepest 30); reference OS 42, 42, 14, 44, 42, 10 (deepest 44).
 ; Cost of scr_draw and ui_blit for a frame, cold, in T-states. Stub OS: 130,171 reading, 149,463 in the
-; steps with a label and 125,129 finished, 128,488 for the damaged notice. Reference OS: 131,341,
-; 155,820 and 129,141. Warm on the stub, the first three are 1,921 less and the notice 2,641.
-; checking_draw    clears the canvas, stages checking_block, builds the strings in APP_TEXT and draws.
-;                  done is N less the first count of the job and failed the third. The label is the
-;                  library's label of the first assertion with value 0 from the job's cursor ck_i, found
-;                  by store_next_zero, cut to its first 48 characters, which a title row never holds,
-;                  and then to the width of the screen.
+; steps with a label, 125,129 finished and 128,488 for the damaged notice; warm, the first three are 1,921
+; less and the notice 2,641. Reference OS: 131,341, 155,820 and 129,141.
+; checking_draw   clears the canvas, stages checking_block, builds the strings in APP_TEXT and draws. done
+;                 is N less the first count of the job and failed the third. The label is the library's
+;                 label of the first assertion with value 0 from the job's cursor ck_i, found by
+;                 store_next_zero, cut to its first 48 characters, which a title row never holds, then to
+;                 the screen's width.
 
 CKP_STEP	.equ 0
 CKP_READ	.equ 1
