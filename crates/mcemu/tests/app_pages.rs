@@ -23,6 +23,30 @@ mod fixture;
 mod guard;
 #[path = "app_pages/idle.rs"]
 mod idle;
+#[path = "app_pages/idle_bounce.rs"]
+mod idle_bounce;
+#[path = "app_pages/idle_held.rs"]
+mod idle_held;
+#[path = "app_pages/idle_keys.rs"]
+mod idle_keys;
+#[path = "app_pages/idle_launch.rs"]
+mod idle_launch;
+#[path = "app_pages/idle_loop.rs"]
+mod idle_loop;
+#[path = "app_pages/idle_on.rs"]
+mod idle_on;
+#[path = "app_pages/idle_onend.rs"]
+mod idle_onend;
+#[path = "app_pages/idle_onkey.rs"]
+mod idle_onkey;
+#[path = "app_pages/idle_power.rs"]
+mod idle_power;
+#[path = "app_pages/idle_repeat.rs"]
+mod idle_repeat;
+#[path = "app_pages/idle_results.rs"]
+mod idle_results;
+#[path = "app_pages/idlerig.rs"]
+mod idlerig;
 #[path = "app_pages/keys.rs"]
 mod keys;
 #[path = "app_pages/numbers.rs"]
@@ -59,6 +83,8 @@ mod store_rule;
 mod stubs;
 #[path = "app_pages/table.rs"]
 mod table;
+#[path = "app_pages/tick.rs"]
+mod tick;
 #[path = "app_pages/wide_cost.rs"]
 mod wide_cost;
 

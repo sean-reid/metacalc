@@ -37,14 +37,31 @@ const TAP: u32 = 120_000;
 /// The rig's counters and hooks sit above the heap the stub OS gives a status table; boot_with
 /// asserts the heap ends below BLIT_HOOK, the lowest of them. The 12,012 assertion fixture ends
 /// it at A95Ch.
-const BLITS: u16 = 0xB500;
+pub const BLITS: u16 = 0xB500;
 const ENTERS: u16 = 0xB510;
 const FLAG: u16 = 0xB520;
-const SCR_KEYS: u16 = 0xB530;
+pub const SCR_KEYS: u16 = 0xB530;
+const WAITING: u16 = 0xB540;
+const IDLES: u16 = 0xB542;
 const KEY_HOOK: u16 = 0xB4C0;
 const BLIT_HOOK: u16 = 0xB440;
 const ENTER_HOOK: u16 = 0xB560;
+const WAITING_HOOK: u16 = 0xB5D8;
+const IDLE_HOOK: u16 = 0xB5E8;
+/// The first and the end of the RAM the rig's counters and hooks use.
+pub const HOOKS: (u16, u16) = (BLIT_HOOK, 0xB600);
 const SAVE_SCREEN: u16 = 0x86EC;
+
+/// Loads a hook at `at`, which must end by `limit`, where the next hook or the end of the rig's RAM
+/// begins.
+fn put(m: &mut Machine, at: u16, limit: u16, code: &[u8]) {
+    assert!(
+        usize::from(at) + code.len() <= usize::from(limit),
+        "the {} byte hook at {at:04X} runs past {limit:04X}",
+        code.len()
+    );
+    m.load_ram(at, code);
+}
 
 /// `push hl`, `ld hl,(counter)`, `inc hl`, `ld (counter),hl`, `pop hl`, `jp then`.
 fn counting_hook(counter: u16, then: u16) -> Vec<u8> {
@@ -106,6 +123,57 @@ pub enum Enter {
     FailNotices(u8),
     /// The About screen's enter fails with this status while `Shell::flag` is set.
     FailAboutWhenFlagged(u8),
+    /// The enter of this kind fails with this status while `Shell::flag` is set.
+    FailWhenFlagged(u8, u8),
+}
+
+/// Puts the rig's counters and hooks into a machine the app is installed on, stub or reference OS:
+/// the counters of blits, of scr_key calls, of each kind's enter, of app_key_waiting and of
+/// scr_idle, and the failing enters `enter` asks for.
+pub fn install_hooks(m: &mut Machine, built: &Built, enter: Enter) {
+    m.load_ram(BLITS, &[0; (ENTER_HOOK - BLITS) as usize]);
+    // scr_key starts `ld c,SCR_AT_KEY`, `call scr_on_top`: five bytes the hook runs itself.
+    let key = built.label("scr_key");
+    let [c0, c1] = SCR_KEYS.to_le_bytes();
+    let [o0, o1] = built.label("scr_on_top").to_le_bytes();
+    let [r0, r1] = (key + 5).to_le_bytes();
+    let hook = [
+        0xE5, 0x2A, c0, c1, 0x23, 0x22, c0, c1, 0xE1, 0x0E, 0x04, 0xCD, o0, o1, 0xC3, r0, r1,
+    ];
+    put(m, KEY_HOOK, BLITS, &hook);
+    let [h0, h1] = KEY_HOOK.to_le_bytes();
+    m.load_flash(BASE, usize::from(key - 0x4000), &[0xC3, h0, h1]);
+    count_idle_point(m, built);
+    let far = built.label("far_page1");
+    put(m, BLIT_HOOK, KEY_HOOK, &counting_hook(BLITS, far));
+    hook_stub(m, built, "far_ui_blit", BLIT_HOOK);
+    let reals =
+        ["libs_enter", "notice_enter", "about_enter", "stage_enter"].map(|n| built.label(n));
+    for (i, real) in reals.into_iter().enumerate() {
+        let at = ENTER_HOOK + 0x20 * i as u16;
+        let kind = i as u8 + 1;
+        let counter = ENTERS + 2 * i as u16;
+        let failing = |tail: Vec<u8>| {
+            let mut code = counting_hook(counter, 0);
+            code.truncate(9);
+            code.extend(tail);
+            code
+        };
+        let hook = match (enter, kind) {
+            (Enter::FailNotices(status), KIND_NOTICE) => failing(failing_notices(status, real)),
+            (Enter::FailNoticeOnce(status), KIND_NOTICE) => failing(failing_once(status, real)),
+            (Enter::FailAll(status), KIND_NOTICE) => failing(failing_all(status)),
+            (Enter::FailAboutWhenFlagged(status), KIND_ABOUT) => {
+                failing(failing_while_flagged(status, real))
+            }
+            (Enter::FailWhenFlagged(k, status), _) if k == kind => {
+                failing(failing_while_flagged(status, real))
+            }
+            _ => counting_hook(counter, real),
+        };
+        put(m, at, (at + 0x20).min(WAITING_HOOK), &hook);
+        patch_enter(m, built, kind, at);
+    }
 }
 
 pub struct Shell {
@@ -115,9 +183,42 @@ pub struct Shell {
     pub patience: u32,
 }
 
-fn patch_enter(m: &mut Machine, built: &Built, kind: u8, to: u16) {
-    let at = usize::from(built.label("screen_kinds") - 0x4000) + usize::from(kind - 1) * 10;
+fn patch_slot(m: &mut Machine, built: &Built, kind: u8, slot: usize, to: u16) {
+    let at = usize::from(built.label("screen_kinds") - 0x4000) + usize::from(kind - 1) * 10 + slot;
     m.load_flash(BASE, at, &to.to_le_bytes());
+}
+
+fn patch_enter(m: &mut Machine, built: &Built, kind: u8, to: u16) {
+    patch_slot(m, built, kind, 0, to);
+}
+
+/// Points the idle slot of `kind`'s row in the kind table at `to`.
+pub fn patch_idle(m: &mut Machine, built: &Built, kind: u8, to: u16) {
+    patch_slot(m, built, kind, 8, to);
+}
+
+/// Counts every call of app_key_waiting and of scr_idle, as the hook on scr_key counts scr_key:
+/// each hook runs the instructions it replaced and jumps on.
+fn count_idle_point(m: &mut Machine, built: &Built) {
+    fn jump(m: &mut Machine, at: u16, to: u16) {
+        let [h0, h1] = at.to_le_bytes();
+        m.load_flash(BASE, usize::from(to - 0x4000), &[0xC3, h0, h1]);
+    }
+    let waiting = built.label("app_key_waiting");
+    let [w0, w1] = (waiting + 3).to_le_bytes();
+    let mut hook = counting_hook(WAITING, 0);
+    hook.truncate(9);
+    hook.extend([0x3A, 0x3F, 0x84, 0xC3, w0, w1]);
+    put(m, WAITING_HOOK, IDLE_HOOK, &hook);
+    jump(m, WAITING_HOOK, waiting);
+    let idle = built.label("scr_idle");
+    let [o0, o1] = built.label("scr_on_top").to_le_bytes();
+    let [r0, r1] = (idle + 5).to_le_bytes();
+    let mut hook = counting_hook(IDLES, 0);
+    hook.truncate(9);
+    hook.extend([0x0E, 0x08, 0xCD, o0, o1, 0xC3, r0, r1]);
+    put(m, IDLE_HOOK, HOOKS.1, &hook);
+    jump(m, IDLE_HOOK, idle);
 }
 
 impl Shell {
@@ -139,58 +240,7 @@ impl Shell {
                 heap < BLIT_HOOK,
                 "the stub heap ends at {heap:04X}, not below the rig's hooks at {BLIT_HOOK:04X}"
             );
-            m.load_ram(BLITS, &[0; 0x40]);
-            // scr_key starts `ld c,SCR_AT_KEY`, `call scr_on_top`: five bytes the hook runs itself.
-            let key = built.label("scr_key");
-            let [c0, c1] = SCR_KEYS.to_le_bytes();
-            let [o0, o1] = built.label("scr_on_top").to_le_bytes();
-            let [r0, r1] = (key + 5).to_le_bytes();
-            let hook = [
-                0xE5, 0x2A, c0, c1, 0x23, 0x22, c0, c1, 0xE1, 0x0E, 0x04, 0xCD, o0, o1, 0xC3, r0,
-                r1,
-            ];
-            m.load_ram(KEY_HOOK, &hook);
-            let [h0, h1] = KEY_HOOK.to_le_bytes();
-            m.load_flash(BASE, usize::from(key - 0x4000), &[0xC3, h0, h1]);
-            let far = built.label("far_page1");
-            m.load_ram(BLIT_HOOK, &counting_hook(BLITS, far));
-            hook_stub(m, built, "far_ui_blit", BLIT_HOOK);
-            let reals = ["libs_enter", "notice_enter", "about_enter", "stage_enter"]
-                .map(|n| built.label(n));
-            for (i, real) in reals.into_iter().enumerate() {
-                let at = ENTER_HOOK + 0x20 * i as u16;
-                let kind = i as u8 + 1;
-                let counter = ENTERS + 2 * i as u16;
-                let hook = match (enter, kind) {
-                    (Enter::FailNotices(status), KIND_NOTICE) => {
-                        let mut code = counting_hook(counter, 0);
-                        code.truncate(9);
-                        code.extend(failing_notices(status, real));
-                        code
-                    }
-                    (Enter::FailNoticeOnce(status), KIND_NOTICE) => {
-                        let mut code = counting_hook(counter, 0);
-                        code.truncate(9);
-                        code.extend(failing_once(status, real));
-                        code
-                    }
-                    (Enter::FailAll(status), KIND_NOTICE) => {
-                        let mut code = counting_hook(counter, 0);
-                        code.truncate(9);
-                        code.extend(failing_all(status));
-                        code
-                    }
-                    (Enter::FailAboutWhenFlagged(status), KIND_ABOUT) => {
-                        let mut code = counting_hook(counter, 0);
-                        code.truncate(9);
-                        code.extend(failing_while_flagged(status, real));
-                        code
-                    }
-                    _ => counting_hook(counter, real),
-                };
-                m.load_ram(at, &hook);
-                patch_enter(m, built, kind, at);
-            }
+            install_hooks(m, built, enter);
         });
         Shell { app, patience: 1 }
     }
@@ -208,6 +258,16 @@ impl Shell {
     /// Times the enter of `kind` has run since the boot.
     pub fn enters(&mut self, kind: u8) -> u16 {
         self.word(ENTERS + 2 * u16::from(kind - 1))
+    }
+
+    /// Times the app has called app_key_waiting since the boot.
+    pub fn key_waiting_calls(&mut self) -> u16 {
+        self.word(WAITING)
+    }
+
+    /// Times the app has called scr_idle since the boot.
+    pub fn idle_calls(&mut self) -> u16 {
+        self.word(IDLES)
     }
 
     /// Times the app has called scr_key since the boot.

@@ -43,7 +43,10 @@
 ;   APP_BUF           B     the shell's 256 byte buffer for what the top screen's enter or draw builds
 ;                           again, in saveSScreen after FM_SCRATCH, since the OS writes the screen's
 ;                           pixels into saveSScreen at an auto power down. Its variables follow the
-;                           regions, from APP_COUNTS to APP_FRAME, each placed by APP_VAR
+;                           regions, from APP_COUNTS to APP_FRAME, each placed by APP_VAR. What the
+;                           screen builds is every one but APP_HELD, the shell's count byte: a screen
+;                           never builds it again, and a power down's overwrite of it is harmless
+;                           because the shell sets it after every app_key, the only call that waits for a key
 ;   APP_STAGE         B     the shell's staging area for constant strings, 128 bytes in saveSScreen
 ;                           after APP_BUF: the canvas reads a string with its own page mapped, so the
 ;                           entry page copies the strings of the screen it draws here first
@@ -203,6 +206,9 @@ name .equ base + offset
 ;   APP_CRC     the library's CRC-32 as the header holds it
 ;   APP_TEXT    what the top screen draws that is not a constant: the strings it builds and its
 ;               own variables, laid out by that screen's file
+;   APP_HELD    the shell's count of idle points with every key up that a key it handled may
+;               still be down for: 2 at the start, after a key and at a point that shows a handled
+;               key down, down by one at each point with every key up (metacalc.z80)
 ;   APP_FRAME   the frame the error notice is pushed from, outside SCR_STACK
 #define APP_NEXT 0
 #macro APP_VAR(name, offset, size)
@@ -213,10 +219,11 @@ RAM_VAR(name, APP_BUF, offset, size, APP_BUF_SIZE, APP_NEXT, "the APP_BUF variab
 APP_VAR(APP_COUNTS, $00, 48)
 APP_VAR(APP_LIST, $30, 13)
 APP_VAR(APP_CRC, $3D, 4)
-APP_VAR(APP_TEXT, $41, 175)
+APP_VAR(APP_TEXT, $41, 174)
+APP_VAR(APP_HELD, $EF, 1)
 APP_VAR(APP_FRAME, $F0, 16)
 APP_COUNTS_SIZE     .equ APP_LIST - APP_COUNTS
-APP_TEXT_SIZE       .equ APP_FRAME - APP_TEXT
+APP_TEXT_SIZE       .equ APP_HELD - APP_TEXT
 
 RAM_WITHIN(SCR_VARS, SCR_VARS_SIZE, $8000, $C000, "SCR_VARS runs past bank B")
 RAM_WITHIN(SCR_STACK, SCR_STACK_SIZE, $8000, $C000, "SCR_STACK runs past bank B")

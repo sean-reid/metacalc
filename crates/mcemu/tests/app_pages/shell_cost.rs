@@ -63,12 +63,14 @@ const STAGE_ABOUT_COLD: u32 = 136_000;
 const ABOUT_COLD: u32 = 141_900;
 const NOTICE_COLD: u32 = 115_300;
 /// The most the loop may take around app_key for a key no screen answers, scr_key included.
-const IGNORED_KEY: u32 = 1_250;
+const IGNORED_KEY: u32 = 2_560;
+/// The least: it takes 2,542 with the idle point.
+const IGNORED_KEY_FLOOR: u32 = 2_490;
 /// The most app_stage_block may take for a block the area already holds.
 const WARM_STAGE: u32 = 120;
 /// The most bytes each code page may use: entry, draw and data.
-const PAGES_PLAIN: [u32; 3] = [2_300, 15_300, 9_250];
-const PAGES_LIBRARY: [u32; 3] = [4_190, 15_300, 9_250];
+const PAGES_PLAIN: [u32; 3] = [2_375, 15_300, 9_250];
+const PAGES_LIBRARY: [u32; 3] = [4_265, 15_300, 9_250];
 
 /// Clears the staging tag, so that the next draw copies its screen's strings.
 pub fn go_cold(app: &mut App) {
@@ -274,34 +276,62 @@ fn a_frame_of_the_error_notice_fits_its_ceiling() {
     assert!(draw + blit < FRAME_BUDGET, "cold, over the frame budget");
 }
 
+/// T-states from one app_key to the next for a key no screen answers, those in app_key and the
+/// stand-in for the OS, and the rest, which is the loop and scr_key.
+fn ignored_key(name: &str, built: &'static Built) -> (u32, u32, u32) {
+    let mut app = spinning(built);
+    let blits_before = app.frame();
+    app.m.load_ram(COUNT, &[0, 0]);
+    let window = 2_000_000;
+    let run = app.m.run_app(window);
+    assert_eq!(run.stop, Stop::Limit);
+    let count = u32::from(u16::from_le_bytes(
+        app.m.read_ram(COUNT, 2).try_into().unwrap(),
+    ));
+    assert!(count > 100, "{name}: the loop ran {count} times");
+    let per_key = run.tstates / count;
+    assert_eq!(app.frame(), blits_before, "ignored keys draw nothing");
+    let driver = driver_cost(&mut app);
+    let key = app.label("app_key");
+    let wait = app.call(BASE, key, In::default()).tstates - driver;
+    (per_key, wait, per_key - wait)
+}
+
+/// What the loop and scr_key took for an ignored key on the commit the branch was cut from.
+const IGNORED_KEY_BEFORE: u32 = 1_230;
+
 #[test]
 fn the_loop_around_a_key_no_screen_answers_costs_little() {
     for (name, built) in [("no library", plain()), ("fixture library", with_library())] {
-        let mut app = spinning(built);
-        let blits_before = app.frame();
-        app.m.load_ram(COUNT, &[0, 0]);
-        let window = 2_000_000;
-        let run = app.m.run_app(window);
-        assert_eq!(run.stop, Stop::Limit);
-        let count = u32::from(u16::from_le_bytes(
-            app.m.read_ram(COUNT, 2).try_into().unwrap(),
-        ));
-        assert!(count > 100, "{name}: the loop ran {count} times");
-        let per_key = run.tstates / count;
-        assert_eq!(app.frame(), blits_before, "ignored keys draw nothing");
-        let driver = driver_cost(&mut app);
-        let key = app.label("app_key");
-        let wait = app.call(BASE, key, In::default()).tstates - driver;
-        let overhead = per_key - wait;
+        let (per_key, wait, overhead) = ignored_key(name, built);
         println!(
             "{name}: an ignored key takes {per_key} T-states from one app_key to the next, \
-             {wait} of them in app_key and its stand-in for the OS, {overhead} in the loop and scr_key"
+             {wait} of them in app_key and its stand-in for the OS, {overhead} in the loop and \
+             scr_key ({IGNORED_KEY_BEFORE} before the idle point)"
         );
         assert!(
             overhead <= IGNORED_KEY,
             "{name}: {overhead} over {IGNORED_KEY}"
         );
+        assert!(
+            overhead >= IGNORED_KEY_FLOOR,
+            "{name}: {overhead} under {IGNORED_KEY_FLOOR}: the idle point is in the loop"
+        );
     }
+}
+
+/// The same measurement on the commit the branch was cut from, the figure the one above prints as
+/// its before.
+#[test]
+#[ignore = "needs the history of the commit the branch was cut from"]
+fn the_loop_around_a_key_no_screen_answers_cost_what_main_did() {
+    let main = plain_from(main_tree(), "pages-main-plain");
+    let (per_key, wait, overhead) = ignored_key("main", main);
+    println!(
+        "main: an ignored key takes {per_key} T-states from one app_key to the next, {wait} in \
+         app_key, {overhead} in the loop and scr_key"
+    );
+    assert_eq!(overhead, IGNORED_KEY_BEFORE, "the loop and scr_key on main");
 }
 
 #[test]

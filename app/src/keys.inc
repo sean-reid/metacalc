@@ -26,8 +26,9 @@
 ; ON is never returned. The OS sets onInterrupt when ON goes down and _GetKey then returns 0 at
 ; once, on every call, until the flag is clear. app_key waits for ON to come up with interrupts
 ; off for the read and the clear, clears the flag and waits for a key again. A press that lands
-; after the clear sets the flag again and is taken the same way by the next wait; a press made
-; between waits is for the long job that polls ON.
+; after the clear sets the flag again and is taken the same way by the next wait. The shell clears
+; the flag at every idle point that reports ON and goes on to scr_idle, so a press made between
+; waits reaches a routine that polls the flag only when it lands inside an idle slice.
 ;
 ; The OS copies the screen's pixels over UI_VARS when auto power down fires inside _GetKey, and
 ; the font pointer, two bytes, is the one thing in it that holds state between calls; app_key sets the canvas font
@@ -99,20 +100,30 @@ ak_on:
 ; The OS holds a key's scan code in kbdScanCode from its press until _GetKey takes it or until about
 ; 40 ms after the release, and a key held between auto repeats has none.
 ;
-; app_key_waiting   out: NZ when kbdScanCode holds a code, onInterrupt is set, ON is down or a key is
-;                        down; Z when none is. A pending 2nd or ALPHA is a code: app_key takes it and
-;                        waits for the key after it
-;                   reads kbdScanCode, the onInterrupt flag through IY, port 1 with every key group
-;                   selected, and port 4; takes nothing, so the next app_key sees the OS's key bytes
-;                   as they were. Leaves port 1 at FFh, every group deselected
-;                   destroys A, B, C and the flags
-;                   needs interrupts on at the call and returns with them on; the port reads run
-;                   with them off. The formula routines run with interrupts off and must not call it
+; app_key_waiting   out: Z, carry clear, A = 0: nothing; the port read showed every key and ON up
+;                        NZ, carry clear: a scan code is held, A = it; app_key returns that key at
+;                        once. A pending 2nd or ALPHA is a code: app_key takes it and waits for the
+;                        key after it
+;                        NZ, carry set: no scan code. A bit 3 is set when onInterrupt is set or ON is
+;                        down, bit 0 when a key is down on the port. When onInterrupt is set the
+;                        port is not read and bit 0 is clear
+;                   takes nothing, so the next app_key sees the OS's key bytes as they were.
+;                   Each exit reads, destroys and leaves the interrupts as follows:
+;                   scan code: reads kbdScanCode only; destroys A and the flags; touches no port and
+;                     leaves the interrupt state as it was
+;                   break flag: reads kbdScanCode and the onInterrupt flag through IY; destroys A
+;                     and the flags; touches no port and leaves the interrupt state as it was
+;                   port: reads those two, then port 1 with every key group selected and port 4;
+;                     leaves port 1 at FFh, every group deselected; destroys A, B, C and the flags;
+;                     the reads run with interrupts off and it returns with them on
+;                   needs interrupts on at the call for the port exit. The formula routines run with
+;                   interrupts off and must not call it
 ;                   T-states, measured in the emulator from the call to the instruction after
 ;                   it, so they include the call and the OS's wait states (1 per opcode fetch from
-;                   flash, 1 per stack write): 51 on the scan code, 79 on the break flag, 243 on
-;                   the port path, at 6 and at 15 MHz. The Z80 table gives 28, 53 and 193 for the
-;                   routine alone, without the 17 of the call
+;                   flash, 1 per stack write), the same at 6 and at 15 MHz: 51 on the scan code, 99 on
+;                   the break flag, 269 when nothing is down, 279 with ON down, 282 with a key down
+;                   whether or not ON is; the ON figures are the stub's, the reference ROM's are not
+;                   measured
 ;                   two push af / pop af pairs (42 T-states) between the group write and the read
 ;                   let the keypad lines settle at 15 MHz
 
@@ -121,7 +132,11 @@ app_key_waiting:
 	or a
 	ret nz
 	bit onInterrupt,(iy+onFlags)
-	ret nz
+	jr z,akw_port
+	ld a,8
+	scf
+	ret
+akw_port:
 	di
 	xor a
 	out (1),a
@@ -139,8 +154,30 @@ app_key_waiting:
 	and 8
 	ld b,a
 	ld a,c
-	cpl
-	or b
+	inc a
+	ld a,b
+	jr z,akw_keyless
+	or 1
+akw_keyless:
+	or a
+	ret z
+	scf
+	ret
+
+; app_tick   waits for the next interrupt and returns
+;             in: interrupts on or off. out: interrupts on. destroys nothing, the flags included;
+;             the shadow registers are the OS's to change
+;             stack: 2 bytes, its return address; an interrupt taken in the halt pushes its own on top
+;             an interrupt already pending when it is called with interrupts off ends the tick at
+;             once; the halt ends on any interrupt the OS has unmasked, and the figures below are
+;             for the timer; it returns only while some source is unmasked
+;             length: with the app in its loop on the reference ROM, 298 consecutive ticks took
+;             55,661 to 55,665 T-states at 6 MHz and 139,152 to 139,156 at 15 MHz, 9.28 ms each, so
+;             11 ticks are about 102 ms
+
+app_tick:
+	ei
+	halt
 	ret
 
 ; In: A = the OS's code, HL = D pairs of code and value. Out: Z with HL at the value for a hit.

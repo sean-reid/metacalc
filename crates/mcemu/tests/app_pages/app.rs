@@ -67,14 +67,16 @@ impl Built {
     }
 
     pub fn label(&self, name: &str) -> u16 {
-        self.labels
-            .lines()
-            .find_map(|line| {
-                let (key, value) = line.split_once(" = ")?;
-                key.eq_ignore_ascii_case(name)
-                    .then(|| u16::from_str_radix(&value[1..], 16).unwrap())
-            })
+        self.try_label(name)
             .unwrap_or_else(|| panic!("no label {name}"))
+    }
+
+    pub fn try_label(&self, name: &str) -> Option<u16> {
+        self.labels.lines().find_map(|line| {
+            let (key, value) = line.split_once(" = ")?;
+            key.eq_ignore_ascii_case(name)
+                .then(|| u16::from_str_radix(&value[1..], 16).unwrap())
+        })
     }
 }
 
@@ -85,6 +87,18 @@ fn build(name: &str, library: Option<&[u8]>) -> Built {
 
 /// `build` with more `make` arguments, such as `VERSION=1.2.3`.
 fn build_with(name: &str, library: Option<&[u8]>, stages: &[mcui::Stage], more: &[&str]) -> Built {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app");
+    build_from(&source, name, library, stages, more)
+}
+
+/// `build_with` for the app directory `source`, which has the rest of the tree beside it.
+fn build_from(
+    source: &Path,
+    name: &str,
+    library: Option<&[u8]>,
+    stages: &[mcui::Stage],
+    more: &[&str],
+) -> Built {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     std::fs::create_dir_all(&dir).unwrap();
     let mut args = Vec::new();
@@ -101,10 +115,9 @@ fn build_with(name: &str, library: Option<&[u8]>, stages: &[mcui::Stage], more: 
         std::fs::write(dir.join("stages.list"), list).unwrap();
     }
     let spasm = std::env::var_os("SPASM").unwrap_or_else(|| "spasm".into());
-    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app");
     let made = Command::new("make")
         .arg("-C")
-        .arg(&source)
+        .arg(source)
         .arg(format!("SPASM={}", spasm.to_string_lossy()))
         .arg(format!("BUILD={}/build", dir.display()))
         .arg(format!("FONT={}/ui_font", env!("OUT_DIR")))
@@ -136,6 +149,70 @@ pub fn plain() -> &'static Built {
     BUILT.get_or_init(|| build("pages-plain", None))
 }
 
+/// The commit this branch was cut from, whose shell blocks in app_key after every frame and key.
+pub const MAIN: &str = "cae6d0e";
+
+/// The `app` directory of `MAIN`'s tree, extracted by git into a directory of its own with what its
+/// Makefile reaches: the shell tests build the app there to compare the branch with it.
+pub fn main_tree() -> &'static Path {
+    static TREE: OnceLock<std::path::PathBuf> = OnceLock::new();
+    TREE.get_or_init(|| {
+        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("tree-{MAIN}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let archive = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["archive", MAIN])
+            .args([
+                "app",
+                "scr",
+                "ui",
+                "fm",
+                "lib",
+                "kernel",
+                "scripts",
+                "Cargo.toml",
+            ])
+            .output()
+            .expect("git runs");
+        assert!(
+            archive.status.success(),
+            "git archive {MAIN} failed: {}",
+            String::from_utf8_lossy(&archive.stderr)
+        );
+        let mut tar = Command::new("tar")
+            .arg("-x")
+            .arg("-C")
+            .arg(&dir)
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .expect("tar runs");
+        std::io::Write::write_all(&mut tar.stdin.take().unwrap(), &archive.stdout).unwrap();
+        assert!(tar.wait().unwrap().success(), "tar failed");
+        dir.join("app")
+    })
+}
+
+/// The app of the tree whose `app` directory is `source`, with no library.
+pub fn plain_from(source: &Path, name: &str) -> &'static Built {
+    Box::leak(Box::new(build_from(source, name, None, &[], &[])))
+}
+
+/// The app of the tree whose `app` directory is `source`, around `library` as the stages that end
+/// at `ends`: the build the shell tests compare the branch against.
+pub fn staged_from(source: &Path, name: &str, library: &[u8], ends: &[usize]) -> &'static Built {
+    let stages = named_stages(ends);
+    Box::leak(Box::new(build_from(
+        source,
+        name,
+        Some(library),
+        &stages,
+        &[],
+    )))
+}
+
 /// The app with the fm test library after its code pages.
 pub fn with_library() -> &'static Built {
     static BUILT: OnceLock<Built> = OnceLock::new();
@@ -151,16 +228,19 @@ pub fn staged_with(name: &str, library: &[u8], stages: &[mcui::Stage]) -> &'stat
 /// `staged_with` for the stages `s0`, `s1` and so on that end at `ends`, the last being the
 /// library's count.
 pub fn staged(name: &str, library: &[u8], ends: &[usize]) -> &'static Built {
-    let stages: Vec<mcui::Stage> = ends
-        .iter()
+    staged_with(name, library, &named_stages(ends))
+}
+
+/// The stages `s0`, `s1` and so on that end at `ends`.
+fn named_stages(ends: &[usize]) -> Vec<mcui::Stage> {
+    ends.iter()
         .enumerate()
         .map(|(i, &end)| mcui::Stage {
             name: format!("s{i}"),
             title: format!("Stage {i} up to {end}"),
             end,
         })
-        .collect();
-    staged_with(name, library, &stages)
+        .collect()
 }
 
 /// The app around `library` with no stage list, in a build directory of its own named `name`.
@@ -298,7 +378,7 @@ impl App {
         App::with(m, built)
     }
 
-    fn with(m: Machine, built: &'static Built) -> App {
+    pub fn with(m: Machine, built: &'static Built) -> App {
         App {
             m,
             built,

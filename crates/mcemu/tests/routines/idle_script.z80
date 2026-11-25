@@ -1,0 +1,180 @@
+; A scripted idle routine for the shell tests, assembled at ENTRY and called as a kind's idle: HL = the
+; frame, out A = the action, carry = more work pending. The state at STATE is written by the test.
+;
+; STATE   +0 COUNT     slices in the script
+;         +1 INDEX     the next slice to run
+;         +2 FOREVER   not 0: after the last slice the last slice runs again
+;         +3 IN_SLICE  1 while a slice burns time or ticks
+;         +4 CALLS     word, calls made
+;         +6 LOGGED    log entries written, at most 32
+;         +7 OVER      calls made after the script ended with FOREVER 0; each answers 0, carry clear
+;         +8 DEST      word, the address of scr_new
+;         +10 TICK     word, the address of app_tick
+;         +12 IFF      scratch
+;         +13 RESTART  not 0: a call that finds the KEYS counter changed since the last call starts
+;                      the script again at slice 0
+;         +14 LASTKEYS word, the KEYS counter at the last restart
+; LOG     at STATE + 16, 8 bytes for each slice run: index, BLITS and KEYS counter words, 1 when
+;         interrupts were on at entry, then 2 spare
+; SLICES  at STATE + 272, 32 bytes each: +0 passes (word, one pass is 3,356 T-states), +2 mode (0 burns
+;         with interrupts on, 1 burns with them off and turns them on before it returns), +3 action,
+;         +4 carry, +5 ticks (word: calls of TICK after the burn), +16 the 16 byte frame copied to DEST
+;         for action 2 (SCR_PUSH)
+COUNT    = STATE
+INDEX    = STATE + 1
+FOREVER  = STATE + 2
+IN_SLICE = STATE + 3
+CALLS    = STATE + 4
+LOGGED   = STATE + 6
+OVER     = STATE + 7
+DEST     = STATE + 8
+TICK     = STATE + 10
+IFFSAVE  = STATE + 12
+RESTART  = STATE + 13
+LASTKEYS = STATE + 14
+LOG      = STATE + 16
+SLICES   = STATE + 272
+LOGMAX   = 32
+
+	.org ENTRY
+idle:
+	ld a, i
+	ld a, 0
+	jp po, s_off
+	inc a
+s_off:
+	ld (IFFSAVE), a
+	ld a, (RESTART)
+	or a
+	jr z, s_kept
+	ld hl, (KEYS)
+	ld de, (LASTKEYS)
+	or a
+	sbc hl, de
+	jr z, s_kept
+	ld hl, (KEYS)
+	ld (LASTKEYS), hl
+	xor a
+	ld (INDEX), a
+s_kept:
+	ld hl, (CALLS)
+	inc hl
+	ld (CALLS), hl
+	ld a, (COUNT)
+	or a
+	jp z, s_over
+	ld b, a
+	ld a, (INDEX)
+	cp b
+	jr c, s_have
+	ld a, (FOREVER)
+	or a
+	jp z, s_over
+	ld a, b
+	dec a
+	ld (INDEX), a
+s_have:
+	ld l, a
+	ld h, 0
+	add hl, hl
+	add hl, hl
+	add hl, hl
+	add hl, hl
+	add hl, hl
+	ld de, SLICES
+	add hl, de
+	push hl
+	pop ix
+	ld a, (LOGGED)
+	cp LOGMAX
+	jr nc, s_nolog
+	ld l, a
+	ld h, 0
+	add hl, hl
+	add hl, hl
+	add hl, hl
+	ld de, LOG
+	add hl, de
+	ld a, (INDEX)
+	ld (hl), a
+	inc hl
+	ld de, (BLITS)
+	ld (hl), e
+	inc hl
+	ld (hl), d
+	inc hl
+	ld de, (KEYS)
+	ld (hl), e
+	inc hl
+	ld (hl), d
+	inc hl
+	ld a, (IFFSAVE)
+	ld (hl), a
+	ld hl, LOGGED
+	inc (hl)
+s_nolog:
+	ld a, 1
+	ld (IN_SLICE), a
+	ld l, (ix + 0)
+	ld h, (ix + 1)
+	ld a, (ix + 2)
+	or a
+	jr z, s_burn_on
+	di
+	jr s_burn
+s_burn_on:
+	ei
+s_burn:
+	ld a, h
+	or l
+	jr z, s_burned
+s_pass:
+	ld b, 0
+s_spin:
+	djnz s_spin
+	dec hl
+	ld a, h
+	or l
+	jr nz, s_pass
+s_burned:
+	ld c, (ix + 5)
+	ld b, (ix + 6)
+s_ticks:
+	ld a, b
+	or c
+	jr z, s_ticked
+	push bc
+	ld hl, (TICK)
+	ld de, s_tick_back
+	push de
+	jp (hl)
+s_tick_back:
+	pop bc
+	dec bc
+	jr s_ticks
+s_ticked:
+	ei
+	xor a
+	ld (IN_SLICE), a
+	ld a, (ix + 3)
+	cp 2
+	jr nz, s_finish
+	push ix
+	pop hl
+	ld de, 16
+	add hl, de
+	ld de, (DEST)
+	ld bc, 16
+	ldir
+s_finish:
+	ld hl, INDEX
+	inc (hl)
+	ld a, (ix + 4)
+	rra
+	ld a, (ix + 3)
+	ret
+s_over:
+	ld hl, OVER
+	inc (hl)
+	xor a
+	ret
