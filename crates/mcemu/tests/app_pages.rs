@@ -109,6 +109,8 @@ mod list_keys;
 mod list_kind_far;
 #[path = "app_pages/list_kind_frames.rs"]
 mod list_kind_frames;
+#[path = "app_pages/list_kind_keys.rs"]
+mod list_kind_keys;
 #[path = "app_pages/list_kind_rig.rs"]
 mod list_kind_rig;
 #[path = "app_pages/list_power.rs"]
