@@ -71,7 +71,8 @@
 ; measured is fm_open on the ring library, 484,449 T-states (81 ms at 6 MHz), then fm_nodes of its
 ; largest statement, 358,365, fm_assertion of its largest assertion, 187,619, and fm_draw of a full
 ; window, at most 180,804; fm_fold repeats fm_nodes with 3,300 more when the table is not built,
-; fm_cursor alone takes 726. fm_fit takes 1,273,426 T-states (212 ms) at worst over ring, 76,212 at
+; fm_cursor alone takes 726; fm_step takes 1,287 at the median and 6,398 at worst over every node of ring's
+; largest statement, and fm_span 25,152 for any node of it, a pass over its 255 tokens. fm_fit takes 1,273,426 T-states (212 ms) at worst over ring, 76,212 at
 ; the median, and 27,285,530 (4.5 s) on the fixture's statement of 253 nested operators, whose every
 ; level takes a pass over 255 tokens; interrupts stay off throughout. fm_rows first asks whether a
 ; line count is kept for the statement and its width, which costs 136 T-states when none is: 33,154
@@ -114,8 +115,8 @@
 ; routine destroys all registers but IY and keeps the reader's rule for ports 5 and 7 and for the
 ; interrupt state, which are the caller's again on every exit. The private stack is 256 bytes, FM_STACK
 ; to FM_STACK_TOP, and the fm variables lie right below it. The tests measure 14 bytes pushed,
-; fm_fit included, the deepest of any session they run; that is a measurement and not a bound,
-; since the reader alone may push 16 bytes below its return address.
+; fm_fit included, the deepest of any session they run, and 4 for fm_step and 6 for fm_span; that is a
+; measurement and not a bound, since the reader alone may push 16 bytes below its return address.
 ;
 ;   fm_open       in:  the reader open with lib_open
 ;                 out: A = status. Copies the whole glyph section into FM_GLYPHS and checks that
@@ -283,7 +284,7 @@
 ;                      nearest earlier node one level up; the first child is the next node when it is
 ;                      deeper; the next sibling is the first later node that is not deeper, when its
 ;                      depth is equal; the previous sibling is the nearest earlier node that is not
-;                      deeper, when its depth is equal. Folds do not matter. Writes nothing. FM_ERR_BAD:
+;                      deeper, when its depth is equal. Folds do not matter. Writes nothing; 128 bytes of code. FM_ERR_BAD:
 ;                      D above 3, checked first. FM_ERR_INDEX: the table is not built or has no node E.
 ;   fm_span       in:  E = a node of the selected statement, D = the width in pixels
 ;                 out: A = status, B = the first line, counting from 0, on which a piece of the node is
@@ -291,7 +292,7 @@
 ;                      model's Layout::cursor for it, so for a node hidden inside a fold the line of its
 ;                      outermost folded ancestor's ellipsis. Stale folds are applied first, as fm_rows
 ;                      applies them; cu_prepare finds the tokens the node is drawn as and the tokens
-;                      are placed as ly_scan places them. The cursor is left as it was. Statuses as
+;                      are placed as ly_scan places them. The cursor is left as it was; 134 bytes of code. Statuses as
 ;                      fm_cursor's: FM_ERR_INDEX, FM_ERR_CLIPPED.
 ; Other statuses: FM_ERR_NOT_OPEN, from every routine but fm_open.
 

@@ -151,7 +151,15 @@ fn fm_span_is_the_models_on_the_shipped_libraries() {
             };
             let none = Folds::none(&expr);
             let what = format!("{name}: statement {k} of assertion {n}");
-            check_span(&mut fm, &expr, &none, STATEMENT_WIDTH, &nodes, &what, &mut t);
+            check_span(
+                &mut fm,
+                &expr,
+                &none,
+                STATEMENT_WIDTH,
+                &nodes,
+                &what,
+                &mut t,
+            );
             if whole {
                 for node in 0..expr.len() {
                     ticks.push(fm.span(node, STATEMENT_WIDTH).tstates - base);
@@ -165,12 +173,18 @@ fn fm_span_is_the_models_on_the_shipped_libraries() {
             ticks[ticks.len() / 2],
             ticks.last().unwrap()
         );
-        assert!(t.compared > 1000 && t.multi > 20, "{name}: {} spans, {} over several lines", t.compared, t.multi);
+        assert!(
+            t.compared > 1000 && t.multi > 20,
+            "{name}: {} spans, {} over several lines",
+            t.compared,
+            t.multi
+        );
     }
 }
 
 #[test]
-fn fm_step_refuses_what_it_cannot_answer_and_a_failure_leaves_the_registers_it_was_given_no_answer_in() {
+fn fm_step_refuses_what_it_cannot_answer_and_a_failure_leaves_the_registers_it_was_given_no_answer_in()
+ {
     let bytes = fixture::nodes_library();
     let model = Model::new(&bytes);
     let all = statements(&decoded(&bytes));
@@ -187,16 +201,28 @@ fn fm_step_refuses_what_it_cannot_answer_and_a_failure_leaves_the_registers_it_w
         assert_eq!(out.status(), code("FM_ERR_INDEX"), "table not built, {dir}");
     }
     let out = fm.step(0, 4);
-    assert_eq!(out.status(), code("FM_ERR_BAD"), "direction 4 before the table");
+    assert_eq!(
+        out.status(),
+        code("FM_ERR_BAD"),
+        "direction 4 before the table"
+    );
     let out = fm.step(0, 0xFF);
     assert_eq!(out.status(), code("FM_ERR_BAD"), "direction FFh");
     let nodes = count(fm.nodes());
     for dir in 0..4 {
-        assert_eq!(fm.step(nodes, dir).status(), code("FM_ERR_INDEX"), "node {nodes}");
+        assert_eq!(
+            fm.step(nodes, dir).status(),
+            code("FM_ERR_INDEX"),
+            "node {nodes}"
+        );
         assert_eq!(fm.step(255, dir).status(), code("FM_ERR_INDEX"), "node 255");
     }
     assert_eq!(fm.step(nodes - 1, 4).status(), code("FM_ERR_BAD"));
-    assert_eq!(fm.step(nodes, 4).status(), code("FM_ERR_BAD"), "BAD before INDEX");
+    assert_eq!(
+        fm.step(nodes, 4).status(),
+        code("FM_ERR_BAD"),
+        "BAD before INDEX"
+    );
     let before = (fm.header().nodes, fm.flags());
     assert_eq!(fm.step(1, 1).status(), 0);
     assert_eq!((fm.header().nodes, fm.flags()), before, "nothing written");
@@ -217,7 +243,15 @@ struct Spans {
     after_fit: usize,
 }
 
-fn check_span(fm: &mut Fm, expr: &mcui::expr::Expr, folds: &Folds, width: usize, nodes: &[usize], what: &str, t: &mut Spans) {
+fn check_span(
+    fm: &mut Fm,
+    expr: &mcui::expr::Expr,
+    folds: &Folds,
+    width: usize,
+    nodes: &[usize],
+    what: &str,
+    t: &mut Spans,
+) {
     for &node in nodes {
         let out = fm.span(node, width);
         let want = model_span(expr, folds, width, node);
@@ -304,7 +338,8 @@ fn fm_span_follows_a_fit_that_folded_and_a_fold_of_an_ancestor_made_after_it() {
             {
                 now.toggle(expr, node);
                 assert_eq!(fm.fold(node, 1).status(), 0);
-                let what = format!("assertion {n}, statement {s}, node {node} folded after the fit");
+                let what =
+                    format!("assertion {n}, statement {s}, node {node} folded after the fit");
                 check_span(&mut fm, expr, &now, width, &nodes, &what, &mut t);
             }
         }
@@ -331,9 +366,17 @@ fn fm_span_refuses_what_it_cannot_answer() {
     assert_eq!(fm.span(0, 94).status(), code("FM_ERR_NOT_OPEN"), "closed");
     assert_eq!(fm.open().status(), 0);
     assert_eq!(fm.statement(*n, *k).status(), 0);
-    assert_eq!(fm.span(0, 94).status(), code("FM_ERR_INDEX"), "table not built");
+    assert_eq!(
+        fm.span(0, 94).status(),
+        code("FM_ERR_INDEX"),
+        "table not built"
+    );
     let nodes = count(fm.nodes());
-    assert_eq!(fm.span(nodes, 94).status(), code("FM_ERR_INDEX"), "past the table");
+    assert_eq!(
+        fm.span(nodes, 94).status(),
+        code("FM_ERR_INDEX"),
+        "past the table"
+    );
     assert_eq!(fm.cursor(2).status(), 0);
     let at = fm.memory("FV_CURN", 1);
     assert_eq!(fm.span(1, 94).status(), 0);
@@ -352,4 +395,49 @@ impl Fm {
         };
         self.rig.call("FM_CLIP", regs).status()
     }
+}
+
+/// The bytes fm's private stack takes while `call` runs, from a statement of the fixture loaded and
+/// its table built.
+fn stack_used(call: impl Fn(&mut Fm, usize)) -> usize {
+    let bytes = fixture::nodes_library();
+    let model = Model::new(&bytes);
+    let all = statements(&decoded(&bytes));
+    let mut deepest = 0;
+    for mark in [0xA5u8, 0x5A] {
+        let mut fm = Fm::new(&bytes);
+        let top = fm.rig.label("FM_STACK_TOP") - SPARE_BASE;
+        let low = usize::from(fm.rig.label("FM_STACK") - SPARE_BASE);
+        for (n, k, _) in all.iter().step_by(3) {
+            let nodes = model.expr(*n, *k).len();
+            fm.built(*n, *k);
+            fm.rig.m.ram_page(SPARE_PAGE)[low..usize::from(top)].fill(mark);
+            for node in 0..nodes.min(30) {
+                call(&mut fm, node);
+            }
+            let page = fm.rig.m.ram_page(SPARE_PAGE);
+            let unused = page[low..usize::from(top)]
+                .iter()
+                .take_while(|&&b| b == mark)
+                .count();
+            deepest = deepest.max(usize::from(top) - low - unused);
+        }
+    }
+    deepest
+}
+
+#[test]
+fn fm_step_and_fm_span_write_this_much_of_fms_stack() {
+    let step = stack_used(|fm, node| {
+        for dir in 0..4 {
+            assert_eq!(fm.step(node, dir).status(), 0);
+        }
+    });
+    let span = stack_used(|fm, node| {
+        for width in [94, 30] {
+            assert_eq!(fm.span(node, width).status(), 0);
+        }
+    });
+    println!("fm_step reaches {step} bytes of fm's stack, fm_span {span}");
+    assert_eq!((step, span), (4, 6));
 }
