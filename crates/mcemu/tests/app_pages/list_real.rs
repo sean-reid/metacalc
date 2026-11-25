@@ -4,7 +4,9 @@
 
 use crate::app::*;
 use crate::checking_real::launched;
-use crate::checkrig::Run;
+use crate::checkrig::{Run, WAIT};
+use crate::list_depth::Trace;
+use crate::list_exits::{caps_built, index_of};
 use crate::list_preview::{Counts, model_counts};
 use crate::list_rig::*;
 use crate::list_wait::{TICK, WAIT_TICKS};
@@ -20,7 +22,11 @@ impl Lister {
     /// The shipped build on the reference OS at its Libraries screen with the cursor on `stage`, and
     /// the model beside it, whose marks are `status` (none: every assertion unchecked).
     pub fn on_rom(stage: usize) -> Lister {
-        let built = shipped_staged();
+        Lister::on_rom_of(shipped_staged(), stage)
+    }
+
+    /// `on_rom` for the app in `built`.
+    pub fn on_rom_of(built: &'static Built, stage: usize) -> Lister {
         let run: Run = launched(built, stage, &[]);
         let mut ui = crate::shellrig::model::ui(built, &[]);
         for _ in 0..stage {
@@ -359,8 +365,8 @@ fn median_and_worst(costs: &[u32]) -> (u32, u32, usize) {
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn on_the_reference_os_the_preview_idle_call_costs_this_over_every_assertion_of_prop_and_ring() {
     for (name, stage, median_measured, worst_measured, worst_at) in [
-        ("prop", PROP, 68_803, 331_402, 138),
-        ("ring", RING, 77_110, 1_125_822, 3_307),
+        ("prop", PROP, 68_830, 331_429, 138),
+        ("ring", RING, 77_137, 1_125_849, 3_307),
     ] {
         let costs = idle_costs(stage);
         let (median, worst, at) = median_and_worst(&costs);
@@ -372,4 +378,74 @@ fn on_the_reference_os_the_preview_idle_call_costs_this_over_every_assertion_of_
         within(&format!("{name}'s worst"), worst, worst_measured);
         assert_eq!(at, worst_at, "{name}: the slowest assertion");
     }
+}
+
+/// The idle call at its entry with the wait over on a conclusion fm refuses, run at `speed` to its
+/// return: fm_fit must answer FM_ERR_LIMIT, then the call is as `nothing_settled` has it.
+fn idle_over_the_caps(list: &mut Lister, at: &str, speed: u8) {
+    list.run_to_the_work();
+    let blits = list.run.blits();
+    list.run.m().out_port(0x20, speed);
+    let mut regs = list.run.m().regs();
+    regs.af = 0x77D7;
+    list.run.m().set_regs(&regs);
+    let sp = regs.sp;
+    let before = (regs.iff1, list.run.m().in_port(0x20) & 1);
+    let fit = list.run.shell.app.label("far_fm_fit");
+    list.run.run_to_addr("far_fm_fit", fit, WAIT);
+    let ret = list.run.m().read_ram(sp - 2, 2);
+    let ret = u16::from_le_bytes([ret[0], ret[1]]);
+    list.run.run_to_addr("the return of far_fm_fit", ret, WAIT);
+    let limit = list.built.label("FM_ERR_LIMIT") as u8;
+    assert_eq!(
+        list.run.m().regs().af >> 8,
+        u16::from(limit),
+        "{at}: fm_fit answered FM_ERR_LIMIT"
+    );
+    let back = list.run.shell.app.label("scr_idle") + 5;
+    list.run
+        .run_to_addr(&format!("the return of list_idle, {at}"), back, WAIT);
+    let regs = list.run.m().regs();
+    assert_eq!(regs.sp, sp + 2, "{at}: the stack is balanced");
+    let t = Trace {
+        depth: 0,
+        iff: (before.0, regs.iff1),
+        speed: (before.1, list.run.m().in_port(0x20) & 1),
+        action: (regs.af >> 8) as u8,
+        carry: regs.af & 1 != 0,
+    };
+    list.run.m().out_port(0x20, 0);
+    list.nothing_settled(at, speed, blits, &t);
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn on_the_reference_os_a_conclusion_over_the_caps_settles_with_nothing_and_the_idle_call_returns_as_it_was_entered()
+ {
+    let built = caps_built();
+    let mut list = Lister::on_rom_of(built, 0);
+    list.open_on_rom();
+    let (at, over, last) = (
+        index_of(built, "capat"),
+        index_of(built, "capov1"),
+        index_of(built, "capov2"),
+    );
+    assert_eq!((over, last), (at + 1, at + 2));
+    for _ in 0..at {
+        assert!(list.key(DOWN, Key::Down));
+        list.skip_the_wait();
+        list.settle();
+    }
+    assert_eq!(
+        list.var("LV_PREVIEW"),
+        ROW,
+        "the conclusion at the cap is drawn"
+    );
+    assert!(list.key(DOWN, Key::Down));
+    idle_over_the_caps(&mut list, "one over the cap, 6 MHz", 0);
+    assert!(!list.settle(), "the model draws nothing either");
+    assert!(list.key(DOWN, Key::Down));
+    idle_over_the_caps(&mut list, "two over the cap, 15 MHz", 1);
+    assert!(!list.settle());
+    assert_eq!(list.pos().cursor, last);
 }

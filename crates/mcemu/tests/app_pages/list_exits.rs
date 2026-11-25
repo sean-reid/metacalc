@@ -5,7 +5,7 @@
 
 use crate::app::*;
 use crate::checkrig::WAIT;
-use crate::list_depth::answer_of;
+use crate::list_depth::{Trace, answer_of};
 use crate::list_preview::{Counts, model_counts};
 use crate::list_rig::*;
 use crate::shellrig::*;
@@ -81,12 +81,21 @@ impl Lister {
     }
 
     /// The idle call that settles the preview with nothing, traced at `speed`, and what it must have
-    /// left: its answer, interrupts on, no frame blitted, the preview settled with nothing and the
-    /// frame the model draws for a preview not laid out.
-    pub fn settles_with_nothing(&mut self, at: &str, speed: u8) {
+    /// left (see `nothing_settled`). Returns the T-states the call took.
+    pub fn settles_with_nothing(&mut self, at: &str, speed: u8) -> u32 {
         self.run_to_the_work();
         let blits = self.run.blits();
+        let start = self.run.m().clock();
         let t = self.trace_here("list_idle", false, speed);
+        let spent = self.run.m().clock().wrapping_sub(start);
+        self.nothing_settled(at, speed, blits, &t);
+        spent
+    }
+
+    /// What the idle call `t`, begun with `blits` frames drawn at `speed`, must have left: its
+    /// answer, interrupts on, no frame blitted, the preview settled with nothing and the frame the
+    /// model draws for a preview not laid out.
+    pub fn nothing_settled(&mut self, at: &str, speed: u8, blits: u16, t: &Trace) {
         assert_eq!(
             (t.action, t.carry),
             answer_of("nothing"),
