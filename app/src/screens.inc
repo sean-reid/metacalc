@@ -11,7 +11,8 @@
 ;   KIND_ABOUT      none
 ;   KIND_STAGE      byte 1 the stage
 ;   KIND_CHECKING   byte 1 the stage, byte 2 1 once its check has finished
-;   KIND_LIST       byte 1 the stage, bytes 2 and 3 the cursor's assertion, 4 and 5 the first shown
+;   KIND_LIST       byte 1 the stage, bytes 2 and 3 the cursor's assertion, 4 and 5 the first shown,
+;                   byte 6 the kind of assertion shown
 ;
 ; The routines run on this page, and so do their constant strings, which the canvas cannot read: a
 ; draw copies its screen's block (strings.inc) to APP_STAGE with app_stage_block and hands the canvas

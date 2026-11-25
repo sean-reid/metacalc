@@ -105,6 +105,12 @@ mod list_fail;
 mod list_frames;
 #[path = "app_pages/list_keys.rs"]
 mod list_keys;
+#[path = "app_pages/list_kind_far.rs"]
+mod list_kind_far;
+#[path = "app_pages/list_kind_frames.rs"]
+mod list_kind_frames;
+#[path = "app_pages/list_kind_rig.rs"]
+mod list_kind_rig;
 #[path = "app_pages/list_power.rs"]
 mod list_power;
 #[path = "app_pages/list_preview.rs"]

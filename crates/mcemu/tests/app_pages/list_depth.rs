@@ -356,7 +356,7 @@ pub fn stub_figures() -> Figures {
             ("enter", 6),
             ("f1", 6),
             ("f2", 6),
-            ("f3", 6),
+            ("f3", 20),
             ("f4", 6),
             ("f5", 2),
             ("left", 4),

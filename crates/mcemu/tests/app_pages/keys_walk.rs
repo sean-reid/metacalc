@@ -101,7 +101,7 @@ fn long_walk(checking: bool) {
                     shell.shows(&at, &model::unavailable(&title));
                     assert_eq!(shell.depth(), 3, "{at}: stays");
                 }
-            } else if in_a_list && !fixed && [ENTER, F1, F2, F3, F4, F5].contains(&key) {
+            } else if in_a_list && !fixed && [ENTER, F1, F2, F4, F5].contains(&key) {
                 in_list += 1;
                 settle_list(&mut shell, &mut ui);
                 let (blits, frame) = (shell.blits(), shell.frames()[1].clone());

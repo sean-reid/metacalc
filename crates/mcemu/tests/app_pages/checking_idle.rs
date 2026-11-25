@@ -244,7 +244,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
         (Class::StopOn, (28, 28, 1)),
         (Class::PausedStep, (28, 28, 1)),
         (Class::PausedRead, (28, 28, 1)),
-        (Class::FailedStep, (26, 26, 2)),
+        (Class::FailedStep, (28, 28, 2)),
         (Class::Damaged, (16, 16, 1)),
     ];
     assert_eq!(
@@ -309,7 +309,7 @@ const STUB_LIVE: [(Class, u16); 11] = [
     (Class::StopOn, 28),
     (Class::PausedStep, 28),
     (Class::PausedRead, 28),
-    (Class::FailedStep, 26),
+    (Class::FailedStep, 28),
     (Class::Damaged, 16),
 ];
 
@@ -323,8 +323,8 @@ const STUB_INSIDE: [(Class, [u16; 1]); 11] = [
     (Class::Finishing, [28]),
     (Class::AfterFinish, [10]),
     (Class::StopOn, [24]),
-    (Class::PausedStep, [26]),
+    (Class::PausedStep, [28]),
     (Class::PausedRead, [16]),
-    (Class::FailedStep, [26]),
+    (Class::FailedStep, [28]),
     (Class::Damaged, [16]),
 ];

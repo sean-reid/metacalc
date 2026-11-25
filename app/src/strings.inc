@@ -140,6 +140,12 @@ lq_try:
 	.db UI_KEY_FONT_CH_54, UI_KEY_FONT_CH_72, UI_KEY_FONT_CH_79, 0
 lq_sect:
 	.db UI_KEY_FONT_CH_53, UI_KEY_FONT_CH_65, UI_KEY_FONT_CH_63, UI_KEY_FONT_CH_74, 0
+lq_thm:
+	.db UI_FONT_CH_3A, UI_FONT_CH_74, UI_FONT_CH_68, UI_FONT_CH_6D, 0
+lq_ax:
+	.db UI_FONT_CH_3A, UI_FONT_CH_61, UI_FONT_CH_78, 0
+lq_unch:
+	.db UI_FONT_CH_3A, UI_FONT_CH_3F, 0
 lq_keys:
 	.dw STG_LIST_OPEN, STG_LIST_FIND, STG_LIST_KIND, STG_LIST_TRY, STG_LIST_SECT
 lq_keys_plain:
@@ -152,6 +158,9 @@ STG_LIST_FIND	.equ APP_STAGE_DATA + (lq_find - list_block)
 STG_LIST_KIND	.equ APP_STAGE_DATA + (lq_kind - list_block)
 STG_LIST_TRY	.equ APP_STAGE_DATA + (lq_try - list_block)
 STG_LIST_SECT	.equ APP_STAGE_DATA + (lq_sect - list_block)
+STG_LIST_THM	.equ APP_STAGE_DATA + (lq_thm - list_block)
+STG_LIST_AX	.equ APP_STAGE_DATA + (lq_ax - list_block)
+STG_LIST_UNCH	.equ APP_STAGE_DATA + (lq_unch - list_block)
 STG_LIST_KEYS	.equ APP_STAGE_DATA + (lq_keys - list_block)
 STG_LIST_KEYS_PLAIN	.equ APP_STAGE_DATA + (lq_keys_plain - list_block)
 LIST_BLOCK_SIZE	.equ list_block_end - list_block
