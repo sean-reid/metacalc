@@ -11,6 +11,8 @@ mod builds;
 mod built;
 #[path = "app_pages/checking_chunks.rs"]
 mod checking_chunks;
+#[path = "app_pages/checking_cost.rs"]
+mod checking_cost;
 #[path = "app_pages/checking_errors.rs"]
 mod checking_errors;
 #[path = "app_pages/checking_exits.rs"]
@@ -31,6 +33,8 @@ mod checking_real;
 mod checking_real_cost;
 #[path = "app_pages/checking_real_exit.rs"]
 mod checking_real_exit;
+#[path = "app_pages/checking_returns.rs"]
+mod checking_returns;
 #[path = "app_pages/checking_rows.rs"]
 mod checking_rows;
 #[path = "app_pages/checkrig.rs"]

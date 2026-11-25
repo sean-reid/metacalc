@@ -183,16 +183,7 @@ impl Run {
 
     /// Holds `scan` down until the shell hands it to scr_key, then lets go.
     pub fn tap(&mut self, scan: u8) {
-        let code: u16 = match scan {
-            CLEAR => 6,
-            F1 => 7,
-            F2 => 8,
-            F3 => 9,
-            F4 => 10,
-            F5 => 11,
-            DOWN => 2,
-            _ => panic!("no key code for scancode {scan:02X}"),
-        };
+        let code = u16::from(key_code(scan));
         self.m().press_key(scan);
         loop {
             self.run_to("scr_key", WAIT);
@@ -301,6 +292,20 @@ impl Run {
 }
 
 /// The value, 0 to 3, a table's bytes hold for each assertion.
+/// The code scr_key is called with for a scancode.
+pub fn key_code(scan: u8) -> u8 {
+    match scan {
+        CLEAR => 6,
+        F1 => 7,
+        F2 => 8,
+        F3 => 9,
+        F4 => 10,
+        F5 => 11,
+        DOWN => 2,
+        _ => panic!("no key code for scancode {scan:02X}"),
+    }
+}
+
 pub fn values_of(data: &[u8]) -> Vec<u8> {
     let count = usize::from(u16::from_le_bytes([data[6], data[7]]));
     (0..count)
