@@ -29,13 +29,29 @@
 ;                  otherwise, CK_BAD_STATE) calls check_end and replaces the screen with the error
 ;                  notice. A replaced screen is the same frame rewritten as the notice, entered again
 ;                  with scr_refresh, and the answer is SCR_REDRAW with carry clear, so CLEAR on the
-;                  notice returns to Libraries. Interrupts and the speed are as the shell had them:
-;                  the job never changes either and nothing here does.
+;                  notice returns to Libraries.
 ; checking_key     F1 and CLEAR call check_end and pop; every other key stays.
-; Stack: the deepest idle call, its return address counted, writes 32 bytes below the stack pointer
-; it was called with, which the tests measure over every status; an interrupt adds the handler's.
-; Cost of a frame, scr_draw and ui_blit, cold: 130,171 T-states reading, 149,463 in the steps with a
-; label and 125,129 finished; each is 1,921 less warm.
+; Interrupts and speed. At every return of checking_enter, checking_idle, checking_key and
+; checking_draw both are as at the call. Inside:
+;   checking_enter  check_begin: each kernel call runs at 15 MHz, ck_fast saving the speed and ck_slow
+;                   giving it back, with interrupts off inside the call and the caller's state back
+;                   after it. far_lib_read turns interrupts off for its hops and restores them.
+;   checking_idle   the kernel calls of check_step, check_crc_step and check_end as above; the store
+;                   and the OS's lookups run at the caller's speed with interrupts as they were. The
+;                   routine executes no DI or EI and writes no port 20h itself.
+;   checking_key    check_end calls kernel_reset at 15 MHz, ck_slow restores the speed; interrupts
+;                   are untouched.
+;   checking_draw   far_ui_clear and lib_read, through far_lib_label, turn interrupts off for their
+;                   copies and restore them; the other draw calls and the store's lookup touch
+;                   neither. It makes no kernel call and does not blit: the shell's far_ui_blit does.
+; Stack, bytes written below the stack pointer an idle call was called with, its return address
+; counted: on the stub OS 32 for the deepest call, whichever status it answers. On the reference OS
+; the OS's lookups run on the same stack and the figure varies with them: 52 at most, reached by a
+; step (42 to 52), 22 to 46 for a frame or a chunk and 10 for the call after the finish. An
+; interrupt adds the handler's pushes.
+; Cost of scr_draw and ui_blit for a frame, cold, in T-states. Stub OS: 130,171 reading, 149,463 in the
+; steps with a label and 125,129 finished, 128,488 for the damaged notice. Reference OS: 131,341,
+; 155,820 and 129,141. Warm on the stub, the first three are 1,921 less and the notice 2,641.
 ; checking_draw    clears the canvas, stages checking_block, builds the strings in APP_TEXT and draws.
 ;                  done is N less the first count of the job and failed the third. The label is the
 ;                  library's label of the first assertion with value 0 from the job's cursor ck_i, found

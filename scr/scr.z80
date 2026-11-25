@@ -30,7 +30,10 @@
 ;          returns A = SCR_STAY with carry clear.
 ;
 ; An idle routine replaces its own screen by writing another kind's frame over the one it was given
-; and calling scr_refresh, which enters it, then answers SCR_REDRAW: the stack keeps its depth.
+; and calling scr_refresh, which enters it, then answers SCR_REDRAW: the stack keeps its depth. The
+; new kind's enter must not fail, since its status is dropped and the screen would stay on top with
+; no derived state. The carry the idle routine answers is about the new kind: set when it has work
+; pending, clear when it has none.
 ;
 ; Contracts the code does not check: scr_init runs before any other routine; a kind is 1 to 255
 ; and has a row in the table; a key or idle routine that returns SCR_PUSH has filled scr_new with a
