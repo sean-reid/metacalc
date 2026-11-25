@@ -10,6 +10,17 @@ use crate::theorem_rig::*;
 use crate::ui_support::same_frame;
 use mcui::{Key, State};
 
+/// The states a notice has to give back.
+const HOWS: [&str; 7] = [
+    "conclusion",
+    "hypothesis",
+    "fold made",
+    "scrolled away",
+    "unfolded above",
+    "unfolded above, scrolled away",
+    "conclusion folded",
+];
+
 /// Opens `n` of the fixture and brings the screen to one of the states a notice has to give back.
 fn prepared(n: usize, how: &str) -> Walker {
     let mut walker = Walker::at(with_library(), None, 0, n);
@@ -36,6 +47,32 @@ fn prepared(n: usize, how: &str) -> Walker {
                 walker.press(DOWN, Key::Down);
             }
         }
+        "conclusion folded" => {
+            walker.press(ENTER, Key::Enter);
+        }
+        "unfolded above" | "unfolded above, scrolled away" => {
+            let hyps = match walker.list.ui.state() {
+                State::Theorem { statement, .. } => statement,
+                other => panic!("{other:?}"),
+            };
+            for _ in 0..hyps - 3 {
+                walker.press(LEFT, Key::Left);
+            }
+            for statement in (0..4).rev() {
+                while next_node(&mut walker) {}
+                if statement > 0 {
+                    walker.press(LEFT, Key::Left);
+                }
+            }
+            for _ in 0..4 {
+                walker.press(RIGHT, Key::Right);
+            }
+            if how.ends_with("scrolled away") {
+                for _ in 0..30 {
+                    walker.press(DOWN, Key::Down);
+                }
+            }
+        }
         other => panic!("{other}"),
     }
     walker
@@ -45,14 +82,26 @@ fn prepared(n: usize, how: &str) -> Walker {
 fn each_soft_key_pushes_the_notice_and_the_frame_after_it_is_the_models_refit() {
     let built = with_library();
     let lib = lib_of(built);
-    let (n, _) = find(&lib, |f| f.hyps >= 6 && f.rows > 6 && !f.large);
-    for how in ["conclusion", "hypothesis", "fold made", "scrolled away"] {
+    let (n, f) = find(&lib, |f| f.hyps >= 6 && f.rows > 6 && !f.large);
+    for how in HOWS {
         for (scan, key) in [(F2, Key::F2), (F3, Key::F3), (F4, Key::F4)] {
             let mut walker = prepared(n, how);
             let before = walker.frame();
-            println!("{how}, {scan:02X}: {before:?}");
+            let total = walker.var16("TV_TOTAL");
             walker.excursion(scan, key);
-            println!("  after: {:?}", walker.frame());
+            if how.starts_with("unfolded") {
+                assert!(total > f.rows, "{how}: the folds made add rows");
+            }
+            if how == "conclusion folded" {
+                assert!(total < f.rows, "{how}: the fold takes rows away");
+            }
+            if how == "unfolded above, scrolled away" || how == "conclusion folded" {
+                assert_ne!(
+                    walker.frame()[6..8],
+                    before[6..8],
+                    "{how}, {scan:02X}: the refit moves the view"
+                );
+            }
         }
     }
 }
@@ -91,7 +140,7 @@ fn an_auto_power_down_on_the_screen_brings_back_the_models_refit() {
     let built = with_library();
     let lib = lib_of(built);
     let (n, f) = find(&lib, |f| f.hyps >= 6 && f.rows > 6 && !f.large);
-    for how in ["conclusion", "hypothesis", "fold made", "scrolled away"] {
+    for how in HOWS {
         let mut walker = prepared(n, how);
         let before = walker.frame();
         walker.list.run.run(600_000);
@@ -288,7 +337,7 @@ fn refuse(walker: &mut Walker, stub: &str, status: u8) {
 fn a_theorem_that_fails_to_enter_on_a_push_leaves_the_list_with_the_error_notice_over_it() {
     let built = with_library();
     for (stub, _, status) in REFUSALS {
-        let at = format!("{stub}");
+        let at = stub.to_string();
         let mut walker = Walker::on_list(built, None, 0);
         walker.goto(2);
         let before = walker.list.run.frames();
@@ -324,7 +373,7 @@ fn a_theorem_that_fails_to_enter_on_an_uncovering_keeps_its_frame_under_the_erro
         if stub == "far_lib_assertion_count" || stub == "far_lib_read" || stub == "far_fm_span" {
             continue;
         }
-        let at = format!("{stub}");
+        let at = stub.to_string();
         let mut walker = Walker::at(built, None, 0, 4);
         walker.press(DOWN, Key::Down);
         walker.tap(F2);

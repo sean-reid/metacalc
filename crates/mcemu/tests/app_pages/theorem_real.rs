@@ -130,14 +130,13 @@ impl Rom {
         let mut list = Lister::on_rom(stage);
         list.open_on_rom();
         let app = &mut list.run.shell.app;
-        let rom = Rom {
+        Rom {
             stack: app.label("SCR_STACK"),
             count: app.label("SCR_COUNT"),
             new: app.label("SCR_NEW"),
             tag: app.label("APP_STAGE_TAG"),
             list,
-        };
-        rom
+        }
     }
 
     /// The list's frame written to have its cursor on assertion `n`.
