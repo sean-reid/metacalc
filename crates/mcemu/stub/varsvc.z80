@@ -1,20 +1,32 @@
 ; Sets every register the service does not return, and the shadow set and IX, to junk;
-; the flags and the registers the caller loaded stay as they are.
+; the flags and the registers the caller loaded stay as they are. Interrupts are off while the
+; shadow set is the one in use, since the handler would otherwise write over the registers the
+; caller gets back; they are on again at the return when they were on at the call.
 svc_scrub:
 	push hl
 	push af
+	ld a,i
+	push af
+	di
 	ld hl,JUNK_AF2
 	push hl
 	pop af
 	ex af,af'
-	pop af
 	exx
 	ld bc,JUNK_BC2
 	ld de,JUNK_DE2
 	ld hl,JUNK_HL2
 	exx
-	pop hl
 	ld ix,JUNK_IX
+	pop af
+	jp po,svc_scrub_off
+	pop af
+	pop hl
+	ei
+	ret
+svc_scrub_off:
+	pop af
+	pop hl
 	ret
 
 ; Ends the app the way an uncaught OS error does. A holds the error code.
