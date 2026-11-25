@@ -66,3 +66,71 @@ fn a_power_down_with_a_pending_preview_keeps_it_pending_and_it_settles_after_a_f
     assert_eq!(waited.interrupts, crate::list_wait::WAIT_TICKS);
     assert!(list.settle());
 }
+
+/// The marks a list shows and whether its key row has Sect, from the model's own calls.
+fn marks_and_sect(ui: &mcui::Ui) -> (std::collections::BTreeSet<String>, bool) {
+    let calls = ui.frame_calls().1;
+    let marks = calls
+        .iter()
+        .filter_map(|c| match c {
+            mcui::canvas::Call::ListRow { right, .. } => Some(right.clone()),
+            _ => None,
+        })
+        .collect();
+    let sect = calls
+        .iter()
+        .any(|c| matches!(c, mcui::canvas::Call::SoftKeys(keys) if keys[4] == "Sect"));
+    (marks, sect)
+}
+
+/// A list with a table of mixed marks on a stage with section titles: the power down copies pixels
+/// over the variables that say the table is the library's and the key F5 is live, and the refresh
+/// derives both again.
+#[test]
+fn a_power_down_on_a_list_with_marks_and_sections_derives_the_table_and_the_sections_again() {
+    let built = crate::list_keys::titled();
+    let library = built.library.as_ref().unwrap();
+    let n = usize::from(crate::table::header_of(library).1);
+    let status: Vec<mcui::Status> = (0..n)
+        .map(|i| match i % 3 {
+            0 => mcui::Status::Checked,
+            1 => mcui::Status::Failed,
+            _ => mcui::Status::Unchecked,
+        })
+        .collect();
+    let data = crate::table::of(library, &crate::table::values(built, &status));
+    let mut list = Lister::open(built, Some((&data, &status)), 1);
+    list.settle();
+    list.key(RIGHT, Key::Right);
+    list.settle();
+    let (marks, sect) = marks_and_sect(&list.ui);
+    assert!(
+        marks.len() >= 3 && sect,
+        "the model shows several marks and Sect: {marks:?}"
+    );
+    assert_eq!(
+        (list.var("LV_TABLE"), list.var("LV_SECT")),
+        (1, 1),
+        "derived by the enter"
+    );
+    list.run.shell.power_down();
+    assert_ne!(
+        list.var("LV_TABLE"),
+        1,
+        "the power down wrote over LV_TABLE"
+    );
+    assert_ne!(list.var("LV_SECT"), 1, "and over LV_SECT");
+    list.tap(LETTER);
+    let frame = list.run.next_blit();
+    list.run.run(2_000);
+    assert_eq!(
+        (list.var("LV_TABLE"), list.var("LV_SECT")),
+        (1, 1),
+        "the refresh derives them again"
+    );
+    let pending = list.replayed();
+    assert_eq!(marks_and_sect(&pending), (marks, sect));
+    same_frame("after the power down", &frame, &model::frame(&pending));
+    list.ui = pending;
+    assert!(list.settle(), "and the preview is laid out again");
+}

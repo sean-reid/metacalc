@@ -77,7 +77,9 @@
 ; Cost, in T-states at 6 MHz on the reference OS: ring's list opens in 460,448 (libs_key, list_enter and a
 ; cold frame) and a cursor move takes 223,026 by a row and 227,608 by a page with its frame; the idle
 ; call that lays out a preview takes a median of 77,110 and at most 1,125,822 over ring, and 68,803 and
-; 331,402 over prop.
+; 331,402 over prop. It runs with interrupts off, so a statement inside the caps holds the keypad for at
+; most 37,707,322 T-states (6.28 s at 6 MHz), the 253 nested operators of fm's nodes fixture, measured on
+; the stub OS; the next slowest of that fixture takes 9,854,843.
 
 LIST_ROWS	.equ 5
 LIST_LABEL_MAX	.equ 48

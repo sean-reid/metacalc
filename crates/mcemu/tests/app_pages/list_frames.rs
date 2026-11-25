@@ -149,6 +149,43 @@ fn a_stage_of_four_assertions_is_a_row_short_of_the_screen() {
     }
 }
 
+/// The first stage of this build holds one assertion: the cursor is on both its first and its last
+/// row, so every arrow answers that nothing moved and nothing is drawn.
+#[test]
+fn a_stage_of_exactly_one_assertion_keeps_every_arrow_where_it_is() {
+    let library = crate::fixture::library();
+    let built = staged("pages-list-one", &library, &[1, count_of_library(&library)]);
+    let mut list = Lister::open(built, None, 0);
+    assert_eq!(list.pos().len, 1);
+    assert!(list.settle(), "its conclusion is drawn");
+    assert_eq!(rows_of(&list.ui).len(), 1, "one row");
+    let (frame, blits) = (list.run.frame(), list.run.blits());
+    for (scan, key) in [
+        (UP, Key::Up),
+        (DOWN, Key::Down),
+        (LEFT, Key::Left),
+        (RIGHT, Key::Right),
+        (DOWN, Key::Down),
+        (UP, Key::Up),
+    ] {
+        assert!(!list.key(scan, key), "{scan:02X}: nothing moved");
+        assert_eq!(
+            list.frame_bytes(),
+            [KIND_LIST, 0, 0, 0, 0, 0],
+            "{scan:02X}: the cursor and the top stay"
+        );
+        assert_eq!(list.var("LV_PREVIEW"), ROW, "{scan:02X}: still settled");
+        assert_eq!(list.var("LV_COUNT"), 0, "{scan:02X}: no wait begins");
+        list.same_position(&format!("{scan:02X}"));
+    }
+    assert_eq!(list.run.blits(), blits, "no frame was drawn");
+    assert_eq!(list.run.frame(), frame, "and the frame is as it was");
+}
+
+fn count_of_library(library: &[u8]) -> usize {
+    table::header_of(library).1 as usize
+}
+
 /// A table of the proofs library with each of the four values: unchecked, checked, failed and
 /// resting on something not checked, from the model's own ledger.
 fn every_mark(built: &Built) -> (Vec<u8>, Vec<Status>) {

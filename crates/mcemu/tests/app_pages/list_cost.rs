@@ -109,6 +109,8 @@ pub const MOVE_FLOOR: u32 = 186_000;
 pub const FIT_RANGE: (u32, u32) = (47_000, 51_100);
 /// The most a settled frame, scr_draw and ui_blit, takes: 200,314 after the move by a row.
 pub const SETTLED_CEILING: u32 = 201_000;
+/// The least it takes, 199,126 after the move by a page, within 2%.
+pub const SETTLED_FLOOR: u32 = 195_200;
 
 #[test]
 fn a_cursor_move_and_the_frame_it_redraws_cost_what_the_ceiling_says() {
@@ -143,7 +145,76 @@ fn a_cursor_move_and_the_frame_it_redraws_cost_what_the_ceiling_says() {
             (FIT_RANGE.0..=FIT_RANGE.1).contains(&fit),
             "{name}: the fit took {fit}"
         );
-        assert!(draw + blit <= SETTLED_CEILING, "{name}: {}", draw + blit);
+        assert!(
+            (SETTLED_FLOOR..=SETTLED_CEILING).contains(&(draw + blit)),
+            "{name}: {}",
+            draw + blit
+        );
     }
     assert!(worst <= MOVE_CEILING, "{worst} over {MOVE_CEILING}");
 }
+
+/// The idle call on every assertion of fm's nodes fixture, on the stub OS at 6 MHz with interrupts off.
+/// The fixture holds the slowest conclusion the model's caps allow: 253 nested operators in 255
+/// tokens, whose every level takes a pass over the tokens. It is the longest a preview holds the
+/// keypad, and the figure the list's header states.
+#[test]
+fn the_worst_preview_inside_the_caps_costs_this_and_a_key_waits_that_long() {
+    let library = crate::fixture::nodes_library();
+    let built = around("list-nodes", &library);
+    let count = usize::from(crate::table::header_of(&library).1);
+    let index = crate::list_exits::index_of(built, "deep");
+    let mut app = App::boot(built);
+    tap(&mut app, 0x35);
+    for _ in 0..4 {
+        assert_eq!(app.m.run_app(1_000_000).stop, Stop::Limit);
+    }
+    let (frame, driver) = (top_frame(&app), driver_cost(&mut app));
+    let (count_at, preview, idle) = (
+        app.label("LV_COUNT"),
+        app.label("LV_PREVIEW"),
+        app.label("list_idle"),
+    );
+    let mut costs = Vec::new();
+    for n in 0..count {
+        let at = (n as u16).to_le_bytes();
+        app.m.load_ram(frame + 2, &[at[0], at[1], at[0], at[1]]);
+        app.m.load_ram(count_at, &[0]);
+        app.m.load_ram(preview, &[0]);
+        let done = app.call(
+            BASE,
+            idle,
+            In {
+                hl: frame,
+                ..In::default()
+            },
+        );
+        assert_eq!(
+            done.status(),
+            SCR_REDRAW,
+            "assertion {n}: a preview is laid out"
+        );
+        costs.push(done.tstates - driver);
+    }
+    let worst = *costs.iter().max().unwrap();
+    let at = costs.iter().position(|&c| c == worst).unwrap();
+    println!(
+        "stub, the idle call over the nodes fixture's {count} assertions: worst {worst} T-states, {:.2} s at 6 MHz, assertion {at}",
+        f64::from(worst) / 6_000_000.0
+    );
+    assert_eq!(at, index, "the slowest is the 253 nested operators");
+    let mut sorted = costs.clone();
+    sorted.sort_unstable();
+    println!(
+        "the next three: {:?}",
+        &sorted[sorted.len() - 4..sorted.len() - 1]
+    );
+    assert!(
+        sorted[sorted.len() - 2] < worst / 3,
+        "no other conclusion is within a third of it"
+    );
+    crate::list_rig::within("the worst preview", worst, WORST_PREVIEW);
+}
+
+/// What it took when measured.
+pub const WORST_PREVIEW: u32 = 37_707_322;

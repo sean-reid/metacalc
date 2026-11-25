@@ -94,27 +94,36 @@ fn every_assertion_of_the_fixture_is_the_models_with_its_preview_and_the_counts_
     println!("fixture: {seen:?}");
     assert_eq!(seen, want, "drew, cut and nothing, against the model's");
     assert_eq!(
-        seen.drew + seen.nothing,
-        27,
-        "every assertion of the fixture"
+        seen,
+        Counts {
+            drew: 27,
+            cut: 1,
+            nothing: 0
+        },
+        "the fixture's 27 conclusions, the 255 token one cut"
     );
-    assert!(
-        seen.cut >= 1,
-        "some conclusion is cut by the clip: {seen:?}"
-    );
-    assert!(seen.drew > seen.cut, "and some is not: {seen:?}");
 }
 
 #[test]
 fn every_assertion_of_the_proofs_library_is_the_models_in_each_of_its_stages() {
     let built = proofs_three();
     let mut last = Counts::default();
-    for stage in 0..built.stages.len() {
+    for (stage, assertions) in [24, 49, 74].into_iter().enumerate() {
         let (seen, want) = walked(built, stage);
         println!("proofs, stage {stage}: {seen:?}");
         assert_eq!(seen, want, "stage {stage}");
+        assert_eq!(
+            seen,
+            Counts {
+                drew: assertions,
+                cut: 0,
+                nothing: 0
+            },
+            "stage {stage}: every conclusion fits one row and none is over the caps"
+        );
         last = seen;
     }
+    assert_eq!(built.stages.len(), 3);
     assert_eq!(
         last.drew + last.nothing,
         table::header_of(built.library.as_ref().unwrap()).1 as usize,
@@ -131,6 +140,11 @@ fn a_list_of_no_assertion_shows_none_and_settles_with_nothing_without_touching_f
     let mut list = Lister::open(built, None, 0);
     list.count_fm_calls();
     assert_eq!(list.pos().len, 0);
+    assert_eq!(
+        list.var("LV_FLAT"),
+        0,
+        "a library with no assertion is not flat"
+    );
     assert!(!list.settle(), "nothing to draw");
     assert_eq!(
         list.fm_calls(),
@@ -163,19 +177,16 @@ fn the_idle_work_fits_once_and_a_draw_of_the_settled_list_does_not_fit_again() {
     assert!(clip <= 1);
     let before = list.fm_calls();
     let frame = list.run.shell.app.label("SCR_STACK") + 16;
-    let top = list.run.shell.app.label("SCR_STACK");
     let list_draw = list.run.shell.app.label("list_draw");
-    list.run.shell.app.m.load_ram(UI_VARS - 0x100, &[0; 0]);
     let done = list.run.shell.app.call(
         crate::realos::BASE,
         list_draw,
         In {
-            hl: top,
+            hl: frame,
             ..In::default()
         },
     );
     assert_eq!(done.status(), 0);
-    let _ = frame;
     let after = list.fm_calls();
     assert_eq!(
         (after[0], after[1], after[2], after[3], after[4]),
@@ -290,4 +301,16 @@ fn a_stage_name_wider_than_the_room_the_counts_leave_is_cut_as_the_model_cuts_it
         title.0
     );
     list.settle();
+}
+
+#[test]
+fn the_list_screens_copies_of_fm_and_reader_statuses_are_the_sources_values() {
+    let built = with_library();
+    for (copy, source, value) in [
+        ("LIST_FM_NOT_OPEN", "FM_ERR_NOT_OPEN", 1),
+        ("LIST_LIB_NO_TREES", "LIB_ERR_NONE", 9),
+    ] {
+        assert_eq!(built.label(copy), built.label(source), "{copy} is {source}");
+        assert_eq!(built.label(source), value, "{source}");
+    }
 }
