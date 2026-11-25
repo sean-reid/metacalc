@@ -4,6 +4,8 @@
 #[path = "common/realos.rs"]
 mod realos;
 
+#[path = "app_key_waiting/clear_time.rs"]
+mod clear_time;
 #[path = "app_key_waiting/cost.rs"]
 mod cost;
 #[path = "app_key_waiting/held.rs"]
