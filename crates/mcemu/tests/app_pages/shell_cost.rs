@@ -64,8 +64,8 @@ const ABOUT_COLD: u32 = 141_900;
 const NOTICE_COLD: u32 = 116_300;
 /// The most the loop may take around app_key for a key no screen answers, scr_key included.
 const IGNORED_KEY: u32 = 2_575;
-/// The least: it takes 2,542 with the idle point.
-const IGNORED_KEY_FLOOR: u32 = 2_490;
+/// The least: it takes 2,562 with the idle point.
+const IGNORED_KEY_FLOOR: u32 = 2_512;
 /// The most app_stage_block may take for a block the area already holds.
 const WARM_STAGE: u32 = 120;
 /// The most bytes each code page may use: entry, draw and data.
