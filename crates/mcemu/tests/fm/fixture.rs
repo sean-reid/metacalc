@@ -119,25 +119,6 @@ pub fn proofs() -> Vec<u8> {
     pack_all(&parse(include_str!("proofs.mm")))
 }
 
-/// `proofs` with an axiom named `label` as its first assertion.
-pub fn proofs_labelled(label: &str) -> Vec<u8> {
-    let first = "${\n  wn $a";
-    let src = include_str!("proofs.mm");
-    assert!(src.contains(first), "the proofs start with wn");
-    let src = src.replacen(first, &format!("{label} $a |- ph $.\n{first}"), 1);
-    pack_all(&parse(&src))
-}
-
-/// `proofs` followed by `fillers` axioms with long labels, enough of them to span several chunks of
-/// 16 KB.
-pub fn proofs_padded(fillers: usize) -> Vec<u8> {
-    let mut src = include_str!("proofs.mm").to_string();
-    for i in 0..fillers {
-        src += &format!("a-long-label-to-fill-the-page-{i} $a |- ph $.\n");
-    }
-    pack_all(&parse(&src))
-}
-
 pub fn library() -> Vec<u8> {
     pack_all(&parse(&source()))
 }

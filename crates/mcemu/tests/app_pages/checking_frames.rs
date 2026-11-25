@@ -3,7 +3,6 @@
 //! Libraries after the screen is left. Every frame is compared where the app is about to blit it.
 
 use crate::app::*;
-use crate::builds::*;
 use crate::checkrig::*;
 use crate::shellrig::*;
 use crate::table;
@@ -13,11 +12,31 @@ use std::sync::OnceLock;
 /// one is short.
 const FILLERS: usize = 1200;
 
+const PROOFS: &str = include_str!("../fm/proofs.mm");
+
+/// `proofs` with an axiom named `label` as its first assertion.
+pub fn proofs_labelled(label: &str) -> Vec<u8> {
+    let first = "${\n  wn $a";
+    assert!(PROOFS.contains(first), "the proofs start with wn");
+    let src = PROOFS.replacen(first, &format!("{label} $a |- ph $.\n{first}"), 1);
+    crate::support::pack_all(&crate::support::parse(&src))
+}
+
+/// `proofs` followed by `fillers` axioms with long labels, enough of them to span several chunks of
+/// 16 KB.
+pub fn proofs_padded(fillers: usize) -> Vec<u8> {
+    let mut src = PROOFS.to_string();
+    for i in 0..fillers {
+        src += &format!("a-long-label-to-fill-the-page-{i} $a |- ph $.\n");
+    }
+    crate::support::pack_all(&crate::support::parse(&src))
+}
+
 /// The padded library as one stage.
 pub fn padded() -> &'static Built {
     static BUILT: OnceLock<&'static Built> = OnceLock::new();
     BUILT.get_or_init(|| {
-        let library = crate::fixture::proofs_padded(FILLERS);
+        let library = proofs_padded(FILLERS);
         let count = usize::from(table::header_of(&library).1);
         staged("pages-padded-one", &library, &[count])
     })
@@ -140,7 +159,7 @@ fn every_frame_of_a_check_with_a_failure_is_the_models_and_the_last_says_all_che
         "a frame every EVERY steps and a last one when it is done"
     );
     assert_eq!(failed_seen.last(), Some(&failing), "the failure is shown");
-    assert!(failed_seen.iter().any(|&f| f == 0) && failed_seen.last().unwrap() > &0);
+    assert!(failed_seen.contains(&0) && failed_seen.last().unwrap() > &0);
     let finished = checking_model(built, &expected_values(built, &verdicts, n), 0);
     assert!(
         matches!(
@@ -203,7 +222,7 @@ fn the_label_of_the_next_assertion_is_the_models_however_long_it_is() {
         "l".repeat(49),
     ];
     for (n, label) in labels.iter().enumerate() {
-        let library = crate::fixture::proofs_labelled(label);
+        let library = proofs_labelled(label);
         let count = usize::from(table::header_of(&library).1);
         let built = staged(&format!("pages-label-{n}"), &library, &[count]);
         let mut run = Run::boot(built, Some(&empty_table(built)));

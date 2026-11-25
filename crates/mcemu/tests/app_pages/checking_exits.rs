@@ -3,7 +3,6 @@
 //! key the screen ignores, and the interrupt state and speed every idle call leaves.
 
 use crate::app::*;
-use crate::builds::*;
 use crate::checking_errors::damaged;
 use crate::checking_frames::*;
 use crate::checkrig::*;
@@ -89,7 +88,7 @@ fn a_key_the_screen_ignores_loses_no_step() {
     run.tap(F4);
     let mut last = run.next_frame();
     assert_eq!(run.depth(), 2, "the screen is still open");
-    while last.1.as_ref().unwrap().iter().any(|&v| v == 0) {
+    while last.1.as_ref().unwrap().contains(&0) {
         last = run.next_frame();
     }
     let n = last.1.unwrap().len();

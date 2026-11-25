@@ -4,7 +4,6 @@
 //! the screen's frames cost against the same job with no redraws.
 
 use crate::app::*;
-use crate::builds::*;
 use crate::checkrig::*;
 use crate::realos::{BASE, KEY_2, KEY_APPS, RealOs};
 use crate::shellrig::*;
@@ -68,8 +67,6 @@ struct Timing {
     total: u64,
     frames: usize,
     gaps: Vec<u64>,
-    /// The assertions with a value at each frame.
-    settled: Vec<usize>,
 }
 
 fn median(gaps: &[u64]) -> u64 {
@@ -92,7 +89,6 @@ fn run_stage_watching(run: &mut Run, end: usize, watch: Option<u16>) -> Timing {
     let mut seen = run.blits();
     let mut gaps = Vec::new();
     let mut frames = 0;
-    let mut settled = Vec::new();
     let mut base = None;
     loop {
         run.step_us(500);
@@ -107,11 +103,6 @@ fn run_stage_watching(run: &mut Run, end: usize, watch: Option<u16>) -> Timing {
             gaps.push(t - last);
             last = t;
             let values = run.values();
-            settled.push(
-                values
-                    .as_ref()
-                    .map_or(0, |v| v.iter().filter(|&&x| x != 0).count()),
-            );
             if values.is_some_and(|v| v[..end].iter().all(|&x| x != 0)) {
                 break;
             }
@@ -135,7 +126,6 @@ fn run_stage_watching(run: &mut Run, end: usize, watch: Option<u16>) -> Timing {
         total: t,
         frames,
         gaps,
-        settled,
     }
 }
 

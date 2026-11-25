@@ -341,10 +341,8 @@ fn a_library_with_no_table_is_read_a_chunk_at_a_time_before_its_assertions() {
     check(&ui, "checking-reading-midway");
     for read in 4..=10 {
         assert!(ui.read_chunk());
-        assert_eq!(
-            reading(ui.state()).4,
-            Some((read, 10)).filter(|_| read < 10)
-        );
+        let want = if read < 10 { Some((read, 10)) } else { None };
+        assert_eq!(reading(ui.state()).4, want);
         if read == 9 {
             check(&ui, "checking-reading-last-chunk");
         }

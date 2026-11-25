@@ -131,12 +131,6 @@ impl Run {
         )
     }
 
-    pub fn word(&mut self, label: &str) -> u16 {
-        let at = self.shell.app.label(label);
-        let b = self.peek(at, 2);
-        u16::from_le_bytes([b[0], b[1]])
-    }
-
     pub fn byte(&mut self, label: &str) -> u8 {
         let at = self.shell.app.label(label);
         self.peek(at, 1)[0]

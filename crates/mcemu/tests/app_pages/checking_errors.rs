@@ -3,7 +3,6 @@
 //! status the error notice shows for each class of the job's statuses.
 
 use crate::app::*;
-use crate::builds::*;
 use crate::checking_frames::*;
 use crate::checkrig::*;
 use crate::realos::BASE;
@@ -38,12 +37,7 @@ pub fn damaged(many: bool) -> &'static Built {
     static ONE: OnceLock<&'static Built> = OnceLock::new();
     static MANY: OnceLock<&'static Built> = OnceLock::new();
     if many {
-        MANY.get_or_init(|| {
-            around(
-                "damaged-many",
-                &crc_wrong(&crate::fixture::proofs_padded(1200)),
-            )
-        })
+        MANY.get_or_init(|| around("damaged-many", &crc_wrong(&proofs_padded(1200))))
     } else {
         ONE.get_or_init(|| around("damaged-one", &crc_wrong(&crate::fixture::proofs())))
     }

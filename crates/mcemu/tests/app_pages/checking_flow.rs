@@ -2,11 +2,8 @@
 //! stop by F1, CLEAR or ON in the middle of the reading and of the steps and a second Run, the
 //! CRC that is wrong, a table that disappears, and what the table holds each time.
 
-use crate::app::*;
-use crate::builds::*;
 use crate::checking_frames::*;
 use crate::checkrig::*;
-use crate::realos::BASE;
 use crate::shellrig::*;
 use crate::ui_support::same_frame;
 use mcemu::Machine;
