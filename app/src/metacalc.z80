@@ -56,7 +56,8 @@
 ;   1 libraries   one row for each stage of the library and then My proofs, with each stage's
 ;                 progress read from the status table (screen_libraries.inc, screen_counts.inc);
 ;                 F3 opens About, or the stage's About when there is more than one stage, F1 and
-;                 ENTER the list of a stage or a notice on My proofs, F2 the checking screen of a stage or a notice, CLEAR leaves
+;                 ENTER the list of a stage or a notice on My proofs, F2 the checking screen of a
+;                 stage or a notice, CLEAR leaves
 ;   2 notice      a title and one or two lines; F1, CLEAR and ENTER go back
 ;   3 about       the version, two lines and the count of libraries; CLEAR and ENTER go back
 ;   4 stage       a stage's name, title and counts (screen_stage.inc); CLEAR and ENTER go back

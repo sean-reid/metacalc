@@ -30,12 +30,12 @@
 ; Only a kernel entry closes fm or overwrites that RAM, and none runs while a list is the top screen: the
 ; check job runs on the screen Libraries pushes, never over a list, and a list that is entered after it
 ; finds fm closed, which the first fm_statement of its preview answers with FM_ERR_NOT_OPEN, and list_idle
-; calls fm_open. A notice over
-; the list, the screen's own refresh and the OS's overwrite of saveSScreen touch none of fm's memory,
+; calls fm_open. A notice over the list, the screen's own refresh and the OS's overwrite of saveSScreen
+; touch none of fm's memory,
 ; and every one of them runs list_enter again, which makes the preview pending, so a settled draw never
 ; follows a lost row.
 ;
-; Registers: each routine below destroys AF BC DE HL and IX, which the far calls and the reader leave
+; Registers: each routine below may destroy AF BC DE HL and IX, which the far calls and the reader leave
 ; undefined, except list_stage_end, which says what it keeps.
 ; list_enter   in: HL = the frame. out: A = the status of libs_counts, which derives the counts the title
 ;              reads, or of the reader's assertion count; else 0. Then asks the store once more
@@ -77,9 +77,9 @@
 ; Cost, in T-states at 6 MHz on the reference OS: ring's list opens in 460,448 (libs_key, list_enter and a
 ; cold frame) and a cursor move takes 223,026 by a row and 227,608 by a page with its frame; the idle
 ; call that lays out a preview takes a median of 77,110 and at most 1,125,822 over ring, and 68,803 and
-; 331,402 over prop. It runs with interrupts off, so a statement inside the caps holds the keypad for at
-; most 37,707,322 T-states (6.28 s at 6 MHz), the 253 nested operators of fm's nodes fixture, measured on
-; the stub OS; the next slowest of that fixture takes 9,854,843.
+; 331,402 over prop. Its fm calls run with interrupts off and no key is scanned until it returns, so a
+; statement inside the caps holds the keypad for at most 37,707,322 T-states (6.28 s at 6 MHz), the 253
+; nested operators of fm's nodes fixture, measured on the stub OS.
 
 LIST_ROWS	.equ 5
 LIST_LABEL_MAX	.equ 48
