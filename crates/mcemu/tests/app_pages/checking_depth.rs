@@ -22,6 +22,9 @@ pub struct Sample {
     pub on: bool,
     /// Whether the checking screen was still the top one at the return.
     pub stays: bool,
+    /// The top frame's kind and its bytes 1 and 2 at the return: the notice's number and parameter
+    /// when the screen was replaced by one.
+    pub top: [u8; 3],
 }
 
 /// What an idle call of the checking screen did, from the phase it started in, the phase it left and
@@ -44,6 +47,12 @@ pub enum Class {
     FailedStep,
     /// Replaced by the damaged notice, from the CRC run.
     Damaged,
+    /// Left by a replacement with the phase, answer and carry of FailedStep or Damaged, but with
+    /// a top frame that is not the notice that failure pushes.
+    WrongNotice {
+        before: u8,
+        top: [u8; 3],
+    },
     Other,
 }
 
@@ -87,6 +96,12 @@ const PHASE_STEP: u8 = 0;
 const PHASE_READ: u8 = 1;
 const PHASE_DONE: u8 = 2;
 
+/// The top frame's kind and number after ki_fail from the steps: the error notice, whose parameter
+/// is the failure's status.
+const FAILED_STEP: [u8; 2] = [KIND_NOTICE, NOTICE_ERROR];
+/// The top frame after the CRC run's wrong CRC: the damaged notice with parameter 0.
+const DAMAGED: [u8; 3] = [KIND_NOTICE, NOTICE_DAMAGED, 0];
+
 impl Sample {
     pub fn class(&self) -> Class {
         if !self.stays {
@@ -94,8 +109,14 @@ impl Sample {
                 (true, PHASE_STEP | PHASE_READ, REDRAW, true) => Class::StopOn,
                 (false, PHASE_STEP, REDRAW, true) => Class::PausedStep,
                 (false, PHASE_READ, REDRAW, true) => Class::PausedRead,
-                (false, PHASE_STEP, REDRAW, false) => Class::FailedStep,
-                (false, PHASE_READ, REDRAW, false) => Class::Damaged,
+                (false, PHASE_STEP, REDRAW, false) if self.top[..2] == FAILED_STEP => {
+                    Class::FailedStep
+                }
+                (false, PHASE_READ, REDRAW, false) if self.top == DAMAGED => Class::Damaged,
+                (false, PHASE_STEP | PHASE_READ, REDRAW, false) => Class::WrongNotice {
+                    before: self.before,
+                    top: self.top,
+                },
                 _ => Class::Other,
             };
         }
@@ -115,6 +136,12 @@ impl Sample {
 pub fn by_class(samples: &[Sample]) -> std::collections::BTreeMap<Class, (u16, u16, usize)> {
     let mut classes = std::collections::BTreeMap::new();
     for s in samples {
+        if let Class::WrongNotice { before, top } = s.class() {
+            panic!(
+                "a call from phase {before} ended as a failure with the top frame kind {}, notice {}, parameter {}: not the notice that failure pushes",
+                top[0], top[1], top[2]
+            );
+        }
         let entry = classes.entry(s.class()).or_insert((u16::MAX, 0, 0));
         *entry = (entry.0.min(s.depth), entry.1.max(s.depth), entry.2 + 1);
     }
@@ -242,6 +269,7 @@ pub fn idle_calls(
         let after = run.m().read_ram(sp - 256, 256);
         run.m().load_ram(sp - 256, &kept);
         let lowest = lowest(&after);
+        let top = run.frames().pop().expect("a screen is open");
         let sample = Sample {
             action: (regs.af >> 8) as u8,
             carry: regs.af & 1 != 0,
@@ -251,7 +279,8 @@ pub fn idle_calls(
             after: run.byte("CKS_PHASE"),
             shell,
             on,
-            stays: run.top_kind() == KIND_CHECKING,
+            stays: top[0] == KIND_CHECKING,
+            top: [top[0], top[1], top[2]],
         };
         all.push(sample);
         if mask {

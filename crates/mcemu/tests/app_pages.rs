@@ -19,6 +19,8 @@ mod checking_depth;
 mod checking_errors;
 #[path = "app_pages/checking_exits.rs"]
 mod checking_exits;
+#[path = "app_pages/checking_first_status.rs"]
+mod checking_first_status;
 #[path = "app_pages/checking_flow.rs"]
 mod checking_flow;
 #[path = "app_pages/checking_frames.rs"]
