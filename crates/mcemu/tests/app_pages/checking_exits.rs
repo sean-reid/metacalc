@@ -220,9 +220,16 @@ fn a_power_down_after_the_end_is_refreshed_from_the_table_with_no_crc_run() {
     shows("finished", &finished, &want);
     run.run(3_000_000);
     run.shell.power_down();
+    let blits = run.blits();
     run.tap(F4);
     let frame = run.next_blit();
     shows("after the power down", &frame, &want);
+    run.run(6_000_000);
+    assert_eq!(
+        run.blits(),
+        blits + 1,
+        "one frame, the refresh, and no step after it"
+    );
     assert_eq!(run.crc_calls(), crc, "no CRC run");
     assert_eq!(run.verifies(), verifies, "no step");
     assert_eq!((run.depth(), run.top_kind()), (2, KIND_CHECKING));

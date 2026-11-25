@@ -171,6 +171,11 @@ fn on_during_kernel_init_opens_the_screen_and_the_first_idle_call_pops_it() {
     run.m().press_key(F2);
     run.run_to("far_kernel_init", WAIT);
     run.m().press_key(Machine::KEY_ON);
+    // The kernel answers the press, and the press is over before the idle point can see it.
+    run.run_to("kn_paused", WAIT);
+    run.m().release_key(Machine::KEY_ON);
+    let flags = run.m().read_ram(0x89F9, 1)[0];
+    run.m().load_ram(0x89F9, &[flags & !0x10]);
     let frame = run.next_blit();
     assert_eq!(run.top_kind(), KIND_CHECKING, "the screen is open");
     assert_ne!(frame, libraries);
@@ -179,7 +184,6 @@ fn on_during_kernel_init_opens_the_screen_and_the_first_idle_call_pops_it() {
     assert_eq!(run.depth(), 1);
     assert_eq!(run.raw_table(), None, "no table was created");
     assert_eq!(run.verifies(), 0, "no step ran");
-    run.m().release_key(Machine::KEY_ON);
     run.m().release_key(F2);
     run.run(3_000_000);
     assert_eq!(run.depth(), 1, "the app did not leave");
