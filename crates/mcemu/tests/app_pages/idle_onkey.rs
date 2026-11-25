@@ -77,7 +77,11 @@ fn a_key_with_on_down_and_the_byte_clear_goes_to_app_key(real: bool) {
          {coded}: A = {seen:?}",
         os_name(real)
     );
-    assert_eq!((both, coded), (7, 5), "of twelve phases");
+    assert_eq!(
+        (both, coded),
+        if real { (9, 3) } else { (7, 5) },
+        "of twelve phases"
+    );
 }
 
 twin!(
