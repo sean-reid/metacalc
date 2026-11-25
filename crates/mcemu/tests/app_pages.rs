@@ -13,6 +13,8 @@ mod built;
 mod checking_chunks;
 #[path = "app_pages/checking_cost.rs"]
 mod checking_cost;
+#[path = "app_pages/checking_depth.rs"]
+mod checking_depth;
 #[path = "app_pages/checking_errors.rs"]
 mod checking_errors;
 #[path = "app_pages/checking_exits.rs"]

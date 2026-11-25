@@ -1,14 +1,18 @@
 //! What the checking screen costs on the reference OS with the shipped libraries, ignored in the
 //! default run: the three frames of a check, whose OS lookups cost more than the stub's, and the
-//! stack of the deepest idle call.
+//! bytes each class of idle call writes below the stack pointer, with interrupts off at the call
+//! and with them on.
 
 use crate::app::*;
-use crate::checking_idle::{CLASSES, Class, SHELL_STACK, Sample, by_class, idle_calls};
+use crate::checking_depth::{
+    Class, Fill, SHELL_STACK, Sample, WITH_OTHER, agreed, by_class, idle_calls, live_depths,
+};
 use crate::checking_real::*;
 use crate::checkrig::*;
 use crate::realos::BASE;
 use crate::shell_cost::FRAME_BUDGET;
 use crate::shellrig::*;
+use mcemu::Machine;
 
 /// The least and the most T-states scr_draw and ui_blit may take together, cold, for each frame of
 /// the checking screen of prop in ring's build, a little under and a little above what they take
@@ -19,13 +23,25 @@ const ROM_FRAME_FINISHED: (u32, u32) = (126_600, 131_700);
 /// The least and greatest bytes an idle call of each class writes below the stack pointer
 /// scr_idle was called with on the reference OS, interrupts off at the call, and the fewest calls
 /// of the class in prop's check.
-const ROM_DEPTHS: [(Class, (u16, u16, usize)); 6] = [
+const ROM_DEPTHS: [(Class, (u16, u16, usize)); 7] = [
     (Class::StepStays, (42, 42, 700)),
     (Class::StepRedraws, (42, 42, 20)),
     (Class::Chunk, (14, 14, 25)),
     (Class::EndsCrcRun, (44, 44, 1)),
     (Class::Finishing, (42, 42, 1)),
     (Class::AfterFinish, (10, 10, 1)),
+    (Class::Other, (40, 40, 2)),
+];
+
+/// The greatest depth of each class with interrupts on, the same on three runs.
+const ROM_LIVE: [(Class, u16); 7] = [
+    (Class::StepStays, 52),
+    (Class::StepRedraws, 46),
+    (Class::Chunk, 22),
+    (Class::EndsCrcRun, 44),
+    (Class::Finishing, 42),
+    (Class::AfterFinish, 10),
+    (Class::Other, 46),
 ];
 
 /// The T-states of scr_draw and then ui_blit for the screen on top, the driver's own taken off.
@@ -93,7 +109,7 @@ fn on_the_reference_os_a_frame_of_the_checking_screen_costs_what_its_ceiling_say
 
 /// Prop's whole check on the reference OS and one call after the finish, every idle call sampled
 /// with interrupts on at the call, or off when `mask` is set.
-fn prop_calls(mask: bool) -> Vec<Sample> {
+fn prop_calls(mask: bool, fill: Fill) -> Vec<Sample> {
     let built = shipped_staged();
     let end = built.stages[0].end;
     let mut run = launched(built, 0, &[]);
@@ -104,6 +120,7 @@ fn prop_calls(mask: bool) -> Vec<Sample> {
         &mut run,
         0,
         mask,
+        fill,
         |_, _| {},
         |r, s, n| {
             if n == 2 {
@@ -130,19 +147,62 @@ fn prop_calls(mask: bool) -> Vec<Sample> {
     all
 }
 
+/// The idle calls of two stops on the reference OS: ON down at the idle point, and ON down as the
+/// kernel is called, which the job answers with CK_PAUSED. Both pop the screen, whichever call they
+/// land in.
+fn stop_calls(mask: bool, fill: Fill) -> Vec<Sample> {
+    let mut all = Vec::new();
+    for paused in [false, true] {
+        let built = shipped_staged();
+        let mut run = launched(built, 0, &[]);
+        run.m().press_key(F2);
+        let calls = idle_calls(
+            "ON on the reference OS",
+            &mut run,
+            0,
+            mask,
+            fill,
+            |r, n| {
+                if paused && n == 4 {
+                    r.m().press_key(Machine::KEY_ON);
+                }
+            },
+            |r, _, n| {
+                if n == 2 {
+                    r.m().release_key(F2);
+                }
+                if !paused && n == 3 {
+                    r.m().press_key(Machine::KEY_ON);
+                }
+                n > 3 && r.depth() == 1
+            },
+        );
+        assert_eq!(
+            calls.last().map(|s| (s.action, s.carry, s.stays)),
+            Some((1, true, false)),
+            "ON popped the screen, paused {paused}"
+        );
+        all.extend(calls);
+    }
+    all
+}
+
 /// Every idle call of the checking screen on the reference OS, over the whole of prop's check and
 /// one call after the finish, returns with interrupts on, the speed it had and the stack balanced.
 /// Run again with interrupts off at each call, so no handler's pushes are in it, each class of call
 /// (a step that stays, a step that redraws, a chunk, the call that ends the CRC run, the finishing
-/// step, a call after the finish) writes the depths the header gives below the stack pointer
-/// scr_idle was called with.
+/// step, a call after the finish, and the two ON stops) writes the depths the header gives below the
+/// stack pointer scr_idle was called with. Run with interrupts on, the greatest of each class is
+/// deeper where an interrupt landed in the call.
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn on_the_reference_os_every_idle_call_keeps_the_interrupts_the_speed_and_the_stack_the_header_gives()
  {
-    let with_interrupts = prop_calls(false);
-    println!("{} idle calls with interrupts on", with_interrupts.len());
-    let all = prop_calls(true);
+    let calls = |mask, f| [prop_calls(mask, f), stop_calls(mask, f)].concat();
+    let [live_odd, live_inverse] = Fill::BOTH.map(|f| calls(false, f));
+    let live = agreed("interrupts on", &live_odd, &live_inverse);
+    let [odd, inverse] = Fill::BOTH.map(|f| calls(true, f));
+    let all = agreed("interrupts off", &odd, &inverse);
     let deepest = all.iter().map(|s| s.depth).max().unwrap();
     println!(
         "{} idle calls, the deepest wrote {deepest} bytes below its stack pointer",
@@ -156,7 +216,7 @@ fn on_the_reference_os_every_idle_call_keeps_the_interrupts_the_speed_and_the_st
         deepest, 44,
         "the deepest call is the one that ends the CRC run"
     );
-    assert_eq!(ROM_DEPTHS.map(|c| c.0), CLASSES);
+    assert_eq!(ROM_DEPTHS.map(|c| c.0), WITH_OTHER);
     for (class, (least, most, calls)) in ROM_DEPTHS {
         let got = classes
             .get(&class)
@@ -168,6 +228,17 @@ fn on_the_reference_os_every_idle_call_keeps_the_interrupts_the_speed_and_the_st
             got.2
         );
     }
+    let live_most = live_depths(&all, &live);
+    assert_eq!(
+        live_most,
+        ROM_LIVE.into(),
+        "the greatest depth of each class with interrupts on"
+    );
+    assert_eq!(
+        live.iter().map(|s| s.depth).max(),
+        Some(52),
+        "the deepest call with interrupts on"
+    );
     let shell: std::collections::BTreeSet<u16> =
         all.iter().map(|s| s.shell).filter(|&b| b > 0).collect();
     assert_eq!(

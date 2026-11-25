@@ -1,214 +1,19 @@
 //! The interrupt state, speed and stack of every idle call of the checking screen.
 
 use crate::app::*;
+use crate::checking_depth::*;
 use crate::checking_errors::damaged;
 use crate::checking_frames::*;
 use crate::checkrig::*;
-use crate::realos::BASE;
 use crate::shellrig::*;
 use mcemu::Machine;
 
-/// What one idle call returned: A, the carry, the bytes it wrote below the stack pointer scr_idle
-/// was called with, CKS_PHASE before and after it, and the bytes the shell had pushed when
-/// checking_idle's first instruction ran, its return address included.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Sample {
-    pub action: u8,
-    pub carry: bool,
-    pub depth: u16,
-    pub before: u8,
-    pub after: u8,
-    pub shell: u16,
-    /// Whether the checking screen was still the top one at the return.
-    pub stays: bool,
-}
-
-/// What an idle call of the checking screen did, from the phase it started in, the phase it left and
-/// its answer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Class {
-    StepStays,
-    StepRedraws,
-    Chunk,
-    EndsCrcRun,
-    Finishing,
-    AfterFinish,
-    Other,
-}
-
-pub const CLASSES: [Class; 6] = [
-    Class::StepStays,
-    Class::StepRedraws,
-    Class::Chunk,
-    Class::EndsCrcRun,
-    Class::Finishing,
-    Class::AfterFinish,
-];
-
-const PHASE_STEP: u8 = 0;
-const PHASE_READ: u8 = 1;
-const PHASE_DONE: u8 = 2;
-
-impl Sample {
-    pub fn class(&self) -> Class {
-        if !self.stays {
-            return Class::Other;
-        }
-        match (self.before, self.after, self.action, self.carry) {
-            (PHASE_STEP, PHASE_STEP, STAY, true) => Class::StepStays,
-            (PHASE_STEP, PHASE_STEP, REDRAW, true) => Class::StepRedraws,
-            (PHASE_READ, PHASE_READ, REDRAW, true) => Class::Chunk,
-            (PHASE_READ, PHASE_STEP, REDRAW, true) => Class::EndsCrcRun,
-            (PHASE_STEP, PHASE_DONE, REDRAW, false) => Class::Finishing,
-            (PHASE_DONE, PHASE_DONE, STAY, false) => Class::AfterFinish,
-            _ => Class::Other,
-        }
-    }
-}
-
-/// The least and the greatest depth and the number of calls of each class in `samples`.
-pub fn by_class(samples: &[Sample]) -> std::collections::BTreeMap<Class, (u16, u16, usize)> {
-    let mut classes = std::collections::BTreeMap::new();
-    for s in samples {
-        let entry = classes.entry(s.class()).or_insert((u16::MAX, 0, 0));
-        *entry = (entry.0.min(s.depth), entry.1.max(s.depth), entry.2 + 1);
-    }
-    classes
-}
-
-/// Runs the shell's idle calls one at a time: at the call of scr_idle fills the 256 bytes below the
-/// stack pointer, and at its return checks that interrupts are as they were at the call (on, or off
-/// when `mask` turns them off for the call, so no handler's pushes are in the depth) and the speed
-/// port is `speed`, and measures how deep the call wrote. `each` sees every sample and may change
-/// the machine for the next call; it answers true to stop.
-pub fn idle_calls(
-    what: &str,
-    run: &mut Run,
-    speed: u8,
-    mask: bool,
-    mut before: impl FnMut(&mut Run, usize),
-    mut each: impl FnMut(&mut Run, &Sample, usize) -> bool,
-) -> Vec<Sample> {
-    let work = run.shell.app.label("app_work");
-    let call = work + 5;
-    let back = work + 8;
-    let idle = run.shell.app.label("checking_idle");
-    let page = run
-        .shell
-        .app
-        .m
-        .read_flash(BASE, usize::from(call - 0x4000), 3);
-    assert_eq!(
-        page[0], 0xCD,
-        "app_work + 5 is the call of scr_idle: {page:02X?}"
-    );
-    let mut all = Vec::new();
-    loop {
-        run.run_to_addr(
-            &format!("{what}, after {} calls: the call of scr_idle", all.len()),
-            call,
-            WAIT,
-        );
-        before(run, all.len() + 1);
-        if mask {
-            set_interrupts(run, 0);
-        }
-        let before_phase = run.byte("CKS_PHASE");
-        let sp = run.m().regs().sp;
-        let kept = run.m().read_ram(sp - 256, 256);
-        let fill: Vec<u8> = (0..256u16).map(|i| (i as u8).wrapping_mul(7) | 1).collect();
-        run.m().load_ram(sp - 256, &fill);
-        let on_screen = run.top_kind() == KIND_CHECKING;
-        let mut shell = 0;
-        if on_screen {
-            run.run_to_addr("the call of checking_idle", idle, WAIT);
-            shell = sp - run.m().regs().sp;
-        }
-        run.run_to_addr("the return of scr_idle", back, WAIT);
-        let regs = run.m().regs();
-        assert_eq!(
-            regs.iff1,
-            u8::from(!mask),
-            "idle call {}: interrupts as at the call",
-            all.len()
-        );
-        assert_eq!(
-            run.m().in_port(0x20) & 1,
-            speed,
-            "idle call {}: the speed the shell had",
-            all.len()
-        );
-        assert_eq!(
-            regs.sp,
-            sp,
-            "idle call {}: the stack is balanced",
-            all.len()
-        );
-        let after = run.m().read_ram(sp - 256, 256);
-        run.m().load_ram(sp - 256, &kept);
-        let lowest = after
-            .iter()
-            .zip(&fill)
-            .position(|(a, f)| a != f)
-            .map_or(0, |i| 256 - i as u16);
-        let sample = Sample {
-            action: (regs.af >> 8) as u8,
-            carry: regs.af & 1 != 0,
-            depth: lowest,
-            before: before_phase,
-            after: run.byte("CKS_PHASE"),
-            shell,
-            stays: run.top_kind() == KIND_CHECKING,
-        };
-        all.push(sample);
-        if mask {
-            set_interrupts(run, 1);
-        }
-        run.m().resume(1);
-        if each(run, &sample, all.len()) {
-            return all;
-        }
-        assert!(all.len() < 5_000, "the scenario never ended");
-    }
-}
-
-fn set_interrupts(run: &mut Run, on: u8) {
-    let mut regs = run.m().regs();
-    regs.iff1 = on;
-    regs.iff2 = on;
-    run.m().set_regs(&regs);
-}
-
-impl Run {
-    /// Runs until the instruction at `at` on the app's page is next.
-    pub fn run_to_addr(&mut self, what: &str, at: u16, limit: u32) {
-        let m = self.m();
-        let start = m.clock();
-        loop {
-            match m.run_to(BASE, at, limit) {
-                mcemu::Reached::Target => return,
-                mcemu::Reached::Vector38 => {}
-                mcemu::Reached::Limit => panic!("{what}: the app never reached {at:04X}"),
-            }
-            assert!(
-                m.clock().wrapping_sub(start) < limit,
-                "{what}: the app never reached {at:04X}"
-            );
-        }
-    }
-}
-
-const STAY: u8 = 0;
-const REDRAW: u8 = 1;
-
-/// Every idle call of the checking screen returns with interrupts on and the speed the shell had, at
-/// 6 and at 15 MHz, for every status the job answers: more, done, a chunk, the CRC run ending, ON
-/// at the idle point, CK_PAUSED, a CRC that is wrong, a table lost and a reader that fails. Run once
-/// more with interrupts off at each call, each class of call writes the depths the header gives.
-#[test]
-fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_speed_it_had() {
-    let mut every = Vec::new();
+/// Every idle call of every scenario below with `fill` under the stack pointer: the calls made with
+/// interrupts off, then the calls made with them on.
+fn scenarios(fill: Fill) -> (Vec<Sample>, Vec<Sample>) {
+    let (mut masked, mut live) = (Vec::new(), Vec::new());
     for (speed, mask) in [(0u8, false), (1, false), (0, true)] {
+        let sink = if mask { &mut masked } else { &mut live };
         let boot = |built: &'static Built, table: Option<&[u8]>| {
             let mut run = Run::boot(built, table);
             run.m().out_port(0x20, speed);
@@ -224,6 +29,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
             &mut run,
             speed,
             mask,
+            fill,
             |_, _| {},
             |r, s, n| {
                 let Some(at) = finished else {
@@ -265,6 +71,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
             &mut run,
             speed,
             mask,
+            fill,
             |_, _| {},
             |r, _, n| {
                 if n == 3 {
@@ -285,6 +92,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
             &mut run,
             speed,
             mask,
+            fill,
             |r, n| {
                 if n == 4 {
                     r.m().press_key(Machine::KEY_ON);
@@ -304,6 +112,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
             &mut run,
             speed,
             mask,
+            fill,
             |r, n| {
                 if n == 4 {
                     r.m().press_key(Machine::KEY_ON);
@@ -326,6 +135,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
                 &mut run,
                 speed,
                 mask,
+                fill,
                 |_, _| {},
                 |r, _, n| {
                     if n == 3 {
@@ -344,9 +154,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
                 Some((REDRAW, false)),
                 "{what}: the screen was replaced"
             );
-            if mask {
-                every.extend(all4);
-            }
+            sink.extend(all4);
         }
         // A CRC that is wrong.
         let mut run = boot(damaged(false), None);
@@ -355,6 +163,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
             &mut run,
             speed,
             mask,
+            fill,
             |_, _| {},
             |r, _, _| r.top_kind() == KIND_NOTICE,
         );
@@ -369,6 +178,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
             &mut run,
             speed,
             mask,
+            fill,
             |_, _| {},
             |r, _, n| {
                 n > chunks_of(padded()) + 20 && {
@@ -377,12 +187,23 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
                 }
             },
         );
-        if mask {
-            for more in [all, all2, all3, all5, all6, all7] {
-                every.extend(more);
-            }
+        for more in [all, all2, all3, all5, all6, all7] {
+            sink.extend(more);
         }
     }
+    (masked, live)
+}
+
+/// Every idle call of the checking screen returns with interrupts on and the speed the shell had, at
+/// 6 and at 15 MHz, for every status the job answers: more, done, a chunk, the CRC run ending, ON
+/// at the idle point, CK_PAUSED, a CRC that is wrong, a table lost and a reader that fails. Run once
+/// more with interrupts off at each call, each class of call writes the depths the header gives, and
+/// once more with interrupts on and the depth recorded too, which an interrupt in the call deepens.
+#[test]
+fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_speed_it_had() {
+    let [odd, inverse] = Fill::BOTH.map(scenarios);
+    let every = agreed("interrupts off", &odd.0, &inverse.0);
+    let live = agreed("interrupts on", &odd.1, &inverse.1);
     let deepest = every.iter().map(|s| s.depth).max().unwrap();
     println!(
         "{} idle calls, the deepest wrote {deepest} bytes",
@@ -393,15 +214,16 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
         println!("{class:?}: {calls} calls, {least} to {most} bytes");
     }
     // The least and greatest depth and the fewest calls of each class on the stub OS.
-    let stub: [(Class, (u16, u16, usize)); 6] = [
+    let stub: [(Class, (u16, u16, usize)); 7] = [
         (Class::StepStays, (28, 28, 100)),
         (Class::StepRedraws, (28, 28, 2)),
         (Class::Chunk, (14, 14, 10)),
         (Class::EndsCrcRun, (30, 30, 2)),
         (Class::Finishing, (28, 28, 1)),
         (Class::AfterFinish, (10, 10, 1)),
+        (Class::Other, (16, 28, 6)),
     ];
-    assert_eq!(stub.map(|c| c.0), CLASSES);
+    assert_eq!(stub.map(|c| c.0), WITH_OTHER);
     for (class, (least, most, calls)) in stub {
         let got = classes
             .get(&class)
@@ -425,8 +247,27 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
         [SHELL_STACK].into(),
         "the shell's share of the depth"
     );
+    let live_most = live_depths(&every, &live);
+    assert_eq!(
+        live_most,
+        STUB_LIVE.into(),
+        "the greatest depth of each class with interrupts on"
+    );
+    assert_eq!(
+        live.iter().map(|s| s.depth).max(),
+        Some(32),
+        "the deepest call with interrupts on"
+    );
 }
 
-/// The bytes on the stack when checking_idle's first instruction runs: the return address of
-/// scr_idle and the one of checking_idle.
-pub const SHELL_STACK: u16 = 4;
+/// The greatest depth of each class with interrupts on, the same on three runs: an interrupt adds
+/// up to four bytes to a step and two to a chunk, which the handler's pushes make.
+const STUB_LIVE: [(Class, u16); 7] = [
+    (Class::StepStays, 32),
+    (Class::StepRedraws, 28),
+    (Class::Chunk, 16),
+    (Class::EndsCrcRun, 30),
+    (Class::Finishing, 28),
+    (Class::AfterFinish, 10),
+    (Class::Other, 28),
+];
