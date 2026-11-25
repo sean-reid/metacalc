@@ -78,6 +78,16 @@ ST_ABSENT        = 7    ; no variable: open was not called, or the user deleted 
 ;                   whose value is 0, or `end` when there is none. ST_RANGE otherwise. Whole table
 ;                   bytes with no 0 in them are passed four assertions at a time. It destroys OP1
 ;                   to OP3.
+; store_next_not_one  in:  HL = from, DE = end, from at most end and end at most the count
+;              out: A = status; HL = the number of the first assertion from `from` below `end`
+;                   whose value is not 1, or `end` when there is none. ST_RANGE otherwise. Whole
+;                   table bytes of four 1s are passed four assertions at a time. It destroys OP1
+;                   to OP3.
+; store_prev_not_one  in:  HL = from, at most the count
+;              out: A = status; HL = the number of the last assertion below `from` whose value is
+;                   not 1, or FFFFh when there is none. ST_RANGE for a from above the count. Whole
+;                   table bytes of four 1s are passed four assertions at a time, going down. It
+;                   destroys OP1 to OP3.
 ; Padding: the unused bits of the last table byte are never read. store_set changes only the two
 ; bits it is given and leaves the padding as it is; store_reset and a newly
 ; created table zero it; store_count ignores it.

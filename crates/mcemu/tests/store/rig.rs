@@ -101,6 +101,10 @@ pub enum Cmd {
     AllOnes(&'static [u16]),
     /// The first 0 from here below this end.
     NextZero(u16, u16),
+    /// The first value other than 1 from here below this end.
+    NextNotOne(u16, u16),
+    /// The last value other than 1 below this number.
+    PrevNotOne(u16),
     /// Asks _EnoughMem for this many bytes: 0 when they are free, 1 when not.
     Room(u16),
 }
@@ -148,6 +152,10 @@ impl Cmd {
             Cmd::NextZero(from, end) => {
                 [&[22][..], &from.to_le_bytes(), &end.to_le_bytes()].concat()
             }
+            Cmd::NextNotOne(from, end) => {
+                [&[23][..], &from.to_le_bytes(), &end.to_le_bytes()].concat()
+            }
+            Cmd::PrevNotOne(from) => [&[24][..], &from.to_le_bytes()].concat(),
         }
     }
 }
@@ -200,7 +208,7 @@ fn record_len(at: &[u8]) -> usize {
     let (cmd, a) = (at[0], at[1]);
     match cmd {
         1 | 2 | 21 => 3,
-        4 | 22 => 4,
+        4 | 22..=24 => 4,
         6 | 17 => 10,
         10 if a == 0 => 6,
         18 => 67,

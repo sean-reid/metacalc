@@ -9,6 +9,8 @@ mod bare;
 #[allow(dead_code)]
 #[path = "fm/fixture.rs"]
 mod fixture;
+#[path = "store/kinds.rs"]
+mod kinds;
 #[path = "store/layout.rs"]
 mod layout;
 #[path = "store/marks.rs"]

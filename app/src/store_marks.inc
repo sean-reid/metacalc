@@ -1,5 +1,6 @@
 ; The mark lookups of store.inc, which includes this file: whether a list of assertions all hold
-; the value 1, and where the next unchecked assertion is.
+; the value 1, where the next unchecked assertion is, and where the next and the previous
+; assertion is whose value is not 1.
 SAO_HDR  = OP2
 SAO_CNT  = OP2 + 2
 SAO_LEFT = OP2 + 4
@@ -55,29 +56,9 @@ sao_fail:
 	ret
 
 store_next_zero:
-	push hl
-	push de
-	call store_data
-	pop de
-	pop ix
-	or a
+	call snz_enter
 	ret nz
-	ld (SNZ_HDR), hl
-	ld (SNZ_CNT), bc
-	ld (SNZ_END), de
-	ld h, b
-	ld l, c
-	or a
-	sbc hl, de
-	jr c, snz_range
-	push ix
-	pop hl
-	or a
-	sbc hl, de
-	jr z, snz_found
-	jr nc, snz_range
-	push ix
-	pop de
+	jr c, snz_found
 snz_next:
 	ld hl, (SNZ_END)
 	or a
@@ -134,6 +115,39 @@ snz_range:
 	ld a, ST_RANGE
 	ret
 
+; In: HL = from, DE = end, as store_next_zero takes them. Finds the table and keeps the scan's
+; fixed fields. Out: NZ and A = the status when the table is not usable or the range is not
+; allowed; else Z, and NC with DE = from, or C with DE = end when from is end.
+snz_enter:
+	push hl
+	push de
+	call store_data
+	pop de
+	pop ix
+	or a
+	ret nz
+	ld (SNZ_HDR), hl
+	ld (SNZ_CNT), bc
+	ld (SNZ_END), de
+	ld h, b
+	ld l, c
+	or a
+	sbc hl, de
+	jr c, snz_range
+	push ix
+	pop hl
+	or a
+	sbc hl, de
+	jr z, snz_same
+	jr nc, snz_range
+	push ix
+	pop de
+	xor a
+	ret
+snz_same:
+	scf
+	ret
+
 ; In: DE = an assertion number below the count. Out: HL = its table byte, C = its shift. Keeps DE.
 snz_at:
 	push de
@@ -154,4 +168,117 @@ snz_skip:
 	ld de, (SNZ_P)
 	add hl, de
 	ex de, hl
+	ret
+
+store_next_not_one:
+	call snz_enter
+	ret nz
+	jp c, snz_found
+snn_next:
+	ld hl, (SNZ_END)
+	or a
+	sbc hl, de
+	jp z, snz_found
+	ld (SNZ_LEFT), hl
+	call snz_at
+	ld a, c
+	or a
+	jr nz, snn_one
+	ld a, (SNZ_LEFT + 1)
+	or a
+	jr nz, snn_whole
+	ld a, (SNZ_LEFT)
+	cp 4
+	jr c, snn_one
+snn_whole:
+	ld bc, (SNZ_LEFT)
+	srl b
+	rr c
+	srl b
+	rr c
+	ld (SNZ_K), bc
+	ld (SNZ_P), de
+snn_byte:
+	ld a, (hl)
+	cp 55h
+	jr nz, snn_hit
+	inc hl
+	dec bc
+	ld a, b
+	or c
+	jr nz, snn_byte
+	call snz_skip
+	jr snn_next
+snn_hit:
+	call snz_skip
+snn_one:
+	call snz_at
+	call store_unpack
+	dec a
+	jp nz, snz_found
+	inc de
+	jr snn_next
+
+store_prev_not_one:
+	push hl
+	call store_data
+	pop de
+	or a
+	ret nz
+	ld (SNZ_HDR), hl
+	ld (SNZ_CNT), bc
+	ld h, b
+	ld l, c
+	or a
+	sbc hl, de
+	jp c, snz_range
+spn_step:
+	ld a, d
+	or e
+	jr z, spn_none
+	dec de
+	call snz_at
+	ld a, c
+	cp 6
+	jr nz, spn_one
+	ld (SNZ_P), de
+	ld b, d
+	ld c, e
+	srl b
+	rr c
+	srl b
+	rr c
+	inc bc
+	ld (SNZ_K), bc
+spn_byte:
+	ld a, (hl)
+	cp 55h
+	jr nz, spn_hit
+	dec hl
+	dec bc
+	ld a, b
+	or c
+	jr nz, spn_byte
+spn_none:
+	ld hl, 0FFFFh
+	xor a
+	ret
+spn_hit:
+	ld hl, (SNZ_K)
+	or a
+	sbc hl, bc
+	add hl, hl
+	add hl, hl
+	ex de, hl
+	ld hl, (SNZ_P)
+	or a
+	sbc hl, de
+	ex de, hl
+	call snz_at
+spn_one:
+	call store_unpack
+	dec a
+	jr z, spn_step
+	ex de, hl
+	xor a
 	ret
