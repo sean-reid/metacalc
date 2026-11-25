@@ -7,6 +7,8 @@
 mod app;
 #[path = "app_pages/builds.rs"]
 mod builds;
+#[path = "app_pages/built.rs"]
+mod built;
 #[path = "app_pages/cost_stages.rs"]
 mod cost_stages;
 #[path = "app_pages/counts.rs"]
@@ -47,6 +49,10 @@ mod idle_repeat;
 mod idle_results;
 #[path = "app_pages/idlerig.rs"]
 mod idlerig;
+#[path = "app_pages/idlerig_script.rs"]
+mod idlerig_script;
+#[path = "app_pages/idlerig_watch.rs"]
+mod idlerig_watch;
 #[path = "app_pages/keys.rs"]
 mod keys;
 #[path = "app_pages/numbers.rs"]
