@@ -193,6 +193,11 @@ impl Lib {
         self.assertions.len()
     }
 
+    /// The chunks of 16 KB a checksum run reads, the last one short.
+    pub fn chunks(&self) -> usize {
+        self.bytes.len().div_ceil(library::CHUNK)
+    }
+
     /// The stages, smallest first; there is always at least one.
     pub fn stages(&self) -> &[Stage] {
         &self.stages

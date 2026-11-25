@@ -176,6 +176,8 @@ pub enum State {
         total: usize,
         failed: usize,
         finished: bool,
+        /// The chunks read and the chunks in the library, while the checksum is being read.
+        reading: Option<(usize, usize)>,
     },
 }
 

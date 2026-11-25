@@ -63,6 +63,10 @@ ns_proofs:
 	.db UI_FONT_CH_4D, UI_FONT_CH_79, UI_FONT_CH_20, UI_FONT_CH_70, UI_FONT_CH_72, UI_FONT_CH_6F, UI_FONT_CH_6F, UI_FONT_CH_66, UI_FONT_CH_73, 0
 ns_pick:
 	.db UI_FONT_CH_50, UI_FONT_CH_69, UI_FONT_CH_63, UI_FONT_CH_6B, UI_FONT_CH_20, UI_FONT_CH_61, UI_FONT_CH_20, UI_FONT_CH_6C, UI_FONT_CH_69, UI_FONT_CH_62, UI_FONT_CH_72, UI_FONT_CH_61, UI_FONT_CH_72, UI_FONT_CH_79, 0
+ns_damaged:
+	.db UI_FONT_CH_4C, UI_FONT_CH_69, UI_FONT_CH_62, UI_FONT_CH_72, UI_FONT_CH_61, UI_FONT_CH_72, UI_FONT_CH_79, UI_FONT_CH_20, UI_FONT_CH_69, UI_FONT_CH_73, UI_FONT_CH_20, UI_FONT_CH_64, UI_FONT_CH_61, UI_FONT_CH_6D, UI_FONT_CH_61, UI_FONT_CH_67, UI_FONT_CH_65, UI_FONT_CH_64, 0
+ns_again:
+	.db UI_FONT_CH_49, UI_FONT_CH_6E, UI_FONT_CH_73, UI_FONT_CH_74, UI_FONT_CH_61, UI_FONT_CH_6C, UI_FONT_CH_6C, UI_FONT_CH_20, UI_FONT_CH_69, UI_FONT_CH_74, UI_FONT_CH_20, UI_FONT_CH_61, UI_FONT_CH_67, UI_FONT_CH_61, UI_FONT_CH_69, UI_FONT_CH_6E, 0
 ns_none:
 	.db 0
 ns_back:
@@ -74,6 +78,8 @@ STG_NOTICE_VERIFY	.equ APP_STAGE_DATA + (ns_verify - notice_block)
 STG_NOTICE_ERROR	.equ APP_STAGE_DATA + (ns_error - notice_block)
 STG_NOTICE_PROOFS	.equ APP_STAGE_DATA + (ns_proofs - notice_block)
 STG_NOTICE_PICK	.equ APP_STAGE_DATA + (ns_pick - notice_block)
+STG_NOTICE_DAMAGED	.equ APP_STAGE_DATA + (ns_damaged - notice_block)
+STG_NOTICE_AGAIN	.equ APP_STAGE_DATA + (ns_again - notice_block)
 STG_NOTICE_UNAVAILABLE	.equ APP_STAGE_DATA + (ns_unavailable - notice_block)
 STG_NOTICE_NONE	.equ APP_STAGE_DATA + (ns_none - notice_block)
 STG_NOTICE_BACK	.equ APP_STAGE_DATA + (ns_back - notice_block)
@@ -118,3 +124,39 @@ ABOUT_BLOCK_SIZE	.equ about_block_end - about_block
 #if ABOUT_BLOCK_SIZE > APP_STAGE_DATA_SIZE
  .error "the About screen's strings are longer than APP_STAGE_DATA_SIZE"
 #endif
+
+checking_block:
+kx_checking:
+	.db UI_FONT_CH_43, UI_FONT_CH_68, UI_FONT_CH_65, UI_FONT_CH_63, UI_FONT_CH_6B, UI_FONT_CH_69, UI_FONT_CH_6E, UI_FONT_CH_67, 0
+kx_all:
+	.db UI_FONT_CH_41, UI_FONT_CH_6C, UI_FONT_CH_6C, UI_FONT_CH_20, UI_FONT_CH_63, UI_FONT_CH_68, UI_FONT_CH_65, UI_FONT_CH_63, UI_FONT_CH_6B, UI_FONT_CH_65, UI_FONT_CH_64, 0
+kx_reading:
+	.db UI_FONT_CH_52, UI_FONT_CH_65, UI_FONT_CH_61, UI_FONT_CH_64, UI_FONT_CH_69, UI_FONT_CH_6E, UI_FONT_CH_67, UI_FONT_CH_20, UI_FONT_CH_6C, UI_FONT_CH_69, UI_FONT_CH_62, UI_FONT_CH_72, UI_FONT_CH_61, UI_FONT_CH_72, UI_FONT_CH_79, 0
+kx_pauses:
+	.db UI_FONT_CH_4F, UI_FONT_CH_4E, UI_FONT_CH_20, UI_FONT_CH_70, UI_FONT_CH_61, UI_FONT_CH_75, UI_FONT_CH_73, UI_FONT_CH_65, UI_FONT_CH_73, 0
+kx_none:
+	.db 0
+kx_stop:
+	.db UI_KEY_FONT_CH_53, UI_KEY_FONT_CH_74, UI_KEY_FONT_CH_6F, UI_KEY_FONT_CH_70, 0
+kx_done:
+	.db UI_KEY_FONT_CH_44, UI_KEY_FONT_CH_6F, UI_KEY_FONT_CH_6E, UI_KEY_FONT_CH_65, 0
+kx_keys_stop:
+	.dw STG_CK_STOP, STG_CK_NONE, STG_CK_NONE, STG_CK_NONE, STG_CK_NONE
+kx_keys_done:
+	.dw STG_CK_DONE, STG_CK_NONE, STG_CK_NONE, STG_CK_NONE, STG_CK_NONE
+checking_block_end:
+STG_CK_CHECKING	.equ APP_STAGE_DATA + (kx_checking - checking_block)
+STG_CK_ALL	.equ APP_STAGE_DATA + (kx_all - checking_block)
+STG_CK_READING	.equ APP_STAGE_DATA + (kx_reading - checking_block)
+STG_CK_PAUSES	.equ APP_STAGE_DATA + (kx_pauses - checking_block)
+STG_CK_NONE	.equ APP_STAGE_DATA + (kx_none - checking_block)
+STG_CK_STOP	.equ APP_STAGE_DATA + (kx_stop - checking_block)
+STG_CK_DONE	.equ APP_STAGE_DATA + (kx_done - checking_block)
+STG_CK_KEYS_STOP	.equ APP_STAGE_DATA + (kx_keys_stop - checking_block)
+STG_CK_KEYS_DONE	.equ APP_STAGE_DATA + (kx_keys_done - checking_block)
+CHECKING_BLOCK_SIZE	.equ checking_block_end - checking_block
+#if CHECKING_BLOCK_SIZE > APP_STAGE_DATA_SIZE
+ .error "the checking screen's strings are longer than APP_STAGE_DATA_SIZE"
+#endif
+ck_failed:
+	.db UI_FONT_CH_20, UI_FONT_CH_66, UI_FONT_CH_61, UI_FONT_CH_69, UI_FONT_CH_6C, UI_FONT_CH_65, UI_FONT_CH_64, 0

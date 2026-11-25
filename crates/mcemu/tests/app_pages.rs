@@ -9,6 +9,38 @@ mod app;
 mod builds;
 #[path = "app_pages/built.rs"]
 mod built;
+#[path = "app_pages/checking_chunks.rs"]
+mod checking_chunks;
+#[path = "app_pages/checking_cost.rs"]
+mod checking_cost;
+#[path = "app_pages/checking_depth.rs"]
+mod checking_depth;
+#[path = "app_pages/checking_errors.rs"]
+mod checking_errors;
+#[path = "app_pages/checking_exits.rs"]
+mod checking_exits;
+#[path = "app_pages/checking_flow.rs"]
+mod checking_flow;
+#[path = "app_pages/checking_frames.rs"]
+mod checking_frames;
+#[path = "app_pages/checking_idle.rs"]
+mod checking_idle;
+#[path = "app_pages/checking_keys.rs"]
+mod checking_keys;
+#[path = "app_pages/checking_leave.rs"]
+mod checking_leave;
+#[path = "app_pages/checking_real.rs"]
+mod checking_real;
+#[path = "app_pages/checking_real_cost.rs"]
+mod checking_real_cost;
+#[path = "app_pages/checking_real_exit.rs"]
+mod checking_real_exit;
+#[path = "app_pages/checking_returns.rs"]
+mod checking_returns;
+#[path = "app_pages/checking_rows.rs"]
+mod checking_rows;
+#[path = "app_pages/checkrig.rs"]
+mod checkrig;
 #[path = "app_pages/cost_stages.rs"]
 mod cost_stages;
 #[path = "app_pages/counts.rs"]
@@ -17,6 +49,8 @@ mod counts;
 mod data;
 #[path = "app_pages/draw.rs"]
 mod draw;
+#[path = "common/exit_kit.rs"]
+mod exit_kit;
 #[allow(dead_code)]
 #[path = "fm/fixture.rs"]
 mod fixture;
@@ -25,6 +59,8 @@ mod fixture;
 mod guard;
 #[path = "app_pages/idle.rs"]
 mod idle;
+#[path = "app_pages/idle_appon.rs"]
+mod idle_appon;
 #[path = "app_pages/idle_bounce.rs"]
 mod idle_bounce;
 #[path = "app_pages/idle_held.rs"]
@@ -55,6 +91,8 @@ mod idlerig_script;
 mod idlerig_watch;
 #[path = "app_pages/keys.rs"]
 mod keys;
+#[path = "app_pages/keys_walk.rs"]
+mod keys_walk;
 #[path = "app_pages/numbers.rs"]
 mod numbers;
 #[path = "common/refs.rs"]

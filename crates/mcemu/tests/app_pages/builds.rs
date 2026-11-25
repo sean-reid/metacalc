@@ -46,12 +46,13 @@ pub fn rows(built: &Built) -> usize {
     built.stages.len().max(usize::from(built.library.is_some())) + 1
 }
 
-/// The kind of screen each of the model's states is in the app's frames. The theorem list and the
-/// checking screen do not exist yet: the app shows a notice in their place.
+/// The kind of screen each of the model's states is in the app's frames. The theorem list does not
+/// exist yet: the app shows a notice in its place.
 pub fn kind_of(state: &State) -> u8 {
     match state {
         State::Libraries { .. } => KIND_LIBRARIES,
-        State::Notice { .. } | State::List { .. } | State::Checking { .. } => KIND_NOTICE,
+        State::Notice { .. } | State::List { .. } => KIND_NOTICE,
+        State::Checking { .. } => KIND_CHECKING,
         State::About => KIND_ABOUT,
         State::StageAbout { .. } => KIND_STAGE,
         other => panic!("the model is on {other:?}"),
@@ -92,12 +93,11 @@ pub fn press(shell: &mut Shell, ui: &mut mcui::Ui, built: &Built, scan: u8, at: 
     press_keys(shell, ui, built, &[scan], Some(key_of(scan)), at)
 }
 
-/// The frame the app shows for what the model shows: the same, except that for the theorem list
-/// and the checking screen, which the app does not have, it is the notice that stands in for them.
+/// The frame the app shows for what the model shows: the same, except that for the theorem list,
+/// which the app does not have, it is the notice that stands in for it.
 fn shown(ui: &mcui::Ui, built: &Built) -> Vec<u8> {
     match ui.state() {
         State::List { stage, .. } => model::unavailable(built.stage_name(stage)),
-        State::Checking { .. } => model::unavailable("Verify"),
         _ => model::frame(ui),
     }
 }
@@ -107,7 +107,7 @@ fn shown(ui: &mcui::Ui, built: &Built) -> Vec<u8> {
 /// key, and checks what it did: the frame, the depth, the kind of the top screen and whether a
 /// frame was blitted, which it is exactly when the screen changed. On the Libraries screen the
 /// frame holds the cursor and the first row shown the model has. Returns whether the model is on
-/// a screen the app stands in for.
+/// a screen the app stands in for, which is the theorem list.
 pub fn press_keys(
     shell: &mut Shell,
     ui: &mut mcui::Ui,
@@ -139,5 +139,5 @@ pub fn press_keys(
             "{at}: the position in the frame"
         );
     }
-    matches!(ui.state(), State::List { .. } | State::Checking { .. })
+    matches!(ui.state(), State::List { .. })
 }

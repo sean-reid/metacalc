@@ -288,4 +288,24 @@ fn main() {
     s.shot("43-proving-id-tree");
     s.press(&[Key::F5, Key::F4]);
     s.shot("44-proving-id-after-undo");
+
+    s.ui = calculator(&libdir, &stages, 0);
+    s.home();
+    s.press(&[Key::F2]);
+    s.ui.begin_reading();
+    s.shot("45-checking-ring-reading-start");
+    for _ in 0..14 {
+        s.ui.read_chunk();
+    }
+    s.shot("46-checking-ring-reading-midway");
+    while !matches!(
+        s.ui.state(),
+        State::Checking {
+            reading: Some((read, chunks)),
+            ..
+        } if read + 1 == chunks
+    ) {
+        s.ui.read_chunk();
+    }
+    s.shot("47-checking-ring-reading-last-chunk");
 }

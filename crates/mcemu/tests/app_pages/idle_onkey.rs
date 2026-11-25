@@ -114,13 +114,23 @@ fn on_with_a_handled_key_down_lets_the_work_go_on(real: bool) {
     });
     rig.step(5_000);
     let begun = rig.state().logged;
+    assert_eq!(rig.app_on(), 0, "the handled key cleared APP_ON");
     rig.m().press_key(Machine::KEY_ON);
     assert_eq!(rig.scan_code(), 0, "the OS holds no code for Down");
     let mut answers = Vec::new();
-    for _ in 0..4 {
+    let on_byte = rig.shell.app.label("APP_ON");
+    for i in 0..4 {
+        if i > 0 {
+            rig.m().load_ram(on_byte, &[0]);
+        }
         let answer = rig.answer_at_the_idle_point();
         answers.push((answer, rig.state().logged, rig.held(), rig.shell.scr_keys()));
         rig.step(1_000);
+        assert_eq!(
+            rig.app_on(),
+            1,
+            "idle point {i}: the shell set APP_ON again"
+        );
     }
     println!(
         "{} OS, byte set: (answer, slices begun, byte, scr_key calls) at four idle points {answers:?}",

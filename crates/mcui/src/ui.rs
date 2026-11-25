@@ -180,6 +180,31 @@ impl Ui {
         }
     }
 
+    /// Puts the open checking screen in its reading phase, as it opens on a library with no status
+    /// table: the checksum is read, a chunk for each [`Ui::read_chunk`], before any assertion is
+    /// checked. False when no checking screen is open.
+    pub fn begin_reading(&mut self) -> bool {
+        let Some(Screen::Checking(screen)) = self.stack.last_mut() else {
+            return false;
+        };
+        screen.begin_reading();
+        true
+    }
+
+    /// Reads one more chunk on a checking screen in its reading phase, which goes on to the
+    /// assertions after the last chunk. False when no checking screen is open or it is not
+    /// reading.
+    pub fn read_chunk(&mut self) -> bool {
+        let ctx = Ctx {
+            libs: &self.libs,
+            proofs: &self.proofs,
+        };
+        match self.stack.last_mut() {
+            Some(Screen::Checking(screen)) => screen.read_chunk(&ctx),
+            _ => false,
+        }
+    }
+
     /// The screen as 96 by 64 pixels.
     pub fn frame(&self) -> Bitmap {
         self.draw(Canvas::default()).into_bitmap()

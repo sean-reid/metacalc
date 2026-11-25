@@ -11,6 +11,9 @@ use crate::ui_support::{pack, same_frame};
 const F4: u8 = 0x32;
 const GRAPH_DRAW: u8 = 0x01;
 const ST_BAD: u8 = 3;
+/// The OS's cxCurApp, offset from 8000h, and its value at the home screen.
+const CX_CUR_APP: usize = 0x059A;
+const HOME: u8 = 0x40;
 
 /// The Libraries screen, a key it ignores with the font zeroed, and the exit, on the OS with
 /// `built`.
@@ -159,24 +162,24 @@ fn on_the_reference_os_the_libraries_enter_reads_a_table_and_the_frame_is_the_mo
 /// screen, which holds every variable's type, name, place and archive page, is the same before the
 /// app starts and after it has shown its screens and been left, so nothing was created, deleted,
 /// archived or moved.
-mod vat {
-    use crate::realos::RealOs;
+pub mod vat {
+    use mcemu::Machine;
 
     const P_TEMP: u16 = 0x982E;
     const PROG_PTR: u16 = 0x9830;
     const SYM_TABLE: u16 = 0xFE66;
     const APPVAR: u8 = 0x15;
 
-    fn bytes(os: &mut RealOs, addr: u16, len: usize) -> Vec<u8> {
+    fn bytes(os: &mut Machine, addr: u16, len: usize) -> Vec<u8> {
         (usize::from(addr)..usize::from(addr) + len)
             .map(|a| {
                 let page = if a < 0xC000 { 1 } else { 0 };
-                os.m.ram_page(page)[a % 0x4000]
+                os.ram_page(page)[a % 0x4000]
             })
             .collect()
     }
 
-    fn word(os: &mut RealOs, addr: u16) -> u16 {
+    fn word(os: &mut Machine, addr: u16) -> u16 {
         let b = bytes(os, addr, 2);
         u16::from_le_bytes([b[0], b[1]])
     }
@@ -184,7 +187,7 @@ mod vat {
     /// Every variable as (type, name, archive page, data pointer, size word or 0 if archived),
     /// from the symbol table: entries of 9 bytes with three name bytes as far as progPtr, then
     /// entries with a name length as far as pTemp.
-    pub fn list(os: &mut RealOs) -> Vec<(u8, Vec<u8>, u8, u16, u16)> {
+    pub fn list(os: &mut Machine) -> Vec<(u8, Vec<u8>, u8, u16, u16)> {
         let (named, low) = (word(os, PROG_PTR), word(os, P_TEMP));
         let (mut at, mut out) = (SYM_TABLE, vec![]);
         while at > low {
@@ -202,6 +205,14 @@ mod vat {
         out
     }
 
+    /// The bytes of the status table after its size word, if it is in RAM.
+    pub fn table(os: &mut Machine) -> Option<Vec<u8>> {
+        let entry = list(os)
+            .into_iter()
+            .find(|e| e.0 == APPVAR && e.1 == b"MCSTAT" && e.2 == 0)?;
+        Some(bytes(os, entry.3 + 2, usize::from(entry.4)))
+    }
+
     pub fn has_table(list: &[(u8, Vec<u8>, u8, u16, u16)]) -> bool {
         list.iter().any(|e| e.0 == APPVAR && e.1 == b"MCSTAT")
     }
@@ -212,29 +223,108 @@ mod vat {
 fn on_the_reference_os_the_screens_with_no_table_leave_the_whole_variable_list_as_it_was() {
     use crate::builds::three_stages;
     use crate::realos::{KEY_2, KEY_APPS, RealOs};
-    use crate::shellrig::{CLEAR, DOWN, ENTER, F1, F2, F3, UP};
+    use crate::shellrig::{CLEAR, DOWN, ENTER, F1, F3, UP};
     for built in [with_library(), three_stages()] {
         let mut os = RealOs::boot(&built.file);
-        let before = vat::list(&mut os);
+        let before = vat::list(&mut os.m);
         assert!(!vat::has_table(&before), "no table to begin with");
         println!("{} variables compared", before.len());
         assert!(before.len() > 1, "the OS has variables to compare");
         os.tap(KEY_APPS, 150, 600);
         os.tap(KEY_2, 150, 300);
         os.run_ms(500);
-        for key in [
-            F1, CLEAR, F2, CLEAR, F3, CLEAR, DOWN, ENTER, CLEAR, F3, CLEAR, UP,
-        ] {
+        let ctx = |os: &mut RealOs| os.ram(CX_CUR_APP, 1)[0];
+        let depth = usize::from(built.label("scr_count") - 0x8000);
+        let app = ctx(&mut os);
+        assert_ne!(app, HOME, "the app's context is current at its start");
+        assert_eq!(os.ram(depth, 1)[0], 1, "Libraries is the one screen open");
+        // Every key goes to the app: the screens open and close, and the OS's home screen, whose
+        // keys make variables, never sees one. CLEAR on Libraries is the last key.
+        let keys = [
+            (F1, 2),
+            (CLEAR, 1),
+            (F4, 1),
+            (F3, 2),
+            (CLEAR, 1),
+            (DOWN, 1),
+            (ENTER, 2),
+            (CLEAR, 1),
+            (F3, 2),
+            (CLEAR, 1),
+            (UP, 1),
+        ];
+        for (key, open) in keys {
             os.tap(key, 150, 400);
+            assert_eq!(ctx(&mut os), app, "key {key:02X}: the app is still running");
+            assert_eq!(os.ram(depth, 1)[0], open, "key {key:02X}: screens open");
         }
         os.tap(CLEAR, 150, 1500);
+        assert_eq!(ctx(&mut os), HOME, "CLEAR on Libraries left the app");
         assert!(
             os.screen() != libraries_pixels(built.shown().as_ref()),
             "left"
         );
-        let after = vat::list(&mut os);
+        let after = vat::list(&mut os.m);
         assert!(!vat::has_table(&after), "the screens made no table");
         assert_eq!(after, before, "the variables, their places and their sizes");
+    }
+}
+
+/// F2 on My proofs opens the notice that asks for a library and makes no table and no variable:
+/// the OS has the names it had before the app started and no others. F4, which no screen answers,
+/// is run beside it.
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn on_the_reference_os_f2_on_my_proofs_makes_no_table() {
+    use crate::builds::{rows, three_stages};
+    use crate::realos::{KEY_2, KEY_APPS, RealOs};
+    use crate::shellrig::{CLEAR, DOWN, F2, F4, KIND_NOTICE, NOTICE_PICK};
+    for built in [with_library(), three_stages()] {
+        for key in [F4, F2] {
+            let mut os = RealOs::boot(&built.file);
+            let before = vat::list(&mut os.m);
+            os.tap(KEY_APPS, 150, 600);
+            os.tap(KEY_2, 150, 300);
+            os.run_ms(500);
+            for _ in 1..rows(built) {
+                os.tap(DOWN, 150, 400);
+            }
+            let depth = usize::from(built.label("scr_count") - 0x8000);
+            let stack = usize::from(built.label("SCR_STACK") - 0x8000);
+            assert_eq!(os.ram(depth, 1)[0], 1, "Libraries is the one screen open");
+            os.tap(key, 150, 400);
+            let open = os.ram(depth, 1)[0];
+            let top = os.ram(stack + 16, 3);
+            if key == F2 {
+                assert_eq!(open, 2, "F2 reached the app: a screen is pushed");
+                assert_eq!(
+                    top,
+                    [KIND_NOTICE, NOTICE_PICK, 0],
+                    "the pick notice is on top"
+                );
+            } else {
+                assert_eq!(open, 1, "F4 is ignored: nothing is pushed");
+            }
+            os.tap(CLEAR, 150, 400);
+            os.tap(CLEAR, 150, 1500);
+            let after = vat::list(&mut os.m);
+            assert!(!vat::has_table(&after), "key {key:02X}: no table");
+            let names = |l: &[(u8, Vec<u8>, u8, u16, u16)]| -> Vec<(u8, Vec<u8>)> {
+                l.iter().map(|e| (e.0, e.1.clone())).collect()
+            };
+            let kept = names(&before);
+            let now = names(&after);
+            assert!(
+                kept.iter().all(|e| now.contains(e)),
+                "key {key:02X}: a variable is gone"
+            );
+            let made: Vec<_> = now.iter().filter(|e| !kept.contains(e)).collect();
+            assert!(
+                made.is_empty(),
+                "{} stages, key {key:02X}: made {made:?}",
+                built.stages.len()
+            );
+        }
     }
 }
 

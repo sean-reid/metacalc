@@ -295,3 +295,119 @@ fn loading_a_shipped_library_demotes_no_checked_entry() {
         assert_eq!(lib.checked(), total, "{name}");
     }
 }
+
+/// A library of 6000 axioms, several chunks of 16 KB.
+fn many_chunks() -> Vec<u8> {
+    let mut src = String::from("$c wff |- $.\n$v ph $.\nwph $f wff ph $.\n");
+    for n in 1..=6000 {
+        src.push_str(&format!("ax{n} $a |- ph $.\n"));
+    }
+    support::pack_all(&support::db(&src)).expect("the library packs")
+}
+
+fn reading(state: State) -> (usize, usize, usize, bool, Option<(usize, usize)>) {
+    match state {
+        State::Checking {
+            done,
+            total,
+            failed,
+            finished,
+            reading,
+            ..
+        } => (done, total, failed, finished, reading),
+        other => panic!("not the checking screen: {other:?}"),
+    }
+}
+
+#[test]
+fn a_library_with_no_table_is_read_a_chunk_at_a_time_before_its_assertions() {
+    let bytes = many_chunks();
+    let chunks = bytes.len().div_ceil(1 << 14);
+    assert_eq!(chunks, 10, "the library is ten chunks, the last one short");
+    assert_ne!(bytes.len() % (1 << 14), 0);
+    let mut ui = unchecked_ui(bytes);
+    assert!(!ui.begin_reading(), "no checking screen is open");
+    assert!(!ui.read_chunk());
+    press(&mut ui, &[F2]);
+    assert!(!ui.read_chunk(), "the screen is not reading yet");
+    assert_eq!(reading(ui.state()).4, None);
+    assert!(ui.begin_reading());
+    assert_eq!(reading(ui.state()), (0, 6000, 0, false, Some((0, 10))));
+    check(&ui, "checking-reading-start");
+    for read in 1..=3 {
+        assert!(ui.read_chunk());
+        assert_eq!(reading(ui.state()).4, Some((read, 10)));
+    }
+    check(&ui, "checking-reading-midway");
+    for read in 4..=10 {
+        assert!(ui.read_chunk());
+        let want = if read < 10 { Some((read, 10)) } else { None };
+        assert_eq!(reading(ui.state()).4, want);
+        if read == 9 {
+            check(&ui, "checking-reading-last-chunk");
+        }
+    }
+    assert_eq!(reading(ui.state()), (0, 6000, 0, false, None));
+    assert!(!ui.read_chunk());
+    assert_eq!(ui.step_check(), CheckStep::Checked);
+}
+
+#[test]
+fn the_reading_phase_has_no_assertion_label_and_no_failed_count_and_the_stop_key() {
+    let mut ui = unchecked_ui(many_chunks());
+    press(&mut ui, &[F2]);
+    ui.begin_reading();
+    let frame = ui.frame();
+    let font = mcglyph::Font::builtin();
+    assert!(support::text_at(&frame, 1, 0, "logic", true));
+    assert!(support::text_at(
+        &frame,
+        95 - font.text_width("0/6000"),
+        0,
+        "0/6000",
+        true
+    ));
+    let width = font.text_width("Reading library");
+    assert!(support::text_at(
+        &frame,
+        (96 - width) / 2,
+        1,
+        "Reading library",
+        false
+    ));
+    assert!(
+        (24..32).all(|y| (0..96).all(|x| !frame.get(x, y))),
+        "the row of the assertion's label is blank"
+    );
+    let failed = font.text_width("0 failed");
+    assert!(!support::text_at(
+        &frame,
+        (96 - failed) / 2,
+        5,
+        "0 failed",
+        false
+    ));
+    let pauses = font.text_width("ON pauses");
+    assert!(support::text_at(
+        &frame,
+        (96 - pauses) / 2,
+        6,
+        "ON pauses",
+        false
+    ));
+    assert!(support::key_label_is(&frame, 0, "Stop"));
+}
+
+#[test]
+fn stop_pops_the_reading_phase_and_opening_the_screen_again_starts_with_the_assertions() {
+    for pause in [F1, Clear, On] {
+        let mut ui = unchecked_ui(many_chunks());
+        press(&mut ui, &[F2]);
+        ui.begin_reading();
+        assert!(ui.read_chunk());
+        ui.press_settled(pause);
+        assert_eq!(ui.depth(), 1);
+        press(&mut ui, &[F2]);
+        assert_eq!(reading(ui.state()), (0, 6000, 0, false, None));
+    }
+}

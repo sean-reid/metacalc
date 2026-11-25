@@ -267,19 +267,28 @@ pub fn off(os: &mut RealOs) {
 /// Runs `bcall(_ErrMemory)` where the OS waits in `_GetKey`, with the registers and the stack it
 /// has there, from three bytes in free RAM, and gives the error screen time to draw.
 pub fn raise_error(os: &mut RealOs) {
-    let regs = os.m.regs();
-    os.m.load_ram(ERROR_CALL, &[0xEF, 0xB9, 0x44]);
-    os.m.set_regs(&Regs {
-        pc: ERROR_CALL,
-        ..regs
-    });
+    raise_error_in(&mut os.m);
     os.run_ms(1500);
 }
 
+/// Starts the `bcall(_ErrMemory)` on `m` where it stands, without running it.
+pub fn raise_error_in(m: &mut Machine) {
+    let regs = m.regs();
+    m.load_ram(ERROR_CALL, &[0xEF, 0xB9, 0x44]);
+    m.set_regs(&Regs {
+        pc: ERROR_CALL,
+        ..regs
+    });
+}
+
 pub fn lit_rows(os: &mut RealOs, rows: std::ops::Range<usize>) -> bool {
-    os.screen()[rows.start * 96 * 8..rows.end * 96 * 8]
-        .iter()
-        .any(|&p| p)
+    lit_rows_on(&mut os.m, rows)
+}
+
+/// Whether any pixel of the text rows `rows` of the screen is lit.
+pub fn lit_rows_on(m: &mut Machine, rows: std::ops::Range<usize>) -> bool {
+    let lcd = m.lcd();
+    (rows.start * 8..rows.end * 8).any(|y| lcd.row(y).iter().any(|&p| p))
 }
 
 /// The error screen draws its title and 1:Quit and nothing below row 2.
