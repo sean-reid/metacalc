@@ -12,12 +12,12 @@ use crate::shellrig::*;
 use crate::ui_support::same_frame;
 use mcemu::{Machine, Stop};
 
-/// A run of the proofs library with its table, stopped at the blit of the third frame, 32 steps in.
+/// A run of the proofs library with its table, stopped at the blit of the second frame, EVERY steps in.
 fn mid_check() -> Run {
     let built = proofs();
     let mut run = Run::boot(built, Some(&empty_table(built)));
     run.m().press_key(F2);
-    for _ in 0..3 {
+    for _ in 0..2 {
         run.next_blit();
     }
     run.m().release_key(F2);
@@ -38,7 +38,7 @@ fn on_between_two_steps_and_on_held_through_a_kernel_call_both_stop_the_check() 
     // Between two steps: the blit is followed by the idle point.
     let mut run = mid_check();
     let (done, verifies) = (settled(&mut run), run.verifies());
-    assert_eq!(done, 32);
+    assert_eq!(done, EVERY);
     run.m().press_key(Machine::KEY_ON);
     run.next_blit();
     assert_eq!(run.depth(), 1, "popped");
@@ -84,7 +84,7 @@ fn a_key_the_screen_ignores_loses_no_step() {
         run.shell.idle_calls(),
         run.shell.key_waiting_calls(),
         run.verifies(),
-        run.shell.scr_keys(),
+        run.scr_keys(),
     );
     run.tap(F4);
     let mut last = run.next_frame();
@@ -93,11 +93,7 @@ fn a_key_the_screen_ignores_loses_no_step() {
         last = run.next_frame();
     }
     let n = last.1.unwrap().len();
-    assert_eq!(
-        run.shell.scr_keys(),
-        keys + 1,
-        "the key reached the screen once"
-    );
+    assert_eq!(run.scr_keys(), keys + 1, "the key reached the screen once");
     let verified = run.verifies() - verifies;
     let idled = run.shell.idle_calls() - idles;
     let waited = run.shell.key_waiting_calls() - waits;
@@ -160,18 +156,18 @@ fn leaving_without_check_end_leaves_the_job_where_it_was_and_a_relaunch_carries_
         assert_eq!(run.next_number(), 0, "{name}: no check_end has run");
         leave(&mut run, how);
         let held = settled(&mut run);
-        assert!(held >= 32 && held < n, "{name}: part way, {held} of {n}");
+        assert!(held >= EVERY && held < n, "{name}: part way, {held} of {n}");
         assert_eq!(run.next_number(), 0, "{name}: leaving wrote no next");
         run.m().launch(BASE).expect("the app launches again");
         assert_eq!(run.m().run_app(3_000_000).stop, Stop::Limit);
-        assert_eq!(run.shell.top_kind(), KIND_LIBRARIES, "{name}");
+        assert_eq!(run.top_kind(), KIND_LIBRARIES, "{name}");
         let values = run.values().unwrap();
         assert_eq!(
             values.iter().filter(|&&v| v != 0).count(),
             held,
             "{name}: the table kept"
         );
-        let frame = run.shell.app.frame();
+        let frame = run.frame();
         same_frame(
             &name,
             &frame,
@@ -230,7 +226,7 @@ fn a_power_down_after_the_end_is_refreshed_from_the_table_with_no_crc_run() {
     shows("after the power down", &frame, &want);
     assert_eq!(run.crc_calls(), crc, "no CRC run");
     assert_eq!(run.verifies(), verifies, "no step");
-    assert_eq!((run.depth(), run.shell.top_kind()), (2, KIND_CHECKING));
+    assert_eq!((run.depth(), run.top_kind()), (2, KIND_CHECKING));
     assert_eq!(run.values().unwrap(), values, "the table is as it was");
     run.run(2_000_000);
     run.tap(CLEAR);
@@ -429,7 +425,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
                             _ => r.m().load_ram(length, &[0, 0, 0]),
                         }
                     }
-                    n > 3 && r.shell.top_kind() == KIND_NOTICE
+                    n > 3 && r.top_kind() == KIND_NOTICE
                 },
             );
             assert_eq!(
@@ -446,7 +442,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
             &mut run,
             speed,
             |_, _| {},
-            |r, _, _| r.shell.top_kind() == KIND_NOTICE,
+            |r, _, _| r.top_kind() == KIND_NOTICE,
         );
         assert_eq!(
             all5.last().map(|s| (s.action, s.carry)),
@@ -477,13 +473,14 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
         }
     }
     println!("the deepest idle call wrote {deepest} bytes below the stack pointer of its call");
+    assert_eq!(deepest, 32, "the stack the header gives");
 }
 
 /// The most T-states scr_draw and ui_blit may take together for each frame of the checking screen,
 /// cold (the strings copied to APP_STAGE first) and warm, a little above what they take.
-const FRAME_READING: u32 = 300_000;
-const FRAME_STEPS: u32 = 300_000;
-const FRAME_FINISHED: u32 = 300_000;
+const FRAME_READING: u32 = 132_000;
+const FRAME_STEPS: u32 = 152_000;
+const FRAME_FINISHED: u32 = 127_500;
 
 /// What one frame costs, printed on every run and held to a ceiling: the reading frame, a frame of
 /// the steps with a label and a failure, and the finished frame, each cold and warm.
@@ -517,7 +514,7 @@ fn a_frame_of_the_checking_screen_costs_what_its_ceiling_says() {
     let built = proofs();
     let mut run = Run::boot(built, Some(&empty_table(built)));
     run.m().press_key(F2);
-    for _ in 0..3 {
+    for _ in 0..2 {
         run.next_blit();
     }
     stage(&mut run, "steps", FRAME_STEPS);

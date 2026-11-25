@@ -58,7 +58,7 @@ fn a_crc_that_is_wrong_replaces_the_screen_with_the_damaged_notice_and_makes_no_
         let chunks = chunks_of(built);
         assert_eq!(chunks > 1, many);
         let mut run = Run::boot(built, None);
-        let libraries = run.shell.app.frame();
+        let libraries = run.frame();
         run.m().press_key(F2);
         let mut frames = 0;
         let notice = loop {
@@ -77,8 +77,8 @@ fn a_crc_that_is_wrong_replaces_the_screen_with_the_damaged_notice_and_makes_no_
             "the push, crc_begin and each chunk, then the notice"
         );
         same_frame("the damaged notice", &notice, &damaged_frame());
-        assert_eq!((run.depth(), run.shell.top_kind()), (2, KIND_NOTICE));
-        assert_eq!(run.shell.frames()[1][..3], [KIND_NOTICE, NOTICE_DAMAGED, 0]);
+        assert_eq!((run.depth(), run.top_kind()), (2, KIND_NOTICE));
+        assert_eq!(run.frames()[1][..3], [KIND_NOTICE, NOTICE_DAMAGED, 0]);
         assert_eq!(run.raw_table(), None, "no table was created");
         run.tap(CLEAR);
         let back = run.next_blit();
@@ -103,7 +103,7 @@ fn a_table_lost_between_two_steps_replaces_the_screen_with_the_error_notice() {
         let built = proofs();
         let mut run = Run::boot(built, Some(&empty_table(built)));
         run.m().press_key(F2);
-        for _ in 0..3 {
+        for _ in 0..2 {
             run.next_blit();
         }
         run.m().release_key(F2);
@@ -121,15 +121,8 @@ fn a_table_lost_between_two_steps_replaces_the_screen_with_the_error_notice() {
             before,
             "{what}: no step was verified without its mark"
         );
-        assert_eq!(
-            (run.depth(), run.shell.top_kind()),
-            (2, KIND_NOTICE),
-            "{what}"
-        );
-        assert_eq!(
-            run.shell.frames()[1][..3],
-            [KIND_NOTICE, NOTICE_ERROR, status]
-        );
+        assert_eq!((run.depth(), run.top_kind()), (2, KIND_NOTICE), "{what}");
+        assert_eq!(run.frames()[1][..3], [KIND_NOTICE, NOTICE_ERROR, status]);
         match what {
             "deleted" => assert_eq!(run.raw_table(), None, "nothing is created"),
             _ => assert!(run.m().read_var(crate::table::VAR).unwrap().archived),
@@ -148,7 +141,7 @@ fn a_table_lost_between_two_steps_replaces_the_screen_with_the_error_notice() {
 fn a_library_the_kernel_refuses_at_begin_shows_the_error_notice_over_libraries() {
     let built = proofs();
     let mut run = Run::boot(built, Some(&empty_table(built)));
-    let libraries = run.shell.app.frame();
+    let libraries = run.frame();
     let length = run.shell.app.label("lr_length");
     let saved = run.m().read_ram(length, 3);
     run.m().load_ram(length, &[0, 0, 0]);
@@ -156,11 +149,8 @@ fn a_library_the_kernel_refuses_at_begin_shows_the_error_notice_over_libraries()
     let status = 0x01;
     run.tap(F2);
     let frame = run.next_blit();
-    assert_eq!((run.depth(), run.shell.top_kind()), (2, KIND_NOTICE));
-    assert_eq!(
-        run.shell.frames()[1][..3],
-        [KIND_NOTICE, NOTICE_ERROR, status]
-    );
+    assert_eq!((run.depth(), run.top_kind()), (2, KIND_NOTICE));
+    assert_eq!(run.frames()[1][..3], [KIND_NOTICE, NOTICE_ERROR, status]);
     same_frame("the kernel's refusal", &frame, &error_frame(status));
     run.m().load_ram(length, &saved);
     run.tap(CLEAR);
@@ -183,12 +173,12 @@ fn on_during_kernel_init_opens_the_screen_and_the_first_idle_call_pops_it() {
     let library = pack_all(&parse(&src));
     let built = around("slow-init", &library);
     let mut run = Run::boot(built, None);
-    let libraries = run.shell.app.frame();
+    let libraries = run.frame();
     run.m().press_key(F2);
     run.run_to("far_kernel_init", WAIT);
     run.m().press_key(Machine::KEY_ON);
     let frame = run.next_blit();
-    assert_eq!(run.shell.top_kind(), KIND_CHECKING, "the screen is open");
+    assert_eq!(run.top_kind(), KIND_CHECKING, "the screen is open");
     assert_ne!(frame, libraries);
     let back = run.next_blit();
     same_frame("Libraries after the first idle call", &back, &libraries);

@@ -51,9 +51,9 @@ fn run_on_a_stage_checks_every_assertion_once_and_ends_on_all_checked() {
     // The reading frames, the steps' frames and the last: one for the push, one for crc_begin,
     // then the single chunk ends the run and the steps' first frame follows.
     let chunks = chunks_of(built);
-    let steps = (0..n).step_by(16).count();
+    let steps = (0..n).step_by(EVERY).count();
     assert_eq!(frames, chunks + 1 + steps + 1, "the frames of a whole run");
-    assert_eq!(run.shell.depth(), 2);
+    assert_eq!(run.depth(), 2);
     assert_eq!(
         run.next_number(),
         u16::try_from(n).unwrap(),
@@ -87,7 +87,7 @@ fn running(at: At) -> Run {
     run.m().press_key(F2);
     run.next_blit();
     run.m().release_key(F2);
-    for _ in 0..2 {
+    for _ in 0..1 {
         run.next_blit();
     }
     run
@@ -101,16 +101,16 @@ pub fn stopped_and_run_again(mut run: Run, at: At, stop: Option<u8>, end: usize)
     let name = format!("{at:?} stopped by {stop:02X?}");
     let built = run.built;
     assert_eq!(run.depth(), 2, "{name}: the screen is open");
-    let keys = run.shell.scr_keys();
+    let keys = run.scr_keys();
     let verifies = run.verifies();
     match stop {
         Some(key) => run.tap(key),
         None => run.m().press_key(Machine::KEY_ON),
     }
     run.run(30_000_000);
-    let frame = run.shell.app.frame();
+    let frame = run.frame();
     assert_eq!(run.depth(), 1, "{name}: popped");
-    assert_eq!(run.shell.top_kind(), KIND_LIBRARIES, "{name}");
+    assert_eq!(run.top_kind(), KIND_LIBRARIES, "{name}");
     assert_eq!(
         run.verifies(),
         verifies,
@@ -139,18 +139,14 @@ pub fn stopped_and_run_again(mut run: Run, at: At, stop: Option<u8>, end: usize)
         }
     }
     if stop.is_none() {
-        let blits = run.shell.blits();
+        let blits = run.blits();
         run.run(3_000_000);
         assert_eq!(run.depth(), 1, "{name}: the app did not leave");
-        assert_eq!(run.shell.blits(), blits, "{name}: nothing was drawn");
+        assert_eq!(run.blits(), blits, "{name}: nothing was drawn");
         run.m().release_key(Machine::KEY_ON);
         run.run(3_000_000);
-        assert_eq!(run.shell.blits(), blits, "{name}: still nothing");
-        assert_eq!(
-            run.shell.scr_keys(),
-            keys,
-            "{name}: no key reached Libraries"
-        );
+        assert_eq!(run.blits(), blits, "{name}: still nothing");
+        assert_eq!(run.scr_keys(), keys, "{name}: no key reached Libraries");
         run.tap(F4);
     }
     assert_eq!(run.depth(), 1);
@@ -210,7 +206,7 @@ fn a_check_of_more_than_256_assertions_runs_to_the_end() {
         frames += 1;
         let values = values.expect("the table is whole at every frame");
         assert_eq!(
-            run.shell.top_kind(),
+            run.top_kind(),
             KIND_CHECKING,
             "frame {frames}: the screen is open"
         );

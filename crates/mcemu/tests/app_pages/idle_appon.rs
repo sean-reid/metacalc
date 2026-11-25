@@ -111,7 +111,11 @@ fn a_held_key_leaves_app_on_alone(real: bool) {
     let mut seen = Vec::new();
     rig.watch(600_000, |r| seen.push(r.app_on()));
     rig.m().release_key(DOWN);
-    assert_eq!(rig.shell.scr_keys(), keys + 1, "the key was taken once");
+    let taken = rig.shell.scr_keys() - keys;
+    assert!(
+        taken == 1 || (real && taken > 1),
+        "the key was taken once, or on the reference OS again at each auto repeat: {taken}"
+    );
     assert!(
         seen.len() > 100,
         "{} polls while the key was down",

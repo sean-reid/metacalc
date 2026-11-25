@@ -134,10 +134,10 @@ fn every_frame_of_a_check_with_a_failure_is_the_models_and_the_last_says_all_che
         assert!(done.len() < 40, "the check never ended");
     }
     println!("frames at {done:?}, failed {failed_seen:?}, of {n} assertions");
-    let want: Vec<usize> = (0..n).step_by(16).chain([n]).collect();
+    let want: Vec<usize> = (0..n).step_by(EVERY).chain([n]).collect();
     assert_eq!(
         done, want,
-        "a frame every 16 steps and a last one when it is done"
+        "a frame every EVERY steps and a last one when it is done"
     );
     assert_eq!(failed_seen.last(), Some(&failing), "the failure is shown");
     assert!(failed_seen.iter().any(|&f| f == 0) && failed_seen.last().unwrap() > &0);
@@ -164,7 +164,7 @@ fn libraries_after_a_stop_shows_the_models_counts_for_the_table() {
         let built = proofs();
         let mut run = Run::boot(built, Some(&empty_table(built)));
         run.m().press_key(F2);
-        for _ in 0..3 {
+        for _ in 0..2 {
             run.next_blit();
         }
         run.m().release_key(F2);

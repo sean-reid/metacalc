@@ -19,6 +19,8 @@ const CRC_CHUNKS: u16 = 0xBC04;
 const HOOKS_AT: u16 = 0xBC10;
 /// The most T-states one wait for a frame or a key may take.
 pub const WAIT: u32 = 600_000_000;
+/// The steps between two frames of the screen, CKS_EVERY in screen_checking.inc.
+pub const EVERY: usize = 32;
 
 pub struct Run {
     pub shell: Shell,
@@ -74,19 +76,55 @@ impl Run {
         }
     }
 
+    /// Bytes of bank B, read from RAM page 1 whatever the OS has mapped there at the moment.
+    pub fn peek(&mut self, at: u16, len: usize) -> Vec<u8> {
+        assert!((0x8000..0xC000).contains(&at) && usize::from(at) + len <= 0xC000);
+        let from = usize::from(at - 0x8000);
+        self.m().ram_page(1)[from..from + len].to_vec()
+    }
+
+    pub fn blits(&mut self) -> u16 {
+        let b = self.peek(BLITS, 2);
+        u16::from_le_bytes([b[0], b[1]])
+    }
+
+    pub fn scr_keys(&mut self) -> u16 {
+        let b = self.peek(SCR_KEYS, 2);
+        u16::from_le_bytes([b[0], b[1]])
+    }
+
+    /// The frame on the canvas.
+    pub fn frame(&mut self) -> Vec<u8> {
+        self.peek(UI_FRAME, FRAME_LEN)
+    }
+
+    /// The open frames, bottom first.
+    pub fn frames(&mut self) -> Vec<Vec<u8>> {
+        let depth = self.depth();
+        let stack = self.shell.app.label("SCR_STACK");
+        self.peek(stack, 16 * depth)
+            .chunks(16)
+            .map(<[u8]>::to_vec)
+            .collect()
+    }
+
+    pub fn top_kind(&mut self) -> u8 {
+        self.frames().last().unwrap()[0]
+    }
+
     pub fn m(&mut self) -> &mut Machine {
         &mut self.shell.app.m
     }
 
     /// How many times the kernel's verify has been called since the boot.
     pub fn verifies(&mut self) -> u16 {
-        let b = self.m().read_ram(VERIFIES, 2);
+        let b = self.peek(VERIFIES, 2);
         u16::from_le_bytes([b[0], b[1]])
     }
 
     /// How many times the kernel's crc_begin and crc_chunk have been called since the boot.
     pub fn crc_calls(&mut self) -> (u16, u16) {
-        let b = self.m().read_ram(CRC_BEGINS, 4);
+        let b = self.peek(CRC_BEGINS, 4);
         (
             u16::from_le_bytes([b[0], b[1]]),
             u16::from_le_bytes([b[2], b[3]]),
@@ -95,13 +133,13 @@ impl Run {
 
     pub fn word(&mut self, label: &str) -> u16 {
         let at = self.shell.app.label(label);
-        let b = self.m().read_ram(at, 2);
+        let b = self.peek(at, 2);
         u16::from_le_bytes([b[0], b[1]])
     }
 
     pub fn byte(&mut self, label: &str) -> u8 {
         let at = self.shell.app.label(label);
-        self.m().read_ram(at, 1)[0]
+        self.peek(at, 1)[0]
     }
 
     /// Runs to the instruction at `label` on the app's page and leaves the machine there, within
@@ -134,7 +172,7 @@ impl Run {
     /// the machine moves one instruction past the blit's entry.
     pub fn next_blit(&mut self) -> Vec<u8> {
         self.run_to("far_ui_blit", WAIT);
-        let frame = self.m().read_ram(UI_FRAME, FRAME_LEN);
+        let frame = self.peek(UI_FRAME, FRAME_LEN);
         self.m().resume(1);
         frame
     }
@@ -207,7 +245,8 @@ impl Run {
     }
 
     pub fn depth(&mut self) -> usize {
-        self.shell.depth()
+        let at = self.shell.app.label("scr_count");
+        usize::from(self.peek(at, 1)[0])
     }
 }
 

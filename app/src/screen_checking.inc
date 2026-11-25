@@ -32,6 +32,10 @@
 ;                  notice returns to Libraries. Interrupts and the speed are as the shell had them:
 ;                  the job never changes either and nothing here does.
 ; checking_key     F1 and CLEAR call check_end and pop; every other key stays.
+; Stack: the deepest idle call, its return address counted, writes 32 bytes below the stack pointer
+; it was called with, which the tests measure over every status; an interrupt adds the handler's.
+; Cost of a frame, scr_draw and ui_blit, cold: 130,171 T-states reading, 149,463 in the steps with a
+; label and 125,129 finished; each is 1,921 less warm.
 ; checking_draw    clears the canvas, stages checking_block, builds the strings in APP_TEXT and draws.
 ;                  done is N less the first count of the job and failed the third. The label is the
 ;                  library's label of the first assertion with value 0 from the job's cursor ck_i, found
@@ -42,7 +46,7 @@ CKP_STEP	.equ 0
 CKP_READ	.equ 1
 CKP_DONE	.equ 2
 CKP_LEAVE	.equ 3
-CKS_EVERY	.equ 16
+CKS_EVERY	.equ 32
 CKS_LABEL_MAX	.equ 48
 
 CKS_PHASE	.equ APP_TEXT
