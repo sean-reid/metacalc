@@ -93,6 +93,24 @@ mod idlerig_watch;
 mod keys;
 #[path = "app_pages/keys_walk.rs"]
 mod keys_walk;
+#[path = "app_pages/list_cost.rs"]
+mod list_cost;
+#[path = "app_pages/list_depth.rs"]
+mod list_depth;
+#[path = "app_pages/list_frames.rs"]
+mod list_frames;
+#[path = "app_pages/list_keys.rs"]
+mod list_keys;
+#[path = "app_pages/list_power.rs"]
+mod list_power;
+#[path = "app_pages/list_preview.rs"]
+mod list_preview;
+#[path = "app_pages/list_real.rs"]
+mod list_real;
+#[path = "app_pages/list_rig.rs"]
+mod list_rig;
+#[path = "app_pages/list_wait.rs"]
+mod list_wait;
 #[path = "app_pages/numbers.rs"]
 mod numbers;
 #[path = "common/refs.rs"]

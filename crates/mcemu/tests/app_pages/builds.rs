@@ -46,12 +46,12 @@ pub fn rows(built: &Built) -> usize {
     built.stages.len().max(usize::from(built.library.is_some())) + 1
 }
 
-/// The kind of screen each of the model's states is in the app's frames. The theorem list does not
-/// exist yet: the app shows a notice in its place.
+/// The kind of screen each of the model's states is in the app's frames.
 pub fn kind_of(state: &State) -> u8 {
     match state {
         State::Libraries { .. } => KIND_LIBRARIES,
-        State::Notice { .. } | State::List { .. } => KIND_NOTICE,
+        State::Notice { .. } => KIND_NOTICE,
+        State::List { .. } => KIND_LIST,
         State::Checking { .. } => KIND_CHECKING,
         State::About => KIND_ABOUT,
         State::StageAbout { .. } => KIND_STAGE,
@@ -93,13 +93,41 @@ pub fn press(shell: &mut Shell, ui: &mut mcui::Ui, built: &Built, scan: u8, at: 
     press_keys(shell, ui, built, &[scan], Some(key_of(scan)), at)
 }
 
-/// The frame the app shows for what the model shows: the same, except that for the theorem list,
-/// which the app does not have, it is the notice that stands in for it.
-fn shown(ui: &mcui::Ui, built: &Built) -> Vec<u8> {
-    match ui.state() {
-        State::List { stage, .. } => model::unavailable(built.stage_name(stage)),
-        _ => model::frame(ui),
+/// Runs the app until the preview of the open list is settled and the frame it asks for is blitted,
+/// and does the same idle work on the model. Nothing happens when no list is open or the preview is
+/// settled already.
+pub fn settle_list(shell: &mut Shell, ui: &mut mcui::Ui) {
+    if shell.top_kind() != KIND_LIST || !matches!(ui.state(), State::List { .. }) {
+        return;
     }
+    let (blits, pending) = (shell.blits(), list_preview(shell) == 0);
+    let mut spent = 0u32;
+    while list_preview(shell) == 0 {
+        assert_eq!(shell.app.m.run_app(20_000).stop, mcemu::Stop::Limit);
+        spent += 20_000;
+        assert!(spent < 60_000_000, "the preview never settled");
+    }
+    assert_eq!(shell.app.m.run_app(300_000).stop, mcemu::Stop::Limit);
+    let drew = ui.idle();
+    assert_eq!(
+        shell.blits(),
+        blits + u16::from(pending && drew),
+        "the frame of the preview"
+    );
+}
+
+/// The list screen's preview state in RAM: 0 pending, 1 laid out, 2 nothing to show.
+pub fn list_preview(shell: &mut Shell) -> u8 {
+    let at = shell.app.label("LV_PREVIEW");
+    shell.app.m.read_ram(at, 1)[0]
+}
+
+/// Presses `scan` on a stage row, which opens its list in the app and the model, and runs the
+/// list to its settled frame.
+pub fn open_list(shell: &mut Shell, ui: &mut mcui::Ui, built: &Built, scan: u8, at: &str) {
+    press(shell, ui, built, scan, at);
+    assert_eq!(shell.top_kind(), KIND_LIST, "{at}: the list");
+    settle_list(shell, ui);
 }
 
 /// Presses the scancodes in turn on the shell, the last being the key itself and the others
@@ -111,12 +139,13 @@ fn shown(ui: &mcui::Ui, built: &Built) -> Vec<u8> {
 pub fn press_keys(
     shell: &mut Shell,
     ui: &mut mcui::Ui,
-    built: &Built,
+    _built: &Built,
     scans: &[u8],
     key: Option<Key>,
     at: &str,
 ) -> bool {
-    let (before, depth, blits) = (shown(ui, built), ui.depth(), shell.blits());
+    settle_list(shell, ui);
+    let (before, depth, blits) = (model::frame(ui), ui.depth(), shell.blits());
     for &scan in &scans[..scans.len() - 1] {
         shell.tap_modifier(scan);
     }
@@ -124,13 +153,22 @@ pub fn press_keys(
     if let Some(key) = key {
         ui.press(key);
     }
-    let want = shown(ui, built);
+    let pressed = model::frame(ui);
+    let changed = pressed != before || ui.depth() != depth;
+    let mut idled = false;
+    if matches!(ui.state(), State::List { .. }) && list_preview(shell) != 0 {
+        idled = ui.idle();
+    }
+    let want = model::frame(ui);
     let at = format!("{at}, after {scans:02X?}");
     shell.shows(&at, &want);
     assert_eq!(shell.depth(), ui.depth(), "{at}: the depth");
     assert_eq!(shell.top_kind(), kind_of(&ui.state()), "{at}: the screen");
-    let changed = want != before || ui.depth() != depth;
-    assert_eq!(shell.blits(), blits + u16::from(changed), "{at}: the blits");
+    assert_eq!(
+        shell.blits(),
+        blits + u16::from(changed) + u16::from(idled),
+        "{at}: the blits"
+    );
     assert_eq!(shell.lcd_bytes(), want, "{at}: the LCD");
     if let State::Libraries { cursor, top } = ui.state() {
         assert_eq!(

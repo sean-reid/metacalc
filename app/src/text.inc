@@ -2,7 +2,8 @@
 ; into APP_STAGE, where the canvas can read it with its own page mapped, unless the area already
 ; holds that block. app_digit turns a nibble into the glyph code of its hex digit, for a status
 ; shown as two digits, app_dec16 writes a number in decimal and app_strcpy copies a string of glyph
-; codes. The glyph codes are the main font's (UI_FONT_CH_ equates of font.inc).
+; codes, and app_label_text writes an assertion's label as glyph codes. The glyph codes are the main
+; font's (UI_FONT_CH_ equates of font.inc).
 
 ; In: HL = a block on this page, BC = its length. Copies it to APP_STAGE_DATA and sets the tag to HL,
 ; unless the tag is HL already; a length of 0 does nothing. A block longer than APP_STAGE_DATA_SIZE
@@ -134,3 +135,74 @@ app_strcpy:
 	or a
 	jr nz, app_strcpy
 	ret
+
+APP_LABEL_MAX	.equ 48
+
+#ifdef LIBRARY
+
+; In: HL = an assertion number, DE = where to write APP_LABEL_MAX + 1 bytes. Out: A = 0 and the first
+; APP_LABEL_MAX characters of its label as glyph codes ended by 0, a character with no glyph being
+; the question mark, or the reader's status with nothing written. Reads through FM_SCRATCH.
+; Destroys BC DE HL.
+app_label_text:
+	push de
+	ld de, FM_SCRATCH
+	call far_lib_label
+	pop de
+	or a
+	ret nz
+	ld a, b
+	cp APP_LABEL_MAX + 1
+	jr c, al_count
+	ld a, APP_LABEL_MAX
+al_count:
+	ld b, a
+	ld hl, FM_SCRATCH
+al_glyph:
+	ld a, b
+	or a
+	jr z, al_cut
+	push bc
+	ld a, (hl)
+	inc hl
+	push hl
+	sub 20h
+	cp 95
+	jr c, al_known
+	ld a, 3Fh - 20h
+al_known:
+	ld c, a
+	ld b, 0
+	ld hl, app_glyphs
+	add hl, bc
+	ld a, (hl)
+	ld (de), a
+	inc de
+	pop hl
+	pop bc
+	dec b
+	jr al_glyph
+al_cut:
+	xor a
+	ld (de), a
+	ret
+
+; The glyph code of each printable ASCII character from the space to the tilde.
+app_glyphs:
+	.db UI_FONT_CH_20, UI_FONT_CH_21, UI_FONT_CH_22, UI_FONT_CH_23, UI_FONT_CH_24, UI_FONT_CH_25
+	.db UI_FONT_CH_26, UI_FONT_CH_27, UI_FONT_CH_28, UI_FONT_CH_29, UI_FONT_CH_2A, UI_FONT_CH_2B
+	.db UI_FONT_CH_2C, UI_FONT_CH_2D, UI_FONT_CH_2E, UI_FONT_CH_2F, UI_FONT_CH_30, UI_FONT_CH_31
+	.db UI_FONT_CH_32, UI_FONT_CH_33, UI_FONT_CH_34, UI_FONT_CH_35, UI_FONT_CH_36, UI_FONT_CH_37
+	.db UI_FONT_CH_38, UI_FONT_CH_39, UI_FONT_CH_3A, UI_FONT_CH_3B, UI_FONT_CH_3C, UI_FONT_CH_3D
+	.db UI_FONT_CH_3E, UI_FONT_CH_3F, UI_FONT_CH_40, UI_FONT_CH_41, UI_FONT_CH_42, UI_FONT_CH_43
+	.db UI_FONT_CH_44, UI_FONT_CH_45, UI_FONT_CH_46, UI_FONT_CH_47, UI_FONT_CH_48, UI_FONT_CH_49
+	.db UI_FONT_CH_4A, UI_FONT_CH_4B, UI_FONT_CH_4C, UI_FONT_CH_4D, UI_FONT_CH_4E, UI_FONT_CH_4F
+	.db UI_FONT_CH_50, UI_FONT_CH_51, UI_FONT_CH_52, UI_FONT_CH_53, UI_FONT_CH_54, UI_FONT_CH_55
+	.db UI_FONT_CH_56, UI_FONT_CH_57, UI_FONT_CH_58, UI_FONT_CH_59, UI_FONT_CH_5A, UI_FONT_CH_5B
+	.db UI_FONT_CH_5C, UI_FONT_CH_5D, UI_FONT_CH_5E, UI_FONT_CH_5F, UI_FONT_CH_60, UI_FONT_CH_61
+	.db UI_FONT_CH_62, UI_FONT_CH_63, UI_FONT_CH_64, UI_FONT_CH_65, UI_FONT_CH_66, UI_FONT_CH_67
+	.db UI_FONT_CH_68, UI_FONT_CH_69, UI_FONT_CH_6A, UI_FONT_CH_6B, UI_FONT_CH_6C, UI_FONT_CH_6D
+	.db UI_FONT_CH_6E, UI_FONT_CH_6F, UI_FONT_CH_70, UI_FONT_CH_71, UI_FONT_CH_72, UI_FONT_CH_73
+	.db UI_FONT_CH_74, UI_FONT_CH_75, UI_FONT_CH_76, UI_FONT_CH_77, UI_FONT_CH_78, UI_FONT_CH_79
+	.db UI_FONT_CH_7A, UI_FONT_CH_7B, UI_FONT_CH_7C, UI_FONT_CH_7D, UI_FONT_CH_7E
+#endif

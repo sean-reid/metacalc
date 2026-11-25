@@ -62,6 +62,9 @@
 ;   4 stage       a stage's name, title and counts (screen_stage.inc); CLEAR and ENTER go back
 ;   5 checking    runs the check job (check.inc) on a stage through the idle point, with the bar
 ;                 and counts moving; F1, CLEAR and ON stop it (screen_checking.inc)
+;   6 list        the assertions of a stage with their marks and a preview of the cursor's
+;                 conclusion that idle lays out once the row has been still; ENTER, F1 to F4 and F5
+;                 push a notice, CLEAR goes back (screen_list.inc)
 ; Stages. With LIBRARY the build's stage table (stages.inc, from app/Makefile) says what the rows
 ; are; STAGE_COUNT is 0 without one. The table is on this page, so the screens that draw it copy
 ; the strings they need to APP_TEXT. The status table store (store.inc) is linked in on this page,
@@ -340,6 +343,8 @@ STAGE_COUNT .equ 0
 #include "screen_about.inc"
 #include "screen_stage.inc"
 #include "screen_checking.inc"
+#include "screen_list.inc"
+#include "screen_list_draw.inc"
 #ifdef LIBRARY
 #include "store.inc"
 #include "check_ram.inc"

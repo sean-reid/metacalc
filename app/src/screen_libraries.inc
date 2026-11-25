@@ -20,10 +20,10 @@
 ;              error notice, else libs_counts's, then the strings are built.
 ; libs_key     UP and DOWN move the cursor, stopping at the ends, and the first row shown moves as
 ;              little as it must to keep the cursor on screen; a key that moves nothing is SCR_STAY.
-;              ENTER and F1 push the notice of the list (NOTICE_LIST, titled by the stage) or, on
-;              My proofs, NOTICE_PROOFS; F2 pushes KIND_CHECKING for a stage or, on My proofs, NOTICE_PICK; F3
-;              pushes KIND_STAGE for a stage of a library with more than one stage, else About;
-;              CLEAR pops, which leaves the app. Every other key stays.
+;              ENTER and F1 push KIND_LIST for a stage or, on My proofs, NOTICE_PROOFS; F2 pushes
+;              KIND_CHECKING for a stage or, on My proofs, NOTICE_PICK; F3 pushes KIND_STAGE for a
+;              stage of a library with more than one stage, else About; CLEAR pops, which leaves
+;              the app. Every other key stays.
 ; libs_draw    clears the canvas, stages libs_block and draws the rows.
 
 LIBS_VISIBLE	.equ 6
@@ -306,9 +306,9 @@ libs_open:
 	ld c, 0
 	cp STAGE_COUNT
 	jr nc, libs_notice
-	ld b, NOTICE_LIST
-	ld c, a
-	jr libs_notice
+	ld b, a
+	ld a, KIND_LIST
+	jp screen_push
 
 libs_run:
 	inc hl

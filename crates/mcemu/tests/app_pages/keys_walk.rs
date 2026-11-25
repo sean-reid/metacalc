@@ -1,11 +1,10 @@
 //! One session, one key after another, through every kind of screen, the checking screen included:
 //! the screen and the model are compared after each key.
 
-use crate::app::*;
 use crate::builds::*;
-use crate::keys::{opens_a_check, pops_a_notice, settled_table};
+use crate::keys::{opens_a_check, settled_table};
 use crate::shellrig::*;
-use mcui::{Key, State};
+use mcui::State;
 
 const WALK: [u8; 34] = [
     F3, CLEAR, ENTER, F1, F4, CLEAR, DOWN, F3, ENTER, F1, CLEAR, DOWN, F4, F1, UP, F3, CLEAR, DOWN,
@@ -20,9 +19,8 @@ const WALK_CHECKING: [u8; 34] = [
 
 /// One session, one key after another, the screen and the model compared after each: a fixed walk
 /// through every kind of screen, then a pseudo-random stream of keys, never CLEAR on the Libraries
-/// screen, which leaves. A stage's list is a notice in the app; while one is open the oracle is the
-/// notice's rule (see above) and the model rests on the Libraries screen under it, which is rebuilt
-/// by replaying the keys it took. With `checking` the walk and the stream press F2 where they
+/// screen, which leaves. A stage's list is left with CLEAR as soon as it has opened and been
+/// compared; its own keys are the list tests'. With `checking` the walk and the stream press F2 where they
 /// press F4 otherwise, on a table with every assertion settled so that a check has nothing to
 /// verify, and the model follows the checking screen as it does the others.
 fn long_walk(checking: bool) {
@@ -48,8 +46,6 @@ fn long_walk(checking: bool) {
         };
         let mut shell = booted(built, Some(&data));
         let mut ui = model::ui(built, &status);
-        let mut log: Vec<Key> = Vec::new();
-        let mut stand_in: Option<String> = None;
         let mut kinds = std::collections::BTreeSet::new();
         let mut seed = 0x9E37_79B9_u32;
         let mut keys = walk.to_vec();
@@ -67,37 +63,27 @@ fn long_walk(checking: bool) {
                 ui.state(),
                 State::Libraries { cursor, .. } if cursor < built.stages.len()
             );
-            if let Some(title) = stand_in.clone() {
-                shell.tap(key);
-                if pops_a_notice(Some(key_of(key))) {
-                    stand_in = None;
-                    shell.shows(&at, &model::frame(&ui));
-                    assert_eq!(shell.depth(), 1, "{at}: popped");
-                } else {
-                    shell.shows(&at, &model::unavailable(&title));
-                    assert_eq!(shell.depth(), 2, "{at}: stays");
-                }
-            } else if checking && key == F2 && on_stage {
+            if checking && key == F2 && on_stage {
                 opens_a_check(&mut shell, &mut ui, &at);
-                log.push(Key::F2);
             } else {
                 if key == CLEAR && shell.depth() == 1 {
                     continue;
                 }
                 if press(&mut shell, &mut ui, built, key, &at) {
-                    stand_in = state_title(built, &ui);
-                    ui = model::ui(built, &status);
-                    for &k in &log {
-                        ui.press(k);
-                    }
-                } else {
-                    log.push(key_of(key));
+                    kinds.insert(shell.top_kind());
+                    press(&mut shell, &mut ui, built, CLEAR, &at);
                 }
             }
             kinds.insert(shell.top_kind());
         }
-        let mut all: std::collections::BTreeSet<u8> =
-            [KIND_LIBRARIES, KIND_NOTICE, KIND_ABOUT, KIND_STAGE].into();
+        let mut all: std::collections::BTreeSet<u8> = [
+            KIND_LIBRARIES,
+            KIND_NOTICE,
+            KIND_ABOUT,
+            KIND_STAGE,
+            KIND_LIST,
+        ]
+        .into();
         if checking {
             all.insert(KIND_CHECKING);
         }
@@ -120,12 +106,4 @@ fn a_long_walk_through_every_kind_of_screen_in_one_session_is_the_models_at_ever
 #[test]
 fn a_long_walk_that_opens_the_checking_screen_is_the_models_at_every_step() {
     long_walk(true);
-}
-
-/// The title of the notice that stands in for the model's theorem list: the stage's name.
-fn state_title(built: &Built, ui: &mcui::Ui) -> Option<String> {
-    match ui.state() {
-        mcui::State::List { stage, .. } => Some(built.stage_name(stage).to_string()),
-        _ => None,
-    }
 }

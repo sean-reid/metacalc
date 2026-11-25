@@ -125,6 +125,42 @@ ABOUT_BLOCK_SIZE	.equ about_block_end - about_block
  .error "the About screen's strings are longer than APP_STAGE_DATA_SIZE"
 #endif
 
+list_block:
+lq_none:
+	.db UI_FONT_CH_6E, UI_FONT_CH_6F, UI_FONT_CH_6E, UI_FONT_CH_65, 0
+lq_blank:
+	.db 0
+lq_open:
+	.db UI_KEY_FONT_CH_4F, UI_KEY_FONT_CH_70, UI_KEY_FONT_CH_65, UI_KEY_FONT_CH_6E, 0
+lq_find:
+	.db UI_KEY_FONT_CH_46, UI_KEY_FONT_CH_69, UI_KEY_FONT_CH_6E, UI_KEY_FONT_CH_64, 0
+lq_kind:
+	.db UI_KEY_FONT_CH_4B, UI_KEY_FONT_CH_69, UI_KEY_FONT_CH_6E, UI_KEY_FONT_CH_64, 0
+lq_try:
+	.db UI_KEY_FONT_CH_54, UI_KEY_FONT_CH_72, UI_KEY_FONT_CH_79, 0
+lq_sect:
+	.db UI_KEY_FONT_CH_53, UI_KEY_FONT_CH_65, UI_KEY_FONT_CH_63, UI_KEY_FONT_CH_74, 0
+lq_keys:
+	.dw STG_LIST_OPEN, STG_LIST_FIND, STG_LIST_KIND, STG_LIST_TRY, STG_LIST_SECT
+lq_keys_plain:
+	.dw STG_LIST_OPEN, STG_LIST_FIND, STG_LIST_KIND, STG_LIST_TRY, STG_LIST_BLANK
+list_block_end:
+STG_LIST_NONE	.equ APP_STAGE_DATA + (lq_none - list_block)
+STG_LIST_BLANK	.equ APP_STAGE_DATA + (lq_blank - list_block)
+STG_LIST_OPEN	.equ APP_STAGE_DATA + (lq_open - list_block)
+STG_LIST_FIND	.equ APP_STAGE_DATA + (lq_find - list_block)
+STG_LIST_KIND	.equ APP_STAGE_DATA + (lq_kind - list_block)
+STG_LIST_TRY	.equ APP_STAGE_DATA + (lq_try - list_block)
+STG_LIST_SECT	.equ APP_STAGE_DATA + (lq_sect - list_block)
+STG_LIST_KEYS	.equ APP_STAGE_DATA + (lq_keys - list_block)
+STG_LIST_KEYS_PLAIN	.equ APP_STAGE_DATA + (lq_keys_plain - list_block)
+LIST_BLOCK_SIZE	.equ list_block_end - list_block
+#if LIST_BLOCK_SIZE > APP_STAGE_DATA_SIZE
+ .error "the list screen's strings are longer than APP_STAGE_DATA_SIZE"
+#endif
+lq_flat:
+	.db UI_FONT_CH_66, UI_FONT_CH_6C, UI_FONT_CH_61, UI_FONT_CH_74, UI_FONT_CH_20, 0
+
 checking_block:
 kx_checking:
 	.db UI_FONT_CH_43, UI_FONT_CH_68, UI_FONT_CH_65, UI_FONT_CH_63, UI_FONT_CH_6B, UI_FONT_CH_69, UI_FONT_CH_6E, UI_FONT_CH_67, 0

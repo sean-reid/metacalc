@@ -224,6 +224,10 @@ fn a_failing_enter_pushes_the_error_notice_with_the_status_in_hex() {
             };
             for &open in opens {
                 let mut shell = shown(built, Enter::FailNotices(status));
+                let mut ui = model::ui(built, &[]);
+                for _ in 0..rows(built) - 1 {
+                    press(&mut shell, &mut ui, built, DOWN, "to My proofs");
+                }
                 let first = shell.frames();
                 shell.tap(open);
                 let at = format!("{status:02X} after {open:02X}");
@@ -237,9 +241,9 @@ fn a_failing_enter_pushes_the_error_notice_with_the_status_in_hex() {
                     want,
                     "{at}: the stack the failed push left, and the error"
                 );
-                assert_eq!(shell.blits(), 2, "{at}");
+                assert_eq!(shell.blits(), 2 + (rows(built) - 1) as u16, "{at}");
                 shell.tap(CLEAR);
-                shell.shows(&format!("{at}, back"), &model::libraries(built));
+                shell.shows(&format!("{at}, back"), &model::frame(&ui));
                 assert_eq!(shell.frames(), first);
             }
         }
@@ -302,6 +306,9 @@ fn the_app_leaves_when_the_error_notices_own_push_fails() {
         };
         for &open in opens {
             let mut shell = shown(built, Enter::FailAll(0x5A));
+            for _ in 0..rows(built) - 1 {
+                shell.tap(DOWN);
+            }
             shell.dirty_dead();
             shell.leave(open);
             shell.assert_regions_put_away();

@@ -97,7 +97,7 @@ fn every_screen_of_the_app_idles_to_nothing_and_changes_no_byte() {
     }
     let staged = three_stages();
     idle_after(staged, &[F3], KIND_STAGE, "a stage");
-    idle_after(staged, &[F1], KIND_NOTICE, "a notice");
+    idle_after(staged, &[F1, F1], KIND_NOTICE, "a notice");
 }
 
 /// The screen `keys` open on the reference OS is the one the stub shows for the same keys, and it
@@ -124,7 +124,7 @@ fn on_the_reference_os_every_screen_of_the_app_idles_to_nothing() {
     idle_on_the_reference_os(with_library(), &[], KIND_LIBRARIES, "Libraries");
     idle_on_the_reference_os(with_library(), &[F3], KIND_ABOUT, "About");
     idle_on_the_reference_os(three_stages(), &[F3], KIND_STAGE, "a stage");
-    idle_on_the_reference_os(three_stages(), &[F1], KIND_NOTICE, "a notice");
+    idle_on_the_reference_os(three_stages(), &[F1, F1], KIND_NOTICE, "a notice");
 }
 
 /// An idle routine that writes one byte of the kernel's RAM page, at `at`, and answers SCR_STAY

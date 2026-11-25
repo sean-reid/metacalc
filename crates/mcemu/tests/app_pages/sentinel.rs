@@ -34,6 +34,9 @@ fn an_intact_sentinel_runs_no_refresh_and_no_blit_for_an_ignored_key() {
     for built in [plain(), with_library()] {
         let mut shell = booted(built, Enter::Real);
         for open in [None, Some(F3), Some(CLEAR), Some(F1)] {
+            if open == Some(F1) && built.library.is_some() {
+                continue;
+            }
             if let Some(open) = open {
                 shell.tap(open);
             }
