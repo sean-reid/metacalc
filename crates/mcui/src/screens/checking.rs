@@ -13,11 +13,34 @@ pub(crate) const DONE: [&str; 5] = ["Done", "", "", "", ""];
 pub struct Checking {
     library: usize,
     stage: usize,
+    /// While the library's checksum is being read: the chunks read so far. A library with no
+    /// status table is read once before any assertion is checked.
+    reading: Option<usize>,
 }
 
 impl Checking {
     pub fn open(library: usize, stage: usize) -> Checking {
-        Checking { library, stage }
+        Checking {
+            library,
+            stage,
+            reading: None,
+        }
+    }
+
+    /// Puts the screen in the reading phase, no chunk read yet.
+    pub fn begin_reading(&mut self) {
+        self.reading = Some(0);
+    }
+
+    /// Reads one more chunk of the library: false when the screen is not reading. The screen
+    /// goes on to the assertions after the last chunk.
+    pub fn read_chunk(&mut self, ctx: &Ctx) -> bool {
+        let Some(read) = self.reading else {
+            return false;
+        };
+        let read = read + 1;
+        self.reading = (read < ctx.libs[self.library].chunks()).then_some(read);
+        true
     }
 
     pub fn library(&self) -> usize {
@@ -37,6 +60,15 @@ impl Checking {
 
     pub fn draw(&self, ctx: &Ctx, canvas: &mut Canvas) {
         let lib = &ctx.libs[self.library];
+        if let Some(read) = self.reading {
+            let name = &lib.stages()[self.stage].name;
+            canvas.title(name, &format!("0/{}", lib.counts(self.stage).total));
+            canvas.text_centered(1, "Reading library");
+            canvas.bar(2, read, lib.chunks());
+            canvas.text_centered(6, "ON pauses");
+            canvas.soft_keys(KEYS);
+            return;
+        }
         let counts = lib.counts(self.stage);
         let (done, total) = (counts.settled, counts.total);
         canvas.title(&lib.stages()[self.stage].name, &format!("{done}/{total}"));
@@ -66,10 +98,19 @@ impl Checking {
         State::Checking {
             library: self.library,
             stage: self.stage,
-            done: counts.settled,
+            done: if self.reading.is_some() {
+                0
+            } else {
+                counts.settled
+            },
             total: counts.total,
-            failed: counts.failed_checks,
-            finished: lib.next_unchecked_in(self.stage).is_none(),
+            failed: if self.reading.is_some() {
+                0
+            } else {
+                counts.failed_checks
+            },
+            finished: self.reading.is_none() && lib.next_unchecked_in(self.stage).is_none(),
+            reading: self.reading.map(|read| (read, lib.chunks())),
         }
     }
 }
