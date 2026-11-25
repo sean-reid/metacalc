@@ -220,7 +220,7 @@ pub mod vat {
 fn on_the_reference_os_the_screens_with_no_table_leave_the_whole_variable_list_as_it_was() {
     use crate::builds::three_stages;
     use crate::realos::{KEY_2, KEY_APPS, RealOs};
-    use crate::shellrig::{CLEAR, DOWN, ENTER, F1, F2, F3, UP};
+    use crate::shellrig::{CLEAR, DOWN, ENTER, F1, F3, UP};
     for built in [with_library(), three_stages()] {
         let mut os = RealOs::boot(&built.file);
         let before = vat::list(&mut os.m);
@@ -231,7 +231,7 @@ fn on_the_reference_os_the_screens_with_no_table_leave_the_whole_variable_list_a
         os.tap(KEY_2, 150, 300);
         os.run_ms(500);
         for key in [
-            F1, CLEAR, F2, CLEAR, F3, CLEAR, DOWN, ENTER, CLEAR, F3, CLEAR, UP,
+            F1, CLEAR, F4, CLEAR, F3, CLEAR, DOWN, ENTER, CLEAR, F3, CLEAR, UP,
         ] {
             os.tap(key, 150, 400);
         }
