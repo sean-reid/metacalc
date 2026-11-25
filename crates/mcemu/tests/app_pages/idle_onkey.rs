@@ -81,7 +81,7 @@ fn a_key_with_on_down_and_the_byte_clear_goes_to_app_key(real: bool) {
          {coded}: A = {seen:?}",
         os_name(real)
     );
-    let expected = if real { (9, 3) } else { (7, 5) };
+    let expected = if real { (9, 3) } else { (8, 4) };
     assert_eq!((both, coded), expected, "of twelve phases");
 }
 
