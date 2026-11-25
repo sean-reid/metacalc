@@ -105,6 +105,8 @@ mod list_fail;
 mod list_frames;
 #[path = "app_pages/list_keys.rs"]
 mod list_keys;
+#[path = "app_pages/list_open.rs"]
+mod list_open;
 #[path = "app_pages/list_power.rs"]
 mod list_power;
 #[path = "app_pages/list_preview.rs"]

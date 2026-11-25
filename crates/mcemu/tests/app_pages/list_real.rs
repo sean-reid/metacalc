@@ -359,8 +359,8 @@ fn median_and_worst(costs: &[u32]) -> (u32, u32, usize) {
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn on_the_reference_os_the_preview_idle_call_costs_this_over_every_assertion_of_prop_and_ring() {
     for (name, stage, median_measured, worst_measured, worst_at) in [
-        ("prop", PROP, 68_803, 331_402, 138),
-        ("ring", RING, 77_110, 1_125_822, 3_307),
+        ("prop", PROP, 68_830, 331_429, 138),
+        ("ring", RING, 77_137, 1_125_849, 3_307),
     ] {
         let costs = idle_costs(stage);
         let (median, worst, at) = median_and_worst(&costs);

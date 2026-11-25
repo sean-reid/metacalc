@@ -217,4 +217,4 @@ fn the_worst_preview_inside_the_caps_costs_this_and_a_key_waits_that_long() {
 }
 
 /// What it took when measured.
-pub const WORST_PREVIEW: u32 = 37_707_322;
+pub const WORST_PREVIEW: u32 = 37_707_349;
