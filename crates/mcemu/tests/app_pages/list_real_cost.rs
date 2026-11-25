@@ -245,7 +245,8 @@ fn on_the_reference_os_every_routine_of_the_list_keeps_interrupts_and_speed_and_
 }
 
 /// What a user does with the list, on each stage of the shipped build: open the list, move
-/// by row and by page to both ends, every soft key's notice and the way back, and CLEAR to Libraries
+/// by row and by page to both ends, every soft key's notice and the way back by each of the keys
+/// that pop it, and CLEAR to Libraries
 /// with the stage's row where it was.
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
@@ -284,29 +285,38 @@ fn on_the_reference_os_each_stage_opens_moves_to_both_ends_opens_each_notice_and
             list.settle();
         }
         let sections = list.var("LV_SECT") == 1;
-        for scan in [ENTER, F1, F2, F3, F4, F5] {
-            let before = list.frame_bytes();
-            list.tap(scan);
+        for (n, scan) in [ENTER, F1, F2, F3, F4, F5].into_iter().enumerate() {
             if scan == F5 && !sections {
+                let before = list.frame_bytes();
+                list.tap(scan);
                 list.run.run(600_000);
                 assert_eq!(list.run.depth(), 2, "{at}: F5 with no sections");
+                assert_eq!(list.frame_bytes(), before, "{at}: F5 with no sections");
                 continue;
             }
-            let frame = list.run.next_blit();
-            crate::ui_support::same_frame(
-                &format!("{at}, key {scan:02X}"),
-                &frame,
-                &crate::shellrig::model::unavailable(list.built.stage_name(stage)),
-            );
-            list.run.run(600_000);
-            assert_eq!(list.run.depth(), 3, "{at}");
-            list.tap(CLEAR);
-            list.run.next_blit();
-            list.run.run(2_000);
-            assert_eq!(list.frame_bytes(), before, "{at}: the list is where it was");
-            list.ui = list.replayed();
-            list.same_position(&format!("{at}, back from key {scan:02X}"));
-            list.settle();
+            for pop in [CLEAR, ENTER, F1] {
+                let before = list.frame_bytes();
+                list.tap(scan);
+                let frame = list.run.next_blit();
+                crate::ui_support::same_frame(
+                    &format!("{at}, key {scan:02X} (number {n})"),
+                    &frame,
+                    &crate::shellrig::model::unavailable(list.built.stage_name(stage)),
+                );
+                list.run.run(600_000);
+                assert_eq!(list.run.depth(), 3, "{at}");
+                list.tap(pop);
+                list.run.next_blit();
+                list.run.run(2_000);
+                assert_eq!(
+                    list.frame_bytes(),
+                    before,
+                    "{at}: the list is where it was after key {scan:02X} and a pop by {pop:02X}"
+                );
+                list.ui = list.replayed();
+                list.same_position(&format!("{at}, back from key {scan:02X} by {pop:02X}"));
+                list.settle();
+            }
         }
         assert!(list.key(CLEAR, Key::Clear), "{at}");
         assert_eq!(

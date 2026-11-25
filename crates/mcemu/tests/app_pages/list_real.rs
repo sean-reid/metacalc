@@ -134,6 +134,19 @@ fn on_the_reference_os_the_wait_is_11_ticks_and_a_key_inside_it_starts_it_again(
     );
 }
 
+/// One step on ring with the wait as it is, not skipped: the frame after the idle work is the model's.
+#[test]
+#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn on_the_reference_os_one_step_on_ring_with_the_wait_run_in_full_is_the_models_frame() {
+    let mut list = Lister::on_rom(RING);
+    list.open_on_rom();
+    assert!(list.key(DOWN, Key::Down));
+    let waited = list.wait_for_the_fit();
+    assert_eq!(waited.interrupts, WAIT_TICKS, "the wait ran its 11 ticks");
+    assert!(list.settle(), "the preview of the next assertion is drawn");
+    list.same_position("one step on ring");
+}
+
 /// A held Down on the ROM: when scr_key is called and when a fit starts, in milliseconds from the
 /// press.
 #[test]
@@ -257,6 +270,11 @@ fn on_the_reference_os_a_tap_during_the_slowest_fit_is_lost_and_a_held_key_is_ac
                 list.run.run(3_000);
             }
             let fit_end = list.run.m().clock().wrapping_sub(start);
+            assert_eq!(
+                list.run.scr_keys(),
+                keys,
+                "no key was acted on while the fit ran"
+            );
             list.run.run(600_000);
             println!(
                 "ROM, Down held through the fit of df-rng: the fit took about {:.1} ms after the press, scr_key +{}",
@@ -264,9 +282,16 @@ fn on_the_reference_os_a_tap_during_the_slowest_fit_is_lost_and_a_held_key_is_ac
                 list.run.scr_keys() - keys
             );
             list.run.m().release_key(DOWN);
-            assert!(
-                list.run.scr_keys() > keys,
-                "the held key was acted on after the fit"
+            assert_eq!(
+                list.run.scr_keys(),
+                keys + 1,
+                "the held key was acted on once, right after the fit"
+            );
+            let moved = list.frame_bytes();
+            assert_eq!(
+                u16::from_le_bytes([moved[2], moved[3]]),
+                u16::from_le_bytes([cursor[2], cursor[3]]) + 1,
+                "and the cursor moved one row"
             );
         } else {
             list.run.run(300_000);
