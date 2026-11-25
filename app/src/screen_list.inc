@@ -72,6 +72,7 @@
 ; 331,402 over prop.
 
 LIST_ROWS	.equ 5
+LIST_LABEL_MAX	.equ 48
 LIST_WAIT	.equ 11
 LIST_WIDTH	.equ 94
 LIST_PREVIEW_ROW	.equ 6
@@ -99,8 +100,8 @@ LV_RIGHT	.equ APP_TEXT + 17
 LV_NAME		.equ LV_RIGHT + LIST_RIGHT_SIZE
 LV_CUT		.equ LV_NAME + LIST_NAME_SIZE
 LV_LABEL	.equ LV_CUT + LIST_NAME_SIZE
-LV_TEXT		.equ LV_LABEL + APP_LABEL_MAX + 1
-LV_VARS_END	.equ LV_TEXT + APP_LABEL_MAX + 2
+LV_TEXT		.equ LV_LABEL + LIST_LABEL_MAX + 1
+LV_VARS_END	.equ LV_TEXT + LIST_LABEL_MAX + 2
 #if LV_VARS_END > (APP_TEXT + APP_TEXT_SIZE)
  .error "the list screen's variables are longer than APP_TEXT"
 #endif

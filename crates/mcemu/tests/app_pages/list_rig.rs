@@ -9,8 +9,6 @@ use mcui::{Key, State, Status, Ui};
 
 /// The most T-states the app may take to settle a preview or to reach a frame.
 pub const LIMIT: u32 = 60_000_000;
-/// The scancode of Up and Right, which shellrig names in the OS's own order.
-pub const ARROWS: [u8; 4] = [UP, DOWN, LEFT, RIGHT];
 
 pub const PENDING: u8 = 0;
 pub const ROW: u8 = 1;
@@ -162,12 +160,6 @@ impl Lister {
     /// The app's variable of the list screen, one byte.
     pub fn var(&mut self, name: &str) -> u8 {
         self.run.byte(name)
-    }
-
-    pub fn word(&mut self, name: &str) -> u16 {
-        let at = self.run.shell.app.label(name);
-        let b = self.run.peek(at, 2);
-        u16::from_le_bytes([b[0], b[1]])
     }
 
     /// The frame of the open list: its stage, cursor and top.

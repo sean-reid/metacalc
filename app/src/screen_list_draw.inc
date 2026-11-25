@@ -93,6 +93,52 @@ lm_fit:
 	ld c, a
 	ret
 
+; In: HL = an assertion number, DE = where to write LIST_LABEL_MAX + 1 bytes. Out: A = 0 and the first
+; LIST_LABEL_MAX characters of its label as glyph codes ended by 0, a character with no glyph being the
+; question mark, or the reader's status with nothing written. Reads through FM_SCRATCH. Destroys BC DE HL.
+list_label_text:
+	push de
+	ld de, FM_SCRATCH
+	call far_lib_label
+	pop de
+	or a
+	ret nz
+	ld a, b
+	cp LIST_LABEL_MAX + 1
+	jr c, ll_count
+	ld a, LIST_LABEL_MAX
+ll_count:
+	ld b, a
+	ld hl, FM_SCRATCH
+ll_glyph:
+	ld a, b
+	or a
+	jr z, ll_cut
+	push bc
+	ld a, (hl)
+	inc hl
+	push hl
+	sub 20h
+	cp 95
+	jr c, ll_known
+	ld a, 3Fh - 20h
+ll_known:
+	ld c, a
+	ld b, 0
+	ld hl, checking_glyphs
+	add hl, bc
+	ld a, (hl)
+	ld (de), a
+	inc de
+	pop hl
+	pop bc
+	dec b
+	jr ll_glyph
+ll_cut:
+	xor a
+	ld (de), a
+	ret
+
 ; Draws the title bar: the stage's name, cut to the room the counts leave, and "checked/total" with the
 ; model's "flat " in front when LV_FLAT is 1.
 list_title:
@@ -138,7 +184,7 @@ lt_counts:
 list_row:
 	ld hl, (LV_AT)
 	ld de, LV_LABEL
-	call app_label_text
+	call list_label_text
 	or a
 	jr z, lr_label
 	xor a
@@ -166,7 +212,7 @@ lr_mark:
 	call list_room
 	ld hl, LV_LABEL
 	ld de, LV_TEXT
-	ld b, APP_LABEL_MAX + 2
+	ld b, LIST_LABEL_MAX + 2
 	call far_ui_truncate
 	ld hl, (LV_AT)
 	ld de, (LV_CUR)

@@ -55,7 +55,7 @@ CKP_READ	.equ 1
 CKP_DONE	.equ 2
 CKP_LEAVE	.equ 3
 CKS_EVERY	.equ 32
-CKS_LABEL_MAX	.equ APP_LABEL_MAX
+CKS_LABEL_MAX	.equ 48
 
 CKS_PHASE	.equ APP_TEXT
 CKS_SINCE	.equ APP_TEXT + 1
@@ -421,10 +421,45 @@ checking_label:
 	call store_next_zero
 	or a
 	ret nz
-	ld de, CKS_RAW
-	call app_label_text
+	ld de, FM_SCRATCH
+	call far_lib_label
 	or a
 	ret nz
+	ld a, b
+	cp CKS_LABEL_MAX + 1
+	jr c, kl_count
+	ld a, CKS_LABEL_MAX
+kl_count:
+	ld b, a
+	ld hl, FM_SCRATCH
+	ld de, CKS_RAW
+kl_glyph:
+	ld a, b
+	or a
+	jr z, kl_cut
+	push bc
+	ld a, (hl)
+	inc hl
+	push hl
+	sub 20h
+	cp 95
+	jr c, kl_known
+	ld a, 3Fh - 20h
+kl_known:
+	ld c, a
+	ld b, 0
+	ld hl, checking_glyphs
+	add hl, bc
+	ld a, (hl)
+	ld (de), a
+	inc de
+	pop hl
+	pop bc
+	dec b
+	jr kl_glyph
+kl_cut:
+	xor a
+	ld (de), a
 	ld hl, CKS_RAW
 	ld de, CKS_TEXT
 	ld b, CKS_LABEL_MAX + 2
@@ -434,6 +469,24 @@ checking_label:
 	ld b, 3
 	jp far_ui_text_centered
 
+; The glyph code of each printable ASCII character from the space to the tilde.
+checking_glyphs:
+	.db UI_FONT_CH_20, UI_FONT_CH_21, UI_FONT_CH_22, UI_FONT_CH_23, UI_FONT_CH_24, UI_FONT_CH_25
+	.db UI_FONT_CH_26, UI_FONT_CH_27, UI_FONT_CH_28, UI_FONT_CH_29, UI_FONT_CH_2A, UI_FONT_CH_2B
+	.db UI_FONT_CH_2C, UI_FONT_CH_2D, UI_FONT_CH_2E, UI_FONT_CH_2F, UI_FONT_CH_30, UI_FONT_CH_31
+	.db UI_FONT_CH_32, UI_FONT_CH_33, UI_FONT_CH_34, UI_FONT_CH_35, UI_FONT_CH_36, UI_FONT_CH_37
+	.db UI_FONT_CH_38, UI_FONT_CH_39, UI_FONT_CH_3A, UI_FONT_CH_3B, UI_FONT_CH_3C, UI_FONT_CH_3D
+	.db UI_FONT_CH_3E, UI_FONT_CH_3F, UI_FONT_CH_40, UI_FONT_CH_41, UI_FONT_CH_42, UI_FONT_CH_43
+	.db UI_FONT_CH_44, UI_FONT_CH_45, UI_FONT_CH_46, UI_FONT_CH_47, UI_FONT_CH_48, UI_FONT_CH_49
+	.db UI_FONT_CH_4A, UI_FONT_CH_4B, UI_FONT_CH_4C, UI_FONT_CH_4D, UI_FONT_CH_4E, UI_FONT_CH_4F
+	.db UI_FONT_CH_50, UI_FONT_CH_51, UI_FONT_CH_52, UI_FONT_CH_53, UI_FONT_CH_54, UI_FONT_CH_55
+	.db UI_FONT_CH_56, UI_FONT_CH_57, UI_FONT_CH_58, UI_FONT_CH_59, UI_FONT_CH_5A, UI_FONT_CH_5B
+	.db UI_FONT_CH_5C, UI_FONT_CH_5D, UI_FONT_CH_5E, UI_FONT_CH_5F, UI_FONT_CH_60, UI_FONT_CH_61
+	.db UI_FONT_CH_62, UI_FONT_CH_63, UI_FONT_CH_64, UI_FONT_CH_65, UI_FONT_CH_66, UI_FONT_CH_67
+	.db UI_FONT_CH_68, UI_FONT_CH_69, UI_FONT_CH_6A, UI_FONT_CH_6B, UI_FONT_CH_6C, UI_FONT_CH_6D
+	.db UI_FONT_CH_6E, UI_FONT_CH_6F, UI_FONT_CH_70, UI_FONT_CH_71, UI_FONT_CH_72, UI_FONT_CH_73
+	.db UI_FONT_CH_74, UI_FONT_CH_75, UI_FONT_CH_76, UI_FONT_CH_77, UI_FONT_CH_78, UI_FONT_CH_79
+	.db UI_FONT_CH_7A, UI_FONT_CH_7B, UI_FONT_CH_7C, UI_FONT_CH_7D, UI_FONT_CH_7E
 #else
 checking_enter:
 checking_draw:

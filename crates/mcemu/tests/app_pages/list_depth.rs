@@ -198,7 +198,7 @@ pub fn enter_depths(mask: bool, rig: &Rig) -> u16 {
 pub fn idle_depths(mask: bool, rig: &Rig) -> BTreeMap<&'static str, u16> {
     let mut list = (rig.open)();
     let mut classes: BTreeMap<&'static str, Vec<Trace>> = BTreeMap::new();
-    let mut trace_one = |list: &mut Lister, classes: &mut BTreeMap<&'static str, Vec<Trace>>| {
+    let trace_one = |list: &mut Lister, classes: &mut BTreeMap<&'static str, Vec<Trace>>| {
         let at = list.run.shell.app.label("list_idle");
         list.run.run_to_addr("list_idle", at, WAIT);
         let (count, preview) = (list.var("LV_COUNT"), list.var("LV_PREVIEW"));
