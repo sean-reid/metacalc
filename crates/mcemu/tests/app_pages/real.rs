@@ -11,6 +11,9 @@ use crate::ui_support::{pack, same_frame};
 const F4: u8 = 0x32;
 const GRAPH_DRAW: u8 = 0x01;
 const ST_BAD: u8 = 3;
+/// The OS's cxCurApp, offset from 8000h, and its value at the home screen.
+const CX_CUR_APP: usize = 0x059A;
+const HOME: u8 = 0x40;
 
 /// The Libraries screen, a key it ignores with the font zeroed, and the exit, on the OS with
 /// `built`.
@@ -230,12 +233,33 @@ fn on_the_reference_os_the_screens_with_no_table_leave_the_whole_variable_list_a
         os.tap(KEY_APPS, 150, 600);
         os.tap(KEY_2, 150, 300);
         os.run_ms(500);
-        for key in [
-            F1, CLEAR, F4, CLEAR, F3, CLEAR, DOWN, ENTER, CLEAR, F3, CLEAR, UP,
-        ] {
+        let ctx = |os: &mut RealOs| os.ram(CX_CUR_APP, 1)[0];
+        let depth = usize::from(built.label("scr_count") - 0x8000);
+        let app = ctx(&mut os);
+        assert_ne!(app, HOME, "the app's context is current at its start");
+        assert_eq!(os.ram(depth, 1)[0], 1, "Libraries is the one screen open");
+        // Every key goes to the app: the screens open and close, and the OS's home screen, whose
+        // keys make variables, never sees one. CLEAR on Libraries is the last key.
+        let keys = [
+            (F1, 2),
+            (CLEAR, 1),
+            (F4, 1),
+            (F3, 2),
+            (CLEAR, 1),
+            (DOWN, 1),
+            (ENTER, 2),
+            (CLEAR, 1),
+            (F3, 2),
+            (CLEAR, 1),
+            (UP, 1),
+        ];
+        for (key, open) in keys {
             os.tap(key, 150, 400);
+            assert_eq!(ctx(&mut os), app, "key {key:02X}: the app is still running");
+            assert_eq!(os.ram(depth, 1)[0], open, "key {key:02X}: screens open");
         }
         os.tap(CLEAR, 150, 1500);
+        assert_eq!(ctx(&mut os), HOME, "CLEAR on Libraries left the app");
         assert!(
             os.screen() != libraries_pixels(built.shown().as_ref()),
             "left"
@@ -254,7 +278,7 @@ fn on_the_reference_os_the_screens_with_no_table_leave_the_whole_variable_list_a
 fn on_the_reference_os_f2_on_my_proofs_makes_no_table() {
     use crate::builds::{rows, three_stages};
     use crate::realos::{KEY_2, KEY_APPS, RealOs};
-    use crate::shellrig::{CLEAR, DOWN, F2, F4};
+    use crate::shellrig::{CLEAR, DOWN, F2, F4, KIND_NOTICE, NOTICE_PICK};
     for built in [with_library(), three_stages()] {
         for key in [F4, F2] {
             let mut os = RealOs::boot(&built.file);
@@ -265,7 +289,22 @@ fn on_the_reference_os_f2_on_my_proofs_makes_no_table() {
             for _ in 1..rows(built) {
                 os.tap(DOWN, 150, 400);
             }
+            let depth = usize::from(built.label("scr_count") - 0x8000);
+            let stack = usize::from(built.label("SCR_STACK") - 0x8000);
+            assert_eq!(os.ram(depth, 1)[0], 1, "Libraries is the one screen open");
             os.tap(key, 150, 400);
+            let open = os.ram(depth, 1)[0];
+            let top = os.ram(stack + 16, 3);
+            if key == F2 {
+                assert_eq!(open, 2, "F2 reached the app: a screen is pushed");
+                assert_eq!(
+                    top,
+                    [KIND_NOTICE, NOTICE_PICK, 0],
+                    "the pick notice is on top"
+                );
+            } else {
+                assert_eq!(open, 1, "F4 is ignored: nothing is pushed");
+            }
             os.tap(CLEAR, 150, 400);
             os.tap(CLEAR, 150, 1500);
             let after = vat::list(&mut os.m);
