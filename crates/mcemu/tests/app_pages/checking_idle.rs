@@ -66,19 +66,30 @@ fn scenarios(fill: Fill) -> (Vec<Sample>, Vec<Sample>) {
         assert!(kinds.contains(&(REDRAW, false)), "the end");
         // ON at the idle point.
         let mut run = boot(built, Some(&empty_table(built)));
+        let verifies = std::cell::Cell::new(None);
         let all2 = idle_calls(
             "ON at the idle point",
             &mut run,
             speed,
             mask,
             fill,
-            |_, _| {},
+            |r, n| {
+                if n == 4 {
+                    verifies.set(Some(r.verifies()));
+                }
+            },
             |r, _, n| {
                 if n == 3 {
                     r.m().press_key(Machine::KEY_ON);
                 }
                 n > 3 && r.depth() == 1
             },
+        );
+        assert_stop_path("ON at the idle point", &all2, true);
+        assert_eq!(
+            Some(run.verifies()),
+            verifies.get(),
+            "ON at the idle point: no kernel call was made"
         );
         assert_eq!(
             all2.last().map(|s| (s.action, s.carry)),
@@ -87,6 +98,7 @@ fn scenarios(fill: Fill) -> (Vec<Sample>, Vec<Sample>) {
         );
         // CK_PAUSED: ON down as the kernel is called.
         let mut run = boot(built, Some(&empty_table(built)));
+        let verifies = std::cell::Cell::new(None);
         let all3 = idle_calls(
             "CK_PAUSED",
             &mut run,
@@ -95,10 +107,17 @@ fn scenarios(fill: Fill) -> (Vec<Sample>, Vec<Sample>) {
             fill,
             |r, n| {
                 if n == 4 {
+                    verifies.set(Some(r.verifies()));
                     r.m().press_key(Machine::KEY_ON);
                 }
             },
             |r, _, n| n > 3 && r.depth() == 1,
+        );
+        assert_stop_path("CK_PAUSED", &all3, false);
+        assert_eq!(
+            Some(run.verifies()),
+            verifies.get().map(|v| v + 1),
+            "CK_PAUSED: the kernel was called and stopped"
         );
         assert_eq!(
             all3.last().map(|s| (s.action, s.carry)),
@@ -120,6 +139,7 @@ fn scenarios(fill: Fill) -> (Vec<Sample>, Vec<Sample>) {
             },
             |r, _, n| n > 3 && r.depth() == 1,
         );
+        assert_stop_path("CK_PAUSED from reading", &all7, false);
         assert_eq!(
             all7.last().map(|s| (s.action, s.carry)),
             Some((REDRAW, true)),

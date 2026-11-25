@@ -5,8 +5,8 @@
 
 use crate::app::*;
 use crate::checking_depth::{
-    Class, Fill, LEAVES, SHELL_STACK, Sample, agreed, by_class, idle_calls, inside_by_class,
-    live_depths,
+    Class, Fill, LEAVES, SHELL_STACK, Sample, agreed, assert_stop_path, by_class, idle_calls,
+    inside_by_class, live_depths,
 };
 use crate::checking_real::*;
 use crate::checkrig::*;
@@ -197,6 +197,7 @@ fn stop_calls(mask: bool, fill: Fill) -> Vec<Sample> {
             Some((1, true, false)),
             "ON popped the screen, paused {paused}"
         );
+        assert_stop_path("ON on the reference OS", &calls, !paused);
         all.extend(calls);
     }
     all

@@ -47,6 +47,33 @@ pub enum Class {
     Other,
 }
 
+/// Asserts that `calls` ends with the one call that stopped the check and that it took the path
+/// asked for: with APP_ON set when scr_idle was called, or with APP_ON clear, which leaves the
+/// job's CK_PAUSED as the one way into ki_leave from the steps or the CRC run. Every call before it
+/// kept the screen with APP_ON clear.
+pub fn assert_stop_path(what: &str, calls: &[Sample], by_on: bool) {
+    let (stop, before) = calls.split_last().expect("calls");
+    assert!(!stop.stays, "{what}: the last call stopped the check");
+    assert_eq!(stop.on, by_on, "{what}: APP_ON at the call of the stop");
+    assert!(
+        [PHASE_STEP, PHASE_READ].contains(&stop.before),
+        "{what}: the stop came from the steps or the CRC run, phase {}",
+        stop.before
+    );
+    assert!(
+        before.iter().all(|s| s.stays && !s.on),
+        "{what}: the calls before the stop kept the screen with APP_ON clear"
+    );
+    let want = if by_on {
+        Class::StopOn
+    } else if stop.before == PHASE_STEP {
+        Class::PausedStep
+    } else {
+        Class::PausedRead
+    };
+    assert_eq!(stop.class(), want, "{what}: the stop's class");
+}
+
 /// The classes of calls that leave the screen.
 pub const LEAVES: [Class; 5] = [
     Class::StopOn,
