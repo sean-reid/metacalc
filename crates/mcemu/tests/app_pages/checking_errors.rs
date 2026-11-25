@@ -53,6 +53,7 @@ fn a_crc_that_is_wrong_replaces_the_screen_with_the_damaged_notice_and_makes_no_
         assert_eq!(chunks > 1, many);
         let mut run = Run::boot(built, None);
         let libraries = run.frame();
+        let vars = run.vars();
         run.m().press_key(F2);
         let mut frames = 0;
         let notice = loop {
@@ -73,12 +74,147 @@ fn a_crc_that_is_wrong_replaces_the_screen_with_the_damaged_notice_and_makes_no_
         same_frame("the damaged notice", &notice, &damaged_frame());
         assert_eq!((run.depth(), run.top_kind()), (2, KIND_NOTICE));
         assert_eq!(run.frames()[1][..3], [KIND_NOTICE, NOTICE_DAMAGED, 0]);
-        assert_eq!(run.raw_table(), None, "no table was created");
+        assert_eq!(run.vars(), vars, "no variable was created");
         run.tap(CLEAR);
         let back = run.next_blit();
         same_frame("Libraries after the notice", &back, &libraries);
         assert_eq!(run.depth(), 1);
-        assert_eq!(run.raw_table(), None);
+        assert_eq!(run.vars(), vars);
+    }
+}
+
+/// The padded library with one byte of the content changed after packing, in the first chunk or in
+/// the last: the first assertion's label, and a byte of a section the last chunk holds, neither of
+/// which the kernel reads, so only the CRC run can tell. Returns the library and the offset changed.
+fn content_wrong(first: bool) -> (&'static Built, usize) {
+    static FIRST: OnceLock<(&'static Built, usize)> = OnceLock::new();
+    static LAST: OnceLock<(&'static Built, usize)> = OnceLock::new();
+    let cell = if first { &FIRST } else { &LAST };
+    *cell.get_or_init(|| {
+        let mut bytes = proofs_padded(1200);
+        let chunks = bytes.len().div_ceil(1 << 14);
+        let at = if first {
+            let label = "a-long-label-to-fill-the-page-0";
+            bytes
+                .windows(label.len())
+                .position(|w| w == label.as_bytes())
+                .expect("the label is in the library")
+        } else {
+            ((chunks - 1) << 14) + 1
+        };
+        assert!(
+            at >= 8 && at < bytes.len() - 64,
+            "the byte is under the CRC"
+        );
+        let chunk = at >> 14;
+        assert_eq!(
+            chunk,
+            if first { 0 } else { chunks - 1 },
+            "the chunk it is in"
+        );
+        bytes[at] ^= 1;
+        let name = if first {
+            "content-first"
+        } else {
+            "content-last"
+        };
+        (around(name, &bytes), at)
+    })
+}
+
+/// One byte of the content changed after packing, in the first chunk and in the last, is a CRC
+/// that is wrong: the run reads every chunk, the damaged notice replaces the screen, and the
+/// variable list is as it was.
+#[test]
+fn a_content_byte_changed_after_packing_gives_the_damaged_notice_and_makes_no_variable() {
+    for first in [true, false] {
+        let (built, at) = content_wrong(first);
+        let name = format!(
+            "byte {at}, {}",
+            if first { "first chunk" } else { "last chunk" }
+        );
+        let chunks = chunks_of(built);
+        assert!(chunks >= 4, "{name}: {chunks} chunks");
+        let mut run = Run::boot(built, None);
+        let libraries = run.frame();
+        let vars = run.vars();
+        run.m().press_key(F2);
+        let mut frames = 0;
+        loop {
+            let (frame, values) = run.next_frame();
+            frames += 1;
+            assert_eq!(values, None, "{name}: no table is made");
+            if frame == damaged_frame() {
+                break;
+            }
+            assert_ne!(run.top_kind(), KIND_NOTICE, "{name}: some other notice");
+            assert!(frames < 100, "{name}: the notice never came");
+        }
+        run.m().release_key(F2);
+        assert_eq!(
+            frames,
+            chunks + 2,
+            "{name}: the push, crc_begin and each chunk, then the notice"
+        );
+        assert_eq!(
+            run.crc_calls(),
+            (1, u16::try_from(chunks).unwrap()),
+            "{name}: every chunk was read"
+        );
+        assert_eq!(run.vars(), vars, "{name}: no variable was created");
+        run.tap(CLEAR);
+        let back = run.next_blit();
+        same_frame(&name, &back, &libraries);
+    }
+}
+
+/// A refusal the kernel gives in the CRC run with a status other than 1, which it never gives
+/// itself and the rig puts in place of a chunk call's answer, is not a wrong CRC: the error notice
+/// shows the kernel's status, nothing was created and CLEAR returns to Libraries.
+#[test]
+fn a_refusal_in_the_crc_run_other_than_a_wrong_crc_shows_the_error_notice_with_its_status() {
+    let built = padded();
+    assert!(chunks_of(built) >= 4);
+    for (call, status) in [(1u8, 5u8), (3, 17), (2, 2)] {
+        let name = format!("chunk call {call}, status {status}");
+        let mut run = Run::boot(built, None);
+        let libraries = run.frame();
+        let vars = run.vars();
+        run.fail_chunk(call, status);
+        run.m().press_key(F2);
+        let mut frames = 0;
+        let notice = loop {
+            let (frame, values) = run.next_frame();
+            frames += 1;
+            assert_eq!(values, None, "{name}: no table is made");
+            if run.top_kind() == KIND_NOTICE {
+                break frame;
+            }
+            assert!(frames < 100, "{name}: no notice came");
+        };
+        run.m().release_key(F2);
+        assert_ne!(notice, damaged_frame(), "{name}: not the damaged notice");
+        same_frame(&name, &notice, &error_frame(status));
+        assert_eq!(
+            run.frames()[1][..3],
+            [KIND_NOTICE, NOTICE_ERROR, status],
+            "{name}"
+        );
+        assert_eq!(
+            run.crc_calls().1,
+            u16::from(call),
+            "{name}: the run stopped at the call"
+        );
+        assert_eq!(
+            frames,
+            usize::from(call) + 2,
+            "{name}: the push, crc_begin, the chunks read and the notice"
+        );
+        assert_eq!(run.vars(), vars, "{name}: no variable was created");
+        run.tap(CLEAR);
+        let back = run.next_blit();
+        same_frame(&name, &back, &libraries);
+        assert_eq!(run.depth(), 1, "{name}");
     }
 }
 

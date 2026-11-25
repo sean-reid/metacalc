@@ -73,18 +73,19 @@ pub enum At {
     Stepping,
 }
 
-/// A run of the stub on the padded library for `At::Reading` or the proofs library for
-/// `At::Stepping`, at the blit of the third frame of the screen.
+/// A run of the stub on the padded library for `At::Reading`, at the blit of the fourth frame,
+/// with two chunks read, or on the proofs library for `At::Stepping`, at the blit of the second
+/// frame, EVERY steps in.
 fn running(at: At) -> Run {
-    let (built, table) = match at {
-        At::Reading => (padded(), None),
-        At::Stepping => (proofs(), Some(empty_table(proofs()))),
+    let (built, table, blits) = match at {
+        At::Reading => (padded(), None, 4),
+        At::Stepping => (proofs(), Some(empty_table(proofs())), 2),
     };
     let mut run = Run::boot(built, table.as_deref());
     run.m().press_key(F2);
     run.next_blit();
     run.m().release_key(F2);
-    for _ in 0..1 {
+    for _ in 1..blits {
         run.next_blit();
     }
     run
@@ -100,6 +101,11 @@ pub fn stopped_and_run_again(mut run: Run, at: At, stop: Option<u8>, end: usize)
     assert_eq!(run.depth(), 2, "{name}: the screen is open");
     let keys = run.scr_keys();
     let verifies = run.verifies();
+    let crc = run.crc_calls();
+    if matches!(at, At::Reading) {
+        assert_eq!(crc.0, 1, "{name}: the CRC run began");
+        assert!(crc.1 >= 2, "{name}: {} chunks read", crc.1);
+    }
     match stop {
         Some(key) => run.tap(key),
         None => run.m().press_key(Machine::KEY_ON),
@@ -168,7 +174,15 @@ pub fn stopped_and_run_again(mut run: Run, at: At, stop: Option<u8>, end: usize)
         end,
         "{name}: none verified twice"
     );
-    let _ = last;
+    if matches!(at, At::Reading) {
+        let chunks = u16::try_from(chunks_of(built)).unwrap();
+        assert_eq!(
+            run.crc_calls(),
+            (2, crc.1 + chunks),
+            "{name}: the second Run began the CRC run again and read every chunk"
+        );
+    }
+    shows(&name, &last, &checking_model(built, &values, 0));
 }
 
 #[test]

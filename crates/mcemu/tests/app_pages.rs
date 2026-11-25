@@ -9,6 +9,8 @@ mod app;
 mod builds;
 #[path = "app_pages/built.rs"]
 mod built;
+#[path = "app_pages/checking_chunks.rs"]
+mod checking_chunks;
 #[path = "app_pages/checking_errors.rs"]
 mod checking_errors;
 #[path = "app_pages/checking_exits.rs"]
@@ -17,8 +19,16 @@ mod checking_exits;
 mod checking_flow;
 #[path = "app_pages/checking_frames.rs"]
 mod checking_frames;
+#[path = "app_pages/checking_idle.rs"]
+mod checking_idle;
+#[path = "app_pages/checking_keys.rs"]
+mod checking_keys;
+#[path = "app_pages/checking_leave.rs"]
+mod checking_leave;
 #[path = "app_pages/checking_real.rs"]
 mod checking_real;
+#[path = "app_pages/checking_rows.rs"]
+mod checking_rows;
 #[path = "app_pages/checkrig.rs"]
 mod checkrig;
 #[path = "app_pages/cost_stages.rs"]
@@ -69,6 +79,8 @@ mod idlerig_script;
 mod idlerig_watch;
 #[path = "app_pages/keys.rs"]
 mod keys;
+#[path = "app_pages/keys_walk.rs"]
+mod keys_walk;
 #[path = "app_pages/numbers.rs"]
 mod numbers;
 #[path = "common/refs.rs"]

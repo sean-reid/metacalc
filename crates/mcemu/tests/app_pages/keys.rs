@@ -5,17 +5,17 @@
 use crate::app::*;
 use crate::builds::*;
 use crate::shellrig::*;
-use mcui::Key;
+use mcui::{Key, State};
 
 /// One key the app can produce: the scancodes that make it, the last being the key itself, and
 /// the model's key for it, if the model has one.
-struct Probe {
-    name: &'static str,
-    scans: &'static [u8],
-    model: Option<Key>,
+pub struct Probe {
+    pub name: &'static str,
+    pub scans: &'static [u8],
+    pub model: Option<Key>,
 }
 
-const PROBES: [Probe; 14] = [
+pub const PROBES: [Probe; 14] = [
     Probe {
         name: "up",
         scans: &[UP],
@@ -104,16 +104,59 @@ fn on_row(built: &'static Built, row: usize) -> (Shell, mcui::Ui) {
     (shell, ui)
 }
 
+/// A table of `built`'s library in which every assertion has a value, one in five failed, and the
+/// statuses the model has for it: a check of any stage has nothing to verify.
+pub fn settled_table(built: &Built) -> (Vec<u8>, Vec<mcui::Status>) {
+    let library = built.library.as_ref().unwrap();
+    let n = usize::from(crate::table::header_of(library).1);
+    let status: Vec<mcui::Status> = (0..n)
+        .map(|i| match i % 5 {
+            4 => mcui::Status::Failed,
+            _ => mcui::Status::Checked,
+        })
+        .collect();
+    let data = crate::table::of(library, &crate::table::values(built, &status));
+    (data, status)
+}
+
+/// F2 on a stage row of a library with every assertion settled: the checking screen opens and the
+/// first idle call finishes it with nothing to verify, so the push and that frame are one or two
+/// blits and the frame left is the model's.
+pub fn opens_a_check(shell: &mut Shell, ui: &mut mcui::Ui, at: &str) {
+    let blits = shell.blits();
+    shell.tap(F2);
+    ui.press(Key::F2);
+    assert!(
+        matches!(ui.state(), State::Checking { .. }),
+        "{at}: the model's check"
+    );
+    shell.shows(at, &model::frame(ui));
+    assert_eq!(
+        (shell.depth(), shell.top_kind()),
+        (ui.depth(), KIND_CHECKING),
+        "{at}"
+    );
+    let drawn = shell.blits() - blits;
+    assert!((1..=2).contains(&drawn), "{at}: {drawn} frames");
+}
+
 #[test]
 fn every_key_the_app_can_produce_does_on_every_row_what_the_model_does() {
     for built in builds() {
         for row in 0..rows(built) {
             for probe in PROBES.iter().filter(|p| p.name != "clear") {
+                let at = format!("{} stages, row {row}, {}", built.stages.len(), probe.name);
                 if probe.name == "f2" && row + 1 < rows(built) {
+                    let (data, status) = settled_table(built);
+                    let mut shell = booted(built, Some(&data));
+                    let mut ui = model::ui(built, &status);
+                    for _ in 0..row {
+                        press(&mut shell, &mut ui, built, DOWN, &at);
+                    }
+                    opens_a_check(&mut shell, &mut ui, &at);
                     continue;
                 }
                 let (mut shell, mut ui) = on_row(built, row);
-                let at = format!("{} stages, row {row}, {}", built.stages.len(), probe.name);
                 press_keys(&mut shell, &mut ui, built, probe.scans, probe.model, &at);
             }
         }
@@ -281,7 +324,7 @@ fn the_frames_the_keys_push_hold_the_notice_or_the_stage() {
 }
 
 /// Whether the model's own Notice, the one My proofs opens on F1, closes on `key`.
-fn pops_a_notice(key: Option<Key>) -> bool {
+pub fn pops_a_notice(key: Option<Key>) -> bool {
     let mut ui = model::ui(plain(), &[]);
     ui.press(Key::F1);
     assert_eq!(ui.depth(), 2, "the model opened a notice");
@@ -335,94 +378,5 @@ fn every_key_the_app_can_produce_does_on_the_notices_of_a_stage_what_the_models_
                 }
             }
         }
-    }
-}
-
-const WALK: [u8; 34] = [
-    F3, CLEAR, ENTER, F1, F4, CLEAR, DOWN, F3, ENTER, F1, CLEAR, DOWN, F4, F1, UP, F3, CLEAR, DOWN,
-    DOWN, F3, CLEAR, F1, ENTER, F4, CLEAR, DOWN, F3, CLEAR, UP, UP, UP, UP, F3, CLEAR,
-];
-
-/// One session, one key after another, the screen and the model compared after each: a fixed walk
-/// through every kind of screen, then a pseudo-random stream of keys, never CLEAR on the Libraries
-/// screen, which leaves. A stage's list and checking screens are notices in the app; while one is
-/// open the oracle is the notice's rule (see above) and the model rests on the Libraries screen
-/// under it, which is rebuilt by replaying the keys it took.
-#[test]
-fn a_long_walk_through_every_kind_of_screen_in_one_session_is_the_models_at_every_step() {
-    let stream = [
-        UP, DOWN, F1, F4, F3, ENTER, CLEAR, F4, F5, LEFT, RIGHT, DOWN, F3, F1,
-    ];
-    for built in [three_stages(), six_stages()] {
-        let library = built.library.as_ref().unwrap();
-        let n = usize::from(crate::table::header_of(library).1);
-        let status: Vec<mcui::Status> = (0..n)
-            .map(|i| match i % 3 {
-                0 => mcui::Status::Checked,
-                _ => mcui::Status::Unchecked,
-            })
-            .collect();
-        let data = crate::table::of(library, &crate::table::values(built, &status));
-        let mut shell = booted(built, Some(&data));
-        let mut ui = model::ui(built, &status);
-        let mut log: Vec<Key> = Vec::new();
-        let mut stand_in: Option<String> = None;
-        let mut kinds = std::collections::BTreeSet::new();
-        let mut seed = 0x9E37_79B9_u32;
-        let mut keys = WALK.to_vec();
-        keys.extend([DOWN; 7]);
-        keys.extend([F3, CLEAR, UP, F4, CLEAR]);
-        for _ in 0..160 {
-            seed ^= seed << 13;
-            seed ^= seed >> 17;
-            seed ^= seed << 5;
-            keys.push(stream[seed as usize % stream.len()]);
-        }
-        for (step, &key) in keys.iter().enumerate() {
-            let at = format!("{} stages, step {step}", built.stages.len());
-            if let Some(title) = stand_in.clone() {
-                shell.tap(key);
-                if pops_a_notice(Some(key_of(key))) {
-                    stand_in = None;
-                    shell.shows(&at, &model::frame(&ui));
-                    assert_eq!(shell.depth(), 1, "{at}: popped");
-                } else {
-                    shell.shows(&at, &model::unavailable(&title));
-                    assert_eq!(shell.depth(), 2, "{at}: stays");
-                }
-            } else {
-                if key == CLEAR && shell.depth() == 1 {
-                    continue;
-                }
-                if press(&mut shell, &mut ui, built, key, &at) {
-                    stand_in = state_title(built, &ui);
-                    ui = model::ui(built, &status);
-                    for &k in &log {
-                        ui.press(k);
-                    }
-                } else {
-                    log.push(key_of(key));
-                }
-            }
-            kinds.insert(shell.top_kind());
-        }
-        let all: std::collections::BTreeSet<u8> =
-            [KIND_LIBRARIES, KIND_NOTICE, KIND_ABOUT, KIND_STAGE].into();
-        assert_eq!(
-            kinds,
-            all,
-            "{} stages: every kind was shown",
-            built.stages.len()
-        );
-    }
-}
-
-/// The title of the notice that stands in for the model's screen: the stage's name for its list,
-/// Verify for the checking screen.
-fn state_title(built: &Built, ui: &mcui::Ui) -> Option<String> {
-    match ui.state() {
-        mcui::State::List { stage, .. } => Some(built.stage_name(stage).to_string()),
-        mcui::State::Checking { .. } => Some("Verify".to_string()),
-        _ => None,
     }
 }

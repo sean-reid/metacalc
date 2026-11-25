@@ -93,12 +93,11 @@ pub fn press(shell: &mut Shell, ui: &mut mcui::Ui, built: &Built, scan: u8, at: 
     press_keys(shell, ui, built, &[scan], Some(key_of(scan)), at)
 }
 
-/// The frame the app shows for what the model shows: the same, except that for the theorem list
-/// and the checking screen, which the app does not have, it is the notice that stands in for them.
+/// The frame the app shows for what the model shows: the same, except that for the theorem list,
+/// which the app does not have, it is the notice that stands in for it.
 fn shown(ui: &mcui::Ui, built: &Built) -> Vec<u8> {
     match ui.state() {
         State::List { stage, .. } => model::unavailable(built.stage_name(stage)),
-        State::Checking { .. } => model::frame(ui),
         _ => model::frame(ui),
     }
 }
@@ -108,7 +107,7 @@ fn shown(ui: &mcui::Ui, built: &Built) -> Vec<u8> {
 /// key, and checks what it did: the frame, the depth, the kind of the top screen and whether a
 /// frame was blitted, which it is exactly when the screen changed. On the Libraries screen the
 /// frame holds the cursor and the first row shown the model has. Returns whether the model is on
-/// a screen the app stands in for.
+/// a screen the app stands in for, which is the theorem list.
 pub fn press_keys(
     shell: &mut Shell,
     ui: &mut mcui::Ui,
@@ -140,5 +139,5 @@ pub fn press_keys(
             "{at}: the position in the frame"
         );
     }
-    matches!(ui.state(), State::List { .. } | State::Checking { .. })
+    matches!(ui.state(), State::List { .. })
 }

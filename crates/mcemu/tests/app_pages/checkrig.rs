@@ -17,6 +17,8 @@ pub const VERIFIES: u16 = 0xBC00;
 const CRC_BEGINS: u16 = 0xBC02;
 const CRC_CHUNKS: u16 = 0xBC04;
 const HOOKS_AT: u16 = 0xBC10;
+/// The byte of the OS flags that holds onInterrupt.
+const ON_FLAGS: u16 = 0x89F9;
 /// The most T-states one wait for a frame or a key may take.
 pub const WAIT: u32 = 600_000_000;
 /// The steps between two frames of the screen, CKS_EVERY in screen_checking.inc.
@@ -205,7 +207,13 @@ impl Run {
 
     /// Runs `t` T-states.
     pub fn run(&mut self, t: u32) {
-        let run = self.m().run_app(t);
+        let real = self.real;
+        let m = self.m();
+        let run = if real {
+            m.run_time(t.div_ceil(6))
+        } else {
+            m.run_app(t)
+        };
         assert_eq!(run.stop, mcemu::Stop::Limit, "the machine stopped");
     }
 
@@ -217,15 +225,63 @@ impl Run {
         self.m().read_var(table::VAR).map(|v| v.data)
     }
 
+    /// Every variable the OS holds, as one string to compare a list taken before with one taken after.
+    pub fn vars(&mut self) -> String {
+        if self.real {
+            return format!("{:?}", crate::real::vat::list(self.m()));
+        }
+        format!("{:?}", self.m().var_list())
+    }
+
+    /// Makes the kernel's chunk call number `call`, counted from 1, answer `status` at once with
+    /// nothing read, and calls the kernel for every other.
+    pub fn fail_chunk(&mut self, call: u8, status: u8) {
+        const AT: u16 = 0xBC80;
+        let far = self.built.label("far_page2").to_le_bytes();
+        let [c0, c1] = CRC_CHUNKS.to_le_bytes();
+        let code = [
+            0xF5, 0xE5, 0x2A, c0, c1, 0x23, 0x22, c0, c1, 0x7D, 0xFE, call, 0xE1, 0x28, 0x04, 0xF1,
+            0xC3, far[0], far[1], 0xF1, 0x3E, status, 0xC9,
+        ];
+        let built = self.built;
+        self.m().load_ram(AT, &code);
+        hook_stub(self.m(), built, "far_kernel_crc_chunk", AT);
+    }
+
     /// The value, 0 to 3, the table holds for each assertion.
     pub fn values(&mut self) -> Option<Vec<u8>> {
-        let data = self.raw_table()?;
-        let count = usize::from(u16::from_le_bytes([data[6], data[7]]));
-        Some(
-            (0..count)
-                .map(|i| (data[10 + i / 4] >> (2 * (i % 4))) & 3)
-                .collect(),
-        )
+        Some(values_of(&self.raw_table()?))
+    }
+
+    /// How many assertions have a value.
+    pub fn settled(&mut self) -> usize {
+        self.values()
+            .expect("a table")
+            .iter()
+            .filter(|&&v| v != 0)
+            .count()
+    }
+
+    /// Holds each of `scans` down for 120,000 T-states and runs 480,000 more after it, as the
+    /// shell rig's taps do, with the check going on meanwhile.
+    pub fn tap_scans(&mut self, scans: &[u8]) {
+        for &scan in scans {
+            self.m().press_key(scan);
+            self.run(120_000);
+            self.m().release_key(scan);
+            self.run(480_000);
+        }
+    }
+
+    /// Sets the OS's ON break flag, as its interrupt does for an ON press that has come and gone.
+    pub fn set_on_flag(&mut self) {
+        let flags = self.peek(ON_FLAGS, 1)[0];
+        self.m().load_ram(ON_FLAGS, &[flags | 0x10]);
+    }
+
+    /// Whether the OS's ON break flag is set.
+    pub fn on_flag(&mut self) -> bool {
+        self.peek(ON_FLAGS, 1)[0] & 0x10 != 0
     }
 
     /// The number the table keeps as the next assertion to check.
@@ -242,6 +298,14 @@ impl Run {
         let at = self.shell.app.label("scr_count");
         usize::from(self.peek(at, 1)[0])
     }
+}
+
+/// The value, 0 to 3, a table's bytes hold for each assertion.
+pub fn values_of(data: &[u8]) -> Vec<u8> {
+    let count = usize::from(u16::from_le_bytes([data[6], data[7]]));
+    (0..count)
+        .map(|i| (data[10 + i / 4] >> (2 * (i % 4))) & 3)
+        .collect()
 }
 
 /// The model's status for each value a table holds.

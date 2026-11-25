@@ -375,7 +375,10 @@ fn the_reading_phase_has_no_assertion_label_and_no_failed_count_and_the_stop_key
         "Reading library",
         false
     ));
-    assert!(!support::text_at(&frame, 1, 3, "ax1", false));
+    assert!(
+        (24..32).all(|y| (0..96).all(|x| !frame.get(x, y))),
+        "the row of the assertion's label is blank"
+    );
     let failed = font.text_width("0 failed");
     assert!(!support::text_at(
         &frame,

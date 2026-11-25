@@ -32,6 +32,56 @@ pub fn proofs_padded(fillers: usize) -> Vec<u8> {
     crate::support::pack_all(&crate::support::parse(&src))
 }
 
+/// The statements of a syntax axiom that differ in length: the section of syntax shapes ends the
+/// library, so its size moves the library's by one byte for each part and four-byte padding hides
+/// the rest.
+const SYNTAX: [&str; 4] = ["( ph )", "( -. ph )", "( -. -. ph )", "( -. -. -. ph )"];
+
+/// `proofs`, one more syntax axiom and axioms with long labels as a library of exactly `size`
+/// bytes: the fillers come to a little under `size`, the syntax axiom is the one of `SYNTAX` that
+/// puts the size right modulo four, and the label of a last axiom takes up the rest.
+pub fn library_of_size(size: usize) -> Vec<u8> {
+    let build = |syntax: &str, fillers: usize, tail: usize| {
+        let mut src = PROOFS.to_string();
+        src += &format!("${{\n  wzz $a wff {syntax} $.\n$}}\n");
+        for i in 0..fillers {
+            src += &format!("a-long-label-to-fill-the-page-{i} $a |- ph $.\n");
+        }
+        if tail > 0 {
+            src += &format!("z-{} $a |- ph $.\n", "t".repeat(tail - 2));
+        }
+        crate::support::pack_all(&crate::support::parse(&src))
+    };
+    for syntax in SYNTAX {
+        // The most fillers that leave room for a last axiom.
+        let (mut low, mut high) = (0, size / 30);
+        while low < high {
+            let middle = (low + high).div_ceil(2);
+            if build(syntax, middle, 0).len() + 40 <= size {
+                low = middle;
+            } else {
+                high = middle - 1;
+            }
+        }
+        for fillers in [low, low.saturating_sub(1)] {
+            let (mut short, mut long) = (3, 255);
+            while short < long {
+                let middle = (short + long) / 2;
+                if build(syntax, fillers, middle).len() < size {
+                    short = middle + 1;
+                } else {
+                    long = middle;
+                }
+            }
+            let library = build(syntax, fillers, short);
+            if library.len() == size {
+                return library;
+            }
+        }
+    }
+    panic!("no library of {size} bytes");
+}
+
 /// The padded library as one stage.
 pub fn padded() -> &'static Built {
     static BUILT: OnceLock<&'static Built> = OnceLock::new();
@@ -49,6 +99,23 @@ pub fn proofs() -> &'static Built {
         let library = crate::fixture::proofs();
         let count = usize::from(table::header_of(&library).1);
         staged("pages-proofs-one", &library, &[count])
+    })
+}
+
+/// The proofs library with the theorem whose proof is wrong moved up to the ninth assertion, as one
+/// stage: the frames of a check show the failure well before the end.
+pub fn proofs_failing_early() -> &'static Built {
+    static BUILT: OnceLock<&'static Built> = OnceLock::new();
+    BUILT.get_or_init(|| {
+        let bad = "${\n  bad $p |- ( ph -> ph ) $= f.0 f.1 ax-1 $.\n$}\n";
+        let after = "${\n  ax-3 $a |- ( ( -. ph -> -. ps ) -> ( ps -> ph ) ) $.\n$}\n";
+        assert!(PROOFS.contains(bad) && PROOFS.contains(after));
+        let src = PROOFS
+            .replacen(bad, "", 1)
+            .replacen(after, &format!("{after}{bad}"), 1);
+        let library = crate::support::pack_all(&crate::support::parse(&src));
+        let count = usize::from(table::header_of(&library).1);
+        staged("pages-proofs-early", &library, &[count])
     })
 }
 
@@ -122,10 +189,15 @@ fn the_first_frame_with_a_table_is_the_models_stepping_screen_at_its_start() {
 /// finished.
 #[test]
 fn every_frame_of_a_check_with_a_failure_is_the_models_and_the_last_says_all_checked() {
-    let built = proofs();
+    let built = proofs_failing_early();
     let verdicts = host_verdicts(built.library.as_ref().unwrap());
     let failing = verdicts.iter().filter(|&&ok| !ok).count();
     assert!(failing >= 1, "the library has a proof that fails");
+    let first = verdicts.iter().position(|&ok| !ok).unwrap();
+    assert!(
+        first < EVERY,
+        "the failure is the {first}th assertion, before the second frame"
+    );
     let n = verdicts.len();
     let mut run = Run::boot(built, Some(&empty_table(built)));
     run.m().press_key(F2);
@@ -160,6 +232,15 @@ fn every_frame_of_a_check_with_a_failure_is_the_models_and_the_last_says_all_che
     );
     assert_eq!(failed_seen.last(), Some(&failing), "the failure is shown");
     assert!(failed_seen.contains(&0) && failed_seen.last().unwrap() > &0);
+    let shown_early = done
+        .iter()
+        .zip(&failed_seen)
+        .filter(|&(&settled, &failed)| settled < n && failed > 0)
+        .count();
+    assert!(
+        shown_early >= 1,
+        "no unfinished frame shows a failure: {done:?} {failed_seen:?}"
+    );
     let finished = checking_model(built, &expected_values(built, &verdicts, n), 0);
     assert!(
         matches!(
