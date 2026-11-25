@@ -151,6 +151,16 @@ mod store_rule;
 mod stubs;
 #[path = "app_pages/table.rs"]
 mod table;
+#[path = "app_pages/theorem_caps.rs"]
+mod theorem_caps;
+#[path = "app_pages/theorem_depth.rs"]
+mod theorem_depth;
+#[path = "app_pages/theorem_frames.rs"]
+mod theorem_frames;
+#[path = "app_pages/theorem_return.rs"]
+mod theorem_return;
+#[path = "app_pages/theorem_rig.rs"]
+mod theorem_rig;
 #[path = "app_pages/tick.rs"]
 mod tick;
 #[path = "app_pages/wide_cost.rs"]
