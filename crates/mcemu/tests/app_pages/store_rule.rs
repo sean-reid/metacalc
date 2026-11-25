@@ -12,7 +12,7 @@ use mcui::{Key, Status};
 /// what opened.
 fn press_everything(shell: &mut Shell, built: &Built) {
     for _ in 0..rows(built) {
-        for key in [F1, ENTER, F2, F3, F4, LEFT, RIGHT, UP, DOWN] {
+        for key in [F1, ENTER, F3, F4, LEFT, RIGHT, UP, DOWN] {
             shell.tap(key);
             while shell.depth() > 1 {
                 shell.tap(CLEAR);

@@ -9,6 +9,18 @@ mod app;
 mod builds;
 #[path = "app_pages/built.rs"]
 mod built;
+#[path = "app_pages/checking_errors.rs"]
+mod checking_errors;
+#[path = "app_pages/checking_exits.rs"]
+mod checking_exits;
+#[path = "app_pages/checking_flow.rs"]
+mod checking_flow;
+#[path = "app_pages/checking_frames.rs"]
+mod checking_frames;
+#[path = "app_pages/checking_real.rs"]
+mod checking_real;
+#[path = "app_pages/checkrig.rs"]
+mod checkrig;
 #[path = "app_pages/cost_stages.rs"]
 mod cost_stages;
 #[path = "app_pages/counts.rs"]
@@ -25,6 +37,8 @@ mod fixture;
 mod guard;
 #[path = "app_pages/idle.rs"]
 mod idle;
+#[path = "app_pages/idle_appon.rs"]
+mod idle_appon;
 #[path = "app_pages/idle_bounce.rs"]
 mod idle_bounce;
 #[path = "app_pages/idle_held.rs"]

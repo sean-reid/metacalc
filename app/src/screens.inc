@@ -9,6 +9,7 @@
 ;   KIND_NOTICE     byte 1 the notice's number, byte 2 its one parameter byte
 ;   KIND_ABOUT      none
 ;   KIND_STAGE      byte 1 the stage
+;   KIND_CHECKING   byte 1 the stage, byte 2 1 once its check has finished
 ;
 ; The routines run on this page, and so do their constant strings, which the canvas cannot read: a
 ; draw copies its screen's block (strings.inc) to APP_STAGE with app_stage_block and hands the canvas
@@ -18,6 +19,7 @@ KIND_LIBRARIES	.equ 1
 KIND_NOTICE	.equ 2
 KIND_ABOUT	.equ 3
 KIND_STAGE	.equ 4
+KIND_CHECKING	.equ 5
 FRAME_CURSOR	.equ 1
 FRAME_TOP	.equ 2
 
@@ -26,6 +28,7 @@ screen_kinds:
 	.dw notice_enter, notice_draw, notice_key, screen_ret, screen_idle
 	.dw about_enter, about_draw, about_key, screen_ret, screen_idle
 	.dw stage_enter, stage_draw, about_key, screen_ret, screen_idle
+	.dw checking_enter, checking_draw, checking_key, screen_ret, checking_idle
 
 screen_first:
 	.db KIND_LIBRARIES

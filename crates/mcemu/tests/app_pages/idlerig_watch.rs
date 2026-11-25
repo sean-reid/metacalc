@@ -115,6 +115,12 @@ impl Rig {
         self.ram(at, 1)[0]
     }
 
+    /// The shell's APP_ON byte, from the build's label file.
+    pub fn app_on(&mut self) -> u8 {
+        let at = self.shell.app.label("APP_ON");
+        self.ram(at, 1)[0]
+    }
+
     /// The OS's state an ON press leaves: the flag byte of onInterrupt, the scan code, the key
     /// byte, the two power down timer bytes and the interrupt mask port.
     pub fn os_state(&mut self) -> OsState {

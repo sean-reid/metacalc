@@ -148,6 +148,9 @@ fn about_and_each_notice_are_the_frames_of_the_model_on_every_row() {
     for built in builds() {
         for row in 0..rows(built) {
             for open in [F3, F1, ENTER, F2] {
+                if open == F2 && row + 1 < rows(built) {
+                    continue;
+                }
                 let mut shell = shown(built, Enter::Real);
                 let mut ui = model::ui(built, &[]);
                 let at = format!("{} stages, row {row}", built.stages.len());
@@ -214,7 +217,12 @@ fn quit_leaves_from_depth_2_and_fills_the_two_regions_as_it_does_from_depth_1() 
 fn a_failing_enter_pushes_the_error_notice_with_the_status_in_hex() {
     for built in [plain(), with_library()] {
         for status in [0x5A, 0xC3, 0x0F] {
-            for open in [F1, ENTER, F2] {
+            let opens: &[u8] = if built.library.is_some() {
+                &[F1, ENTER]
+            } else {
+                &[F1, ENTER, F2]
+            };
+            for &open in opens {
                 let mut shell = shown(built, Enter::FailNotices(status));
                 let first = shell.frames();
                 shell.tap(open);
@@ -287,7 +295,12 @@ fn a_refresh_of_the_error_notice_that_fails_leaves() {
 #[test]
 fn the_app_leaves_when_the_error_notices_own_push_fails() {
     for built in [plain(), with_library()] {
-        for open in [F1, F2] {
+        let opens: &[u8] = if built.library.is_some() {
+            &[F1]
+        } else {
+            &[F1, F2]
+        };
+        for &open in opens {
             let mut shell = shown(built, Enter::FailAll(0x5A));
             shell.dirty_dead();
             shell.leave(open);

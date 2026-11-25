@@ -21,7 +21,7 @@
 ; libs_key     UP and DOWN move the cursor, stopping at the ends, and the first row shown moves as
 ;              little as it must to keep the cursor on screen; a key that moves nothing is SCR_STAY.
 ;              ENTER and F1 push the notice of the list (NOTICE_LIST, titled by the stage) or, on
-;              My proofs, NOTICE_PROOFS; F2 pushes NOTICE_VERIFY or, on My proofs, NOTICE_PICK; F3
+;              My proofs, NOTICE_PROOFS; F2 pushes KIND_CHECKING for a stage or, on My proofs, NOTICE_PICK; F3
 ;              pushes KIND_STAGE for a stage of a library with more than one stage, else About;
 ;              CLEAR pops, which leaves the app. Every other key stays.
 ; libs_draw    clears the canvas, stages libs_block and draws the rows.
@@ -313,10 +313,13 @@ libs_open:
 libs_run:
 	inc hl
 	ld a, (hl)
-	ld b, NOTICE_PICK
 	cp STAGE_COUNT
-	jr nc, libs_notice_plain
-	ld b, NOTICE_VERIFY
+	jr nc, libs_pick
+	ld b, a
+	ld a, KIND_CHECKING
+	jp screen_push
+libs_pick:
+	ld b, NOTICE_PICK
 libs_notice_plain:
 	ld c, 0
 libs_notice:

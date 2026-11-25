@@ -159,24 +159,24 @@ fn on_the_reference_os_the_libraries_enter_reads_a_table_and_the_frame_is_the_mo
 /// screen, which holds every variable's type, name, place and archive page, is the same before the
 /// app starts and after it has shown its screens and been left, so nothing was created, deleted,
 /// archived or moved.
-mod vat {
-    use crate::realos::RealOs;
+pub mod vat {
+    use mcemu::Machine;
 
     const P_TEMP: u16 = 0x982E;
     const PROG_PTR: u16 = 0x9830;
     const SYM_TABLE: u16 = 0xFE66;
     const APPVAR: u8 = 0x15;
 
-    fn bytes(os: &mut RealOs, addr: u16, len: usize) -> Vec<u8> {
+    fn bytes(os: &mut Machine, addr: u16, len: usize) -> Vec<u8> {
         (usize::from(addr)..usize::from(addr) + len)
             .map(|a| {
                 let page = if a < 0xC000 { 1 } else { 0 };
-                os.m.ram_page(page)[a % 0x4000]
+                os.ram_page(page)[a % 0x4000]
             })
             .collect()
     }
 
-    fn word(os: &mut RealOs, addr: u16) -> u16 {
+    fn word(os: &mut Machine, addr: u16) -> u16 {
         let b = bytes(os, addr, 2);
         u16::from_le_bytes([b[0], b[1]])
     }
@@ -184,7 +184,7 @@ mod vat {
     /// Every variable as (type, name, archive page, data pointer, size word or 0 if archived),
     /// from the symbol table: entries of 9 bytes with three name bytes as far as progPtr, then
     /// entries with a name length as far as pTemp.
-    pub fn list(os: &mut RealOs) -> Vec<(u8, Vec<u8>, u8, u16, u16)> {
+    pub fn list(os: &mut Machine) -> Vec<(u8, Vec<u8>, u8, u16, u16)> {
         let (named, low) = (word(os, PROG_PTR), word(os, P_TEMP));
         let (mut at, mut out) = (SYM_TABLE, vec![]);
         while at > low {
@@ -202,6 +202,14 @@ mod vat {
         out
     }
 
+    /// The bytes of the status table after its size word, if it is in RAM.
+    pub fn table(os: &mut Machine) -> Option<Vec<u8>> {
+        let entry = list(os)
+            .into_iter()
+            .find(|e| e.0 == APPVAR && e.1 == b"MCSTAT" && e.2 == 0)?;
+        Some(bytes(os, entry.3 + 2, usize::from(entry.4)))
+    }
+
     pub fn has_table(list: &[(u8, Vec<u8>, u8, u16, u16)]) -> bool {
         list.iter().any(|e| e.0 == APPVAR && e.1 == b"MCSTAT")
     }
@@ -215,7 +223,7 @@ fn on_the_reference_os_the_screens_with_no_table_leave_the_whole_variable_list_a
     use crate::shellrig::{CLEAR, DOWN, ENTER, F1, F2, F3, UP};
     for built in [with_library(), three_stages()] {
         let mut os = RealOs::boot(&built.file);
-        let before = vat::list(&mut os);
+        let before = vat::list(&mut os.m);
         assert!(!vat::has_table(&before), "no table to begin with");
         println!("{} variables compared", before.len());
         assert!(before.len() > 1, "the OS has variables to compare");
@@ -232,7 +240,7 @@ fn on_the_reference_os_the_screens_with_no_table_leave_the_whole_variable_list_a
             os.screen() != libraries_pixels(built.shown().as_ref()),
             "left"
         );
-        let after = vat::list(&mut os);
+        let after = vat::list(&mut os.m);
         assert!(!vat::has_table(&after), "the screens made no table");
         assert_eq!(after, before, "the variables, their places and their sizes");
     }

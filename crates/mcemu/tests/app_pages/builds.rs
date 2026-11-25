@@ -46,12 +46,13 @@ pub fn rows(built: &Built) -> usize {
     built.stages.len().max(usize::from(built.library.is_some())) + 1
 }
 
-/// The kind of screen each of the model's states is in the app's frames. The theorem list and the
-/// checking screen do not exist yet: the app shows a notice in their place.
+/// The kind of screen each of the model's states is in the app's frames. The theorem list does not
+/// exist yet: the app shows a notice in its place.
 pub fn kind_of(state: &State) -> u8 {
     match state {
         State::Libraries { .. } => KIND_LIBRARIES,
-        State::Notice { .. } | State::List { .. } | State::Checking { .. } => KIND_NOTICE,
+        State::Notice { .. } | State::List { .. } => KIND_NOTICE,
+        State::Checking { .. } => KIND_CHECKING,
         State::About => KIND_ABOUT,
         State::StageAbout { .. } => KIND_STAGE,
         other => panic!("the model is on {other:?}"),
@@ -97,7 +98,7 @@ pub fn press(shell: &mut Shell, ui: &mut mcui::Ui, built: &Built, scan: u8, at: 
 fn shown(ui: &mcui::Ui, built: &Built) -> Vec<u8> {
     match ui.state() {
         State::List { stage, .. } => model::unavailable(built.stage_name(stage)),
-        State::Checking { .. } => model::unavailable("Verify"),
+        State::Checking { .. } => model::frame(ui),
         _ => model::frame(ui),
     }
 }

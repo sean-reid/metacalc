@@ -40,10 +40,13 @@
 ; held, so the press is taken at the end of the slice running when the first key goes up.
 ; Sentinel and work. Idle work runs before the sentinel check of the next key; the OS writes over
 ; saveSScreen only when auto power down fires inside _GetKey, so no idle call sees it overwritten.
-; ON is ignored while work is pending: with no scan code and onInterrupt set or ON down, the shell
-; clears onInterrupt and goes on to scr_idle. ON alone leaves APP_HELD as it is. ON with a key
-; down follows the key's rule: APP_HELD not 0 is set to 2 and the shell goes on to scr_idle, and
-; APP_HELD 0 goes to app_key, the one case where ON does not go on to scr_idle.
+; ON while work is pending: with no scan code and onInterrupt set or ON down, the shell clears
+; onInterrupt, sets APP_ON to 1 and goes on to scr_idle, so the press is not lost: a screen's idle
+; routine may read APP_ON and clear it, and every kind but checking leaves it alone. APP_ON is 0
+; at the start and after every key app_key returns. ON alone leaves APP_HELD as it is. ON with a
+; key down follows the key's rule: APP_HELD not 0 is set to 2 and the shell goes on to scr_idle,
+; and APP_HELD 0 goes to app_key, the one case where ON does not go on to scr_idle. A key down with
+; ON up sets APP_HELD to 2 and goes on to scr_idle with APP_ON as it was.
 ; When scr_idle answers carry clear while ON is still down, the OS has
 ; flagged that press once and the shell has cleared the flag, so app_key waits in _GetKey with ON
 ; down, where a screen with nothing pending is in app_key's wait for ON to go up; once ON is up
@@ -53,15 +56,18 @@
 ;   1 libraries   one row for each stage of the library and then My proofs, with each stage's
 ;                 progress read from the status table (screen_libraries.inc, screen_counts.inc);
 ;                 F3 opens About, or the stage's About when there is more than one stage, F1 and
-;                 ENTER and F2 a notice, CLEAR leaves
-;   2 notice      a title and a line; F1, CLEAR and ENTER go back
+;                 ENTER a notice, F2 the checking screen of a stage or a notice, CLEAR leaves
+;   2 notice      a title and one or two lines; F1, CLEAR and ENTER go back
 ;   3 about       the version, two lines and the count of libraries; CLEAR and ENTER go back
 ;   4 stage       a stage's name, title and counts (screen_stage.inc); CLEAR and ENTER go back
+;   5 checking    runs the check job (check.inc) on a stage through the idle point, with the bar
+;                 and counts moving; F1, CLEAR and ON stop it (screen_checking.inc)
 ; Stages. With LIBRARY the build's stage table (stages.inc, from app/Makefile) says what the rows
 ; are; STAGE_COUNT is 0 without one. The table is on this page, so the screens that draw it copy
 ; the strings they need to APP_TEXT. The status table store (store.inc) is linked in on this page,
-; since it makes OS calls, and only Libraries and the stage About read it: libs_counts asks
-; store_has and never opens a table, so the screens never create one. The store destroys OP1 to
+; since it makes OS calls, and so is the check job: Libraries and the stage About only read the
+; table, since libs_counts asks store_has and never opens one, and the checking screen's job creates
+; it once the library's CRC has been read. The store destroys OP1 to
 ; OP5 and needs IY, the OS flags pointer.
 ; Sentinel. The OS writes the screen's pixels over saveSScreen when auto power down fires in
 ; _GetKey, which destroys what the top screen built in saveSScreen. After every blit the shell stores
@@ -88,14 +94,17 @@
 ; RAM: the canvas's, fm's and the kernel's blocks in ram_map.inc, libPage (the flash page of
 ; library chunk 0) and appStatus after it, and APP_BUF, which holds what the top screen's enter
 ; and draw build: the counts, the strings in glyph codes and the error notice's frame, laid out in
-; ram_map.inc. APP_HELD, one byte in APP_BUF, is the shell's and no screen builds it again; an auto
-; power down's overwrite of it happens only inside _GetKey and the shell sets it after every
-; app_key, so the overwritten value is never read. APP_STAGE follows APP_BUF, which holds the copy
+; ram_map.inc. APP_ON and APP_HELD, a byte each in APP_BUF, are the shell's and no screen builds
+; them again; an auto power down's overwrite of them happens only inside _GetKey and the shell
+; sets both after every app_key, so an overwritten value is never read. APP_STAGE follows APP_BUF, which holds the copy
 ; of the constant strings (strings.inc) of the screen last drawn, since the canvas cannot read the
 ; entry page. The tag at its start is cleared at start and before the refresh that follows an auto
 ; power down.
 
 #include "equates.inc"
+#if APP_HELD != (APP_ON + 1)
+ .error "app_wait clears APP_ON and sets APP_HELD from one pointer"
+#endif
 
 #define APP_NAME "metacalc"
 #include "pages.inc"
@@ -138,6 +147,8 @@ app_start:
 	ld (appStatus), a
 #endif
 app_open:
+	xor a
+	ld (APP_ON), a
 	ld a, 2
 	ld (APP_HELD), a
 	ld hl, screen_kinds
@@ -158,12 +169,17 @@ app_idle:
 	jr z, app_none
 	jr nc, app_wait
 	bit 0, a
-	jr z, app_on
+	jr z, app_break
+	ld c, a
 	ld a, (hl)
 	or a
 	jr z, app_wait
 	ld (hl), 2
-app_on:
+	bit 3, c
+	jr z, app_work
+app_break:
+	ld a, 1
+	ld (APP_ON), a
 	res onInterrupt, (iy + onFlags)
 	jr app_work
 app_none:
@@ -186,7 +202,9 @@ app_idled:
 	jr nz, app_result
 app_wait:
 	call app_key
-	ld hl, APP_HELD
+	ld hl, APP_ON
+	ld (hl), 0
+	inc hl
 	ld (hl), 2
 	cp KEY_QUIT
 	jr z, app_exit
@@ -216,11 +234,11 @@ app_keyed:
 	jr nz, app_result
 	ld a, d
 	or a
-	jr z, app_idle
-	jr app_draw
+	jp z, app_idle
+	jp app_draw
 app_result:
 	cp SCR_RES_REDRAW
-	jr z, app_draw
+	jp z, app_draw
 	cp SCR_RES_LEAVE
 	jr z, app_exit
 	ld a, e
@@ -321,8 +339,11 @@ STAGE_COUNT .equ 0
 #include "screen_notice.inc"
 #include "screen_about.inc"
 #include "screen_stage.inc"
+#include "screen_checking.inc"
 #ifdef LIBRARY
 #include "store.inc"
+#include "check_ram.inc"
+#include "check.inc"
 #endif
 
 #define KEYS_SET_FONT far_ui_set_font
