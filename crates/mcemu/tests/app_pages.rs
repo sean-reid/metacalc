@@ -101,6 +101,8 @@ mod list_cost;
 mod list_depth;
 #[path = "app_pages/list_exits.rs"]
 mod list_exits;
+#[path = "app_pages/list_fail.rs"]
+mod list_fail;
 #[path = "app_pages/list_frames.rs"]
 mod list_frames;
 #[path = "app_pages/list_keys.rs"]
