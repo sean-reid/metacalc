@@ -15,23 +15,28 @@
 ;   LV_TABLE    1 when the status table is this library's (store_has), else 0; with 0 every row is
 ;               unchecked and the screen never creates a table
 ;   LV_FLAT     1 when the library has no trees section and an assertion: the model's "flat" prefix
-;               on the counts, as Lib::degraded decides it, since a library whose database has no
-;               grammar is packed with no trees
+;               on the counts. That is Lib::degraded for a library mcpack packs, which writes no
+;               trees section exactly when the database has no grammar; a library with its trees
+;               section removed by other means is flat here and not in the model
 ;   LV_SECT     1 when a section title starts inside the stage: the key F5 is live and its label drawn
-;   LV_COUNT    the ticks the row must still be still, from LIST_WAIT, 11 (about 102 ms)
+;   LV_COUNT    the ticks the row must still be still, from LIST_WAIT
 ;   LV_PREVIEW  LVP_PENDING, the row is blank; LVP_ROW, fm holds the laid out conclusion of the cursor's
 ;               assertion and the draw shows it; LVP_NONE, settled with nothing to show
-; The draw keeps its own (LV_STAGE, LV_ROW, LV_CUR, LV_TOP, LV_END, LV_AT, LV_MARK and the strings it builds)
-; after these.
+; The rest of APP_TEXT is scratch that no call reads before it writes: list_enter writes LV_STAGE,
+; list_draw writes LV_STAGE, LV_CUR, LV_TOP, LV_END, LV_ROW, LV_AT, LV_MARK and the strings it builds,
+; and list_idle writes LV_CUR.
 ; The laid out row is fm's: fm_statement, fm_fit and fm_clip leave the statement, folded and cut to one
 ; line, in fm's RAM (FM_RAM, FM_LOW), and a settled draw calls fm_draw on it without fitting again.
 ; Only a kernel entry closes fm or overwrites that RAM, and none runs while a list is the top screen: the
 ; check job runs on the screen Libraries pushes, never over a list, and a list that is entered after it
-; finds fm closed, which the preview's first fit answers with FM_ERR_NOT_OPEN and fm_open. A notice over
+; finds fm closed, which the first fm_statement of its preview answers with FM_ERR_NOT_OPEN, and list_idle
+; calls fm_open. A notice over
 ; the list, the screen's own refresh and the OS's overwrite of saveSScreen touch none of fm's memory,
 ; and every one of them runs list_enter again, which makes the preview pending, so a settled draw never
 ; follows a lost row.
 ;
+; Registers: each routine below destroys AF BC DE HL and IX, which the far calls and the reader leave
+; undefined, except list_stage_end, which says what it keeps.
 ; list_enter   in: HL = the frame. out: A = the status of libs_counts, which derives the counts the title
 ;              reads, or of the reader's assertion count; else 0. Then asks the store once more
 ;              (store_has) whether the table is the library's, the reader whether it has trees and
@@ -46,11 +51,14 @@
 ;              count, one app_tick, SCR_STAY with carry set. Count 0 and the preview pending: fm_statement
 ;              of the cursor's conclusion (after fm_open when fm answers FM_ERR_NOT_OPEN), fm_fit to one
 ;              line at LIST_WIDTH pixels, fm_clip to one line when it took more, then LVP_ROW and
-;              SCR_REDRAW with carry clear. An empty stage and any fm status other than 0, which is what
-;              the model's statement_within says for a statement past its caps (FM_ERR_LIMIT), settle as
-;              LVP_NONE and answer SCR_STAY with carry clear. Settled: SCR_STAY with carry clear and
-;              nothing touched. The first call after a key is made about one frame later, so the fit
-;              starts 11 timer interrupts after it: 579,258 T-states on the reference OS.
+;              SCR_REDRAW with carry clear. An empty stage settles as LVP_NONE with SCR_STAY and carry
+;              clear, calling nothing of fm. So does any status other than 0 from fm_open, fm_statement,
+;              fm_fit or fm_clip: FM_ERR_LIMIT is the model's "over the caps" (statement_within), and
+;              any other (a refused read, a damaged tree) settles with nothing too, where the model
+;              would draw the preview. Settled: SCR_STAY with carry clear and nothing touched.
+;              The count is in timer interrupts and the first halt ends at the next one, so the fit
+;              starts between 10 and 11 periods after the first call that follows a key's frame:
+;              579,258 T-states (96.5 ms) measured on the reference OS.
 ; list_draw    in: HL = the frame. Clears the canvas, stages list_block, draws the title, the rows, the
 ;              preview when LV_PREVIEW is LVP_ROW, by one fm_draw and no fit, and the keys. It reads the
 ;              label of each row with one lib_label and, when LV_TABLE is 1, its mark with one
@@ -168,7 +176,7 @@ le_wait:
 	xor a
 	ret
 
-; In: A = a stage. Out: DE = its end, the number of its assertions. Destroys AF HL.
+; In: A = a stage. Out: DE = its end, the number of its assertions. Destroys F HL.
 list_stage_end:
 	ld l, a
 	ld h, 0

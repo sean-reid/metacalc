@@ -1,6 +1,7 @@
 ; The list screen's draw (screen_list.inc has the kind's header): the title with the stage's name cut to
 ; the room checked/total leaves, the rows from the top, the preview and the keys. Strings built here are
-; in APP_TEXT and the constants are staged from list_block.
+; in APP_TEXT and the constants are staged from list_block. Every routine here destroys AF BC DE HL
+; and IX, since far_ui_text_width leaves AF BC DE and HL as its result and every far call destroys IX.
 
 #ifdef LIBRARY
 ; In: HL = the frame.
@@ -74,7 +75,7 @@ ld_soft:
 
 ; In: HL = the right text of a row, glyph codes ended by 0, empty for none. Out: C = the pixels left
 ; of it for the row's left text: 94 for no text, else 91 less its width, 0 at the least. Destroys
-; AF B HL.
+; AF BC DE HL and IX, C being the result.
 list_room:
 	ld a, (hl)
 	push af
@@ -95,7 +96,8 @@ lm_fit:
 
 ; In: HL = an assertion number, DE = where to write LIST_LABEL_MAX + 1 bytes. Out: A = 0 and the first
 ; LIST_LABEL_MAX characters of its label as glyph codes ended by 0, a character with no glyph being the
-; question mark, or the reader's status with nothing written. Reads through FM_SCRATCH. Destroys BC DE HL.
+; question mark, or the reader's status with nothing written. Reads through FM_SCRATCH. Destroys AF
+; BC DE HL and IX.
 list_label_text:
 	push de
 	ld de, FM_SCRATCH
