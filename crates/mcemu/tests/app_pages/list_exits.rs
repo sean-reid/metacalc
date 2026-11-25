@@ -68,7 +68,7 @@ fn clipped_assertion(built: &Built) -> usize {
 impl Lister {
     /// Runs to the entry of the idle call that does the preview's work: the wait over and the preview
     /// pending.
-    pub fn to_the_work(&mut self) {
+    pub fn run_to_the_work(&mut self) {
         for _ in 0..200 {
             let at = self.run.shell.app.label("list_idle");
             self.run.run_to_addr("list_idle", at, WAIT);
@@ -84,7 +84,7 @@ impl Lister {
     /// left: its answer, interrupts on, no frame blitted, the preview settled with nothing and the
     /// frame the model draws for a preview not laid out.
     pub fn settles_with_nothing(&mut self, at: &str, speed: u8) {
-        self.to_the_work();
+        self.run_to_the_work();
         let blits = self.run.blits();
         let t = self.trace_here("list_idle", false, speed);
         assert_eq!(
