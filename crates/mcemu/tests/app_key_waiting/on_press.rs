@@ -1,6 +1,6 @@
 use crate::realos::ON_INTERRUPT;
 use crate::rig::*;
-use mcemu::{Machine, Speed, Stop};
+use mcemu::{Machine, Reached, Speed, Stop};
 
 /// Presses 190 us apart cover one interrupt period.
 const PHASE_US: u32 = 190;
@@ -160,4 +160,63 @@ fn the_stub_flags_on_only_after_it_has_been_down_as_long_as_the_reference_os_nee
 #[ignore = "needs the reference ROM image"]
 fn the_reference_os_flags_on_only_after_it_has_been_down_about_47_ms() {
     assert_on_press_timing(Rig::real);
+}
+
+impl Rig {
+    /// The microseconds from `from` to each of the next `n` interrupts, which the run reports as
+    /// the CPU reaches the interrupt vector.
+    fn interrupts_after(&mut self, from: u32, n: usize) -> Vec<u32> {
+        let page = if matches!(self, Rig::Stub(_)) {
+            STUB_BASE
+        } else {
+            crate::realos::BASE
+        };
+        (0..n)
+            .map(|_| {
+                let r = self.m().run_to(page, 0x7FFF, 10_000_000);
+                assert_eq!(r, Reached::Vector38, "no interrupt came");
+                self.m().clock().wrapping_sub(from) / 6
+            })
+            .collect()
+    }
+}
+
+/// ON held 100 ms and released at a given phase of the timer: the release raises the latch, and
+/// the handler's wait then holds off the next interrupt by about 47 ms, where without a release
+/// they come every 9.3 ms.
+fn assert_release_waits(mk: fn() -> Rig) {
+    for phase in [0, 2_300, 4_600, 6_900] {
+        let mut rig = mk();
+        rig.press_at(phase);
+        rig.run_us(100_000);
+        rig.m().release_key(Machine::KEY_ON);
+        let from = rig.m().clock();
+        let after = rig.interrupts_after(from, 3);
+        let mut quiet = mk();
+        quiet.run_us(300_000 + phase);
+        let quiet_from = quiet.m().clock();
+        let free = quiet.interrupts_after(quiet_from, 3);
+        println!("phase {phase}: after a release {after:?}, without one {free:?} us");
+        assert!(after[0] < 100, "the release raised no interrupt at once");
+        assert!(
+            (46_500..=56_500).contains(&after[1]),
+            "the second interrupt after the release came at {} us",
+            after[1]
+        );
+        assert!(
+            free[1] - free[0] < 10_000,
+            "interrupts without ON are not 9.3 ms apart"
+        );
+    }
+}
+
+#[test]
+fn the_stub_waits_at_the_release_of_on_as_it_does_at_the_press() {
+    assert_release_waits(Rig::stub);
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn the_reference_os_waits_at_the_release_of_on_as_it_does_at_the_press() {
+    assert_release_waits(Rig::real);
 }
