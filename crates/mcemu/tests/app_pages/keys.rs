@@ -287,7 +287,7 @@ fn the_cursor_stops_at_both_ends_and_the_first_row_shown_follows_it() {
 }
 
 #[test]
-fn the_frames_the_keys_push_hold_the_notice_or_the_stage() {
+fn the_frames_the_keys_push_hold_the_list_the_notice_or_the_stage() {
     let built = three_stages();
     for row in 0..rows(built) {
         let stage = row < built.stages.len();
@@ -300,7 +300,7 @@ fn the_frames_the_keys_push_hold_the_notice_or_the_stage() {
             (
                 frame(KIND_STAGE, row as u8, 0),
                 frame(KIND_CHECKING, row as u8, 0),
-                frame(KIND_NOTICE, NOTICE_LIST, row as u8),
+                frame(KIND_LIST, row as u8, 0),
             )
         } else {
             (
@@ -341,25 +341,26 @@ pub fn pops_a_notice(key: Option<Key>) -> bool {
     ui.depth() == 1
 }
 
-/// The notice that stands in for the model's theorem list or checking screen, opened by `open` on
-/// `row`: the model has no Notice there, so the oracle is the notice's rule, that the keys that
-/// close the model's Notice pop and the rest change nothing, over the model's frame for the
-/// Libraries screen under it and its own frame for the stand-in.
+/// The notice a stage's list opens on ENTER: the model's list has the theorem screen there, which
+/// the app does not have yet, so the oracle is the notice's rule, that the keys that close the
+/// model's Notice pop and the rest change nothing, over the frame the model has for the list that
+/// is under it and its own frame for the notice.
 #[test]
-fn every_key_the_app_can_produce_does_on_the_notices_of_a_stage_what_the_models_notice_does() {
+fn every_key_the_app_can_produce_does_on_the_notice_of_a_stage_list_what_the_models_notice_does() {
     for built in [three_stages(), six_stages()] {
         for row in 0..built.stages.len() {
             for open in [F1, ENTER] {
                 for probe in &PROBES {
-                    let (mut shell, ui) = on_row(built, row);
+                    let (mut shell, mut ui) = on_row(built, row);
                     let title = built.stage_name(row);
                     let at = format!(
                         "{} stages, the notice of row {row} from {open:02X}, {}",
                         built.stages.len(),
                         probe.name
                     );
-                    shell.tap(open);
-                    assert_eq!((shell.depth(), shell.top_kind()), (2, KIND_NOTICE), "{at}");
+                    open_list(&mut shell, &mut ui, built, open, &at);
+                    shell.tap(ENTER);
+                    assert_eq!((shell.depth(), shell.top_kind()), (3, KIND_NOTICE), "{at}");
                     shell.shows(&at, &model::unavailable(title));
                     let blits = shell.blits();
                     for &modifier in &probe.scans[..probe.scans.len() - 1] {
@@ -367,11 +368,13 @@ fn every_key_the_app_can_produce_does_on_the_notices_of_a_stage_what_the_models_
                     }
                     shell.tap(*probe.scans.last().unwrap());
                     if pops_a_notice(probe.model) {
-                        assert_eq!(shell.depth(), 1, "{at}: popped");
-                        shell.shows(&at, &model::frame(&ui));
+                        assert_eq!((shell.depth(), shell.top_kind()), (2, KIND_LIST), "{at}");
+                        let mut pending = on_row(built, row).1;
+                        pending.press(Key::F1);
+                        shell.shows(&at, &model::frame(&pending));
                         assert_eq!(shell.blits(), blits + 1, "{at}: one frame");
                     } else {
-                        assert_eq!(shell.depth(), 2, "{at}: stays");
+                        assert_eq!(shell.depth(), 3, "{at}: stays");
                         shell.shows(&at, &model::unavailable(title));
                         assert_eq!(shell.blits(), blits, "{at}: no frame");
                     }

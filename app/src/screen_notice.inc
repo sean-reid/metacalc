@@ -1,7 +1,7 @@
 ; Kind 2, a notice as crates/mcui/src/screens/notice.rs draws it: the title bar, one line centred
 ; on row 3, or two on rows 3 and 4, and Back over F1. The frame's byte 1 is the notice's number and byte 2 its parameter.
-;   NOTICE_LIST     the stage's name as the title and "Not available yet", for the theorem list
-;                   that does not exist yet; the parameter is the stage, and notice_enter builds
+;   NOTICE_LIST     the stage's name as the title and "Not available yet", what the list's keys with
+;                   no screen behind them push; the parameter is the stage, and notice_enter builds
 ;                   the title in NT_TITLE; the title is the whole name, where the model's list
 ;                   cuts it to leave room for "checked/total"
 ;   NOTICE_DAMAGED  "Verify", "Library is damaged" and "Install it again", which the checking

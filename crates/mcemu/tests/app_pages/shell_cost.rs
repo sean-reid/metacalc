@@ -69,8 +69,8 @@ const IGNORED_KEY_FLOOR: u32 = 2_512;
 /// The most app_stage_block may take for a block the area already holds.
 const WARM_STAGE: u32 = 120;
 /// The most bytes each code page may use: entry, draw and data.
-const PAGES_PLAIN: [u32; 3] = [2_580, 15_300, 9_250];
-const PAGES_LIBRARY: [u32; 3] = [5_960, 15_300, 9_250];
+const PAGES_PLAIN: [u32; 3] = [2_640, 15_300, 9_250];
+const PAGES_LIBRARY: [u32; 3] = [6_820, 15_300, 9_250];
 
 /// Clears the staging tag, so that the next draw copies its screen's strings.
 pub fn go_cold(app: &mut App) {
@@ -152,7 +152,7 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
         (
             "Notice, a stage's list",
             three_stages(),
-            &[F1],
+            &[F1, F1],
             NOTICE,
             NOTICE_COLD,
         ),
@@ -173,7 +173,11 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
         }
         if !open.is_empty() {
             let depth = app.label("scr_count");
-            assert_eq!(app.m.read_ram(depth, 1), [2], "{name}: the screen opened");
+            assert_eq!(
+                app.m.read_ram(depth, 1),
+                [1 + open.len() as u8],
+                "{name}: the screen opened"
+            );
         }
         let (draw, blit) = frame(&mut app);
         println!(

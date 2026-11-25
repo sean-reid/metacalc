@@ -1,9 +1,9 @@
 ; The screen kinds the shell gives the screen stack (scr/scr.z80), the kind table and the routines
 ; that build a frame to push. The kind table has a row of five addresses, enter, draw, key, land and
 ; idle, for each kind. Kind 1 is in screen_libraries.inc, kind 2 in screen_notice.inc, kind 3 in
-; screen_about.inc, kind 4 in screen_stage.inc and kind 5, checking, in screen_checking.inc. No kind
-; has a land: every row's land is screen_ret. Only kind 5 has an idle routine, checking_idle; the
-; idle of kinds 1 to 4 is screen_idle.
+; screen_about.inc, kind 4 in screen_stage.inc, kind 5, checking, in screen_checking.inc and kind 6, the
+; theorem list, in screen_list.inc. No kind has a land: every row's land is screen_ret. Kinds 5 and 6
+; have an idle routine, checking_idle and list_idle; the idle of kinds 1 to 4 is screen_idle.
 ;
 ; Frames, 16 bytes: byte 0 the kind, the rest 0 but what the kind keeps there.
 ;   KIND_LIBRARIES  byte 1 the cursor, byte 2 the first row shown
@@ -11,6 +11,7 @@
 ;   KIND_ABOUT      none
 ;   KIND_STAGE      byte 1 the stage
 ;   KIND_CHECKING   byte 1 the stage, byte 2 1 once its check has finished
+;   KIND_LIST       byte 1 the stage, bytes 2 and 3 the cursor's assertion, 4 and 5 the first shown
 ;
 ; The routines run on this page, and so do their constant strings, which the canvas cannot read: a
 ; draw copies its screen's block (strings.inc) to APP_STAGE with app_stage_block and hands the canvas
@@ -21,6 +22,7 @@ KIND_NOTICE	.equ 2
 KIND_ABOUT	.equ 3
 KIND_STAGE	.equ 4
 KIND_CHECKING	.equ 5
+KIND_LIST	.equ 6
 FRAME_CURSOR	.equ 1
 FRAME_TOP	.equ 2
 
@@ -30,6 +32,7 @@ screen_kinds:
 	.dw about_enter, about_draw, about_key, screen_ret, screen_idle
 	.dw stage_enter, stage_draw, about_key, screen_ret, screen_idle
 	.dw checking_enter, checking_draw, checking_key, screen_ret, checking_idle
+	.dw list_enter, list_draw, list_key, screen_ret, list_idle
 
 screen_first:
 	.db KIND_LIBRARIES

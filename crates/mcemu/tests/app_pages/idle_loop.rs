@@ -29,6 +29,8 @@ fn shipped_kinds_cost_one_waiting_and_one_idle(real: bool) {
         (DOWN, "Down, which redraws", 1),
         (F3, "F3, which opens a stage's About", 1),
         (CLEAR, "CLEAR, which closes it", 1),
+        (DOWN, "Down to the third stage", 1),
+        (DOWN, "Down to My proofs", 1),
         (F1, "F1, which opens a notice", 1),
     ] {
         let before = counts(&mut rig);

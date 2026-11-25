@@ -18,11 +18,30 @@ const WALK_CHECKING: [u8; 34] = [
     DOWN, F3, CLEAR, F1, ENTER, F2, CLEAR, DOWN, F3, CLEAR, UP, UP, UP, UP, F3, CLEAR,
 ];
 
+/// The keys the stream sent inside a list and inside a stage's notice, 95 and 150 at the least over
+/// the two walks and two builds.
+const IN_LIST_FLOOR: usize = 90;
+const IN_NOTICE_FLOOR: usize = 140;
+
+/// The model on Libraries again and taken through `log`, with no idle work: the list it was on, with
+/// its preview pending.
+fn replayed(built: &Built, status: &[mcui::Status], log: &[Key]) -> mcui::Ui {
+    let mut ui = model::ui(built, status);
+    for &key in log {
+        ui.press(key);
+    }
+    ui
+}
+
 /// One session, one key after another, the screen and the model compared after each: a fixed walk
 /// through every kind of screen, then a pseudo-random stream of keys, never CLEAR on the Libraries
-/// screen, which leaves. A stage's list is a notice in the app; while one is open the oracle is the
-/// notice's rule (see above) and the model rests on the Libraries screen under it, which is rebuilt
-/// by replaying the keys it took. With `checking` the walk and the stream press F2 where they
+/// screen, which leaves. In the fixed walk a stage's list is left with CLEAR as soon as it has
+/// opened and been compared; in the stream the keys go on inside it: the arrows and CLEAR are the
+/// model's, and ENTER and F1 to F4 open the stage's notice, which the model's list has no screen
+/// for, so the notice's rule stands in for it as list_keys.rs does: the notice is compared with the
+/// model's "Not available yet" and the list that comes back is the model's after the same keys with
+/// no idle work. F5 does nothing on a stage with no section titles, which these builds are. With
+/// `checking` the walk and the stream press F2 where they
 /// press F4 otherwise, on a table with every assertion settled so that a check has nothing to
 /// verify, and the model follows the checking screen as it does the others.
 fn long_walk(checking: bool) {
@@ -48,14 +67,15 @@ fn long_walk(checking: bool) {
         };
         let mut shell = booted(built, Some(&data));
         let mut ui = model::ui(built, &status);
-        let mut log: Vec<Key> = Vec::new();
-        let mut stand_in: Option<String> = None;
         let mut kinds = std::collections::BTreeSet::new();
+        let mut log: Vec<Key> = Vec::new();
+        let mut notice: Option<String> = None;
+        let (mut in_list, mut in_notice) = (0, 0);
         let mut seed = 0x9E37_79B9_u32;
         let mut keys = walk.to_vec();
         keys.extend([DOWN; 7]);
         keys.extend([F3, CLEAR, UP, f, CLEAR]);
-        for _ in 0..160 {
+        for _ in 0..600 {
             seed ^= seed << 13;
             seed ^= seed >> 17;
             seed ^= seed << 5;
@@ -63,19 +83,41 @@ fn long_walk(checking: bool) {
         }
         for (step, &key) in keys.iter().enumerate() {
             let at = format!("{} stages, step {step}", built.stages.len());
+            let fixed = step < walk.len() + 12;
             let on_stage = matches!(
                 ui.state(),
                 State::Libraries { cursor, .. } if cursor < built.stages.len()
             );
-            if let Some(title) = stand_in.clone() {
+            let in_a_list = matches!(ui.state(), State::List { .. });
+            if let Some(title) = notice.clone() {
+                in_notice += 1;
                 shell.tap(key);
                 if pops_a_notice(Some(key_of(key))) {
-                    stand_in = None;
+                    notice = None;
+                    ui = replayed(built, &status, &log);
                     shell.shows(&at, &model::frame(&ui));
-                    assert_eq!(shell.depth(), 1, "{at}: popped");
+                    assert_eq!(shell.depth(), 2, "{at}: popped to the list");
                 } else {
                     shell.shows(&at, &model::unavailable(&title));
-                    assert_eq!(shell.depth(), 2, "{at}: stays");
+                    assert_eq!(shell.depth(), 3, "{at}: stays");
+                }
+            } else if in_a_list && !fixed && [ENTER, F1, F2, F3, F4, F5].contains(&key) {
+                in_list += 1;
+                settle_list(&mut shell, &mut ui);
+                let (blits, frame) = (shell.blits(), shell.frames()[1].clone());
+                let title = built.stage_name(usize::from(frame[1])).to_string();
+                shell.tap(key);
+                if key == F5 {
+                    assert_eq!(
+                        (shell.depth(), shell.blits()),
+                        (2, blits),
+                        "{at}: F5, no sections"
+                    );
+                    assert_eq!(shell.frames()[1], frame, "{at}");
+                } else {
+                    shell.shows(&at, &model::unavailable(&title));
+                    assert_eq!(shell.depth(), 3, "{at}: the stage's notice");
+                    notice = Some(title);
                 }
             } else if checking && key == F2 && on_stage {
                 opens_a_check(&mut shell, &mut ui, &at);
@@ -84,20 +126,33 @@ fn long_walk(checking: bool) {
                 if key == CLEAR && shell.depth() == 1 {
                     continue;
                 }
-                if press(&mut shell, &mut ui, built, key, &at) {
-                    stand_in = state_title(built, &ui);
-                    ui = model::ui(built, &status);
-                    for &k in &log {
-                        ui.press(k);
-                    }
-                } else {
-                    log.push(key_of(key));
+                in_list += usize::from(in_a_list);
+                log.push(key_of(key));
+                if press(&mut shell, &mut ui, built, key, &at) && fixed {
+                    kinds.insert(shell.top_kind());
+                    log.push(Key::Clear);
+                    press(&mut shell, &mut ui, built, CLEAR, &at);
                 }
             }
             kinds.insert(shell.top_kind());
         }
-        let mut all: std::collections::BTreeSet<u8> =
-            [KIND_LIBRARIES, KIND_NOTICE, KIND_ABOUT, KIND_STAGE].into();
+        println!(
+            "{} stages: {in_list} keys inside a list, {in_notice} inside a stage's notice",
+            built.stages.len()
+        );
+        assert!(in_list >= IN_LIST_FLOOR, "{in_list} keys inside a list");
+        assert!(
+            in_notice >= IN_NOTICE_FLOOR,
+            "{in_notice} keys inside a notice"
+        );
+        let mut all: std::collections::BTreeSet<u8> = [
+            KIND_LIBRARIES,
+            KIND_NOTICE,
+            KIND_ABOUT,
+            KIND_STAGE,
+            KIND_LIST,
+        ]
+        .into();
         if checking {
             all.insert(KIND_CHECKING);
         }
@@ -120,12 +175,4 @@ fn a_long_walk_through_every_kind_of_screen_in_one_session_is_the_models_at_ever
 #[test]
 fn a_long_walk_that_opens_the_checking_screen_is_the_models_at_every_step() {
     long_walk(true);
-}
-
-/// The title of the notice that stands in for the model's theorem list: the stage's name.
-fn state_title(built: &Built, ui: &mcui::Ui) -> Option<String> {
-    match ui.state() {
-        mcui::State::List { stage, .. } => Some(built.stage_name(stage).to_string()),
-        _ => None,
-    }
 }

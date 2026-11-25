@@ -29,34 +29,62 @@ fn the_sentinel_is_the_complement_of_the_frames_byte_after_every_blit() {
     }
 }
 
+const KINDS: [u8; 5] = [
+    KIND_LIBRARIES,
+    KIND_NOTICE,
+    KIND_ABOUT,
+    KIND_STAGE,
+    KIND_LIST,
+];
+
+/// Taps each of `ignored`, which the top screen does nothing with, and asserts that no screen was
+/// entered and no frame blitted.
+fn ignores(shell: &mut Shell, ignored: &[u8], at: &str) {
+    let before = (KINDS.map(|k| shell.enters(k)), shell.blits());
+    for &key in ignored {
+        shell.tap(key);
+    }
+    let after = (KINDS.map(|k| shell.enters(k)), shell.blits());
+    assert_eq!(after, before, "{at}");
+}
+
 #[test]
 fn an_intact_sentinel_runs_no_refresh_and_no_blit_for_an_ignored_key() {
     for built in [plain(), with_library()] {
         let mut shell = booted(built, Enter::Real);
-        for open in [None, Some(F3), Some(CLEAR), Some(F1)] {
+        let library = built.library.is_some();
+        for (n, open) in [None, Some(F3), Some(CLEAR), Some(F1), Some(F1)]
+            .into_iter()
+            .enumerate()
+        {
+            if n == 4 && !library {
+                continue;
+            }
             if let Some(open) = open {
                 shell.tap(open);
             }
-            let before = (
-                [KIND_LIBRARIES, KIND_NOTICE, KIND_ABOUT, KIND_STAGE].map(|k| shell.enters(k)),
-                shell.blits(),
-            );
-            shell.tap(F4);
-            shell.tap(LETTER);
-            let after = (
-                [KIND_LIBRARIES, KIND_NOTICE, KIND_ABOUT, KIND_STAGE].map(|k| shell.enters(k)),
-                shell.blits(),
-            );
-            assert_eq!(after, before, "after {open:?}");
+            let at = format!("after {open:?}, number {n}");
+            if library && n == 3 {
+                assert_eq!(shell.top_kind(), KIND_LIST, "{at}: the list");
+                shell.app.m.run_app(3_000_000);
+                assert_ne!(crate::builds::list_preview(&mut shell), 0, "{at}: settled");
+                ignores(&mut shell, &[LETTER, F5], &at);
+            } else {
+                if library && n == 4 {
+                    assert_eq!(shell.top_kind(), KIND_NOTICE, "{at}: the stage's notice");
+                    assert_eq!(shell.depth(), 3, "{at}: over the list");
+                }
+                ignores(&mut shell, &[F4, LETTER], &at);
+            }
         }
     }
 }
 
 /// After the power down the next key, which the screen ignores, makes the top screen's enter run
 /// once, and its frame is drawn and blitted once.
-fn refreshed(built: &'static Built, enter: Enter, open: Option<u8>, kind: u8, want: &[u8]) {
+fn refreshed(built: &'static Built, enter: Enter, open: &[u8], kind: u8, want: &[u8]) {
     let mut shell = booted(built, enter);
-    if let Some(open) = open {
+    for &open in open {
         shell.tap(open);
     }
     shell.shows("before the power down", want);
@@ -88,13 +116,7 @@ fn refreshed(built: &'static Built, enter: Enter, open: Option<u8>, kind: u8, wa
 #[test]
 fn a_power_down_while_about_is_open_refreshes_it_on_the_next_key() {
     for built in [plain(), with_library()] {
-        refreshed(
-            built,
-            Enter::Real,
-            Some(F3),
-            KIND_ABOUT,
-            &model::about(built),
-        );
+        refreshed(built, Enter::Real, &[F3], KIND_ABOUT, &model::about(built));
     }
 }
 
@@ -103,9 +125,21 @@ fn a_power_down_while_a_notice_is_open_refreshes_it_on_the_next_key() {
     refreshed(
         plain(),
         Enter::Real,
-        Some(F1),
+        &[F1],
         KIND_NOTICE,
         &model::unavailable("My proofs"),
+    );
+}
+
+#[test]
+fn a_power_down_while_a_stages_notice_is_open_over_its_list_refreshes_it_on_the_next_key() {
+    let built = with_library();
+    refreshed(
+        built,
+        Enter::Real,
+        &[F1, F1],
+        KIND_NOTICE,
+        &model::unavailable(built.stage_name(0)),
     );
 }
 
@@ -115,7 +149,7 @@ fn a_power_down_on_the_libraries_screen_refreshes_it_on_the_next_key() {
         refreshed(
             built,
             Enter::Real,
-            None,
+            &[],
             KIND_LIBRARIES,
             &libraries_of(built),
         );
