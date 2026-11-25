@@ -259,3 +259,35 @@ fn a_settled_list_idles_to_nothing_and_changes_no_byte_of_any_region() {
     assert!(list.settle());
     crate::idle::idles_to_nothing(&mut list.run.shell.app, false, "a settled list");
 }
+
+/// "flat 0/n" leaves a wide stage name too little room, so the model cuts it with an ellipsis and the
+/// app cuts it the same.
+#[test]
+fn a_stage_name_wider_than_the_room_the_counts_leave_is_cut_as_the_model_cuts_it() {
+    let library = crate::support::pack_all(&crate::support::corpus("miu.mm"));
+    let end = table::header_of(&library).1 as usize;
+    let stage = mcui::Stage {
+        name: "WWWWWWWWWWWW".into(),
+        title: "Wide".into(),
+        end,
+    };
+    let built = staged_with("pages-list-wide-name", &library, &[stage]);
+    let mut list = Lister::open(built, None, 0);
+    let title = list
+        .ui
+        .frame_calls()
+        .1
+        .into_iter()
+        .find_map(|call| match call {
+            mcui::canvas::Call::Title { left, right } => Some((left, right)),
+            _ => None,
+        })
+        .expect("a title");
+    assert!(
+        title.0.ends_with(mcglyph::ELLIPSIS),
+        "the model cuts the name to the room {:?} leaves: {:?}",
+        title.1,
+        title.0
+    );
+    list.settle();
+}

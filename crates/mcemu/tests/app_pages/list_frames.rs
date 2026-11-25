@@ -334,12 +334,20 @@ fn a_page_at_the_boundary_of_either_end_lands_where_the_model_lands() {
         for _ in 0..from {
             assert!(list.key(DOWN, Key::Down));
         }
-        assert_eq!(list.pos().cursor, from, "the precondition puts the cursor there");
+        assert_eq!(
+            list.pos().cursor,
+            from,
+            "the precondition puts the cursor there"
+        );
         assert!(list.key(scan, key));
         let landed = list.pos().cursor;
         assert_eq!(
             landed,
-            if scan == RIGHT { (from + 5).min(last) } else { from.saturating_sub(5) }
+            if scan == RIGHT {
+                (from + 5).min(last)
+            } else {
+                from.saturating_sub(5)
+            }
         );
         list.same_position(&format!("from {from} by {scan:02X}"));
         list.settle();
