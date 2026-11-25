@@ -32,14 +32,23 @@ impl Lister {
     /// Runs to the entry of the routine at `label`, runs it to its return and reports it. With
     /// `mask` interrupts are off for the call and on again after it. The machine is left at the
     /// instruction after the return.
-    pub fn trace(&mut self, label: &str, mask: bool) -> Trace {
+    pub fn trace(&mut self, label: &str, mask: bool, speed: u8) -> Trace {
         let at = self.run.shell.app.label(label);
         self.run.run_to_addr(label, at, WAIT);
-        self.trace_here(label, mask)
+        self.trace_here(label, mask, speed)
     }
 
-    /// `trace` for a machine that is at the entry of `label` already.
-    pub fn trace_here(&mut self, label: &str, mask: bool) -> Trace {
+    /// `trace` for a machine that is at the entry of `label` already. The speed port holds `speed`
+    /// at the call and is written back to 6 MHz after it. A call of list_idle is made with A and
+    /// the flags holding what its answer is not: A 77h, and the carry the other way round.
+    pub fn trace_here(&mut self, label: &str, mask: bool, speed: u8) -> Trace {
+        self.run.m().out_port(0x20, speed);
+        if label == "list_idle" {
+            let waiting = self.var("LV_COUNT") > 0;
+            let mut regs = self.run.m().regs();
+            regs.af = 0x7700 | if waiting { 0xD6 } else { 0xD7 };
+            self.run.m().set_regs(&regs);
+        }
         let sp = self.run.m().regs().sp;
         let ret = {
             let b = self.run.m().read_ram(sp, 2);
@@ -78,13 +87,14 @@ impl Lister {
         if mask {
             set_interrupts(&mut self.run, 1);
         }
+        self.run.m().out_port(0x20, 0);
         trace
     }
 }
 
 /// The greatest depth over `calls`, asserting that every call kept interrupts, as they were at the
-/// call or on when `on_exit`, and kept the speed.
-fn kept(what: &str, calls: &[Trace], masked: bool, on_exit: bool) -> u16 {
+/// call or on when `on_exit`, and returned with the speed port as it was set to `speed`.
+fn kept(what: &str, calls: &[Trace], masked: bool, on_exit: bool, speed: u8) -> u16 {
     assert!(!calls.is_empty(), "{what}: no call was traced");
     for (n, t) in calls.iter().enumerate() {
         let want = if on_exit { 1 } else { t.iff.0 };
@@ -94,14 +104,18 @@ fn kept(what: &str, calls: &[Trace], masked: bool, on_exit: bool) -> u16 {
             u8::from(!masked),
             "{what}, call {n}: the state at the call"
         );
-        assert_eq!(t.speed.0, t.speed.1, "{what}, call {n}: the speed");
+        assert_eq!(
+            t.speed,
+            (speed, speed),
+            "{what}, call {n}: the speed set before the call is the one it returns with"
+        );
     }
     calls.iter().map(|t| t.depth).max().unwrap()
 }
 
 /// The list of the fixture on stage 1, opened by ENTER whose enter is traced, settled, and every
 /// key traced at the cursor of a list long enough for each move.
-pub fn key_depths(mask: bool, rig: &Rig) -> BTreeMap<&'static str, u16> {
+pub fn key_depths(mask: bool, speed: u8, rig: &Rig) -> BTreeMap<&'static str, u16> {
     let mut found = BTreeMap::new();
     let keys: [(&str, u8, Key); 12] = [
         ("up", UP, Key::Up),
@@ -125,9 +139,12 @@ pub fn key_depths(mask: bool, rig: &Rig) -> BTreeMap<&'static str, u16> {
         list.key(DOWN, Key::Down);
         list.settle();
         list.run.m().press_key(scan);
-        let t = list.trace("list_key", mask);
+        let t = list.trace("list_key", mask, speed);
         list.run.m().release_key(scan);
-        found.insert(name, kept(&format!("list_key {name}"), &[t], mask, false));
+        found.insert(
+            name,
+            kept(&format!("list_key {name}"), &[t], mask, false, speed),
+        );
     }
     found
 }
@@ -161,7 +178,7 @@ impl Lister {
 }
 
 /// A move that keeps the cursor where it is, at each end, traced too.
-pub fn end_depths(mask: bool, rig: &Rig) -> Vec<u16> {
+pub fn end_depths(mask: bool, speed: u8, rig: &Rig) -> Vec<u16> {
     let mut all = Vec::new();
     for (scan, ends) in [(UP, true), (LEFT, true), (DOWN, false), (RIGHT, false)] {
         let mut list = (rig.open)();
@@ -170,32 +187,32 @@ pub fn end_depths(mask: bool, rig: &Rig) -> Vec<u16> {
             list.jump_to_the_end();
         }
         list.run.m().press_key(scan);
-        let t = list.trace("list_key", mask);
+        let t = list.trace("list_key", mask, speed);
         list.run.m().release_key(scan);
         assert_eq!(t.action, 0, "{scan:02X} at an end: SCR_STAY");
         all.push(t);
     }
-    vec![kept("list_key at an end", &all, mask, false)]
+    vec![kept("list_key at an end", &all, mask, false, speed)]
 }
 
-pub fn enter_depths(mask: bool, rig: &Rig) -> u16 {
+pub fn enter_depths(mask: bool, speed: u8, rig: &Rig) -> u16 {
     let mut all = Vec::new();
     let mut list = (rig.before)();
     list.run.m().press_key(ENTER);
-    all.push(list.trace("list_enter", mask));
+    all.push(list.trace("list_enter", mask, speed));
     list.run.m().release_key(ENTER);
     list.run.run(1_000_000);
     list.tap(F2);
     list.run.run(300_000);
     list.run.m().press_key(CLEAR);
-    all.push(list.trace("list_enter", mask));
+    all.push(list.trace("list_enter", mask, speed));
     list.run.m().release_key(CLEAR);
-    kept("list_enter", &all, mask, false)
+    kept("list_enter", &all, mask, false, speed)
 }
 
 /// Every kind of idle call: a tick, the fit, and a settled list, which the shell asks once after a
 /// key that redraws nothing.
-pub fn idle_depths(mask: bool, rig: &Rig) -> BTreeMap<&'static str, u16> {
+pub fn idle_depths(mask: bool, speed: u8, rig: &Rig) -> BTreeMap<&'static str, u16> {
     let mut list = (rig.open)();
     let mut classes: BTreeMap<&'static str, Vec<Trace>> = BTreeMap::new();
     let trace_one = |list: &mut Lister, classes: &mut BTreeMap<&'static str, Vec<Trace>>| {
@@ -208,7 +225,19 @@ pub fn idle_depths(mask: bool, rig: &Rig) -> BTreeMap<&'static str, u16> {
             (0, _) => "settled",
             other => panic!("{other:?}"),
         };
-        let t = list.trace_here("list_idle", mask);
+        let t = list.trace_here("list_idle", mask, speed);
+        assert_eq!(
+            (t.action, t.carry),
+            answer_of(class),
+            "list_idle {class}: A and the carry it answers"
+        );
+        if !mask {
+            assert_eq!(
+                t.iff,
+                (1, 1),
+                "list_idle {class}: interrupts on at the call and the exit"
+            );
+        }
         classes.entry(class).or_default().push(t);
         list.run.m().resume(1);
         class
@@ -223,21 +252,21 @@ pub fn idle_depths(mask: bool, rig: &Rig) -> BTreeMap<&'static str, u16> {
         .map(|(c, calls)| {
             (
                 c,
-                kept(&format!("list_idle {c}"), &calls, mask, c == "tick"),
+                kept(&format!("list_idle {c}"), &calls, mask, c == "tick", speed),
             )
         })
         .collect()
 }
 
-pub fn draw_depths(mask: bool, rig: &Rig) -> u16 {
+pub fn draw_depths(mask: bool, speed: u8, rig: &Rig) -> u16 {
     let mut list = (rig.before)();
     let mut all = Vec::new();
     for (scan, key) in [(ENTER, Key::Enter), (DOWN, Key::Down)] {
         list.run.m().press_key(scan);
-        all.push(list.trace("list_draw", mask));
+        all.push(list.trace("list_draw", mask, speed));
         list.run.m().release_key(scan);
         list.ui.press(key);
-        all.push(list.trace("list_draw", mask));
+        all.push(list.trace("list_draw", mask, speed));
         assert_eq!(
             list.var("LV_PREVIEW"),
             ROW,
@@ -245,7 +274,7 @@ pub fn draw_depths(mask: bool, rig: &Rig) -> u16 {
         );
         list.settle();
     }
-    kept("list_draw", &all, mask, false)
+    kept("list_draw", &all, mask, false, speed)
 }
 
 /// How a test gets the list it traces: one just opened by ENTER, and the Libraries screen with the
@@ -268,40 +297,54 @@ pub struct Figures {
 
 /// The figures of one pass over every routine, with interrupts masked for each call or as the app
 /// runs them.
-pub fn figures(rig: &Rig, mask: bool) -> Figures {
+pub fn figures(rig: &Rig, mask: bool, speed: u8) -> Figures {
     let figures = Figures {
-        keys: key_depths(mask, rig),
-        ends: end_depths(mask, rig)[0],
-        enter: enter_depths(mask, rig),
-        idle: idle_depths(mask, rig),
-        draw: draw_depths(mask, rig),
+        keys: key_depths(mask, speed, rig),
+        ends: end_depths(mask, speed, rig)[0],
+        enter: enter_depths(mask, speed, rig),
+        idle: idle_depths(mask, speed, rig),
+        draw: draw_depths(mask, speed, rig),
     };
     println!(
-        "{}, interrupts {}: {figures:?}",
+        "{}, interrupts {}, speed port {speed}: {figures:?}",
         rig.name,
         if mask { "masked" } else { "as the app runs" }
     );
     assert_eq!(
-        figures.idle.len(),
-        3,
-        "a tick, a fit and a settled call were all traced: {:?}",
-        figures.idle
+        figures.idle.keys().copied().collect::<Vec<_>>(),
+        ["fit", "settled", "tick"],
+        "a tick, a fit and a settled call were all traced"
     );
     figures
 }
 
-/// Asserts the masked figures are `want` and that an interrupt that lands in a call only adds to them.
+/// What list_idle answers in A and the carry for each kind of call: a tick takes the carry to ask
+/// for another call, a fit asks for a redraw, and a settled list and a preview with nothing to
+/// show answer SCR_STAY with the carry clear.
+pub fn answer_of(class: &str) -> (u8, bool) {
+    match class {
+        "tick" => (0, true),
+        "fit" => (1, false),
+        "settled" | "nothing" => (0, false),
+        other => panic!("no class {other}"),
+    }
+}
+
+/// Asserts the masked figures are `want`, at 6 MHz and at 15 MHz, and that an interrupt that lands in
+/// a call only adds to them, at both speeds.
 pub fn traced(rig: &Rig, want: &Figures) {
-    let masked = figures(rig, true);
-    assert_eq!(&masked, want, "{}: the depths", rig.name);
-    let live = figures(rig, false);
-    for (name, depth) in &live.keys {
-        assert!(*depth >= masked.keys[name], "{name}");
+    for speed in [0, 1] {
+        let masked = figures(rig, true, speed);
+        assert_eq!(&masked, want, "{}: the depths at speed {speed}", rig.name);
+        let live = figures(rig, false, speed);
+        for (name, depth) in &live.keys {
+            assert!(*depth >= masked.keys[name], "{name}");
+        }
+        for (name, depth) in &live.idle {
+            assert!(*depth >= masked.idle[name], "{name}");
+        }
+        assert!(live.enter >= masked.enter && live.draw >= masked.draw && live.ends >= masked.ends);
     }
-    for (name, depth) in &live.idle {
-        assert!(*depth >= masked.idle[name], "{name}");
-    }
-    assert!(live.enter >= masked.enter && live.draw >= masked.draw && live.ends >= masked.ends);
 }
 
 /// The stub OS's figures: the stack each routine writes, the caller's return address counted.

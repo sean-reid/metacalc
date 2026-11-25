@@ -254,6 +254,46 @@ impl Lister {
     }
 }
 
+/// Counters and hooks of `fail_at`, in RAM no other hook of the rig uses.
+const FAIL_COUNTERS: u16 = 0xBD00;
+const FAIL_HOOKS: u16 = 0xBD20;
+
+impl Lister {
+    /// Makes the `call`th call from now on to the far entry `stub` answer `status` in A, which is not
+    /// 0, with its routine not called; the other calls go on to the routine. `slot` numbers the
+    /// hook's counter, 0 to 3.
+    pub fn fail_at(&mut self, slot: usize, stub: &str, call: u8, status: u8) {
+        assert!(slot < 4 && status != 0);
+        let built = self.built;
+        let page = if stub.starts_with("far_fm_") {
+            "far_page1"
+        } else {
+            assert!(stub.starts_with("far_lib_"), "{stub}");
+            "far_page2"
+        };
+        let far = built.label(page).to_le_bytes();
+        let counter = FAIL_COUNTERS + 2 * slot as u16;
+        let [c0, c1] = counter.to_le_bytes();
+        let at = FAIL_HOOKS + 0x20 * slot as u16;
+        let m = self.run.m();
+        m.load_ram(counter, &[0, 0]);
+        m.load_ram(
+            at,
+            &[
+                0xF5, 0xE5, 0x2A, c0, c1, 0x23, 0x22, c0, c1, 0x7D, 0xFE, call, 0x28, 0x05, 0xE1,
+                0xF1, 0xC3, far[0], far[1], 0xE1, 0xF1, 0x3E, status, 0xB7, 0xC9,
+            ],
+        );
+        hook_stub(m, built, stub, at);
+    }
+
+    /// How many calls the entry hooked by `fail_at` in `slot` has had since.
+    pub fn fail_calls(&mut self, slot: usize) -> u16 {
+        let b = self.run.peek(FAIL_COUNTERS + 2 * slot as u16, 2);
+        u16::from_le_bytes([b[0], b[1]])
+    }
+}
+
 impl Lister {
     /// The model on the Libraries screen again, then taken through every key this list has had, with
     /// no idle work: what the list shows when its preview is pending.
