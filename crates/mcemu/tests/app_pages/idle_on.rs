@@ -91,8 +91,8 @@ fn on_tap(real: bool, hold: u32) {
     );
     assert_eq!(
         flagged.is_some(),
-        !real || hold >= 100,
-        "the stub flags every press, the reference OS only one held about 47 ms"
+        hold >= 100,
+        "both flag only a press held about 47 ms"
     );
     assert_eq!(rig.state().logged, 8, "every slice ran");
     assert_eq!(rig.shell.scr_keys(), keys, "ON reached no screen");

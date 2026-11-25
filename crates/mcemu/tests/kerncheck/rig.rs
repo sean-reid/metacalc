@@ -14,9 +14,10 @@ pub const OUT_SPEED: u16 = 0xA002;
 pub const OUT_AFTER: u16 = 0xA003;
 pub const OUT_BUF: u16 = 0xA010;
 pub const ENTRY: u16 = 0x4000;
-/// T-states in two timer periods at 15 MHz, five at 6 MHz: every slice spans an interrupt, so the
-/// halt in the wait wakes at least once in it. A wait is a slice that ended in the loop, not a poll.
-pub const SLICE: u32 = 2 * crate::stubos::TIMER_PERIOD_15MHZ;
+/// T-states in twelve timer periods at 15 MHz, thirty at 6 MHz: every slice spans an interrupt, so the
+/// halt in the wait wakes at least once in it, and one holds the handler's 47 ms ON wait. A wait is
+/// a slice that ended in the loop, not a poll.
+pub const SLICE: u32 = 12 * crate::stubos::TIMER_PERIOD_15MHZ;
 /// A slice that ends below the app's page, where the stub OS and its handler are, is carried on in
 /// steps of `OS_NUDGE` T-states, so that it is judged where the code has come back to; slices are a whole number of
 /// timer periods, and would otherwise end at the same place in the handler every time.

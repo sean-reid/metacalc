@@ -384,12 +384,12 @@ fn a_press_of_on_is_cleared_and_waited_out_inside_the_wait() {
     let mut rig = Rig::stub(KEYS_APP);
     assert!(!on_seen(&mut rig), "nothing is pending to start with");
     rig.m().press_key(Machine::KEY_ON);
-    rig.run_ms(30);
+    rig.run_ms(60);
     assert_ne!(rig.on_flags() & ON_INTERRUPT, 0, "the OS flagged the press");
     assert!(on_seen(&mut rig), "a long job would see the press held");
     rig.run_ms(30);
     rig.m().release_key(Machine::KEY_ON);
-    rig.run_ms(30);
+    rig.run_ms(100);
     assert_eq!(rig.count(), 0, "app_key did not return for ON");
     assert_eq!(rig.on_flags() & ON_INTERRUPT, 0, "the break is cleared");
     assert_eq!(rig.m().in_port(4) & ON_LATCH, 0, "no ON latch is up");

@@ -297,7 +297,7 @@ fn ignored_key(name: &str, built: &'static Built) -> (u32, u32, u32) {
 }
 
 /// What the loop and scr_key took for an ignored key on the commit the branch was cut from.
-const IGNORED_KEY_BEFORE: u32 = 1_230;
+const IGNORED_KEY_BEFORE: u32 = 1_228;
 
 #[test]
 fn the_loop_around_a_key_no_screen_answers_costs_little() {
