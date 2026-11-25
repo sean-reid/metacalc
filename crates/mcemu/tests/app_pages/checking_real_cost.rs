@@ -33,7 +33,7 @@ const ROM_DEPTHS: [(Class, (u16, u16, usize)); 7] = [
     (Class::Other, (40, 40, 2)),
 ];
 
-/// The greatest depth of each class with interrupts on, the same on three runs.
+/// The greatest depth of each class seen with interrupts on.
 const ROM_LIVE: [(Class, u16); 7] = [
     (Class::StepStays, 52),
     (Class::StepRedraws, 46),

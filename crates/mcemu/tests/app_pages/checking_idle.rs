@@ -260,8 +260,8 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
     );
 }
 
-/// The greatest depth of each class with interrupts on, the same on three runs: an interrupt adds
-/// up to four bytes to a step and two to a chunk, which the handler's pushes make.
+/// The greatest depth of each class seen with interrupts on: an interrupt adds up to four bytes
+/// to a step and two to a chunk in this run, which the handler's pushes make.
 const STUB_LIVE: [(Class, u16); 7] = [
     (Class::StepStays, 32),
     (Class::StepRedraws, 28),

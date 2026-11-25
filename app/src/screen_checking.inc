@@ -41,7 +41,7 @@
 ; fewer. By call (stay, redraw, chunk, CRC run's end, finishing step, after the finish): stub OS 28, 28,
 ; 14, 30, 28, 10; reference OS 42, 42, 14, 44, 42, 10. The deepest, 30 and 44, includes the ON and
 ; CK_PAUSED stops, and on the stub OS a table lost, a reader failure and the damaged notice; the reference
-; OS ran prop. An interrupt adds the handler's bytes: with interrupts on, at most 32 stub, 52 reference.
+; OS ran prop and two ON stops. An interrupt adds the handler's bytes: the greatest seen is 32 stub, 52 reference.
 ; Cost of scr_draw and ui_blit for a frame, cold, in T-states. Stub OS: 130,171 reading, 149,463 steps with
 ; a label, 125,129 finished, 128,488 damaged notice. Reference OS: 131,341, 155,820, 129,141.
 ; checking_draw   clears the canvas, stages checking_block, builds the strings in APP_TEXT and draws. done
