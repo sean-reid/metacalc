@@ -44,7 +44,7 @@
 ;                           again, in saveSScreen after FM_SCRATCH, since the OS writes the screen's
 ;                           pixels into saveSScreen at an auto power down. Its variables follow the
 ;                           regions, from APP_COUNTS to APP_FRAME, each placed by APP_VAR. What the
-;                           screen builds is every one but APP_HELD, the shell's flag byte: a screen
+;                           screen builds is every one but APP_HELD, the shell's count byte: a screen
 ;                           never builds it again, and a power down's overwrite of it is harmless
 ;                           because the shell sets it after every app_key, the only call that waits
 ;   APP_STAGE         B     the shell's staging area for constant strings, 128 bytes in saveSScreen
@@ -206,8 +206,8 @@ name .equ base + offset
 ;   APP_CRC     the library's CRC-32 as the header holds it
 ;   APP_TEXT    what the top screen draws that is not a constant: the strings it builds and its
 ;               own variables, laid out by that screen's file
-;   APP_HELD    the shell's one flag byte: not 0 while the key it handled may still be down
-;               (metacalc.z80)
+;   APP_HELD    the shell's count of idle points with every key up that a key it handled may
+;               still be down for: 2 after a key, down by one at each such point (metacalc.z80)
 ;   APP_FRAME   the frame the error notice is pushed from, outside SCR_STACK
 #define APP_NEXT 0
 #macro APP_VAR(name, offset, size)

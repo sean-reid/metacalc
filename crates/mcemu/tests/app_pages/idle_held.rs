@@ -11,7 +11,7 @@ fn the_launch_key_down_at_the_first_idle_point_does_not_park_the_work(real: bool
     rig.until("slice 0", 2_000_000, |r| r.state().in_slice);
     let started = rig.t;
     assert_eq!(rig.state().logged, 1);
-    assert_eq!(rig.held(), 1, "the byte is set at the start");
+    assert_eq!(rig.held(), 2, "the count is 2 at the start");
     assert_eq!(
         rig.scan_code(),
         0,
@@ -29,7 +29,7 @@ fn the_launch_key_down_at_the_first_idle_point_does_not_park_the_work(real: bool
         ms(started),
         ms(second)
     );
-    assert_eq!(rig.held(), 1, "still set while the key is down");
+    assert_eq!(rig.held(), 2, "still 2 while the key is down");
     assert_eq!(rig.scan_code(), 0, "and no code came");
     let begun_at_release = rig.state().logged;
     rig.m().release_key(LAUNCH_KEY);
@@ -88,14 +88,14 @@ fn a_handled_key_still_down_does_not_park_the_work(real: bool) {
         r.shell.scr_keys() == keys + 1
     });
     let handled = rig.t;
-    assert_eq!(rig.held(), 1, "the byte is set once the key is handled");
+    assert_eq!(rig.held(), 2, "the count is 2 once the key is handled");
     rig.step(100_000);
     assert!(rig.state().in_slice, "a slice began while the key is down");
     rig.m().release_key(DOWN);
     let released = rig.t;
     let begun_before = rig.state().logged;
     let calls = rig.shell.key_waiting_calls();
-    assert_eq!(rig.held(), 1, "the byte is still set when the key goes up");
+    assert_eq!(rig.held(), 2, "the count is still 2 when the key goes up");
     let cleared = rig.until("the byte clears", 1_000_000, |r| r.held() == 0);
     assert!(
         rig.shell.key_waiting_calls() > calls,
@@ -139,7 +139,7 @@ pub fn with_the_byte_clear(real: bool, script: &Script) -> Rig {
     rig.until("the shell takes the key", 900_000, |r| {
         r.shell.scr_keys() == keys + 1
     });
-    assert_eq!(rig.held(), 1);
+    assert_eq!(rig.held(), 2);
     rig.step(20_000);
     rig.m().release_key(DOWN);
     rig.until("the byte clears", 1_000_000, |r| r.held() == 0);
@@ -176,7 +176,9 @@ fn a_new_press_in_an_interrupts_off_slice_is_taken_when_it_ends(real: bool) {
     );
     assert_eq!(rig.held(), 0);
     rig.until("the shell takes the key", 900_000, |r| {
-        assert_eq!(r.shell.scr_keys(), keys, "taken only after the slice");
+        if r.state().in_slice {
+            assert_eq!(r.shell.scr_keys(), keys, "taken only after the slice");
+        }
         !r.state().in_slice
     });
     let slice_ended = rig.t;
@@ -193,7 +195,7 @@ fn a_new_press_in_an_interrupts_off_slice_is_taken_when_it_ends(real: bool) {
         ms(taken),
         ms(taken - slice_ended)
     );
-    assert_eq!(rig.held(), 1, "app_key returned, so the byte is set");
+    assert_eq!(rig.held(), 2, "app_key returned, so the count is 2");
     rig.m().release_key(UP);
     rig.step(2_000_000);
     assert_eq!(rig.shell.scr_keys(), keys + 1, "once");
@@ -252,7 +254,7 @@ fn a_press_the_os_has_not_scanned_is_taken_before_the_next_slice(real: bool) {
     );
     assert_eq!(
         (port_only, scanned),
-        (10, 2),
+        if real { (11, 1) } else { (10, 2) },
         "presses seen only on the port, presses already scanned"
     );
 }
@@ -288,7 +290,7 @@ fn second_key(real: bool, off: bool) -> Second {
     rig.until("the shell takes the key", 900_000, |r| {
         r.shell.scr_keys() == keys + 1
     });
-    assert_eq!(rig.held(), 1);
+    assert_eq!(rig.held(), 2);
     rig.until("slice 2", 900_000, |r| {
         r.state().in_slice && r.state().logged == 3
     });

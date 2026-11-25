@@ -1,6 +1,6 @@
 //! ON and a key both down at an idle point with no scan code: app_key_waiting answers NZ, carry
-//! set, A = 9. With APP_HELD 0 the shell goes to app_key by the key's rule; with APP_HELD 1 the
-//! work goes on. Times are milliseconds from the start of the rig.
+//! set, A = 9. With APP_HELD 0 the shell goes to app_key by the key's rule; with APP_HELD not 0 it
+//! goes back to 2 and the work goes on. Times are milliseconds from the start of the rig.
 
 use crate::idle_held::with_the_byte_clear;
 use crate::idle_keys::in_slice;
@@ -86,7 +86,7 @@ twin!(
     a_key_with_on_down_and_the_byte_clear_goes_to_app_key
 );
 
-/// Down is handled and still down, so the byte is set; ON goes down 5 ms into the next slice, with
+/// Down is handled and still down, so the count is 2; ON goes down 5 ms into the next slice, with
 /// interrupts on and well before the held Down repeats. From the first idle point after
 /// it the answers are ON alone, or ON and the key, and the work goes on: one slice begins after each
 /// answer and neither key reaches a screen.
@@ -103,7 +103,7 @@ fn on_with_a_handled_key_down_lets_the_work_go_on(real: bool) {
     rig.until("the shell takes the key", 900_000, |r| {
         r.shell.scr_keys() == keys + 1
     });
-    assert_eq!(rig.held(), 1, "the byte is set once the key is handled");
+    assert_eq!(rig.held(), 2, "the count is 2 once the key is handled");
     rig.until("slice 2", 900_000, |r| {
         r.state().in_slice && r.state().logged == 3
     });
@@ -133,7 +133,7 @@ fn on_with_a_handled_key_down_lets_the_work_go_on(real: bool) {
         );
         assert_eq!(
             (*held, *calls),
-            (1, keys + 1),
+            (2, keys + 1),
             "idle point {i}: the byte, the keys"
         );
     }

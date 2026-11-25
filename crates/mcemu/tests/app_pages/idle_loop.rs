@@ -276,8 +276,8 @@ twin!(
 /// The most T-states one trip round the idle point may take with an empty slice: app_key_waiting,
 /// app_error_open, scr_idle and the routine's own bookkeeping.
 const ITERATION: u32 = 2_246;
-/// The least: a trip with an empty slice takes 2,202 T-states.
-const ITERATION_FLOOR: u32 = 2_150;
+/// The least: a trip with an empty slice takes 2,224 T-states.
+const ITERATION_FLOOR: u32 = 2_180;
 
 #[test]
 fn a_trip_round_the_idle_point_with_an_empty_slice_costs_little() {
