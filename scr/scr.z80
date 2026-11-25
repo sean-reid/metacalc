@@ -67,7 +67,8 @@
 ;                  PUSH on a full stack removes the frame at index 2 first and moves the frames
 ;                above it down. When the new top's enter fails, the new frame is removed again,
 ;                the evicted one is put back at index 2, and the old top is entered again: the
-;                stack is as it was before the push.
+;                stack is as it was before the push. The status that comes back is the new
+;                top's, also when the old top's enter fails too.
 ;                  POP and JUMP remove the top frame, then enter the uncovered screen. JUMP runs
 ;                its land with the assertion after that. When that enter fails the frame stays
 ;                removed, land does not run, and the status comes back as SCR_RES_FAILED; the
@@ -301,8 +302,6 @@ sk_add:
 	ld (scr_count),a
 sk_reenter:
 	call scr_refresh
-	or a
-	jr nz,sk_failed
 	ld a,(scr_status)
 	jr sk_failed
 

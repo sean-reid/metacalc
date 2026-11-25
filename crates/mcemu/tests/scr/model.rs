@@ -81,8 +81,8 @@ impl Mirror {
             (DRAW, 0)
         } else {
             self.frames = before;
-            let again = self.enter(calls, q);
-            (FAILED, if again != 0 { again } else { status })
+            self.enter(calls, q);
+            (FAILED, status)
         }
     }
 
