@@ -45,8 +45,9 @@
 ; list_key     UP, DOWN, LEFT and RIGHT move the cursor one row or five, never past either end, move the
 ;              first row shown as little as it must to keep the cursor on screen, answer SCR_REDRAW with
 ;              the preview pending and LV_COUNT at LIST_WAIT, and answer SCR_STAY when nothing moved,
-;              touching nothing. ENTER, F1, F2, F3 and F4, and F5 when LV_SECT is 1, push the notice
-;              NOTICE_LIST of the stage. CLEAR pops. Every other key stays.
+;              touching nothing. ENTER and F1 push KIND_THEOREM for the cursor's assertion
+;              (theorem_push), or the notice NOTICE_LIST of the stage when it has no assertion. F2, F3
+;              and F4, and F5 when LV_SECT is 1, push the notice. CLEAR pops. Every other key stays.
 ; list_idle    in: HL = the frame. out: A and carry as scr_idle takes them. LV_COUNT above 0: one off the
 ;              count, one app_tick, SCR_STAY with carry set. Count 0 and the preview pending: fm_statement
 ;              of the cursor's conclusion (after fm_open when fm answers FM_ERR_NOT_OPEN), fm_fit to one
@@ -203,8 +204,9 @@ list_key:
 	cp KEY_CLEAR
 	jr z, lk_pop
 	cp KEY_ENTER
-	jr z, lk_notice
+	jr z, lk_open
 	cp KEY_F1
+	jr z, lk_open
 	jr c, lk_stay
 	cp KEY_F5
 	jr c, lk_notice
@@ -218,6 +220,16 @@ lk_notice:
 	ld b, NOTICE_LIST
 	ld a, KIND_NOTICE
 	jp screen_push_param
+lk_open:
+	push hl
+	inc hl
+	ld a, (hl)
+	call list_stage_end
+	pop hl
+	ld a, d
+	or e
+	jr z, lk_notice
+	jp theorem_push
 lk_pop:
 	ld a, SCR_POP
 	ret

@@ -64,8 +64,11 @@
 ;   5 checking    runs the check job (check.inc) on a stage through the idle point, with the bar
 ;                 and counts moving; F1, CLEAR and ON stop it (screen_checking.inc)
 ;   6 list        the assertions of a stage with their marks and a preview of the cursor's
-;                 conclusion that idle lays out once the row has been still; ENTER, F1 to F4 and F5
-;                 push a notice, CLEAR goes back (screen_list.inc)
+;                 conclusion that idle lays out once the row has been still; ENTER and F1 open the
+;                 cursor's theorem, F2 to F4 and F5 push a notice, CLEAR goes back (screen_list.inc)
+;   7 theorem     an assertion's statements folded to six rows, with a cursor that moves by
+;                 subexpression and folds on ENTER and F1; F2 to F4 push a notice, CLEAR goes back
+;                 (screen_theorem.inc)
 ; Stages. With LIBRARY the build's stage table (stages.inc, from app/Makefile) says what the rows
 ; are; STAGE_COUNT is 0 without one. The table is on this page, so the screens that draw it copy
 ; the strings they need to APP_TEXT. The status table store (store.inc) is linked in on this page,
@@ -346,6 +349,9 @@ STAGE_COUNT .equ 0
 #include "screen_checking.inc"
 #include "screen_list.inc"
 #include "screen_list_draw.inc"
+#include "screen_theorem.inc"
+#include "screen_theorem_key.inc"
+#include "screen_theorem_draw.inc"
 #ifdef LIBRARY
 #include "store.inc"
 #include "check_ram.inc"
