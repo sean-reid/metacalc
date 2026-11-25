@@ -14,9 +14,11 @@
 ; and sets APP_HELD to 2. APP_HELD, "the key I handled may still be down", is a count: 2 from the
 ; start, since the key that launched the app may still be down, and after every app_key. It goes
 ; down by one, to 0 at the least, at each idle point where app_key_waiting answers Z. So a key
-; that only the port shows is a new press after two idle points in a row with every key up, and a
-; contact that reads down again right after a release is not. That rests on idle points being
-; about a tick apart, 9.3 ms, while a screen waits on app_tick. With no key waiting the shell asks
+; that only the port shows is a new press after two idle points with every key up and none
+; between them that shows a key, and a contact that reads down again right after a release is
+; not. That rests on idle points being about a tick apart while a screen waits on app_tick: 9.3
+; ms, and 8.5 ms after a point that saw a key down on the reference ROM. With no key waiting the
+; shell asks
 ; app_error_open and calls scr_idle, which does the top screen's pending work: SCR_RES_REDRAW
 ; draws and blits, SCR_RES_LEAVE and SCR_RES_FAILED are handled as scr_key's are below, and
 ; SCR_RES_IDLE goes back to the idle point while the carry says more work is pending and to
@@ -39,9 +41,10 @@
 ; Sentinel and work. Idle work runs before the sentinel check of the next key; the OS writes over
 ; saveSScreen only when auto power down fires inside _GetKey, so no idle call sees it overwritten.
 ; ON is ignored while work is pending: with no scan code and onInterrupt set or ON down, the shell
-; clears onInterrupt and goes on to scr_idle, leaving APP_HELD as it is. The one case where ON
-; does not go on to scr_idle is no scan code, ON and a key both down and APP_HELD 0, which goes to
-; app_key by the key's rule. When scr_idle answers carry clear while ON is still down, the OS has
+; clears onInterrupt and goes on to scr_idle. ON alone leaves APP_HELD as it is. ON with a key
+; down follows the key's rule: APP_HELD not 0 is set to 2 and the shell goes on to scr_idle, and
+; APP_HELD 0 goes to app_key, the one case where ON does not go on to scr_idle.
+; When scr_idle answers carry clear while ON is still down, the OS has
 ; flagged that press once and the shell has cleared the flag, so app_key waits in _GetKey with ON
 ; down, where a screen with nothing pending is in app_key's wait for ON to go up; once ON is up
 ; the OS state is the same in both. A pending 2nd or ALPHA is a scan code, so it sends the shell

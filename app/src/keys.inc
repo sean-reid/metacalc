@@ -27,8 +27,8 @@
 ; once, on every call, until the flag is clear. app_key waits for ON to come up with interrupts
 ; off for the read and the clear, clears the flag and waits for a key again. A press that lands
 ; after the clear sets the flag again and is taken the same way by the next wait. The shell clears
-; the flag at every idle point that reports ON, so a press made between waits reaches a routine
-; that polls the flag only when it lands inside an idle slice.
+; the flag at every idle point that reports ON and goes on to scr_idle, so a press made between
+; waits reaches a routine that polls the flag only when it lands inside an idle slice.
 ;
 ; The OS copies the screen's pixels over UI_VARS when auto power down fires inside _GetKey, and
 ; the font pointer, two bytes, is the one thing in it that holds state between calls; app_key sets the canvas font

@@ -46,7 +46,7 @@
 ;                           regions, from APP_COUNTS to APP_FRAME, each placed by APP_VAR. What the
 ;                           screen builds is every one but APP_HELD, the shell's count byte: a screen
 ;                           never builds it again, and a power down's overwrite of it is harmless
-;                           because the shell sets it after every app_key, the only call that waits
+;                           because the shell sets it after every app_key, the only call that waits for a key
 ;   APP_STAGE         B     the shell's staging area for constant strings, 128 bytes in saveSScreen
 ;                           after APP_BUF: the canvas reads a string with its own page mapped, so the
 ;                           entry page copies the strings of the screen it draws here first
@@ -207,7 +207,8 @@ name .equ base + offset
 ;   APP_TEXT    what the top screen draws that is not a constant: the strings it builds and its
 ;               own variables, laid out by that screen's file
 ;   APP_HELD    the shell's count of idle points with every key up that a key it handled may
-;               still be down for: 2 after a key, down by one at each such point (metacalc.z80)
+;               still be down for: 2 at the start, after a key and at a point that shows a handled
+;               key down, down by one at each point with every key up (metacalc.z80)
 ;   APP_FRAME   the frame the error notice is pushed from, outside SCR_STACK
 #define APP_NEXT 0
 #macro APP_VAR(name, offset, size)
