@@ -181,14 +181,15 @@ impl Rig {
     }
 }
 
-/// ON held 100 ms and released at a given phase of the timer: the release raises the latch, and
-/// the handler's wait then holds off the next interrupt by about 47 ms, where without a release
-/// they come every 9.3 ms.
+/// ON pressed at a given phase of the timer, held 100 ms and released: the release raises the
+/// latch, and the handler's wait then holds off the next interrupt by about 47 ms, where without
+/// a release they come every 9.3 ms.
 fn assert_release_waits(mk: fn() -> Rig) {
     for phase in [0, 2_300, 4_600, 6_900] {
         let mut rig = mk();
         rig.press_at(phase);
         rig.run_us(100_000);
+        assert!(rig.on_flag(), "phase {phase}: the press was not flagged");
         rig.m().release_key(Machine::KEY_ON);
         let from = rig.m().clock();
         let after = rig.interrupts_after(from, 3);
@@ -199,12 +200,12 @@ fn assert_release_waits(mk: fn() -> Rig) {
         println!("phase {phase}: after a release {after:?}, without one {free:?} us");
         assert!(after[0] < 100, "the release raised no interrupt at once");
         assert!(
-            (46_500..=56_500).contains(&after[1]),
+            (47_000..=56_500).contains(&after[1]),
             "the second interrupt after the release came at {} us",
             after[1]
         );
         assert!(
-            free[1] - free[0] < 10_000,
+            (8_000..10_000).contains(&(free[1] - free[0])),
             "interrupts without ON are not 9.3 ms apart"
         );
     }
