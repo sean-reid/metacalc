@@ -155,11 +155,16 @@ fn a_list_of_no_assertion_shows_none_and_settles_with_nothing_without_touching_f
     list.key(DOWN, Key::Down);
     assert_eq!(list.run.blits(), blits, "Down moves nothing");
     list.tap(ENTER);
-    list.run.next_blit();
+    let frame = list.run.next_blit();
     assert_eq!(
         list.run.depth(),
         3,
         "ENTER opens the notice, as it does on every list"
+    );
+    crate::ui_support::same_frame(
+        "the stage's notice",
+        &frame,
+        &model::unavailable(built.stage_name(0)),
     );
 }
 
