@@ -246,6 +246,49 @@ fn on_the_reference_os_the_screens_with_no_table_leave_the_whole_variable_list_a
     }
 }
 
+/// F2 on My proofs opens the notice that asks for a library and makes no table and no variable:
+/// the OS has the names it had before the app started and no others. F4, which no screen answers,
+/// is run beside it.
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn on_the_reference_os_f2_on_my_proofs_makes_no_table() {
+    use crate::builds::{rows, three_stages};
+    use crate::realos::{KEY_2, KEY_APPS, RealOs};
+    use crate::shellrig::{CLEAR, DOWN, F2, F4};
+    for built in [with_library(), three_stages()] {
+        for key in [F4, F2] {
+            let mut os = RealOs::boot(&built.file);
+            let before = vat::list(&mut os.m);
+            os.tap(KEY_APPS, 150, 600);
+            os.tap(KEY_2, 150, 300);
+            os.run_ms(500);
+            for _ in 1..rows(built) {
+                os.tap(DOWN, 150, 400);
+            }
+            os.tap(key, 150, 400);
+            os.tap(CLEAR, 150, 400);
+            os.tap(CLEAR, 150, 1500);
+            let after = vat::list(&mut os.m);
+            assert!(!vat::has_table(&after), "key {key:02X}: no table");
+            let names = |l: &[(u8, Vec<u8>, u8, u16, u16)]| -> Vec<(u8, Vec<u8>)> {
+                l.iter().map(|e| (e.0, e.1.clone())).collect()
+            };
+            let kept = names(&before);
+            let now = names(&after);
+            assert!(
+                kept.iter().all(|e| now.contains(e)),
+                "key {key:02X}: a variable is gone"
+            );
+            let made: Vec<_> = now.iter().filter(|e| !kept.contains(e)).collect();
+            assert!(
+                made.is_empty(),
+                "{} stages, key {key:02X}: made {made:?}",
+                built.stages.len()
+            );
+        }
+    }
+}
+
 /// An auto power down on the OS with a table the app's own store made after the screen was drawn:
 /// the wake and the next key enter the screen again, which reads the table, so every stage shows
 /// "checked/total" where it showed unchecked before, and the frame is the model's.

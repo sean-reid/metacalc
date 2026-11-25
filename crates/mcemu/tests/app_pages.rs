@@ -27,6 +27,10 @@ mod checking_keys;
 mod checking_leave;
 #[path = "app_pages/checking_real.rs"]
 mod checking_real;
+#[path = "app_pages/checking_real_cost.rs"]
+mod checking_real_cost;
+#[path = "app_pages/checking_real_exit.rs"]
+mod checking_real_exit;
 #[path = "app_pages/checking_rows.rs"]
 mod checking_rows;
 #[path = "app_pages/checkrig.rs"]
@@ -39,6 +43,8 @@ mod counts;
 mod data;
 #[path = "app_pages/draw.rs"]
 mod draw;
+#[path = "common/exit_kit.rs"]
+mod exit_kit;
 #[allow(dead_code)]
 #[path = "fm/fixture.rs"]
 mod fixture;

@@ -4,13 +4,13 @@
 //! the screen's frames cost against the same job with no redraws.
 
 use crate::app::*;
+use crate::checking_frames::chunks_of;
 use crate::checkrig::*;
 use crate::realos::{BASE, KEY_2, KEY_APPS, RealOs};
 use crate::shellrig::*;
-use mcemu::Machine;
 
 /// How long the reference OS gets to settle after a key.
-const SETTLE: u32 = 300_000;
+pub const SETTLE: u32 = 300_000;
 
 /// A run of the app on the reference OS, started from the APPS menu with `patch` applied to its
 /// pages first, which waits at its Libraries screen with the cursor on stage `row`.
@@ -63,10 +63,12 @@ impl Run {
 
 /// What a run on the screen took.
 #[derive(Debug)]
-struct Timing {
-    total: u64,
-    frames: usize,
-    gaps: Vec<u64>,
+pub struct Timing {
+    pub total: u64,
+    pub frames: usize,
+    pub gaps: Vec<u64>,
+    /// The values the status table held at the last frame.
+    pub values: Vec<u8>,
 }
 
 fn median(gaps: &[u64]) -> u64 {
@@ -77,12 +79,12 @@ fn median(gaps: &[u64]) -> u64 {
 
 /// Holds F2 until the stage's `end` assertions have a value, polling every 0.5 ms for a new blit,
 /// and returns the times of the frames. The table is read when a frame comes.
-fn run_stage(run: &mut Run, end: usize) -> Timing {
+pub fn run_stage(run: &mut Run, end: usize) -> Timing {
     run_stage_watching(run, end, None)
 }
 
 /// `run_stage`, asserting at every poll before the end that the counter at `watch` is still 0.
-fn run_stage_watching(run: &mut Run, end: usize, watch: Option<u16>) -> Timing {
+pub fn run_stage_watching(run: &mut Run, end: usize, watch: Option<u16>) -> Timing {
     run.m().press_key(F2);
     let mut t = 0u64;
     let mut last = 0u64;
@@ -90,7 +92,8 @@ fn run_stage_watching(run: &mut Run, end: usize, watch: Option<u16>) -> Timing {
     let mut gaps = Vec::new();
     let mut frames = 0;
     let mut base = None;
-    loop {
+    let mut compared = 0;
+    let values = loop {
         run.step_us(500);
         t += 500;
         let blits = run.blits();
@@ -102,30 +105,39 @@ fn run_stage_watching(run: &mut Run, end: usize, watch: Option<u16>) -> Timing {
             }
             gaps.push(t - last);
             last = t;
-            let values = run.values();
-            if values.is_some_and(|v| v[..end].iter().all(|&x| x != 0)) {
-                break;
+            if let Some(values) = run.values()
+                && values[..end].iter().all(|&x| x != 0)
+            {
+                break values;
             }
         }
         // The OS holds the key's scan code for about 40 ms after its release and the shell takes it
         // through app_key, so the count is taken once that is over.
-        if let (Some(at), true) = (watch, base.is_none() && t >= 400_000) {
-            base = Some(read_count(run, at));
-        }
-        if let (Some(at), Some(base)) = (watch, base) {
-            assert_eq!(
-                read_count(run, at),
-                base,
-                "the key wait was entered at {t} us"
-            );
+        if let Some(at) = watch {
+            if base.is_none() && t >= 400_000 {
+                base = Some(read_count(run, at));
+            }
+            if let Some(base) = base {
+                assert_eq!(
+                    read_count(run, at),
+                    base,
+                    "the key wait was entered at {t} us"
+                );
+                compared += 1;
+            }
         }
         assert!(t < 4_000_000_000, "the check never ended");
-    }
+    };
     run.m().release_key(F2);
+    if watch.is_some() {
+        assert!(base.is_some(), "the count was taken");
+        assert!(compared > 1_000, "the count was compared {compared} times");
+    }
     Timing {
         total: t,
         frames,
         gaps,
+        values,
     }
 }
 
@@ -165,6 +177,19 @@ fn no_redraws(built: &Built) -> Vec<(u16, Vec<u8>)> {
 
 const SCR_REDRAW: u8 = 1;
 
+/// The host's verdict for each assertion of the shipped library.
+fn verdicts(built: &Built) -> &'static [bool] {
+    static ALL: std::sync::OnceLock<Vec<bool>> = std::sync::OnceLock::new();
+    ALL.get_or_init(|| host_verdicts(built.library.as_ref().unwrap()))
+}
+
+/// The frames a check of the first `end` assertions draws from a start with no table: the push, the
+/// call that begins the CRC run and each chunk call but the last, whose frame is the first of the
+/// steps; then one frame every `every` steps from the first, which is at 0, and the finished frame.
+fn frames_of(built: &Built, end: usize, every: usize) -> usize {
+    chunks_of(built) + 1 + end.div_ceil(every) + 1
+}
+
 /// The measurement for each stage and a figure for the steps between two frames: the screen's whole
 /// check against the same job with no redraws, the overhead of the frames, their number, and the
 /// longest and the median time between two.
@@ -181,12 +206,39 @@ fn measure(built: &'static Built, row: usize, every: u8) -> (f64, Timing) {
     let patches: Vec<(u16, &[u8])> = patch.iter().map(|(a, b)| (*a, b.as_slice())).collect();
     let figure = [every];
     let with: Vec<(u16, &[u8])> = vec![(more + 7, &figure)];
+    let want = expected_values(built, verdicts(built), end);
+    let name = format!("{} every {every}", built.stages[row].name);
     let mut screen = launched(built, row, &with);
     let timing = run_stage(&mut screen, end);
-    assert_eq!(usize::from(screen.verifies()), end, "each verified once");
+    assert_eq!(
+        usize::from(screen.verifies()),
+        end,
+        "{name}: each verified once"
+    );
+    assert_eq!(
+        timing.values, want,
+        "{name}: the screen's marks are the host's"
+    );
+    assert_eq!(
+        timing.frames,
+        frames_of(built, end, usize::from(every)),
+        "{name}: the frames of the screen"
+    );
     let mut plain = launched(built, row, &patches);
     let bare = run_stage(&mut plain, end);
-    assert_eq!(bare.frames, 2, "with no redraws the push and the end");
+    assert_eq!(
+        usize::from(plain.verifies()),
+        end,
+        "{name}: the baseline verified each once"
+    );
+    assert_eq!(
+        bare.values, want,
+        "{name}: the baseline's marks are the host's"
+    );
+    assert_eq!(
+        bare.frames, 2,
+        "{name}: with no redraws the push and the end"
+    );
     let overhead = (timing.total as f64 - bare.total as f64) * 100.0 / bare.total as f64;
     println!(
         "{} every {every}: {end} assertions, the screen {:.2} s, no redraws {:.2} s, overhead {overhead:.1} %, \
@@ -230,19 +282,44 @@ fn on_the_reference_os_the_frames_of_a_check_cost_under_ten_percent_of_the_job()
 /// The steps between two frames the screen uses.
 const CHOSEN_EVERY: u8 = 32;
 
-/// Compared with the model at the last frame of each stage, on the reference OS: the finished
-/// screen.
+/// Every stage of the shipped list, run from the APPS menu on a library with no table: each
+/// assertion's mark is the host's verdict, nothing past the stage's end has a mark, the frames are
+/// as many as the formula says and the last is the model's finished screen for that row.
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn on_the_reference_os_each_stage_ends_on_the_models_finished_screen() {
     let built = shipped_staged();
-    let verdicts = host_verdicts(built.library.as_ref().unwrap());
-    let end = built.stages[0].end;
-    let mut run = launched(built, 0, &[]);
-    run_stage(&mut run, end);
-    let frame = run.m().read_ram(UI_FRAME, FRAME_LEN);
-    let values = expected_values(built, &verdicts, end);
-    shows("prop finished", &frame, &checking_model(built, &values, 0));
+    assert_eq!(built.stages.len(), 3);
+    for row in 0..built.stages.len() {
+        let end = built.stages[row].end;
+        let name = built.stages[row].name.clone();
+        let mut run = launched(built, row, &[]);
+        let timing = run_stage(&mut run, end);
+        let frame = run.m().read_ram(UI_FRAME, FRAME_LEN);
+        let values = run.values().unwrap();
+        assert_eq!(
+            values,
+            expected_values(built, verdicts(built), end),
+            "{name}"
+        );
+        assert_eq!(usize::from(run.verifies()), end, "{name}");
+        assert_eq!(
+            timing.frames,
+            frames_of(built, end, usize::from(CHOSEN_EVERY)),
+            "{name}: the frames"
+        );
+        let finished = checking_model(built, &values, row);
+        assert!(matches!(
+            finished.state(),
+            mcui::State::Checking { finished: true, stage, .. } if stage == row
+        ));
+        shows(&format!("{name} finished"), &frame, &finished);
+        assert_eq!(
+            run.frames()[1][..3],
+            [KIND_CHECKING, row as u8, 1],
+            "{name}"
+        );
+    }
 }
 
 /// F1, CLEAR and ON in the middle of the reading and of the steps on prop, each followed by a second
@@ -257,11 +334,11 @@ fn on_the_reference_os_a_stop_in_the_middle_keeps_the_progress_and_a_second_run_
         for stop in [Some(F1), Some(CLEAR), None] {
             let mut run = launched(built, 0, &[]);
             run.m().press_key(F2);
-            // Reading: the push and crc_begin and a chunk. Stepping: past the CRC run, then two
+            // Reading: the push, crc_begin and two chunks. Stepping: past the CRC run, then two
             // frames of steps.
             let mut frames = 0;
             let wanted = match at {
-                At::Reading => 3,
+                At::Reading => 4,
                 At::Stepping => usize::MAX,
             };
             loop {
@@ -282,176 +359,7 @@ fn on_the_reference_os_a_stop_in_the_middle_keeps_the_progress_and_a_second_run_
     }
 }
 
-/// Keys as the real OS takes them: 2nd then MODE is 2nd+QUIT, and 2nd then ON is 2nd+OFF, after
-/// which the OS has powered down and ON wakes it.
-fn leave(run: &mut Run, off: bool) {
-    run.press_us(SECOND, 150_000);
-    run.step_us(1_500_000);
-    if off {
-        run.m().press_key(Machine::KEY_ON);
-        run.step_us(300_000);
-        run.m().release_key(Machine::KEY_ON);
-        run.step_us(2_000_000);
-        assert_ne!(run.m().in_port(3) & 0x10, 0, "2nd+OFF powered down");
-        run.press_us(Machine::KEY_ON, 150_000);
-        run.step_us(3_000_000);
-    } else {
-        run.press_us(MODE, 150_000);
-        run.step_us(1_500_000);
-    }
-}
-
-/// 2nd+QUIT and 2nd+OFF in the middle of a check leave the job where it was: nothing is written for
-/// "next", and after a launch from the APPS menu a Run carries on to the end with every assertion
-/// verified once.
-#[test]
-#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_leaving_in_the_middle_and_launching_again_carries_the_check_on() {
-    let built = shipped_staged();
-    let end = built.stages[0].end;
-    let verdicts = host_verdicts(built.library.as_ref().unwrap());
-    for off in [false, true] {
-        let name = if off { "2nd+OFF" } else { "2nd+QUIT" };
-        let mut run = launched(built, 0, &[]);
-        run.m().press_key(F2);
-        loop {
-            run.next_blit();
-            if run.values().is_some() {
-                run.next_blit();
-                run.next_blit();
-                break;
-            }
-        }
-        run.m().release_key(F2);
-        let held = run.values().unwrap().iter().filter(|&&v| v != 0).count();
-        assert!(held > 0 && held < end, "{name}: part way, {held}");
-        leave(&mut run, off);
-        assert_eq!(run.next_number(), 0, "{name}: leaving wrote no next");
-        let after = run.values().unwrap().iter().filter(|&&v| v != 0).count();
-        assert!(after >= held, "{name}: the table keeps what it had");
-        // The home screen has the machine: launch the app again from the APPS menu.
-        run.step_us(1_000_000);
-        run.press_us(KEY_APPS, 150_000);
-        run.step_us(600_000);
-        run.m().press_key(KEY_2);
-        run.step_us(20_000);
-        run.m().release_key(KEY_2);
-        let before = run.blits();
-        let mut waited = 0;
-        while run.blits() == before {
-            run.step_us(500);
-            waited += 500;
-            assert!(
-                waited < 3_000_000,
-                "{name}: the first frame after the launch"
-            );
-        }
-        run.step_us(SETTLE);
-        let values = run.values().unwrap();
-        let settled = values.iter().filter(|&&v| v != 0).count();
-        assert_eq!(settled, after, "{name}: the table as it was left");
-        let verifies = run.verifies();
-        let timing = run_stage(&mut run, end);
-        println!(
-            "{name}: carried on from {settled}, {} frames",
-            timing.frames
-        );
-        let values = run.values().unwrap();
-        assert_eq!(
-            values[..end],
-            expected_values(built, &verdicts, end)[..end],
-            "{name}"
-        );
-        assert_eq!(
-            usize::from(run.verifies()),
-            end,
-            "{name}: none verified twice"
-        );
-        assert!(run.verifies() > verifies);
-    }
-}
-
-/// While the check runs the app never waits in the OS's key wait, which is the only place the OS
-/// powers the calculator down; when it ends it does, and the refresh on wake runs the enter again,
-/// which counts the table and shows "All checked" with no CRC run.
-#[test]
-#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_a_check_holds_off_the_power_down_and_the_refresh_after_it_is_from_the_table()
-{
-    let built = shipped_staged();
-    let end = built.stages[0].end;
-    let verdicts = host_verdicts(built.library.as_ref().unwrap());
-    let mut run = launched(built, 0, &[]);
-    let waits = hook_key_wait(run.m(), built);
-    let timing = run_stage_watching(&mut run, end, Some(waits));
-    println!(
-        "a check of {end} assertions took {:.1} s with no power down",
-        timing.total as f64 / 1e6
-    );
-    let crc = run.crc_calls();
-    // The shell now waits for a key, where the OS's auto power down fires.
-    let mut seconds = 0;
-    while run.m().in_port(3) & 0x10 == 0 {
-        run.step_us(5_000_000);
-        seconds += 5;
-        assert!(seconds < 900, "no power down in 900 s");
-    }
-    assert!(read_count(&mut run, waits) > 0, "the key wait was entered");
-    println!("the OS powered down {seconds} s after the check ended");
-    run.press_us(Machine::KEY_ON, 150_000);
-    run.step_us(3_000_000);
-    run.m().press_key(F4);
-    run.next_blit();
-    run.m().release_key(F4);
-    let frame = run.m().read_ram(UI_FRAME, FRAME_LEN);
-    let values = expected_values(built, &verdicts, end);
-    shows("after the wake", &frame, &checking_model(built, &values, 0));
-    assert_eq!(run.crc_calls(), crc, "no CRC run");
-}
-
-/// Counts every entry of app_key: its first instructions, `ei` and the bcall of _GetKey, run from
-/// RAM, which counts and goes on at the same place.
-fn hook_key_wait(m: &mut Machine, built: &Built) -> u16 {
-    const COUNTER: u16 = 0xBC50;
-    const HOOK: u16 = 0xBC60;
-    let at = built.label("app_key");
-    let page = &mcemu::decode_app(&built.file).unwrap()[0];
-    let original = &page[usize::from(at - 0x4000)..usize::from(at - 0x4000) + 4];
-    assert_eq!(
-        original[..2],
-        [0xFB, 0xEF],
-        "app_key starts with ei and a bcall"
-    );
-    let [c0, c1] = COUNTER.to_le_bytes();
-    let [r0, r1] = (at + 4).to_le_bytes();
-    m.load_ram(COUNTER, &[0, 0]);
-    m.load_ram(
-        HOOK,
-        &[
-            0xE5,
-            0x2A,
-            c0,
-            c1,
-            0x23,
-            0x22,
-            c0,
-            c1,
-            0xE1,
-            0xFB,
-            0xEF,
-            original[2],
-            original[3],
-            0xC3,
-            r0,
-            r1,
-        ],
-    );
-    let [h0, h1] = HOOK.to_le_bytes();
-    m.load_flash(BASE, usize::from(at - 0x4000), &[0xC3, h0, h1]);
-    COUNTER
-}
-
-fn read_count(run: &mut Run, at: u16) -> u16 {
+pub fn read_count(run: &mut Run, at: u16) -> u16 {
     let b = run.peek(at, 2);
     u16::from_le_bytes([b[0], b[1]])
 }
