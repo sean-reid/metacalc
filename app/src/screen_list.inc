@@ -23,7 +23,8 @@
 ;   LV_TABLE    1 when the status table is this library's (store_has), else 0; with 0 every row is
 ;               unchecked and the screen never creates a table. A table lost after the enter leaves it
 ;               at 1: the store then answers lf_next and lf_prev with a status other than 0, and they
-;               answer as with no table, so Unchecked shows every assertion
+;               answer as with no table, so Unchecked shows every assertion, and the title keeps
+;               the counts list_enter derived
 ;   LV_FLAT     1 when the library has no trees section and an assertion: the model's "flat" prefix
 ;               on the counts. That is Lib::degraded for a library mcpack packs, which writes no
 ;               trees section exactly when the database has no grammar; a library with its trees
