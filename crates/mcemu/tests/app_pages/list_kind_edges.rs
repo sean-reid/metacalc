@@ -69,20 +69,45 @@ fn an_enter_with_the_cursor_above_the_first_row_puts_the_first_row_on_the_cursor
             "{at}: the frame"
         );
         assert_eq!(now[6], 1, "{at}: the kind");
-        let index = usize::from(cursor / 2);
-        let mut model = crate::shellrig::model::ui(alternating(), &[]);
-        model.press(Key::Enter);
-        model.press(Key::F3);
-        for _ in 0..index + 4 {
-            model.press(Key::Down);
-        }
-        for _ in 0..4 {
-            model.press(Key::Up);
-        }
-        same_frame(&at, &frame, &crate::shellrig::model::frame(&model));
+        same_frame(&at, &frame, &first_row_on(cursor));
         met += 1;
     }
     assert_eq!(met, 4);
+}
+
+/// The model's frame under Theorems with the first row on the shown assertion `cursor`, an odd number
+/// at least four shown assertions short of the last, so that the model can scroll that far.
+fn first_row_on(cursor: u16) -> Vec<u8> {
+    let mut model = crate::shellrig::model::ui(alternating(), &[]);
+    model.press(Key::Enter);
+    model.press(Key::F3);
+    for _ in 0..usize::from(cursor / 2) + 4 {
+        model.press(Key::Down);
+    }
+    for _ in 0..4 {
+        model.press(Key::Up);
+    }
+    crate::shellrig::model::frame(&model)
+}
+
+#[test]
+fn an_enter_with_the_cursor_on_the_first_row_keeps_the_frame() {
+    let mut met = 0;
+    for cursor in [1, 7, 9, 11, 15, 21] {
+        let at = format!("cursor and first row {cursor}");
+        assert!(cursor % 2 == 1, "{at}: shown under Theorems");
+        let mut list = list_under_a_notice(cursor, cursor);
+        let frame = clear(&mut list);
+        let now = list.run.frames()[1].clone();
+        assert_eq!(
+            (number(&now, 2), number(&now, 4)),
+            (cursor, cursor),
+            "{at}: the frame"
+        );
+        same_frame(&at, &frame, &first_row_on(cursor));
+        met += usize::from(cursor / 2 >= 5);
+    }
+    assert_eq!(met, 3, "three with at least five shown assertions above");
 }
 
 #[test]
