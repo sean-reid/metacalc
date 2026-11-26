@@ -13,7 +13,7 @@ const FRAME_READING: (u32, u32) = (127_600, 132_000);
 const FRAME_STEPS: (u32, u32) = (146_500, 152_000);
 const FRAME_FINISHED: (u32, u32) = (122_650, 127_500);
 const FRAME_DAMAGED: (u32, u32) = (125_950, 131_000);
-const SAVED_WARM: u32 = 1_932;
+const SAVED_WARM: u32 = 1_921;
 const SAVED_WARM_DAMAGED: u32 = 2_641;
 
 /// What one frame costs, printed on every run and held to a floor and a ceiling: the reading frame,
