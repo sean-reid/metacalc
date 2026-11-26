@@ -164,9 +164,9 @@ enum Outcome {
     Lands,
     /// Both are shown and the cursor is among the five shown from the top: the frame stays.
     Kept,
-    /// Both are shown, and shown assertions between them put the cursor off the screen: the top moves,
-    /// as the model's reveal from the kept top moves it.
-    Reveals,
+    /// Both are shown, and shown assertions between them put the cursor off the screen, this many shown
+    /// rows below the top: the top moves, as the model's reveal from the kept top moves it.
+    Reveals(usize),
 }
 
 /// One way the marks change under an open Unchecked list. The app is brought to a place under the
@@ -216,11 +216,21 @@ fn marks_change(
     if !lands {
         let at = |i: usize| items.iter().position(|&x| x == i).expect("shown");
         let between = at(cursor) - at(top);
+        let rows = match outcome {
+            Outcome::Reveals(rows) => Some(rows),
+            _ => None,
+        };
         assert_eq!(
             between > 4,
-            outcome == Outcome::Reveals,
+            rows.is_some(),
             "{name}: the cursor is {between} shown rows below the top"
         );
+        if let Some(rows) = rows {
+            assert_eq!(
+                between, rows,
+                "{name}: shown rows between the top and the cursor"
+            );
+        }
         assert_ne!(
             top,
             cursor.saturating_sub(4),
@@ -293,7 +303,7 @@ fn a_cursor_the_new_marks_put_below_the_view_gets_the_top_the_models_reveal_give
         &[(DOWN, Key::Down)],
         &[],
         &TWENTY,
-        Outcome::Reveals,
+        Outcome::Reveals(20),
     );
 }
 
@@ -310,7 +320,7 @@ fn a_cursor_the_fifth_and_the_sixth_shown_below_the_first_row_get_the_top_four_a
         &one,
         &[],
         &five,
-        Outcome::Reveals,
+        Outcome::Reveals(5),
     );
     marks_change(
         "sixth shown",
@@ -318,6 +328,6 @@ fn a_cursor_the_fifth_and_the_sixth_shown_below_the_first_row_get_the_top_four_a
         &one,
         &[],
         &six,
-        Outcome::Reveals,
+        Outcome::Reveals(6),
     );
 }
