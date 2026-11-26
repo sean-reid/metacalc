@@ -231,7 +231,7 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
     assert_eq!(axioms[at5 + 5], 567);
     let (k, f, a) = cost(&mut list, ax, 5, last_row(&axioms, 5), RIGHT_KEY);
     assert_eq!(a, 1);
-    report("Axioms, a page from 5", k, f, MOVE_BUDGET, None);
+    report("Axioms, a page from 5", k, f, MOVE_BUDGET, Some(295911));
     let (k, f, a) = cost(&mut list, ax, 5, 5, RIGHT_KEY);
     assert_eq!(a, 1);
     report(
@@ -272,7 +272,7 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         Some(241538),
     );
     let (k, f, _) = cost(&mut list, th, 100, last_row(&theorems, 100), LEFT_KEY);
-    report("Theorems, a page", k, f, MOVE_BUDGET, None);
+    report("Theorems, a page", k, f, MOVE_BUDGET, Some(242678));
 
     let just_after = 299;
     assert!(bits[just_after]);

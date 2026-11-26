@@ -154,10 +154,10 @@ fn every_kind_from_and_end_of_a_small_library_is_the_rules_answer() {
         sweep_all(&mut rig, &bits, &[AXIOM, THEOREM, 2], &mut tally);
     }
     println!("{tally:?}");
-    assert!(tally.matched > 1500, "{tally:?}");
-    assert!(tally.none > 300, "{tally:?}");
-    assert!(tally.arg > 400, "{tally:?}");
-    assert!(tally.index > 1500, "{tally:?}");
+    assert!(tally.matched > 1600, "{tally:?}");
+    assert!(tally.none > 350, "{tally:?}");
+    assert!(tally.arg > 2000, "{tally:?}");
+    assert!(tally.index > 2000, "{tally:?}");
 }
 
 #[test]
@@ -630,6 +630,12 @@ fn the_stack_goes_exactly_as_deep_as_the_header_says_on_the_deepest_exit() {
                 "stack used by {}: {used} bytes, the driver's return address included",
                 e.name
             );
+            let want = match e.name {
+                "next match" | "next none" | "prev match" | "prev none" | "cut next"
+                | "cut prev" => 8,
+                _ => 6,
+            };
+            assert_eq!(used, want, "{}", e.name);
             deepest = deepest.max(used);
         }
     }
