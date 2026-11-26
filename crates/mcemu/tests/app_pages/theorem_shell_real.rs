@@ -9,6 +9,11 @@ use crate::shellrig::*;
 use crate::theorem_frames::{find, random_keys};
 use crate::theorem_rig::*;
 use mcui::Key;
+use std::collections::BTreeMap;
+
+/// The keys of the seeded walk on the reference OS, and the assertions a partial check settles.
+const WALK: usize = 200;
+const CHECKED: usize = 60;
 
 /// The shipped build's list of `stage`, open on the reference OS, with the model beside it.
 fn walker(stage: usize) -> Walker {
@@ -71,16 +76,77 @@ fn every_key_of_the_screen_on_a_scrolling_theorem_draws_the_models_frame_on_the_
     let mut w = walker(PROP);
     w.goto(n);
     w.open();
-    let (mut drew, mut stayed) = (0, 0);
-    for (scan, key) in random_keys(0x7EA1, 60) {
-        if w.press(scan, key) {
-            drew += 1;
-        } else {
-            stayed += 1;
-        }
+    let mut changed = BTreeMap::new();
+    crate::theorem_frames::run(&mut w, &random_keys(0x7EA1, WALK), &mut changed);
+    println!("{changed:?}");
+    crate::theorem_floors::assert_floors(
+        &changed,
+        [
+            ("Up", 14, 14),
+            ("Down", 14, 30),
+            ("Left", 25, 12),
+            ("Right", 22, 8),
+            ("Enter", 10, 4),
+            ("F1", 20, 11),
+        ],
+    );
+}
+
+#[test]
+#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn a_theorem_opened_after_a_check_of_prop_shows_the_marks_the_check_left() {
+    let lib = lib_of(shipped_staged());
+    let mut list = Lister::on_rom(PROP);
+    let started = std::time::Instant::now();
+    let done = list.partial_check(CHECKED);
+    println!(
+        "the check of {done} assertions of prop took {:?}",
+        started.elapsed()
+    );
+    assert!(
+        (CHECKED..779).contains(&done),
+        "a partial check: {done} of 779"
+    );
+    list.open_on_rom();
+    let status = list.status.clone();
+    let settled = |i: usize| status[i] != mcui::Status::Unchecked;
+    let checked_theorem = (0..779)
+        .find(|&i| lib.is_theorem(i) && settled(i))
+        .expect("a theorem the check settled");
+    let checked_axiom = (0..779)
+        .find(|&i| !lib.is_theorem(i) && settled(i))
+        .expect("an axiom the check settled");
+    let unchecked = (0..779)
+        .find(|&i| lib.is_theorem(i) && !settled(i))
+        .expect("a theorem the check did not reach");
+    let mut w = Walker::new(list, PROP, shipped_staged());
+    w.gap = 600_000;
+    let mut marks = Vec::new();
+    for n in [checked_axiom, checked_theorem, unchecked] {
+        w.goto(n);
+        w.hold_preview();
+        w.open();
+        assert_eq!(
+            w.var("TV_TABLE"),
+            1,
+            "assertion {n}: the table is the library's"
+        );
+        let title = w.model_title();
+        marks.push(title[0]);
+        w.back();
+        w.hold_preview();
     }
-    println!("{drew} keys drew a frame and {stayed} stayed");
-    assert!(drew >= 38 && stayed >= 15, "{drew} drew, {stayed} stayed");
+    println!("title marks of the axiom, the checked theorem and the unchecked one: {marks:?}");
+    let unchecked_mark = w.list.run.shell.app.label("UI_FONT_CH_3F") as u8;
+    assert_ne!(marks[0], unchecked_mark, "the axiom's mark is the check's");
+    assert_ne!(
+        marks[1], unchecked_mark,
+        "the theorem's mark is the check's"
+    );
+    assert_eq!(
+        marks[2], unchecked_mark,
+        "a theorem the check did not reach is unchecked"
+    );
 }
 
 #[test]

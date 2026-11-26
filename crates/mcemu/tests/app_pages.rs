@@ -165,6 +165,8 @@ mod theorem_errors;
 mod theorem_floors;
 #[path = "app_pages/theorem_frames.rs"]
 mod theorem_frames;
+#[path = "app_pages/theorem_gap.rs"]
+mod theorem_gap;
 #[path = "app_pages/theorem_idle.rs"]
 mod theorem_idle;
 #[path = "app_pages/theorem_keys.rs"]
