@@ -106,6 +106,7 @@ fn walk_shipped(scan_down: u8, key_down: Key, scan_up: u8, key_up: Key, step: us
     let built = crate::built::shipped_staged();
     let counts = title_counts(built);
     assert_eq!(counts.len(), 3);
+    println!("titles in the shipped stages: {counts:?}");
     for (stage, &len) in counts.iter().enumerate() {
         assert!(len > 0, "stage {stage} has titles");
         let mut walker = Walker::on_list(built, None, stage);
