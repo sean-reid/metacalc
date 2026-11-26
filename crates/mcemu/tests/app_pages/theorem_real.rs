@@ -570,15 +570,6 @@ fn on_the_reference_os_every_routine_of_the_theorem_screen_keeps_interrupts_and_
     let built = shipped_staged();
     let lib = lib_of(built);
     let (n, _) = find(&lib, |f| f.hyps >= 3 && f.rows >= 6 && !f.large);
-    let one_node = |i: &usize| lib.statement(*i).hyps.iter().any(|e| e.len() == 1);
-    let scrolled = (0..779)
-        .filter(one_node)
-        .max_by_key(|&i| crate::theorem_rig::facts(&lib, i).rows)
-        .expect("prop has an assertion with a hypothesis of one node");
-    println!(
-        "ROM, the scroll case is pressed on assertion {scrolled} of {} rows",
-        crate::theorem_rig::facts(&lib, scrolled).rows
-    );
     let (plain, _) = find(&lib, |f| f.hyps == 0 && !f.large);
     assert!(n < 779 && plain < 779, "both are in prop, which is stage 0");
     let before = |n: usize| {
@@ -608,9 +599,9 @@ fn on_the_reference_os_every_routine_of_the_theorem_screen_keeps_interrupts_and_
     for speed in [0, 1] {
         for (what, table) in [("no table", false), ("a table", true)] {
             let masked = if table {
-                crate::theorem_depth::figures_of(&with_table, (n, plain, scrolled), speed, true)
+                crate::theorem_depth::figures_of(&with_table, (n, plain), speed, true)
             } else {
-                crate::theorem_depth::figures_of(&before, (n, plain, scrolled), speed, true)
+                crate::theorem_depth::figures_of(&before, (n, plain), speed, true)
             };
             println!("ROM, speed {speed}, {what}, masked: {masked:?}");
             let mut masked = masked;
@@ -621,6 +612,6 @@ fn on_the_reference_os_every_routine_of_the_theorem_screen_keeps_interrupts_and_
                 "speed {speed}, {what}"
             );
         }
-        crate::theorem_depth::figures_of(&before, (n, plain, scrolled), speed, false);
+        crate::theorem_depth::figures_of(&before, (n, plain), speed, false);
     }
 }

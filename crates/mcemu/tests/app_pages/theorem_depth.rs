@@ -113,18 +113,18 @@ pub fn figures(speed: u8, mask: bool) -> BTreeMap<String, u16> {
             walker.goto(n);
             walker
         },
-        (n, plain, n),
+        (n, plain),
         speed,
         mask,
     )
 }
 
 /// `figures` for a library: `before(n)` gives both on the list with the cursor on assertion `n`, `n`
-/// being an assertion with several statements, `plain` one with none but the conclusion and `scrolled`
-/// one with a hypothesis of one node, which the scroll case of Down and Up is pressed on.
+/// being an assertion with several statements and `plain` one with none but the conclusion. The keys that
+/// move the cursor are traced by path in theorem_paths.rs.
 pub fn figures_of(
     before: &dyn Fn(usize) -> Walker,
-    (n, plain, scrolled): (usize, usize, usize),
+    (n, plain): (usize, usize),
     speed: u8,
     mask: bool,
 ) -> BTreeMap<String, u16> {
@@ -153,12 +153,6 @@ pub fn figures_of(
     walker.list.run.run(1_000_000);
     put("draw", &[draw]);
     for (name, scan) in [
-        ("up", UP),
-        ("down", DOWN),
-        ("left", LEFT),
-        ("right", RIGHT),
-        ("enter", ENTER),
-        ("f1", F1),
         ("f2", F2),
         ("f3", F3),
         ("f4", F4),
@@ -183,19 +177,6 @@ pub fn figures_of(
     let t = walker.trace("theorem_enter", mask, speed);
     walker.list.run.m().release_key(CLEAR);
     put("enter on an uncovering", &[t]);
-    let key_at = |walker: &mut Walker, scan: u8| {
-        walker.list.run.m().press_key(scan);
-        let t = walker.trace("theorem_key", mask, speed);
-        walker.list.run.m().release_key(scan);
-        t
-    };
-    let mut walker = at(n);
-    let t = key_at(&mut walker, LEFT);
-    put("key left across statements", &[t]);
-    let mut walker = at(n);
-    walker.press(LEFT, Key::Left);
-    let t = key_at(&mut walker, RIGHT);
-    put("key right across statements", &[t]);
     let mut walker = at(n);
     for _ in 0..4 {
         walker.press(LEFT, Key::Left);
@@ -216,37 +197,6 @@ pub fn figures_of(
     let t = walker.trace("theorem_draw", mask, speed);
     walker.list.run.m().release_key(CLEAR);
     put("draw with the cursor's rectangles", &[t]);
-    for (name, scan) in [
-        ("up", UP),
-        ("down", DOWN),
-        ("left", LEFT),
-        ("right", RIGHT),
-        ("enter", ENTER),
-    ] {
-        let mut walker = at(n);
-        crate::theorem_keys::onto_a_hidden_node(&mut walker, 0);
-        let t = key_at(&mut walker, scan);
-        put(&format!("key {name} on a hidden node"), &[t]);
-    }
-    let mut walker = at(n);
-    crate::theorem_keys::onto_a_folded_node(&mut walker);
-    let t = key_at(&mut walker, ENTER);
-    put("key enter on a folded node", &[t]);
-    let statement = lib_of(before(scrolled).built).statement(scrolled);
-    let hyps = statement.hyps.len();
-    let one = statement
-        .hyps
-        .iter()
-        .position(|e| e.len() == 1)
-        .expect("the assertion has a hypothesis of one node");
-    for (name, scan) in [("down", DOWN), ("up", UP)] {
-        let mut walker = at(scrolled);
-        for _ in 0..hyps - one {
-            walker.press(LEFT, Key::Left);
-        }
-        let t = key_at(&mut walker, scan);
-        put(&format!("key {name} in the scroll case"), &[t]);
-    }
     let mut walker = at(plain);
     walker.list.run.m().press_key(DOWN);
     let t = walker.trace("theorem_key", mask, speed);
@@ -255,8 +205,8 @@ pub fn figures_of(
     found
 }
 
-/// The stack each path writes, counting the caller's return address, as the header states them; the
-/// enter's is 24 on the stub OS and more on the reference OS, whose lookup of the status table is deeper.
+/// The stack each routine writes, counting the caller's return address, as the header states them; the
+/// enter's is 24 on the stub OS and 34 on the reference OS, whose lookup of the status table is deeper.
 pub fn depths(enter: u16, draw: u16) -> BTreeMap<String, u16> {
     [
         ("draw", draw),
@@ -265,47 +215,18 @@ pub fn depths(enter: u16, draw: u16) -> BTreeMap<String, u16> {
         ("enter on an uncovering", enter),
         ("key at the root of a short statement", 14),
         ("key clear", 2),
-        ("key down", 10),
-        ("key down in the scroll case", 12),
-        ("key down on a hidden node", 10),
-        ("key enter", 10),
-        ("key enter on a folded node", 14),
-        ("key enter on a hidden node", 10),
-        ("key f1", 10),
         ("key f2", 6),
         ("key f3", 6),
         ("key f4", 6),
         ("key f5", 4),
-        ("key left", 12),
-        ("key left across statements", 12),
-        ("key left on a hidden node", 10),
         ("key letter", 4),
-        ("key right", 12),
-        ("key right across statements", 12),
-        ("key right on a hidden node", 14),
-        ("key up", 12),
-        ("key up in the scroll case", 12),
-        ("key up on a hidden node", 14),
     ]
     .map(|(name, depth)| (name.to_string(), depth))
     .into()
 }
 
-/// The depths on the reference OS, whose lookup of the status table is deeper: the enter writes 34 with a
-/// table and without, and the keys the figures of a longer stage reach differ from the stub's where the
-/// state differs: the scroll case of Down and Up has no row to scroll to in prop's assertions, which
-/// have no hypothesis of one node and more than six rows.
 pub fn depths_on_the_reference_os() -> BTreeMap<String, u16> {
-    let mut depths = depths(34, 18);
-    for (name, depth) in [
-        ("key down in the scroll case", 10),
-        ("key up in the scroll case", 10),
-        ("key left", 10),
-        ("key right", 14),
-    ] {
-        depths.insert(name.to_string(), depth);
-    }
-    depths
+    depths(34, 18)
 }
 
 #[test]
