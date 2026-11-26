@@ -151,8 +151,10 @@ fn on_the_reference_os_a_second_f3_that_is_ignored_leaves_the_app_taking_the_nex
     for gap in [0, 100_000, EDGE.0] {
         let mut list = Lister::on_rom(crate::list_real::PROP);
         list.open_on_rom();
-        list.key(F3, Key::F3);
-        list.settle();
+        list.run.run(2_000_000);
+        list.tap(F3);
+        list.ui.press(Key::F3);
+        list.log.push(Key::F3);
         list.run.run(gap);
         let before = list.run.scr_keys();
         list.run.m().press_key(F3);
@@ -164,6 +166,7 @@ fn on_the_reference_os_a_second_f3_that_is_ignored_leaves_the_app_taking_the_nex
         );
         list.run.m().release_key(F3);
         list.run.run(600_000);
+        list.ui.idle();
         let moved = list.key(DOWN, Key::Down);
         assert!(moved, "gap {gap}: Down moved the cursor");
         list.same_kind_position(&format!("gap {gap}, Down after an ignored F3"));
