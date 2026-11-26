@@ -239,6 +239,7 @@ pub fn folded_spans(fm: &mut Fm, bytes: &[u8], base: u32) -> (u32, u32) {
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn what_a_statement_outside_the_window_costs_fm_to_select_and_draw() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    let mut got = Vec::new();
     for name in ["prop", "ring"] {
         let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
         let all = statements(&decoded(&bytes));
@@ -259,5 +260,7 @@ fn what_a_statement_outside_the_window_costs_fm_to_select_and_draw() {
             "{name}: the largest statement: fm_select {select}, fm_draw below the window {}, inside it {inside}",
             out.tstates - base
         );
+        got.push((select, out.tstates - base, inside));
     }
+    assert_eq!(got, [(823, 1344, 81_314), (823, 1344, 146_528)]);
 }

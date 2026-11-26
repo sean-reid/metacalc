@@ -175,6 +175,8 @@ mod theorem_return;
 mod theorem_rig;
 #[path = "app_pages/theorem_shell_real.rs"]
 mod theorem_shell_real;
+#[path = "app_pages/theorem_title.rs"]
+mod theorem_title;
 #[path = "app_pages/tick.rs"]
 mod tick;
 #[path = "app_pages/wide_cost.rs"]
