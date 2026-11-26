@@ -40,7 +40,7 @@ const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "ring",
         statements: 55_400_000,
-        open: 233_000,
+        open: 223_000,
         titles: 1_505_500,
         lookups: 106_950_000,
         glyphs: 1_003_000,
