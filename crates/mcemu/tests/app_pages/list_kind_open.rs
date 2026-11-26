@@ -74,7 +74,7 @@ fn enter_and_f1_open_the_assertion_under_the_cursor_under_every_kind() {
         }
     }
     println!("theorem screens opened under Theorems, Axioms, Unchecked: {opened:?}");
-    assert!(opened.iter().all(|&n| n >= 8), "{opened:?}");
+    assert_eq!(opened, [12, 12, 12]);
 }
 
 /// A status table's bytes and the statuses they hold.
@@ -204,5 +204,5 @@ fn clear_on_the_theorem_screen_gives_the_filtered_list_back_as_it_was() {
     println!(
         "lists given back under Theorems, Axioms, Unchecked with and without a table: {backs:?}"
     );
-    assert!(backs.iter().all(|&n| n >= 8), "{backs:?}");
+    assert_eq!(backs, [18, 18, 18, 18]);
 }

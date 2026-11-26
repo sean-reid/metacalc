@@ -251,16 +251,19 @@ impl Shell {
         Shell { app, patience: 1 }
     }
 
-    /// Runs on, a few T-states at a time, until the CPU is outside a reader window, where bank B shows the
-    /// library's flash page and bank C the spare RAM page, and returns with the RAM the app keeps
-    /// its variables, stack and the rig's counters in mapped as the app sees it between reads.
+    /// Runs on, an instruction at a time, until the CPU is outside a reader, fm or kernel call, where
+    /// bank B can show the library's flash page and bank C shows the spare RAM page, and returns with
+    /// the RAM the app keeps its variables, stack and the rig's counters in mapped as the app sees it.
     pub fn at_rest(&mut self) {
         let m = &mut self.app.m;
         let mut steps = 0u32;
         while m.in_port(7) != RAM_BANK_B || m.in_port(5) == SPARE_PAGE {
             assert_eq!(m.run_app(1).stop, Stop::Limit);
             steps += 1;
-            assert!(steps < 1_000_000, "the app stays inside a reader window");
+            assert!(
+                steps < 1_000_000,
+                "the app stays inside a reader, fm or kernel call for 1,000,000 instructions"
+            );
         }
     }
 
