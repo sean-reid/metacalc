@@ -215,3 +215,67 @@ fn a_list_that_shows_nothing_opens_on_title_0_and_one_on_assertion_0_opens_on_th
     let at = walker.list.open_sections();
     assert_eq!(at.cursor, 3, "the axiom at 9 is under the title at 3");
 }
+
+#[test]
+fn a_stage_name_too_wide_for_the_title_bar_is_cut_to_the_room_the_count_leaves() {
+    let built = wide();
+    let (mut cut, mut whole) = (0, 0);
+    for stage in [4, 5] {
+        let mut walker = Walker::on_list(built, None, stage);
+        let list = &mut walker.list;
+        let len = list.open_sections().len;
+        let name = mcui::canvas::text_width(&built.stages[stage].name);
+        list.goto_title(0);
+        for title in 0..14 {
+            let right = mcui::canvas::text_width(&format!("{}/{len}", title + 1));
+            if name + right + 3 > 91 {
+                cut += 1;
+            } else {
+                whole += 1;
+            }
+            list.sections_key(DOWN, Key::Down);
+        }
+    }
+    assert_eq!(
+        (cut, whole),
+        (10, 18),
+        "titles whose bar cut the name, and did not"
+    );
+}
+
+#[test]
+fn the_enter_counts_a_stages_titles_and_refuses_a_stage_with_none_without_writing_the_count() {
+    let mut list = Lister::open(rich(), None, 0);
+    list.settle();
+    let label = list.run.shell.app.label("sections_enter");
+    let count = list.run.shell.app.label("SX_N");
+    for (stage, want) in COUNTS.into_iter().enumerate() {
+        list.run.shell.at_rest();
+        let app = &mut list.run.shell.app;
+        let mut frame = [0u8; 16];
+        frame[0] = KIND_SECTIONS;
+        frame[1] = stage as u8;
+        app.m.load_ram(crate::app::SCRATCH, &frame);
+        app.m.load_ram(count, &[0xAB, 0xCD]);
+        let done = app.call(
+            crate::realos::BASE,
+            label,
+            crate::app::In {
+                a: 0x55,
+                bc: 0x1234,
+                de: 0x4321,
+                hl: crate::app::SCRATCH,
+                f: 0xFF,
+            },
+        );
+        let b = list.run.peek(count, 2);
+        let got = usize::from(u16::from_le_bytes([b[0], b[1]]));
+        if want == 0 {
+            assert_eq!(done.status(), 9, "stage {stage}: no title");
+            assert_eq!(got, 0xCDAB, "stage {stage}: the count is not written");
+        } else {
+            assert_eq!(done.status(), 0, "stage {stage}");
+            assert_eq!(got, want, "stage {stage}: the count");
+        }
+    }
+}

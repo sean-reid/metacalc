@@ -99,3 +99,43 @@ fn a_walk_by_page_from_either_end_and_from_between_has_the_models_frames() {
     }
     assert_eq!(pages, 65, "the pages walked");
 }
+
+/// Every title of each stage of the shipped list walked down and up by `scan`, `step` titles a key, with
+/// every frame compared and the count of titles the model's.
+fn walk_shipped(scan_down: u8, key_down: Key, scan_up: u8, key_up: Key, step: usize) {
+    let built = crate::built::shipped_staged();
+    let counts = title_counts(built);
+    assert_eq!(counts.len(), 3);
+    for (stage, &len) in counts.iter().enumerate() {
+        assert!(len > 0, "stage {stage} has titles");
+        let mut walker = Walker::on_list(built, None, stage);
+        let list = &mut walker.list;
+        assert_eq!(list.open_sections().len, len, "stage {stage}: the count");
+        list.goto_title(0);
+        let mut tally = Tally::default();
+        let keys = (len - 1).div_ceil(step);
+        press(list, scan_down, key_down, keys, &mut tally);
+        assert_eq!(list.sections().cursor, len - 1, "stage {stage}: the last");
+        press(list, scan_down, key_down, 1, &mut tally);
+        press(list, scan_up, key_up, keys, &mut tally);
+        assert_eq!(list.sections().cursor, 0, "stage {stage}: the first");
+        press(list, scan_up, key_up, 1, &mut tally);
+        let want = Tally {
+            moves: 2 * keys,
+            stays: 2,
+        };
+        assert_eq!(tally, want, "stage {stage}: {len} titles");
+    }
+}
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn a_walk_by_row_over_every_title_of_the_shipped_stages_has_the_models_frames_and_counts() {
+    walk_shipped(DOWN, Key::Down, UP, Key::Up, 1);
+}
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn a_walk_by_page_over_every_title_of_the_shipped_stages_has_the_models_frames_and_counts() {
+    walk_shipped(RIGHT, Key::Right, LEFT, Key::Left, 6);
+}
