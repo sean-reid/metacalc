@@ -119,8 +119,10 @@
 ;                     out: B = length in symbols, C = FFh for an essential hypothesis, with its
 ;                          symbols in the buffer, else the variable of a float hypothesis,
 ;                          with B = 0. Consecutive numbers of one assertion cost one step each,
-;                          unless lib_kind_next or lib_kind_prev ran between them: they drop the
-;                          record window, so the next call reads the record again.
+;                          unless lib_kind_next or lib_kind_prev read the bitmap between them: that
+;                          read drops the record window, so the next call reads the record again.
+;                          A kind call that answers without reading it (from equal to end, from 0
+;                          for lib_kind_prev, no kinds section, a refused argument) keeps the window.
 ;   lib_sections       out: B = bits 0 titles, 1 glyph map, 2 trees, 4 shapes, 5 kinds: which sections the library has
 ;   lib_title_count   out: HL = titles. 9 without a titles section.
 ;   lib_title         in:  HL = title number; DE = buffer of 255 bytes

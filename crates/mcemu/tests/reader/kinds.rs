@@ -717,6 +717,125 @@ fn the_record_window_survives_a_kinds_call_between_two_steps_of_a_walk() {
 }
 
 #[test]
+fn a_kinds_call_drops_the_record_window_only_when_it_reads_the_bitmap() {
+    let good = crate::sections::headed(120, 3, 0);
+    let count = decoded(&good).assertions.len() as u16;
+    let no_section = with(&good, |b| b[row_of(&good, KINDS)] = 77);
+    let n = 42;
+    assert_eq!(
+        decoded(&good).assertions[usize::from(n)].hypotheses.len(),
+        2
+    );
+    let (mut kept, mut dropped) = (0, 0);
+    let mut probe =
+        |rig: &mut Rig, what: &str, target: &str, regs: Regs, status: u8, reads: bool| {
+            rig.hypothesis(n, 0);
+            let window = |rig: &mut Rig| (rig.state_byte("LR_WLEN"), rig.state_byte("LR_WP"));
+            let held = window(rig);
+            assert_ne!(held.0, 0, "{what}: a window to keep");
+            let out = rig.call(target, regs);
+            assert_eq!(out.status(), status, "{what}");
+            if reads {
+                assert_eq!(window(rig).0, 0, "{what}: the read drops the window");
+                dropped += 1;
+            } else {
+                assert_eq!(
+                    window(rig),
+                    held,
+                    "{what}: nothing read, the window is kept"
+                );
+                kept += 1;
+            }
+        };
+    let mut rig = Rig::with_library(&good);
+    rig.open_ok();
+    probe(
+        &mut rig,
+        "next reads",
+        NEXT,
+        seeded(THEOREM, 10, 60),
+        ST_OK,
+        true,
+    );
+    probe(
+        &mut rig,
+        "prev reads",
+        PREV,
+        seeded(AXIOM, 60, 0),
+        ST_OK,
+        true,
+    );
+    probe(
+        &mut rig,
+        "next, from = end",
+        NEXT,
+        seeded(THEOREM, 30, 30),
+        ST_OK,
+        false,
+    );
+    probe(
+        &mut rig,
+        "prev, from 0",
+        PREV,
+        seeded(AXIOM, 0, 0),
+        ST_OK,
+        false,
+    );
+    probe(
+        &mut rig,
+        "next, kind 2",
+        NEXT,
+        seeded(2, 10, 60),
+        ST_ARG,
+        false,
+    );
+    probe(
+        &mut rig,
+        "prev, kind 2",
+        PREV,
+        seeded(2, 60, 0),
+        ST_ARG,
+        false,
+    );
+    let past = count + 1;
+    probe(
+        &mut rig,
+        "next, end past the count",
+        NEXT,
+        seeded(THEOREM, 10, past),
+        ST_INDEX,
+        false,
+    );
+    probe(
+        &mut rig,
+        "prev, from past the count",
+        PREV,
+        seeded(AXIOM, past, 0),
+        ST_INDEX,
+        false,
+    );
+    let mut rig = Rig::with_library(&no_section);
+    rig.open_ok();
+    probe(
+        &mut rig,
+        "next, no section",
+        NEXT,
+        seeded(THEOREM, 10, 60),
+        ST_NONE,
+        false,
+    );
+    probe(
+        &mut rig,
+        "prev, no section",
+        PREV,
+        seeded(AXIOM, 60, 0),
+        ST_NONE,
+        false,
+    );
+    assert_eq!((dropped, kept), (2, 8));
+}
+
+#[test]
 fn the_packed_bitmap_of_a_library_with_theorems_is_what_the_reader_finds() {
     let bytes = pack_all(&corpus("demo0.mm"));
     let bits: Vec<bool> = decoded(&bytes)
