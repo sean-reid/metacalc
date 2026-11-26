@@ -109,10 +109,8 @@ fn long_walk(checking: bool) {
                 State::Libraries { cursor, .. } if cursor < built.stages.len()
             );
             let in_a_list = matches!(ui.state(), State::List { .. });
-            if notice.is_none() {
-                if let State::List { kind, .. } = ui.state() {
-                    under[usize::from(code(kind))] += 1;
-                }
+            if let (None, State::List { kind, .. }) = (&notice, ui.state()) {
+                under[usize::from(code(kind))] += 1;
             }
             if let Some(title) = notice.clone() {
                 in_notice += 1;

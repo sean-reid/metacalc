@@ -77,8 +77,11 @@ fn enter_and_f1_open_the_assertion_under_the_cursor_under_every_kind() {
     assert!(opened.iter().all(|&n| n >= 8), "{opened:?}");
 }
 
+/// A status table's bytes and the statuses they hold.
+type Marks = (Vec<u8>, Vec<Status>);
+
 /// A one-stage library and the marks that make `kind` show none of it.
-fn showing_nothing(kind: Kind) -> (&'static Built, Option<(Vec<u8>, Vec<Status>)>) {
+fn showing_nothing(kind: Kind) -> (&'static Built, Option<Marks>) {
     static THEOREMS: std::sync::OnceLock<&'static Built> = std::sync::OnceLock::new();
     static AXIOMS: std::sync::OnceLock<&'static Built> = std::sync::OnceLock::new();
     static UNCHECKED: std::sync::OnceLock<&'static Built> = std::sync::OnceLock::new();
