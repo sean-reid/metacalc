@@ -24,8 +24,9 @@
 ;   TV_CUT      the title's label cut to the room the mark and the kind leave
 ;   TV_RIGHT    the title's mark, a space and "thm" or "ax"
 ; The title is built once, by the enter, and drawn from there: no mark changes while a theorem is the top
-; screen, because the only writer of the status table is the check job (store_set), which runs on the
-; checking screen that the Libraries screen pushes, and that screen cannot be pushed over a theorem.
+; screen, because the only code that writes the status table is the check job (store_open, store_set and
+; store_set_next), which runs on the checking screen that the Libraries screen pushes, and no key of the
+; list or of this screen pushes that one.
 ; The statements, their folds and their line counts are fm's: fm_assertion and fm_fit leave them in fm's
 ; RAM, and every statement is selected before it is read or drawn. Only a kernel entry closes fm or
 ; overwrites that RAM and none runs while a theorem screen is open or covered: the check job runs
@@ -54,20 +55,25 @@
 ;                FM_ERR_LIMIT from either is the too large screen and returns 0. Any other status fm
 ;                answers is returned, and so is the reader's from the assertion count and the read of the
 ;                CRC; store_has answering that the table is not this library's is no error, it clears
-;                TV_TABLE, and a reader refusal while the title is built shows "ax" and the unchecked mark.
+;                TV_TABLE, and a reader refusal while the title is built is none either: list_label_text
+;                failing gives an empty label, far_lib_record failing gives "ax" and store_get failing
+;                gives the unchecked mark.
 ;                The first enter, with byte 9 of the frame 0, puts the cursor on the conclusion's node 0
 ;                and the view where follow puts it. Later ones keep the cursor, clamped to the statements
 ;                and to the nodes of its statement, and follow it when the frame says the view was
 ;                following, else clamp the scroll. Then they write byte 8.
 ; theorem_key    UP, DOWN, LEFT, RIGHT, ENTER and F1 as the model's press; F2, F3 and F4 push the notice
-;                NOTICE_LIST; CLEAR pops. F5 and the letters are the model's no-op press: the frame is
+;                NOTICE_LIST; CLEAR pops. F5, the letters and KEY_NONE are the model's no-op press: the frame is
 ;                left as it is when the view is following, else the view follows the cursor. On the too
 ;                large screen only F2, F4 and CLEAR act. Answers SCR_REDRAW exactly when the frame changes:
 ;                the statement, the scroll, a fold of a node that is not hidden, or the node drawn as the
 ;                cursor, which is the node itself or, for a node hidden inside a fold, its outermost
-;                folded ancestor. Else SCR_STAY, with the frame's bytes (the node, the following byte)
-;                still written. A key that moves nothing while byte 8 is 1 selects nothing again and asks
-;                for no span. A status from fm pushes the error notice.
+;                folded ancestor. Up from a node under a fold to the folded node stays, as both are drawn as
+;                its ellipsis, but not to node 0, which is drawn as the marker with no rectangle. Else
+;                SCR_STAY, with the frame's bytes (the node, the following byte) still written. F5, a letter and KEY_NONE answer SCR_STAY at once while byte 8 is 1, calling
+;                nothing; an arrow or Enter that moves nothing selects its statement once and calls
+;                fm_step, fm_folded, fm_nodes or fm_fold as its path does, and while byte 8 is 1 asks for
+;                no span. A status from fm pushes the error notice.
 ; theorem_push   in: HL = a list's frame. Fills scr_new with the theorem frame for the list's cursor, from
 ;                list_key. Out: A = SCR_PUSH.
 ; Interrupts and speed: every routine returns with both as at the call, and the screen writes no port 20h and
@@ -76,24 +82,25 @@
 ; open, the fit of ring's rglcom4d, and 78,040 in a key, a blit. The fit runs in the enter, so a tap
 ; inside it is lost.
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, with
-; interrupts masked: list_key 8 for ENTER and F1;
-; theorem_enter 24 on the stub OS and 34 on the reference OS, whose lookup of the table is deeper,
-; for a push and for an uncovering, with a status table installed and without; theorem_draw 18 on both, with
-; the marker and with the cursor's rectangles, whether a statement is skipped or not; theorem_key 2 for CLEAR,
-; 4 for F5 and a letter, 6 for F2 to F4, and for the six keys by path: Down 10, 12 in the scroll case of a
-; one-node statement with rows to scroll to and 10 with none, 10 on a node hidden inside a fold; Up 12, 12 in
-; the scroll case, 14 on a hidden node; Left 12 and Right 12 on the stub OS's path, a sibling, and 10 and 14 on
-; the reference OS's, 12 across statements, Left 10 and Right 14 on a hidden node; Enter and F1 10, 14 on a
-; folded node, which recounts the statement, and 10 on a hidden node; Down at the root of a short statement 14.
-; An interrupt that lands in a call adds the handler's bytes.
+; interrupts masked, the same on both OSes unless said: list_key 8 for ENTER and F1; theorem_enter 24 on the
+; stub OS and 34 on the reference OS, whose lookup of the table is deeper, for a push and for an uncovering,
+; with a status table installed and without; theorem_draw 18, with the marker and with the cursor's
+; rectangles, whether a statement is skipped or not. theorem_key by path: CLEAR 2; F2 to F4 6; F5, a letter
+; and KEY_NONE 4 while byte 8 is 1 and 12 while it is 0; Left and Right 14 to a sibling, 12 across statements,
+; 10 where there is no statement to go to; Up 12 to the parent, 10 at the root of a statement of several
+; nodes; Down 14 to a first child and 10 at a leaf or at a folded node; on a node hidden inside a fold Left
+; 10, Right 14, Up 14, Down 10, Enter and F1 10; Enter and F1 14 on a node that is not folded and on a folded
+; one, which recount the statement, and 10 on a leaf; in the scroll case of a statement of one node Down and
+; Up 12 with a row to scroll to, and with none 10 while byte 8 is 1 and 12 while it is 0. An interrupt that
+; lands in a call adds the handler's bytes.
 ; Cost, in T-states at 6 MHz on the reference OS: the key that opens an assertion, the enter and the first frame
-; take a median of 326,062 and at most 762,336 over prop's 779 assertions, and 295,443 and at most 1,781,407
+; take a median of 326,046 and at most 762,288 over prop's 779 assertions, and 295,435 and at most 1,781,367
 ; (296.9 ms, rglcom4d) over ring's 3,326, 5 of them over 200 ms and none over 300 ms, rglcom4d being the key
-; 894, the enter 1,517,074 and the first frame 263,439; a cursor move with its frame, over every node of ring's
-; 50 largest assertions and of every 97th of the rest, takes 266,266 at the median and 337,236 at most
-; (df-rng, Down to node 63), 228 of 4,872 over 300,000, the worst being the key 56,653, the draw 206,931 and
-; the blit 73,652; a fold with its frame 293,499 at the median and 390,368 at most (df-rng, Enter at node 68),
-; 113 of 322 over, the worst being the key 109,822, the draw 206,894 and the blit 73,652.
+; 894, the enter 1,517,074 and the first frame 263,399; a cursor move with its frame, over every node of ring's
+; 50 largest assertions and of every 97th of the rest, takes 266,260 at the median and 337,249 at most
+; (df-rng, Down to node 63), 228 of 4,872 over 300,000, the worst being the key 56,666, the draw 206,931 and
+; the blit 73,652; a fold with its frame 293,496 at the median and 390,381 at most (df-rng, Enter at node 68),
+; 113 of 322 over, the worst being the key 109,835, the draw 206,894 and the blit 73,652.
 
 THM_ROWS	.equ 6
 THM_LARGE_ROW	.equ 2

@@ -290,9 +290,11 @@
 ;                      nearest earlier node one level up; the first child is the next node when it is
 ;                      deeper; the next sibling is the first later node that is not deeper, when its
 ;                      depth is equal; the previous sibling is the nearest earlier node that is not
-;                      deeper, when its depth is equal. Folds do not matter. Writes only fm's own
-;                      variables (fv_fm and fv_fn): the tables, the folds, the selection and the cursor are
-;                      as they were; 128 bytes of code. Statuses, in order: FM_ERR_NOT_OPEN when fm is
+;                      deeper, when its depth is equal. Folds do not matter. The tables, the folds, the
+;                      selection, the cursor and every variable but these are as they were: fv_fm and
+;                      fv_fn are its own, written once fm is open and D is below 4, and fv_iff, fv_p5, fv_sp
+;                      and kv_ready are written by the session of every call, which also clears fv_open
+;                      when fm was not owned; 128 bytes of code. Statuses, in order: FM_ERR_NOT_OPEN when fm is
 ;                      closed, FM_ERR_BAD for D above 3, FM_ERR_INDEX when the table is not built or has
 ;                      no node E. On a nonzero status B = 0 and C is undefined.
 ;   fm_span       in:  E = a node of the selected statement, D = the width in pixels
