@@ -24,6 +24,15 @@ tk_main:
 	jr c, tk_work
 	cp KEY_F5
 	jr c, tk_notice
+	push hl
+	ld de, 8
+	add hl, de
+	ld a, (hl)
+	pop hl
+	or a
+	jr nz, tk_stay
+	ld c, 0
+	jr tk_work
 tk_stay:
 	ld a, SCR_STAY
 	ret
@@ -38,8 +47,6 @@ tk_notice:
 	jp screen_push_param
 tk_work:
 	ld a, c
-	or a
-	jr z, tk_stay
 	ld (TV_KEY), a
 	ld (TV_FRAME), hl
 	ld de, 4
@@ -59,6 +66,8 @@ tk_work:
 	call theorem_select
 	jp nz, tk_fail
 	ld a, (TV_KEY)
+	or a
+	jp z, tk_done
 	cp KEY_ENTER
 	jp z, tk_fold
 	cp KEY_F1
@@ -119,10 +128,18 @@ tk_fold:
 	or a
 	jp nz, tk_fail
 	ld a, b
-	ld (TV_CHG), a
 	or a
 	jp z, tk_done
-	call theorem_place
+	ld a, (TV_N)
+	ld e, a
+	call far_fm_folded
+	or a
+	jp nz, tk_fail
+	bit 2, b
+	jp nz, tk_done
+	ld a, 1
+	ld (TV_CHG), a
+	call theorem_recount
 	jp nz, tk_fail
 	jp tk_done
 tk_down:
@@ -192,27 +209,108 @@ tk_back:
 	dec hl
 	ld (TV_SCROLL), hl
 tk_done:
+	ld a, (TV_CHG)
+	or a
+	jr nz, tk_finish
+	ld a, (TV_FOLLOWING)
+	or a
+	jr z, tk_finish
+	call tk_moved
+	jr z, tk_stayed
+tk_finish:
 	call theorem_finish
 	jp nz, tk_fail
 	call theorem_store
 	ld a, (TV_CHG)
 	or a
 	jr nz, tk_changed
+	ld a, (TV_S)
+	ld hl, TV_OLD
+	cp (hl)
+	jr nz, tk_changed
+	ld hl, (TV_SCROLL)
+	ld de, (TV_OLD + 2)
+	or a
+	sbc hl, de
+	jr nz, tk_changed
+	ld a, (TV_N)
+	ld hl, TV_OLD + 1
+	cp (hl)
+	jr z, tk_stayed
+	call theorem_folded_bits
+	jp nz, tk_fail
+	bit 2, b
+	jr nz, tk_hidden
+	ld a, (TV_KEY)
+	cp KEY_UP
+	jr nz, tk_changed
+	bit 0, b
+	jr nz, tk_stayed
+tk_changed:
+	ld a, SCR_REDRAW
+	ret
+tk_hidden:
+	ld a, (TV_N)
+	call theorem_drawn
+	jp nz, tk_fail
+	push bc
+	ld a, (TV_OLD + 1)
+	call theorem_drawn
+	pop de
+	jp nz, tk_fail
+	ld a, b
+	cp d
+	jr nz, tk_changed
+tk_stayed:
+	ld a, SCR_STAY
+	ret
+
+; Out: Z when TV_S, TV_N and TV_SCROLL are as TV_OLD holds them. Destroys AF BC DE HL.
+tk_moved:
 	ld hl, TV_S
 	ld de, TV_OLD
 	ld b, 4
 tk_cmp:
 	ld a, (de)
 	cp (hl)
-	jr nz, tk_changed
+	ret nz
 	inc hl
 	inc de
 	djnz tk_cmp
-	ld a, SCR_STAY
 	ret
-tk_changed:
-	ld a, SCR_REDRAW
+
+; Out: A = a status, NZ when not 0; B = fm_folded's bits for the cursor's node. Destroys all.
+theorem_folded_bits:
+	ld a, (TV_N)
+	ld e, a
+	call far_fm_folded
+	or a
 	ret
+
+; In: A = a node of the selected statement. Out: A = a status, NZ when not 0; B = the node the cursor
+; is drawn as, the node itself or, for a node hidden inside a fold, its nearest ancestor that is not
+; hidden. Destroys all.
+theorem_drawn:
+	ld (TV_I), a
+	ld e, a
+	call far_fm_folded
+	or a
+	ret nz
+	bit 2, b
+	jr nz, tw_up
+	ld a, (TV_I)
+	ld b, a
+	xor a
+	ret
+tw_up:
+	ld a, (TV_I)
+	ld e, a
+	ld d, 0
+	call far_fm_step
+	or a
+	ret nz
+	ld a, b
+	jr theorem_drawn
 #else
 theorem_key:
 	xor a

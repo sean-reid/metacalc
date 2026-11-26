@@ -194,22 +194,22 @@ pub fn figures_of(
 /// enter's is 20 on the stub OS and 34 on the reference OS, whose lookup of the status table is deeper.
 pub fn depths(enter: u16) -> BTreeMap<String, u16> {
     [
-        ("draw", 26),
+        ("draw", 18),
         ("enter on a push", enter),
         ("enter on an uncovering", enter),
         ("key at the root of a short statement", 14),
         ("key clear", 2),
-        ("key down", 14),
-        ("key enter", 14),
-        ("key f1", 14),
+        ("key down", 10),
+        ("key enter", 10),
+        ("key f1", 10),
         ("key f2", 6),
         ("key f3", 6),
         ("key f4", 6),
-        ("key f5", 2),
-        ("key left", 14),
-        ("key letter", 2),
-        ("key right", 14),
-        ("key up", 14),
+        ("key f5", 4),
+        ("key left", 12),
+        ("key letter", 4),
+        ("key right", 12),
+        ("key up", 12),
     ]
     .map(|(name, depth)| (name.to_string(), depth))
     .into()
@@ -225,6 +225,6 @@ fn the_routines_return_with_interrupts_and_speed_as_they_were_and_the_stack_bala
             Some(8),
             "speed {speed}: the list's push"
         );
-        assert_eq!(got, depths(20), "speed {speed}");
+        assert_eq!(got, depths(24), "speed {speed}");
     }
 }

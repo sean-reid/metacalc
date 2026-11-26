@@ -157,9 +157,11 @@ fn an_auto_power_down_on_the_screen_brings_back_the_models_refit() {
             blits + 1,
             "{how}: one frame for the refresh"
         );
-        walker.list.ui.press(Key::F2);
-        walker.list.ui.press(Key::Clear);
-        walker.list.log.extend([Key::F2, Key::Clear]);
+        let keys = [Key::F2, Key::Clear, Key::Letter('A')];
+        for key in keys {
+            walker.list.ui.press(key);
+        }
+        walker.list.log.extend(keys);
         same_frame(how, &frame, &walker.list.shown());
         walker.same_position(how);
         assert_eq!(walker.frame()[4..6], before[4..6], "{how}: the cursor kept");
@@ -300,14 +302,13 @@ fn a_theorem_opened_right_after_a_check_opens_fm_again_once() {
 
 /// The statuses fm and the reader refuse the theorem's enter with, the call each is answered at, and
 /// the status the user sees.
-const REFUSALS: [(&str, u8, u8); 8] = [
+const REFUSALS: [(&str, u8, u8); 7] = [
     ("far_lib_assertion_count", 1, 0x31),
     ("far_lib_read", 1, 0x32),
     ("far_fm_assertion", 1, 0x33),
     ("far_fm_fit", 1, 0x34),
     ("far_fm_rows", 1, 0x35),
     ("far_fm_select", 1, 0x36),
-    ("far_fm_span", 1, 0x37),
     ("far_fm_open", 1, 0x38),
 ];
 
@@ -370,7 +371,7 @@ fn a_theorem_that_fails_to_enter_on_a_push_leaves_the_list_with_the_error_notice
 fn a_theorem_that_fails_to_enter_on_an_uncovering_keeps_its_frame_under_the_error_notice() {
     let built = with_library();
     for (stub, _, status) in REFUSALS {
-        if stub == "far_lib_assertion_count" || stub == "far_lib_read" || stub == "far_fm_span" {
+        if stub == "far_lib_assertion_count" || stub == "far_lib_read" {
             continue;
         }
         let at = stub.to_string();
@@ -399,7 +400,7 @@ fn a_status_from_fm_inside_a_key_pushes_the_error_notice_and_changes_nothing() {
         ("far_fm_select", DOWN, 0x42),
         ("far_fm_folded", DOWN, 0x43),
         ("far_fm_fold", ENTER, 0x44),
-        ("far_fm_span", UP, 0x45),
+        ("far_fm_span", RIGHT, 0x45),
     ] {
         let at = format!("{stub} on {scan:02X}");
         let mut walker = Walker::at(built, None, 0, 4);

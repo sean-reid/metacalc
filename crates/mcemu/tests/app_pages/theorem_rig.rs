@@ -244,19 +244,17 @@ impl Walker {
         usize::from(u16::from_le_bytes([b[0], b[1]]))
     }
 
-    /// Taps `scan` and does the model's `key`: the app draws a frame exactly when the model's state or
-    /// depth changed, and the screen it leaves is the model's frame. A key that moves the cursor
-    /// between nodes a fold hides, or folds one of them, changes the model's state and not its frame,
-    /// and the app draws the same frame again. Returns whether a frame was drawn.
+    /// Taps `scan` and does the model's `key`: the app draws a frame exactly when the model's frame or
+    /// depth changed, and the screen it leaves is the model's frame. Returns whether a frame was drawn.
     pub fn press(&mut self, scan: u8, key: Key) -> bool {
         let list = &mut self.list;
         let blits = list.run.blits();
-        let (state, depth) = (list.ui.state(), list.ui.depth());
+        let (before, depth) = (list.shown(), list.ui.depth());
         tap(list, scan);
         list.ui.press(key);
         list.log.push(key);
         let want = list.shown();
-        let drew = list.ui.state() != state || list.ui.depth() != depth;
+        let drew = want != before || list.ui.depth() != depth;
         if drew {
             let frame = list.run.next_blit();
             same_frame(&format!("after {scan:02X}"), &frame, &want);

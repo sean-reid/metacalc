@@ -286,7 +286,7 @@ pub struct Stats {
 
 /// Presses `key` on the model and on the app and compares where they are.
 fn step(ui: &mut mcui::Ui, rom: &mut Rom, key: Key, stats: &mut Stats) {
-    let before = ui.state();
+    let before = crate::shellrig::model::frame(ui);
     ui.press(key);
     let after = ui.state();
     let (answer, spent) = rom.press(key);
@@ -309,7 +309,11 @@ fn step(ui: &mut mcui::Ui, rom: &mut Rom, key: Key, stats: &mut Stats) {
         (statement, node, scroll),
         "after {key:?}: {after:?}"
     );
-    assert_eq!(answer == 1, before != after, "after {key:?}: the answer");
+    assert_eq!(
+        answer == 1,
+        before != crate::shellrig::model::frame(ui),
+        "after {key:?}: the answer"
+    );
     if answer == 1 {
         match key {
             Key::Enter | Key::F1 => stats

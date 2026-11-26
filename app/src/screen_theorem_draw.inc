@@ -6,14 +6,6 @@
 #ifdef LIBRARY
 ; In: HL = the frame.
 theorem_draw:
-	ld (TV_FRAME), hl
-	push hl
-	pop ix
-	ld l, (ix + 2)
-	ld h, (ix + 3)
-	ld (TV_ASSERT), hl
-	push ix
-	pop hl
 	ld de, 4
 	add hl, de
 	ld de, TV_S
@@ -23,7 +15,9 @@ theorem_draw:
 	ld hl, theorem_block
 	ld bc, THEOREM_BLOCK_SIZE
 	call app_stage_block
-	call theorem_title
+	ld hl, TV_CUT
+	ld de, TV_RIGHT
+	call far_ui_title
 	ld a, (TV_LARGE)
 	or a
 	jr nz, td_large
@@ -51,7 +45,7 @@ td_large:
 	ld hl, STG_TH_KEYS_LARGE
 	jp far_ui_soft_keys
 
-; Draws the title bar: the label cut to the room "mark thm" or "mark ax" leaves.
+; Builds the title: TV_RIGHT holds the mark and "thm" or "ax", TV_CUT the label cut to the room they leave.
 theorem_title:
 	ld hl, (TV_ASSERT)
 	ld de, TV_LABEL
@@ -100,17 +94,11 @@ tt_kind:
 	ld hl, TV_LABEL
 	ld de, TV_CUT
 	ld b, LIST_LABEL_MAX + 2
-	call far_ui_truncate
-	ld hl, TV_CUT
-	ld de, TV_RIGHT
-	jp far_ui_title
+	jp far_ui_truncate
 
 ; Draws statement TV_I: its number in the gutter for a hypothesis, its rows inside the window with the
 ; cursor's pieces, and the marker when the cursor is on its node 0.
 theorem_statement:
-	ld a, (TV_I)
-	call theorem_select
-	ret nz
 	ld a, (TV_I)
 	add a, a
 	ld e, a
@@ -120,12 +108,30 @@ theorem_statement:
 	ld e, (hl)
 	inc hl
 	ld d, (hl)
+	inc hl
+	ld c, (hl)
+	inc hl
+	ld b, (hl)
+	ld hl, (TV_SCROLL)
+	or a
+	sbc hl, bc
+	ret nc
+	ld hl, (TV_SCROLL)
+	ld bc, THM_ROWS
+	add hl, bc
+	or a
+	sbc hl, de
+	ret z
+	ret c
 	ld hl, (TV_SCROLL)
 	ex de, hl
 	or a
 	sbc hl, de
 	inc hl
 	ld (TV_ROW), hl
+	ld a, (TV_I)
+	call theorem_select
+	ret nz
 	ld a, (TV_I)
 	ld hl, TV_NHYPS
 	cp (hl)
