@@ -6,6 +6,7 @@ use crate::app::*;
 use crate::list_rig::*;
 use crate::shellrig::*;
 use crate::table;
+use crate::theorem_floors::{assert_floors, marked_table};
 use crate::theorem_rig::*;
 use mcui::canvas::Call;
 use mcui::data::Lib;
@@ -89,7 +90,11 @@ pub fn find(lib: &mcui::data::Lib, want: impl Fn(&Facts) -> bool) -> (usize, Fac
 }
 
 /// Taps `keys` in turn on the walker, counting for each key how many changed the screen.
-fn run(walker: &mut Walker, keys: &[(u8, Key)], changed: &mut BTreeMap<String, (usize, usize)>) {
+pub fn run(
+    walker: &mut Walker,
+    keys: &[(u8, Key)],
+    changed: &mut BTreeMap<String, (usize, usize)>,
+) {
     for &(scan, key) in keys {
         let drew = walker.press(scan, key);
         let entry = changed.entry(format!("{key:?}")).or_default();
@@ -175,16 +180,17 @@ fn the_keys_one_at_a_time_on_assertions_chosen_for_each() {
         run(&mut walker, &keys, &mut changed);
     }
     println!("{changed:?}");
-    for (key, floor) in [
-        ("Up", 17),
-        ("Down", 25),
-        ("Left", 17),
-        ("Right", 24),
-        ("Enter", 15),
-        ("F1", 14),
-    ] {
-        assert!(changed[key].1 >= floor, "{key}: {:?}", changed[key]);
-    }
+    assert_floors(
+        &changed,
+        [
+            ("Up", 17, 55),
+            ("Down", 25, 88),
+            ("Left", 17, 48),
+            ("Right", 24, 32),
+            ("Enter", 15, 11),
+            ("F1", 14, 17),
+        ],
+    );
 }
 
 #[test]
@@ -234,33 +240,23 @@ fn long_seeded_walks_of_the_keys_are_the_models_on_the_fixture() {
         run(&mut walker, &random_keys(seed, 150), &mut changed);
     }
     println!("walk {changed:?}");
-    for (key, floor) in [
-        ("Up", 40),
-        ("Down", 40),
-        ("Left", 60),
-        ("Right", 68),
-        ("Enter", 30),
-        ("F1", 30),
-    ] {
-        assert!(changed[key].1 >= floor, "{key}: {:?}", changed[key]);
-    }
+    assert_floors(
+        &changed,
+        [
+            ("Up", 40, 38),
+            ("Down", 40, 105),
+            ("Left", 60, 41),
+            ("Right", 68, 33),
+            ("Enter", 30, 22),
+            ("F1", 30, 38),
+        ],
+    );
 }
 
 #[test]
 fn the_title_carries_each_of_the_four_marks_and_thm_or_ax() {
     let built = proofs_three();
-    let lib = lib_of(built);
-    let n = lib.len();
-    let mut seed = 0x1357_9BDF;
-    let (data, status) = (0..200)
-        .find_map(|_| {
-            let status = table::random_status(n, &mut seed, 70, 6);
-            let values = table::values(built, &status);
-            (0..4)
-                .all(|v| values.contains(&v))
-                .then(|| (table::of(built.library.as_ref().unwrap(), &values), status))
-        })
-        .expect("a table with all four marks");
+    let (data, status) = marked_table(built);
     let mut seen = std::collections::BTreeSet::new();
     let mut pairs = std::collections::BTreeSet::new();
     let mut walker = Walker::on_list(built, Some((&data, &status)), 2);
@@ -306,18 +302,7 @@ fn the_title_carries_each_of_the_four_marks_and_thm_or_ax() {
 #[test]
 fn the_title_is_rebuilt_by_the_enter_after_a_notice_and_after_an_auto_power_down() {
     let built = proofs_three();
-    let lib = lib_of(built);
-    let n = lib.len();
-    let mut seed = 0x1357_9BDF;
-    let (data, status) = (0..200)
-        .find_map(|_| {
-            let status = table::random_status(n, &mut seed, 70, 6);
-            let values = table::values(built, &status);
-            (0..4)
-                .all(|v| values.contains(&v))
-                .then(|| (table::of(built.library.as_ref().unwrap(), &values), status))
-        })
-        .expect("a table with all four marks");
+    let (data, status) = marked_table(built);
     let mut walker = Walker::on_list(built, Some((&data, &status)), 2);
     let end = built.stages[2].end.min(12);
     let mut marks = std::collections::BTreeSet::new();
@@ -331,13 +316,23 @@ fn the_title_is_rebuilt_by_the_enter_after_a_notice_and_after_an_auto_power_down
         walker.excursion(F2, Key::F2);
         walker.list.run.run(600_000);
         walker.list.run.shell.power_down();
-        let at = walker.list.run.shell.app.label("TV_RIGHT");
-        walker.list.run.m().load_ram(at, &[0xFF; 8]);
+        let app = &walker.list.run.shell.app;
+        let (cut, right) = (app.label("TV_CUT"), app.label("TV_RIGHT"));
+        walker
+            .list
+            .run
+            .m()
+            .load_ram(cut, &vec![0xFF; usize::from(right - cut) + 8]);
         walker.tap(LETTER);
-        walker.list.run.next_blit();
+        let frame = walker.list.run.next_blit();
         walker.list.run.run(2_000);
         walker.list.ui.press(Key::Letter('A'));
         walker.list.log.push(Key::Letter('A'));
+        crate::ui_support::same_frame(
+            "the title after an auto power down",
+            &frame,
+            &walker.list.shown(),
+        );
         walker.mirror = None;
         walker.same_position("after an auto power down");
         walker.back();
@@ -428,16 +423,17 @@ fn long_seeded_walks_are_the_models_on_the_largest_assertions_of_ring() {
         );
     }
     println!("walk {changed:?}");
-    for (key, floor) in [
-        ("Up", 150),
-        ("Down", 160),
-        ("Left", 150),
-        ("Right", 225),
-        ("Enter", 125),
-        ("F1", 100),
-    ] {
-        assert!(changed[key].1 >= floor, "{key}: {:?}", changed[key]);
-    }
+    assert_floors(
+        &changed,
+        [
+            ("Up", 150, 60),
+            ("Down", 160, 295),
+            ("Left", 150, 160),
+            ("Right", 225, 122),
+            ("Enter", 125, 76),
+            ("F1", 100, 74),
+        ],
+    );
 }
 
 #[test]

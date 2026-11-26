@@ -33,18 +33,39 @@ pub fn prepared(n: usize, how: &str) -> Walker {
             walker.press(DOWN, Key::Down);
         }
         "fold made" => {
-            for _ in 0..2 {
-                walker.press(DOWN, Key::Down);
+            let folds = |w: &Walker| match w.list.ui.state() {
+                State::Theorem { folded, .. } => folded,
+                other => panic!("{other:?}"),
+            };
+            let fitted = folds(&walker);
+            walker.press(DOWN, Key::Down);
+            for _ in 0..30 {
+                walker.press(ENTER, Key::Enter);
+                if folds(&walker) > fitted || !next_node(&mut walker) {
+                    break;
+                }
             }
-            walker.press(ENTER, Key::Enter);
+            assert!(folds(&walker) > fitted, "a fold is made");
             walker.press(RIGHT, Key::Right);
         }
         "scrolled away" => {
-            for _ in 0..12 {
+            let lib = lib_of(with_library());
+            let statement = lib.statement(n);
+            let one = statement
+                .hyps
+                .iter()
+                .position(|e| e.len() == 1)
+                .expect("a hypothesis of one node");
+            for _ in 0..statement.hyps.len() - one {
                 walker.press(LEFT, Key::Left);
             }
-            for _ in 0..3 {
-                walker.press(DOWN, Key::Down);
+            for (scan, key) in [(DOWN, Key::Down), (UP, Key::Up)] {
+                for _ in 0..16 {
+                    if walker.frame()[8] == 0 {
+                        break;
+                    }
+                    walker.press(scan, key);
+                }
             }
         }
         "conclusion folded" => {
@@ -78,6 +99,53 @@ pub fn prepared(n: usize, how: &str) -> Walker {
     walker
 }
 
+/// Asserts the state `how` names, before a notice or a power down takes it away: the cursor's statement,
+/// the folds against a fresh fit's, and where the view is.
+pub fn is_in_state(walker: &mut Walker, n: usize, hyps: usize, how: &str) {
+    let State::Theorem {
+        statement,
+        node,
+        scroll,
+        ..
+    } = walker.list.ui.state()
+    else {
+        panic!("the model is not on a theorem");
+    };
+    let fresh = crate::theorem_mirror::Mirror::new(&lib_of(with_library()), n).folded();
+    let (folded, following) = (walker.mirror().folded(), walker.frame()[8]);
+    let away = walker.mirror().out_of_window(statement, node, scroll);
+    match how {
+        "conclusion" => assert_eq!(statement, hyps, "{how}: the conclusion"),
+        "hypothesis" => assert!(
+            statement < hyps,
+            "{how}: a hypothesis, not statement {statement}"
+        ),
+        "fold made" => assert!(
+            folded != fresh,
+            "{how}: {folded} folds against {fresh} fitted"
+        ),
+        "conclusion folded" => {
+            assert_eq!(statement, hyps, "{how}: the conclusion");
+            assert!(
+                folded > fresh,
+                "{how}: {folded} folds against {fresh} fitted"
+            );
+        }
+        "scrolled away" => assert!(statement < hyps, "{how}: a hypothesis"),
+        "unfolded above" | "unfolded above, scrolled away" => {
+            assert!(
+                folded < fresh,
+                "{how}: {folded} folds against {fresh} fitted"
+            );
+        }
+        other => panic!("{other}"),
+    }
+    if how.ends_with("scrolled away") {
+        assert_eq!(following, 0, "{how}: byte 8");
+        assert!(away, "{how}: the cursor's rows are outside the window");
+    }
+}
+
 #[test]
 fn each_soft_key_pushes_the_notice_and_the_frame_after_it_is_the_models_refit() {
     let built = with_library();
@@ -86,6 +154,7 @@ fn each_soft_key_pushes_the_notice_and_the_frame_after_it_is_the_models_refit() 
     for how in HOWS {
         for (scan, key) in [(F2, Key::F2), (F3, Key::F3), (F4, Key::F4)] {
             let mut walker = prepared(n, how);
+            is_in_state(&mut walker, n, f.hyps, how);
             let before = walker.frame();
             let total = walker.var16("TV_TOTAL");
             walker.excursion(scan, key);
@@ -142,6 +211,7 @@ fn an_auto_power_down_on_the_screen_brings_back_the_models_refit() {
     let (n, f) = find(&lib, |f| f.hyps >= 6 && f.rows > 6 && !f.large);
     for how in HOWS {
         let mut walker = prepared(n, how);
+        is_in_state(&mut walker, n, f.hyps, how);
         let before = walker.frame();
         walker.list.run.run(600_000);
         walker.list.run.shell.power_down();

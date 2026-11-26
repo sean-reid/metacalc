@@ -1,5 +1,5 @@
-//! What building the title costs: the enter pays it once, and the draw, which used to pay it for every
-//! frame, only hands the two strings to the canvas.
+//! What building the title costs: the enter pays it once, and the draw only hands the two strings to
+//! the canvas.
 
 use crate::app::*;
 use crate::builds::*;
@@ -44,7 +44,7 @@ fn title_cost(table: bool) -> u32 {
 }
 
 #[test]
-fn the_title_the_enter_builds_costs_what_the_draw_no_longer_pays_each_frame() {
+fn the_title_the_enter_builds_costs_what_the_draw_does_not_pay_each_frame() {
     let (plain, tabled) = (title_cost(false), title_cost(true));
     println!("theorem_title: {plain} T-states with no table, {tabled} with one");
     within("the title with no table", plain, 7_296);

@@ -161,6 +161,8 @@ mod theorem_caps;
 mod theorem_depth;
 #[path = "app_pages/theorem_errors.rs"]
 mod theorem_errors;
+#[path = "app_pages/theorem_floors.rs"]
+mod theorem_floors;
 #[path = "app_pages/theorem_frames.rs"]
 mod theorem_frames;
 #[path = "app_pages/theorem_keys.rs"]
