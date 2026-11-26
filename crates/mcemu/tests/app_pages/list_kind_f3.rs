@@ -78,7 +78,9 @@ fn f3_twice_with_no_settle_between_keeps_or_blanks_the_preview_as_the_model_does
 /// it was held before scr_key took it, or None when it was not taken in `BOUND`, and how many times
 /// scr_key took it while it stayed down for `HOLD` more.
 const BOUND: u32 = 3_000_000;
-/// The greatest gap measured never taken and the least measured always taken.
+/// The greatest gap pinned as never taken and the least pinned as always taken. The table has 280,000
+/// never taken and 300,000 taken once, and the gaps between 260,000 and 340,000 are left out of the
+/// pins because which side of the OS's debounce they fall on depends on the timer's phase.
 const EDGE: (u32, u32) = (260_000, 340_000);
 
 fn second_press(list: &mut Lister, gap: u32) -> (Option<u32>, u16) {

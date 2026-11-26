@@ -224,8 +224,13 @@ impl Lister {
             spent += 20_000;
             assert!(spent < LIMIT, "the preview never settled");
         }
-        self.run.run(300_000);
         let drew = self.ui.idle();
+        let mut waited = 0;
+        while self.run.blits() < blits + u16::from(drew) && waited < 2_000_000 {
+            self.run.run(20_000);
+            waited += 20_000;
+        }
+        self.run.run(300_000);
         assert_eq!(
             self.run.blits(),
             blits + u16::from(drew),

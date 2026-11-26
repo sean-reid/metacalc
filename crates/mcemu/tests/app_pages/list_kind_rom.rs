@@ -155,8 +155,9 @@ fn on_the_reference_os_pred_is_walked_under_theorems_and_axioms_by_row() {
 }
 
 /// Ring's status table with its first 1,500 assertions checked, as a check that runs in order leaves
-/// it: one run of 1,500 that Unchecked hides. Checked assertions after an unchecked one the model marks
-/// resting, which Unchecked shows, so the run has to start at 0.
+/// it: one run of 1,500 that Unchecked hides, at the front, so that the list starts after it and no
+/// move crosses it. A checked assertion after an unchecked one rests on it in the model when its proof
+/// uses it, and Unchecked shows it, so a run hidden in the middle takes marks of its own (below).
 const CHECKED: std::ops::Range<usize> = 0..1500;
 
 /// The longest run of consecutive assertions the model marks checked.
@@ -170,7 +171,7 @@ fn longest_hidden(values: &[u8]) -> usize {
 
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_ring_is_walked_under_unchecked_by_row_across_the_longest_run_the_table_hides()
+fn on_the_reference_os_ring_is_walked_under_unchecked_by_row_from_the_first_shown_after_a_hidden_prefix_to_the_last_and_back()
  {
     let started = Instant::now();
     let probe = Lister::on_rom(RING);
@@ -194,7 +195,59 @@ fn on_the_reference_os_ring_is_walked_under_unchecked_by_row_across_the_longest_
     );
     assert_eq!(pressed, 2 * (want + 1));
     println!(
-        "ROM, ring Unchecked: {want} of {n} shown, {pressed} keys by row over a run of {longest} the table hides, in {:?}",
+        "ROM, ring Unchecked: {want} of {n} shown, {pressed} keys by row after a prefix of {longest} the table hides, in {:?}",
+        started.elapsed()
+    );
+}
+
+/// Ring with everything checked but assertion 500: the model shows 500 and the assertions whose proofs
+/// rest on it, and hides the others, so 18 runs of hidden assertions lie between shown ones, the longest
+/// 1,971 long.
+const ONE_UNCHECKED: usize = 500;
+
+#[test]
+#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn on_the_reference_os_ring_is_walked_under_unchecked_by_row_across_runs_the_table_hides_in_the_middle()
+ {
+    let started = Instant::now();
+    let probe = Lister::on_rom(RING);
+    let probe_built = probe.built;
+    let n = count(probe_built);
+    drop(probe);
+    let mut status = vec![Status::Checked; n];
+    status[ONE_UNCHECKED] = Status::Unchecked;
+    let values = crate::table::values(probe_built, &status);
+    let shown: Vec<usize> = (0..n).filter(|&i| values[i] != 1).collect();
+    let gaps: Vec<usize> = shown
+        .windows(2)
+        .map(|w| w[1] - w[0] - 1)
+        .filter(|&g| g > 0)
+        .collect();
+    let (middle_runs, longest) = (gaps.len(), gaps.iter().copied().max().unwrap_or(0));
+    assert_eq!(
+        shown.first(),
+        Some(&ONE_UNCHECKED),
+        "the list starts at the unchecked one"
+    );
+    assert_eq!(
+        (shown.len(), middle_runs, longest),
+        (114, 18, 1971),
+        "what the model hides"
+    );
+    let mut list = ring(Some(&status));
+    list.go_to_kind(Kind::Unchecked);
+    assert_eq!(list.items(), shown, "the model's items");
+    let pressed = list.walk_plan(
+        "ring Unchecked, runs in the middle",
+        &[
+            (DOWN, Key::Down, shown.len() + 1),
+            (UP, Key::Up, shown.len() + 1),
+        ],
+    );
+    assert_eq!(pressed, 2 * (shown.len() + 1));
+    println!(
+        "ROM, ring Unchecked with one unchecked assertion: {} of {n} shown, {middle_runs} hidden runs between them, the longest {longest}, {pressed} keys by row in {:?}",
+        shown.len(),
         started.elapsed()
     );
 }
