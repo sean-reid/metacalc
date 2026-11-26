@@ -18,10 +18,10 @@ const WALK_CHECKING: [u8; 34] = [
     DOWN, F3, CLEAR, F1, ENTER, F2, CLEAR, DOWN, F3, CLEAR, UP, UP, UP, UP, F3, CLEAR,
 ];
 
-/// The keys the stream sent inside a list and inside a stage's notice, 95 and 150 at the least over
+/// The keys the stream sent inside a list and inside a stage's notice, 91 and 110 at the least over
 /// the two walks and two builds.
 const IN_LIST_FLOOR: usize = 90;
-const IN_NOTICE_FLOOR: usize = 140;
+const IN_NOTICE_FLOOR: usize = 108;
 
 /// The model on Libraries again and taken through `log`, with no idle work: the list it was on, with
 /// its preview pending.
@@ -37,7 +37,7 @@ fn replayed(built: &Built, status: &[mcui::Status], log: &[Key]) -> mcui::Ui {
 /// through every kind of screen, then a pseudo-random stream of keys, never CLEAR on the Libraries
 /// screen, which leaves. In the fixed walk a stage's list is left with CLEAR as soon as it has
 /// opened and been compared; in the stream the keys go on inside it: the arrows and CLEAR are the
-/// model's, and ENTER and F1 to F4 open the stage's notice, which the model's list has no screen
+/// model's, ENTER and F1 open a theorem screen the stream does not enter, and F2 to F4 open the stage's notice, which the model's list has no screen
 /// for, so the notice's rule stands in for it as list_keys.rs does: the notice is compared with the
 /// model's "Not available yet" and the list that comes back is the model's after the same keys with
 /// no idle work. F5 does nothing on a stage with no section titles, which these builds are. With
@@ -101,7 +101,9 @@ fn long_walk(checking: bool) {
                     shell.shows(&at, &model::unavailable(&title));
                     assert_eq!(shell.depth(), 3, "{at}: stays");
                 }
-            } else if in_a_list && !fixed && [ENTER, F1, F2, F4, F5].contains(&key) {
+            } else if in_a_list && !fixed && [ENTER, F1].contains(&key) {
+                continue;
+            } else if in_a_list && !fixed && [F2, F4, F5].contains(&key) {
                 in_list += 1;
                 settle_list(&mut shell, &mut ui);
                 let (blits, frame) = (shell.blits(), shell.frames()[1].clone());

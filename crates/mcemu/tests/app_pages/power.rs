@@ -132,7 +132,7 @@ fn a_power_down_with_the_notice_of_a_stage_open_builds_its_title_again() {
     let (mut shell, mut ui) = under_way();
     press(&mut shell, &mut ui, three(), DOWN, "down");
     open_list(&mut shell, &mut ui, three(), F1, "the list");
-    shell.tap(F1);
+    shell.tap(F2);
     let want = model::unavailable(three().stage_name(1));
     shell.shows("the notice", &want);
     shell.power_down();

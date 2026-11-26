@@ -132,7 +132,7 @@ fn a_key_that_moves_nothing_does_not_start_the_wait_again() {
 fn a_notice_opened_during_the_wait_and_closed_waits_the_full_11_ticks_again() {
     let mut list = after_a_move(RIGHT, Key::Right);
     list.run.run(5 * TICK);
-    list.tap(ENTER);
+    list.tap(F2);
     list.run.next_blit();
     list.run.run(2 * TICK);
     list.tap(CLEAR);

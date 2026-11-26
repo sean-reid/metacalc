@@ -119,6 +119,8 @@ mod list_kind_frames;
 mod list_kind_keys;
 #[path = "app_pages/list_kind_lost.rs"]
 mod list_kind_lost;
+#[path = "app_pages/list_kind_open.rs"]
+mod list_kind_open;
 #[path = "app_pages/list_kind_real.rs"]
 mod list_kind_real;
 #[path = "app_pages/list_kind_rig.rs"]
@@ -175,6 +177,40 @@ mod store_rule;
 mod stubs;
 #[path = "app_pages/table.rs"]
 mod table;
+#[path = "app_pages/theorem_caps.rs"]
+mod theorem_caps;
+#[path = "app_pages/theorem_depth.rs"]
+mod theorem_depth;
+#[path = "app_pages/theorem_errors.rs"]
+mod theorem_errors;
+#[path = "app_pages/theorem_floors.rs"]
+mod theorem_floors;
+#[path = "app_pages/theorem_frames.rs"]
+mod theorem_frames;
+#[path = "app_pages/theorem_gap.rs"]
+mod theorem_gap;
+#[path = "app_pages/theorem_idle.rs"]
+mod theorem_idle;
+#[path = "app_pages/theorem_keys.rs"]
+mod theorem_keys;
+#[path = "app_pages/theorem_mirror.rs"]
+mod theorem_mirror;
+#[path = "app_pages/theorem_paths.rs"]
+mod theorem_paths;
+#[path = "app_pages/theorem_real.rs"]
+mod theorem_real;
+#[path = "app_pages/theorem_return.rs"]
+mod theorem_return;
+#[path = "app_pages/theorem_rig.rs"]
+mod theorem_rig;
+#[path = "app_pages/theorem_shell_real.rs"]
+mod theorem_shell_real;
+#[path = "app_pages/theorem_stay.rs"]
+mod theorem_stay;
+#[path = "app_pages/theorem_straddle.rs"]
+mod theorem_straddle;
+#[path = "app_pages/theorem_title.rs"]
+mod theorem_title;
 #[path = "app_pages/tick.rs"]
 mod tick;
 #[path = "app_pages/wide_cost.rs"]

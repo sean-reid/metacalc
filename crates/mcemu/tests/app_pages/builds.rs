@@ -55,6 +55,7 @@ pub fn kind_of(state: &State) -> u8 {
         State::Checking { .. } => KIND_CHECKING,
         State::About => KIND_ABOUT,
         State::StageAbout { .. } => KIND_STAGE,
+        State::Theorem { .. } => crate::theorem_rig::KIND_THEOREM,
         other => panic!("the model is on {other:?}"),
     }
 }

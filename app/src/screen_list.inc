@@ -76,8 +76,10 @@
 ;              model's F3 does: the cursor on the first shown assertion at or after the one it was on,
 ;              else the last, the first row shown four before it among the shown, and the preview
 ;              pending with the wait when the cursor's assertion changed (a list that shows nothing
-;              has none), else kept. ENTER, F1, F2 and F4, F3 when LV_HASK is 0, and F5 when LV_SECT
-;              is 1, push the notice NOTICE_LIST of the stage. CLEAR pops. Every other key stays.
+;              has none), else kept. ENTER and F1 push KIND_THEOREM for the cursor's assertion
+;              (theorem_push), or the notice NOTICE_LIST of the stage when the kind shows no assertion
+;              (a stage with none, or a filter with no match). F2 and F4, F3 when LV_HASK is 0, and F5 when
+;              LV_SECT is 1, push the notice. CLEAR pops. Every other key stays.
 ; list_idle    in: HL = the frame. out: A and carry as scr_idle takes them. LV_COUNT above 0: one off the
 ;              count, one app_tick, SCR_STAY with carry set. Count 0 and the preview pending, with
 ;              LV_NOFM 0 and a stage that has assertions, under a kind: one lf_next, a lib_kind_next
@@ -110,7 +112,8 @@
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
 ; greatest over a call of each routine with interrupts masked, at both speeds (list_depth.rs; the figures
 ; under a kind are in screen_list_kind.inc). Stub OS under All: list_key 4 for a move and for a key at an
-; end, 6 for the keys that push the notice, 2 for CLEAR, a letter and F5 with no sections, F3 20 on the
+; end, 6 for the keys that push the notice, 8 for ENTER and F1 on a stage with an
+; assertion, which push the theorem screen, 2 for CLEAR, a letter and F5 with no sections, F3 20 on the
 ; fixture of list_depth.rs and 24 on the proofs library of list_kind_depth.rs, from the first assertion
 ; and from ten rows down alike; list_enter 22; list_idle 8 for the fit and for a tick, which holds
 ; app_tick's return address and the interrupt handler's pushes, and 2 settled; list_draw 26. Reference
@@ -277,10 +280,11 @@ list_key:
 	cp KEY_CLEAR
 	jr z, lk_pop
 	cp KEY_ENTER
-	jr z, lk_notice
+	jr z, lk_open
 	cp KEY_F3
 	jr z, lk_f3
 	cp KEY_F1
+	jr z, lk_open
 	jr c, lk_stay
 	cp KEY_F5
 	jr c, lk_notice
@@ -299,6 +303,34 @@ lk_f3:
 	or a
 	jr z, lk_notice
 	jp list_kind_step
+lk_open:
+	push hl
+	inc hl
+	ld a, (hl)
+	call list_stage_end
+	pop hl
+	ld a, d
+	or e
+	jr z, lk_notice
+	push hl
+	pop ix
+	ld a, (ix + 6)
+	or a
+	jp z, theorem_push
+	ld (LK_FR), hl
+	ld (LV_KIND), a
+	ld (LV_END), de
+	ld l, (ix + 2)
+	ld h, (ix + 3)
+	call lf_next
+	ld ix, (LK_FR)
+	ld e, (ix + 2)
+	ld d, (ix + 3)
+	or a
+	sbc hl, de
+	ld hl, (LK_FR)
+	jp z, theorem_push
+	jr lk_notice
 lk_pop:
 	ld a, SCR_POP
 	ret

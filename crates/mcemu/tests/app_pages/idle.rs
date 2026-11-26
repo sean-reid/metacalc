@@ -7,9 +7,10 @@ use crate::builds::*;
 use crate::idlerig::IDLE;
 use crate::realos::{BASE, RealOs};
 use crate::shellrig::*;
+use crate::theorem_rig::KIND_THEOREM;
 
-const SCR_PUSH: u8 = 2;
-const CARRY: u8 = 1;
+pub const SCR_PUSH: u8 = 2;
+pub const CARRY: u8 = 1;
 const BANK_C: u16 = 0xC000;
 
 /// Every declared RAM region's bytes, from the build's labels, with the bytes the call itself
@@ -17,7 +18,7 @@ const BANK_C: u16 = 0xC000;
 /// own ranges. The 0x8000 filter skips labels whose base is in flash. Bank B is read as mapped.
 /// Bank C is read from the kernel's RAM page by its number, KERNEL_RAM_PAGE, whatever page the call
 /// has mapped there.
-fn snapshot(app: &mut App) -> Vec<(u16, Vec<u8>)> {
+pub fn snapshot(app: &mut App) -> Vec<(u16, Vec<u8>)> {
     let labels = app.built.labels.clone();
     let vec = app.label("scr_vec");
     let page = app.label("KERNEL_RAM_PAGE") as u8;
@@ -97,7 +98,8 @@ fn every_screen_of_the_app_idles_to_nothing_and_changes_no_byte() {
     }
     let staged = three_stages();
     idle_after(staged, &[F3], KIND_STAGE, "a stage");
-    idle_after(staged, &[F1, F1], KIND_NOTICE, "a notice");
+    idle_after(staged, &[F1, F2], KIND_NOTICE, "a notice");
+    idle_after(staged, &[F1, F1], KIND_THEOREM, "a theorem");
 }
 
 /// The screen `keys` open on the reference OS is the one the stub shows for the same keys, and it
@@ -124,7 +126,8 @@ fn on_the_reference_os_every_screen_of_the_app_idles_to_nothing() {
     idle_on_the_reference_os(with_library(), &[], KIND_LIBRARIES, "Libraries");
     idle_on_the_reference_os(with_library(), &[F3], KIND_ABOUT, "About");
     idle_on_the_reference_os(three_stages(), &[F3], KIND_STAGE, "a stage");
-    idle_on_the_reference_os(three_stages(), &[F1, F1], KIND_NOTICE, "a notice");
+    idle_on_the_reference_os(three_stages(), &[F1, F2], KIND_NOTICE, "a notice");
+    idle_on_the_reference_os(three_stages(), &[F1, F1], KIND_THEOREM, "a theorem");
 }
 
 /// An idle routine that writes one byte of the kernel's RAM page, at `at`, and answers SCR_STAY

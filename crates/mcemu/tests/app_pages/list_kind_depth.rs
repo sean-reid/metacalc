@@ -333,8 +333,8 @@ fn stub_want(kind: Kind) -> KindFigures {
         [
             ("clear", 2),
             ("down", down),
-            ("enter", 6),
-            ("f1", 6),
+            ("enter", down),
+            ("f1", down),
             ("f2", 6),
             ("f3", f3),
             ("f4", 6),

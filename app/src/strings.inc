@@ -170,6 +170,43 @@ LIST_BLOCK_SIZE	.equ list_block_end - list_block
 lq_flat:
 	.db UI_FONT_CH_66, UI_FONT_CH_6C, UI_FONT_CH_61, UI_FONT_CH_74, UI_FONT_CH_20, 0
 
+theorem_block:
+tz_fold:
+	.db UI_KEY_FONT_CH_46, UI_KEY_FONT_CH_6F, UI_KEY_FONT_CH_6C, UI_KEY_FONT_CH_64, 0
+tz_dist:
+	.db UI_KEY_FONT_CH_44, UI_KEY_FONT_CH_69, UI_KEY_FONT_CH_73, UI_KEY_FONT_CH_74, 0
+tz_why:
+	.db UI_KEY_FONT_CH_57, UI_KEY_FONT_CH_68, UI_KEY_FONT_CH_79, 0
+tz_try:
+	.db UI_KEY_FONT_CH_54, UI_KEY_FONT_CH_72, UI_KEY_FONT_CH_79, 0
+tz_none:
+	.db 0
+tz_line_1:
+	.db UI_FONT_CH_54, UI_FONT_CH_68, UI_FONT_CH_69, UI_FONT_CH_73, UI_FONT_CH_20, UI_FONT_CH_74, UI_FONT_CH_68, UI_FONT_CH_65, UI_FONT_CH_6F, UI_FONT_CH_72, UI_FONT_CH_65, UI_FONT_CH_6D, UI_FONT_CH_20, UI_FONT_CH_69, UI_FONT_CH_73, UI_FONT_CH_20, UI_FONT_CH_74, UI_FONT_CH_6F, UI_FONT_CH_6F, 0
+tz_line_2:
+	.db UI_FONT_CH_6C, UI_FONT_CH_61, UI_FONT_CH_72, UI_FONT_CH_67, UI_FONT_CH_65, UI_FONT_CH_20, UI_FONT_CH_74, UI_FONT_CH_6F, UI_FONT_CH_20, UI_FONT_CH_73, UI_FONT_CH_68, UI_FONT_CH_6F, UI_FONT_CH_77, UI_FONT_CH_20, UI_FONT_CH_6F, UI_FONT_CH_6E, UI_FONT_CH_20, UI_FONT_CH_74, UI_FONT_CH_68, UI_FONT_CH_65, 0
+tz_line_3:
+	.db UI_FONT_CH_63, UI_FONT_CH_61, UI_FONT_CH_6C, UI_FONT_CH_63, UI_FONT_CH_75, UI_FONT_CH_6C, UI_FONT_CH_61, UI_FONT_CH_74, UI_FONT_CH_6F, UI_FONT_CH_72, 0
+tz_keys:
+	.dw STG_TH_FOLD, STG_TH_DIST, STG_TH_WHY, STG_TH_TRY, STG_TH_NONE
+tz_keys_large:
+	.dw STG_TH_NONE, STG_TH_DIST, STG_TH_NONE, STG_TH_TRY, STG_TH_NONE
+theorem_block_end:
+STG_TH_FOLD	.equ APP_STAGE_DATA + (tz_fold - theorem_block)
+STG_TH_DIST	.equ APP_STAGE_DATA + (tz_dist - theorem_block)
+STG_TH_WHY	.equ APP_STAGE_DATA + (tz_why - theorem_block)
+STG_TH_TRY	.equ APP_STAGE_DATA + (tz_try - theorem_block)
+STG_TH_NONE	.equ APP_STAGE_DATA + (tz_none - theorem_block)
+STG_TH_LINE_1	.equ APP_STAGE_DATA + (tz_line_1 - theorem_block)
+STG_TH_LINE_2	.equ APP_STAGE_DATA + (tz_line_2 - theorem_block)
+STG_TH_LINE_3	.equ APP_STAGE_DATA + (tz_line_3 - theorem_block)
+STG_TH_KEYS	.equ APP_STAGE_DATA + (tz_keys - theorem_block)
+STG_TH_KEYS_LARGE	.equ APP_STAGE_DATA + (tz_keys_large - theorem_block)
+THEOREM_BLOCK_SIZE	.equ theorem_block_end - theorem_block
+#if THEOREM_BLOCK_SIZE > APP_STAGE_DATA_SIZE
+ .error "the theorem screen's strings are longer than APP_STAGE_DATA_SIZE"
+#endif
+
 checking_block:
 kx_checking:
 	.db UI_FONT_CH_43, UI_FONT_CH_68, UI_FONT_CH_65, UI_FONT_CH_63, UI_FONT_CH_6B, UI_FONT_CH_69, UI_FONT_CH_6E, UI_FONT_CH_67, 0

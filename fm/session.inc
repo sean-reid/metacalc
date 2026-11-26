@@ -1,6 +1,6 @@
 ; The session every public routine runs in. The stub of a routine loads IX with its body and
-; jumps to fm_enter; a body ends with A = status and B = its result at fm_leave, or at fm_fail for a
-; status with no result.
+; jumps to fm_enter; a body ends with A = status and B = its result, and C = a second result for fm_span,
+; at fm_leave, or at fm_fail for a status with no result, which sets B to 0 and leaves C as the body had it.
 
 fm_open:
 	ld ix,open_body
@@ -40,6 +40,14 @@ fm_fit:
 
 fm_clip:
 	ld ix,clip_body
+	jr fm_enter
+
+fm_step:
+	ld ix,step_body
+	jr fm_enter
+
+fm_span:
+	ld ix,span_body
 	jr fm_enter
 
 ; fm_cursor takes the node in A, which fm_enter's interrupt reads destroy: the stub moves it to E,
@@ -98,10 +106,10 @@ fe_own:
 	pop hl
 	jp (ix)
 
-; in: A = status, B = result. Restores port 5, SP and the interrupt state, and sets the zero flag
-; exactly when A is 0.
+; in: A = status, B and C = results. Restores port 5, SP and the interrupt state, and sets the zero flag
+; exactly when A is 0. Destroys DE.
 fm_leave:
-	ld c,a
+	ld e,a
 	ld a,(fv_iff)
 	ld d,a
 	ld a,(fv_p5)
@@ -111,7 +119,7 @@ fl_window:
 fl_window_end:
 	ld a,d
 	or a
-	ld a,c
+	ld a,e
 	jr z,fl_off
 	or a
 	ei

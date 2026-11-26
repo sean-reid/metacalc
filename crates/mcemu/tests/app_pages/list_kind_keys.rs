@@ -15,7 +15,7 @@ fn the_notice_keys_and_the_way_back_keep_the_kind_the_cursor_and_the_top() {
     let (data, status) = every_mark(built);
     let mut looked = 0;
     for kind in [Kind::Theorems, Kind::Axioms, Kind::Unchecked] {
-        for scan in [ENTER, F1, F2, F4] {
+        for scan in [F2, F4] {
             let mut list = Lister::open(built, Some((&data, &status)), 1);
             list.settle();
             list.go_to_kind(kind);
@@ -42,7 +42,7 @@ fn the_notice_keys_and_the_way_back_keep_the_kind_the_cursor_and_the_top() {
             looked += 1;
         }
     }
-    assert_eq!(looked, 12);
+    assert_eq!(looked, 6);
 }
 
 #[test]
