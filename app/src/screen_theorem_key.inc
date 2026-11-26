@@ -216,11 +216,10 @@ tk_done:
 	or a
 	jr z, tk_finish
 	call tk_moved
-	jr z, tk_stayed
+	jp z, tk_stay
 tk_finish:
 	call theorem_finish
 	jp nz, tk_fail
-	call theorem_store
 	ld a, (TV_CHG)
 	or a
 	jr nz, tk_changed
@@ -247,6 +246,7 @@ tk_finish:
 	bit 0, b
 	jr nz, tk_stayed
 tk_changed:
+	call theorem_store
 	ld a, SCR_REDRAW
 	ret
 tk_hidden:
@@ -262,6 +262,7 @@ tk_hidden:
 	cp d
 	jr nz, tk_changed
 tk_stayed:
+	call theorem_store
 	ld a, SCR_STAY
 	ret
 
