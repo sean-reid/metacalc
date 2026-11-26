@@ -3,6 +3,7 @@ use crate::fixture;
 use crate::folds::{fold_sets, hidden, picks, put, widths};
 use crate::nodes::Model;
 use crate::rig::*;
+use crate::step_state::folded_spans;
 use crate::support::*;
 use mcui::canvas::STATEMENT_WIDTH;
 use mcui::fold::{Folds, layout};
@@ -100,38 +101,58 @@ fn steps_of(bytes: &[u8], every: bool) -> Steps {
 #[test]
 fn fm_step_is_the_models_parent_child_and_siblings_for_every_node_of_the_fixture() {
     let tally = steps_of(&fixture::nodes_library(), true);
-    assert!(tally.statements > 90, "{} statements", tally.statements);
-    for dir in 0..4 {
-        assert!(tally.found[dir] > 200, "direction {dir}: {:?}", tally.found);
-        assert!(tally.none[dir] > 90, "direction {dir}: {:?}", tally.none);
-    }
+    println!(
+        "{} statements, found {:?}, none {:?}",
+        tally.statements, tally.found, tally.none
+    );
+    assert_eq!(
+        (tally.statements, tally.found, tally.none),
+        (200, [1179, 913, 266, 266], [200, 466, 1113, 1113])
+    );
 }
 
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn fm_step_is_the_models_on_the_shipped_libraries() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    let mut got = Vec::new();
     for name in ["prop", "ring"] {
         let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
         let tally = steps_of(&bytes, name == "prop");
         let mut ticks = tally.ticks.clone();
         ticks.sort_unstable();
+        let (median, worst) = (ticks[ticks.len() / 2], *ticks.last().unwrap());
         println!(
-            "{name}: fm_step over every node of its largest statement: median {}, worst {}",
-            ticks[ticks.len() / 2],
-            ticks.last().unwrap()
+            "{name}: fm_step over every node of its largest statement: median {median}, worst {worst}"
         );
-        for dir in 0..4 {
-            assert!(tally.found[dir] > 100, "{name}: {:?}", tally.found);
-            assert!(tally.none[dir] > 100, "{name}: {:?}", tally.none);
-        }
+        println!("{name}: found {:?}, none {:?}", tally.found, tally.none);
+        got.push((median, worst, tally.found, tally.none));
     }
+    assert_eq!(
+        got,
+        [
+            (
+                1287,
+                3259,
+                [7412, 3763, 3649, 3649],
+                [1722, 5371, 5485, 5485]
+            ),
+            (
+                1287,
+                6398,
+                [39561, 19403, 20171, 20156],
+                [6073, 26231, 25463, 25478]
+            )
+        ],
+        "fm_step's median and worst, and what it found and did not, over prop and ring"
+    );
 }
 
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn fm_span_is_the_models_on_the_shipped_libraries() {
     let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    let mut got = Vec::new();
     for name in ["prop", "ring"] {
         let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
         let model = Model::new(&bytes);
@@ -167,19 +188,25 @@ fn fm_span_is_the_models_on_the_shipped_libraries() {
             }
         }
         ticks.sort_unstable();
+        let (median, worst) = (ticks[ticks.len() / 2], *ticks.last().unwrap());
         println!(
-            "{name}: {} spans compared; fm_span over every node of its largest statement: median {}, worst {}",
+            "{name}: {} spans compared; fm_span over every node of its largest statement: median {median}, worst {worst}",
             t.compared,
-            ticks[ticks.len() / 2],
-            ticks.last().unwrap()
         );
-        assert!(
-            t.compared > 1000 && t.multi > 20,
-            "{name}: {} spans, {} over several lines",
-            t.compared,
-            t.multi
+        let (stale, hidden_worst) = folded_spans(&mut fm, &bytes, base);
+        println!(
+            "{name}: fm_span with two outermost folds stale: worst {stale}; with a node hidden: worst {hidden_worst}"
         );
+        got.push((median, worst, stale, hidden_worst, t.compared, t.multi));
     }
+    assert_eq!(
+        got,
+        [
+            (13257, 13257, 33246, 16813, 6703, 333),
+            (25152, 25152, 66931, 33340, 27086, 2358)
+        ],
+        "fm_span unfolded median and worst, worst with stale folds, worst with a node hidden, over prop and ring"
+    );
 }
 
 #[test]
@@ -298,10 +325,11 @@ fn fm_span_is_the_models_first_and_last_cursor_line_unfolded_and_under_folds() {
         "{} spans, {} hidden, {} over several lines, {} fold sets",
         t.compared, t.hidden, t.multi, t.folded_sets
     );
-    assert!(t.compared > 3000, "{} spans", t.compared);
-    assert!(t.hidden > 300, "{} hidden", t.hidden);
-    assert!(t.multi > 300, "{} spanning lines", t.multi);
-    assert!(t.folded_sets > 150, "{} fold sets", t.folded_sets);
+    assert_eq!(
+        (t.compared, t.hidden, t.multi, t.folded_sets),
+        (25710, 13736, 5809, 396),
+        "spans, hidden, over several lines, fold sets"
+    );
 }
 
 #[test]
@@ -348,9 +376,11 @@ fn fm_span_follows_a_fit_that_folded_and_a_fold_of_an_ancestor_made_after_it() {
         "{folded} statements folded by the fit, {} spans after a fit, {} hidden",
         t.after_fit, t.hidden
     );
-    assert!(folded >= 6, "{folded} statements the fit folded");
-    assert!(t.after_fit > 500, "{} spans after a fit", t.after_fit);
-    assert!(t.hidden > 50, "{} hidden", t.hidden);
+    assert_eq!(
+        (folded, t.after_fit, t.hidden),
+        (7, 804, 322),
+        "statements folded by the fit, spans after a fit, hidden"
+    );
 }
 
 #[test]
