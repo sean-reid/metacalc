@@ -134,6 +134,31 @@ fn a_table_of_mixed_values_is_scanned_as_the_rule_says() {
 }
 
 #[test]
+fn bytes_of_four_equal_values_other_than_one_are_never_passed() {
+    let mut counts = Counts::default();
+    for value in [0u8, 2, 3] {
+        for count in [13usize, 16, 25] {
+            sweep(&vec![value; count], 0xFF, &mut counts);
+            for (from, to) in [(4, 8), (4, 12), (8, 16)] {
+                if to <= count {
+                    let mut values = vec![1u8; count];
+                    values[from..to].fill(value);
+                    sweep(&values, 0xFF, &mut counts);
+                    let mut values = vec![value; count];
+                    values[from..to].fill(1);
+                    sweep(&values, 0, &mut counts);
+                }
+            }
+        }
+    }
+    println!("{counts:?}");
+    assert!(
+        counts.matched > 9800 && counts.none > 3300 && counts.range > 13300,
+        "{counts:?}"
+    );
+}
+
+#[test]
 fn whole_bytes_of_ones_are_passed_and_the_scan_stops_inside_the_byte_that_is_not() {
     let count = usize::from(COUNT);
     for pos in [
