@@ -163,6 +163,8 @@ mod room;
 mod screen;
 #[path = "app_pages/screens.rs"]
 mod screens;
+#[path = "app_pages/sections_fail.rs"]
+mod sections_fail;
 #[path = "app_pages/sections_frames.rs"]
 mod sections_frames;
 #[path = "app_pages/sections_jump.rs"]
