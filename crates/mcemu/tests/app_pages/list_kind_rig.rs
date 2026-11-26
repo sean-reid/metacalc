@@ -104,9 +104,12 @@ impl Lister {
         let mut moves = 0;
         let keys: Vec<(u8, Key)> = [
             vec![(DOWN, Key::Down); len + 1],
+            vec![(UP, Key::Up); 3],
+            vec![(DOWN, Key::Down); 2],
             vec![(UP, Key::Up); len + 1],
             vec![(RIGHT, Key::Right); pages],
             vec![(LEFT, Key::Left); pages],
+            vec![(RIGHT, Key::Right), (LEFT, Key::Left)],
             vec![(DOWN, Key::Down); 3],
             vec![(RIGHT, Key::Right); 2],
             vec![(UP, Key::Up); 2],
