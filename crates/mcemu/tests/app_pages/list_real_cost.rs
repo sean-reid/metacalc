@@ -104,7 +104,7 @@ fn on_the_reference_os_opening_the_list_and_a_move_with_its_frame_fit_their_budg
         f64::from(open) / 6000.0
     );
     assert!(open < OPEN_BUDGET);
-    within("opening the list", open, 460_448);
+    within("opening the list", open, 460_463);
     let key = app.label("list_key");
     let (idle, count, preview) = (
         app.label("list_idle"),
@@ -161,7 +161,7 @@ fn on_the_reference_os_opening_the_list_and_a_move_with_its_frame_fit_their_budg
         within(
             &format!("the fit after a move by {name}"),
             fit.tstates,
-            if code == 2 { 50_863 } else { 52_333 },
+            if code == 2 { 50_890 } else { 52_360 },
         );
     }
 }

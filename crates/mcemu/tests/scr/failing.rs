@@ -107,21 +107,34 @@ fn a_failed_push_below_a_full_stack_after_a_full_push_brings_nothing_back_in(ei:
 }
 
 #[test]
-fn a_second_failing_enter_reports_its_own_status_and_still_restores_the_stack() {
+fn a_second_failing_enter_reports_the_first_status_and_still_restores_the_stack() {
     for ei in [true, false] {
-        a_second_failing_enter_reports_its_own_status_and_still_restores_the_stack_in(ei);
+        a_second_failing_enter_reports_the_first_status_and_still_restores_the_stack_in(ei);
     }
 }
 
-fn a_second_failing_enter_reports_its_own_status_and_still_restores_the_stack_in(ei: bool) {
+fn a_second_failing_enter_reports_the_first_status_and_still_restores_the_stack_in(ei: bool) {
     for depth in [1, 4, 8] {
         let mut pair = Pair::opened_with(REAL, depth, ei);
         mark_dead(&mut pair, depth);
         let before = raw(&mut pair);
         let new = pair.fresh(2);
         let keyed = pair.key(1, 0, Act::Push(new), &[5, 6]);
-        assert_eq!((keyed.res, keyed.status), (FAILED, 6));
+        assert_eq!((keyed.res, keyed.status), (FAILED, 5));
         unchanged(&mut pair, &before, depth);
+    }
+}
+
+#[test]
+fn an_idle_push_that_fails_twice_reports_the_first_status() {
+    for ei in [true, false] {
+        for depth in [1, MAX_DEPTH] {
+            let mut pair = Pair::opened_with(REAL, depth, ei);
+            let new = pair.fresh(2);
+            let keyed = pair.idle(Act::Push(new), true, &[5, 6]);
+            assert_eq!((keyed.res, keyed.status), (FAILED, 5), "depth {depth}");
+            assert_eq!(pair.rig.depth(), depth);
+        }
     }
 }
 

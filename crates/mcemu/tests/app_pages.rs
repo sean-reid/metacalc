@@ -19,6 +19,8 @@ mod checking_depth;
 mod checking_errors;
 #[path = "app_pages/checking_exits.rs"]
 mod checking_exits;
+#[path = "app_pages/checking_first_status.rs"]
+mod checking_first_status;
 #[path = "app_pages/checking_flow.rs"]
 mod checking_flow;
 #[path = "app_pages/checking_frames.rs"]
@@ -117,6 +119,8 @@ mod list_kind_keys;
 mod list_kind_real;
 #[path = "app_pages/list_kind_rig.rs"]
 mod list_kind_rig;
+#[path = "app_pages/list_open.rs"]
+mod list_open;
 #[path = "app_pages/list_power.rs"]
 mod list_power;
 #[path = "app_pages/list_preview.rs"]
