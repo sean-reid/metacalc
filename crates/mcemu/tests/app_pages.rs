@@ -165,6 +165,10 @@ mod screen;
 mod screens;
 #[path = "app_pages/sections_frames.rs"]
 mod sections_frames;
+#[path = "app_pages/sections_jump.rs"]
+mod sections_jump;
+#[path = "app_pages/sections_land.rs"]
+mod sections_land;
 #[path = "app_pages/sections_rig.rs"]
 mod sections_rig;
 #[path = "app_pages/sections_walk.rs"]

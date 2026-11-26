@@ -111,53 +111,64 @@ pub fn rich_titles() -> Vec<Title> {
 /// The library with those titles and the app built around it in the six stages `RICH_ENDS`.
 pub fn rich() -> &'static Built {
     static BUILT: OnceLock<&'static Built> = OnceLock::new();
-    BUILT.get_or_init(|| {
-        let pattern = rich_pattern();
-        assert_eq!(pattern.len(), 59);
-        let library = sectioned(&pattern, &rich_titles());
-        let stages: Vec<mcui::Stage> = RICH_ENDS
-            .iter()
-            .enumerate()
-            .map(|(i, &end)| mcui::Stage {
-                name: format!("sect{i}"),
-                title: format!("Stage {i}"),
-                end,
-            })
-            .collect();
-        staged_with("pages-sections", &library, &stages)
-    })
+    BUILT.get_or_init(|| rich_named("pages-sections", "sect"))
+}
+
+/// `rich` with stage names of eleven wide letters and the stage's number, which the title bar has to cut
+/// once the count has two digits.
+pub fn wide() -> &'static Built {
+    static BUILT: OnceLock<&'static Built> = OnceLock::new();
+    BUILT.get_or_init(|| rich_named("pages-sections-wide", "WWWWWWWWWWW"))
+}
+
+fn rich_named(dir: &str, name: &str) -> &'static Built {
+    let pattern = rich_pattern();
+    assert_eq!(pattern.len(), 59);
+    let library = sectioned(&pattern, &rich_titles());
+    let stages: Vec<mcui::Stage> = RICH_ENDS
+        .iter()
+        .enumerate()
+        .map(|(i, &end)| mcui::Stage {
+            name: format!("{name}{i}"),
+            title: format!("Stage {i}"),
+            end,
+        })
+        .collect();
+    staged_with(dir, &library, &stages)
 }
 
 /// A small library whose first assertion has three titles, as a book's front matter would: stage 0 ends at
 /// 4 and holds only theorems, stage 1 ends at 18 and has axioms at 9 and 16.
 pub fn front() -> &'static Built {
     static BUILT: OnceLock<&'static Built> = OnceLock::new();
-    BUILT.get_or_init(|| {
-        let titles: Vec<Title> = [
-            (0, 1, "Front matter"),
-            (0, 2, "Preface"),
-            (0, 3, "Notes"),
-            (3, 2, "Later"),
-        ]
+    BUILT.get_or_init(front_built)
+}
+
+fn front_built() -> &'static Built {
+    let titles: Vec<Title> = [
+        (0, 1, "Front matter"),
+        (0, 2, "Preface"),
+        (0, 3, "Notes"),
+        (3, 2, "Later"),
+    ]
+    .iter()
+    .map(|&(assertion, depth, text)| Title {
+        assertion,
+        depth,
+        text: text.into(),
+    })
+    .collect();
+    let library = sectioned("TTTTTTTTTATTTTTTAT", &titles);
+    let stages: Vec<mcui::Stage> = [4, 18]
         .iter()
-        .map(|&(assertion, depth, text)| Title {
-            assertion,
-            depth,
-            text: text.into(),
+        .enumerate()
+        .map(|(i, &end)| mcui::Stage {
+            name: format!("front{i}"),
+            title: format!("Stage {i}"),
+            end,
         })
         .collect();
-        let library = sectioned("TTTTTTTTTATTTTTTAT", &titles);
-        let stages: Vec<mcui::Stage> = [4, 18]
-            .iter()
-            .enumerate()
-            .map(|(i, &end)| mcui::Stage {
-                name: format!("front{i}"),
-                title: format!("Stage {i}"),
-                end,
-            })
-            .collect();
-        staged_with("pages-sections-front", &library, &stages)
-    })
+    staged_with("pages-sections-front", &library, &stages)
 }
 
 /// How many titles the model gives each stage of `built`, from the titles themselves.
