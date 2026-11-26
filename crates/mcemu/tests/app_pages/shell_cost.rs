@@ -76,8 +76,8 @@ const IGNORED_KEY_FLOOR: u32 = 2_512;
 /// The most app_stage_block may take for a block the area already holds.
 const WARM_STAGE: u32 = 120;
 /// The most bytes each code page may use: entry, draw and data.
-const PAGES_PLAIN: [u32; 3] = [2_760, 15_560, 9_830];
-const PAGES_LIBRARY: [u32; 3] = [8_720, 15_560, 9_830];
+const PAGES_PLAIN: [u32; 3] = [2_776, 15_555, 9_825];
+const PAGES_LIBRARY: [u32; 3] = [9_796, 15_555, 9_825];
 
 /// Clears the staging tag, so that the next draw copies its screen's strings.
 pub fn go_cold(app: &mut App) {

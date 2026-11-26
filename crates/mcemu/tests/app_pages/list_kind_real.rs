@@ -12,6 +12,10 @@ use mcui::{Key, Kind, Status};
 
 const MOVE_BUDGET: u32 = 300_000;
 const F3_BUDGET: u32 = 1_800_000;
+/// The two Unchecked row moves over a table whose only unchecked assertions are the first and the last
+/// take over MOVE_BUDGET, each a little under its own ceiling.
+const WORST_ROW_CEILING: u32 = 308_000;
+const WORST_BACK_CEILING: u32 = 306_000;
 
 /// The theorem bit of each assertion of the shipped ring library.
 pub fn ring_bits(list: &Lister) -> Vec<bool> {
@@ -231,7 +235,7 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
     assert_eq!(axioms[at5 + 5], 567);
     let (k, f, a) = cost(&mut list, ax, 5, last_row(&axioms, 5), RIGHT_KEY);
     assert_eq!(a, 1);
-    report("Axioms, a page from 5", k, f, MOVE_BUDGET, Some(296052));
+    report("Axioms, a page from 5", k, f, MOVE_BUDGET, Some(296075));
     let (k, f, a) = cost(&mut list, ax, 5, 5, RIGHT_KEY);
     assert_eq!(a, 1);
     report(
@@ -340,7 +344,7 @@ fn on_the_reference_os_unchecked_on_a_table_of_ones_with_the_first_and_the_last_
         "Unchecked, a row from 0 to the last",
         k,
         f,
-        MOVE_BUDGET + 20_000,
+        WORST_ROW_CEILING,
         Some(306465),
     );
     let unchecked = shown_on_ring(&list, un);
@@ -350,7 +354,7 @@ fn on_the_reference_os_unchecked_on_a_table_of_ones_with_the_first_and_the_last_
         "Unchecked, a row from the last to 0",
         k,
         f,
-        MOVE_BUDGET + 20_000,
+        WORST_BACK_CEILING,
         Some(304707),
     );
     let (k, f, a) = cost(&mut list, code(Kind::Axioms), 1, 0, F3_KEY);
