@@ -22,6 +22,8 @@
 ;   LV_COUNT    the ticks the row must still be still, from LIST_WAIT
 ;   LV_PREVIEW  LVP_PENDING, the row is blank; LVP_ROW, fm holds the laid out conclusion of the cursor's
 ;               assertion and the draw shows it; LVP_NONE, settled with nothing to show
+;   LV_NOFM     1 once fm_open has answered anything but 0 since list_enter, else 0: every preview
+;               then settles as LVP_NONE without a call to fm
 ; The rest of APP_TEXT is scratch that no call reads before it writes: list_enter writes LV_STAGE,
 ; list_draw writes LV_STAGE, LV_CUR, LV_TOP, LV_END, LV_ROW, LV_AT, LV_MARK and the strings it builds,
 ; and list_idle writes LV_CUR.
@@ -30,18 +32,17 @@
 ; Only a kernel entry closes fm or overwrites that RAM, and none runs while a list is the top screen: the
 ; check job runs on the screen Libraries pushes, never over a list, and a list that is entered after it
 ; finds fm closed, which the first fm_statement of its preview answers with FM_ERR_NOT_OPEN, and list_idle
-; calls fm_open. A notice over the list, the screen's own refresh and the OS's overwrite of saveSScreen
-; touch none of fm's memory,
-; and every one of them runs list_enter again, which makes the preview pending, so a settled draw never
-; follows a lost row.
+; calls fm_open, once until the next list_enter if that fails. A notice over the list, the screen's own
+; refresh and the OS's overwrite of saveSScreen touch none of fm's memory, and every one of them runs
+; list_enter again, which makes the preview pending, so a settled draw never follows a lost row.
 ;
 ; Registers: each routine below may destroy AF BC DE HL and IX, which the far calls and the reader leave
 ; undefined, except list_stage_end, which says what it keeps.
 ; list_enter   in: HL = the frame. out: A = the status of libs_counts, which derives the counts the title
 ;              reads, or of the reader's assertion count; else 0. Then asks the store once more
 ;              (store_has) whether the table is the library's, the reader whether it has trees and
-;              where the first section title starts, and sets the preview pending and LV_COUNT to
-;              LIST_WAIT.
+;              where the first section title starts, and sets the preview pending, LV_COUNT to
+;              LIST_WAIT and LV_NOFM to 0.
 ; list_key     UP, DOWN, LEFT and RIGHT move the cursor one row or five, never past either end, move the
 ;              first row shown as little as it must to keep the cursor on screen, answer SCR_REDRAW with
 ;              the preview pending and LV_COUNT at LIST_WAIT, and answer SCR_STAY when nothing moved,
@@ -53,10 +54,13 @@
 ;              of the cursor's conclusion (after fm_open when fm answers FM_ERR_NOT_OPEN), fm_fit to one
 ;              line at LIST_WIDTH pixels, fm_clip to one line when it took more, then LVP_ROW and
 ;              SCR_REDRAW with carry clear. An empty stage settles as LVP_NONE with SCR_STAY and carry
-;              clear, calling nothing of fm. So does any status other than 0 from fm_open, fm_statement,
-;              fm_fit or fm_clip: FM_ERR_LIMIT is the model's "over the caps" (statement_within), and
-;              any other (a refused read, a damaged tree) settles with nothing too, where the model
-;              would draw the preview. Settled: SCR_STAY with carry clear and nothing touched.
+;              clear, calling nothing of fm. So does LV_NOFM set, and an fm_open that answers anything
+;              but 0 sets it: a library fm cannot open costs one fm_open per list_enter, and every
+;              other rest calls neither fm_open nor fm_statement. So does any status other than 0 from
+;              fm_statement, fm_fit or fm_clip: FM_ERR_LIMIT is the model's "over the caps"
+;              (statement_within), and any other (a refused read, a damaged tree) settles with nothing
+;              too, where the model would draw the preview. Settled: SCR_STAY with carry clear and
+;              nothing touched.
 ;              The count is in timer interrupts and the first halt ends at the next one, so the fit
 ;              starts between 10 and 11 periods after the first call that follows a key's frame:
 ;              579,258 T-states (96.5 ms) measured on the reference OS.
@@ -75,11 +79,11 @@
 ; interrupt handler's pushes, and 2 settled; list_draw 26. Reference OS: the same but 6 for F5 where a
 ; stage has sections, list_enter 36, a tick 14 and list_draw 34, which holds the OS's lookup of the table.
 ; An interrupt that lands in a call adds the handler's bytes.
-; Cost, in T-states at 6 MHz on the reference OS: ring's list opens in 460,448 (libs_key, list_enter and a
+; Cost, in T-states at 6 MHz on the reference OS: ring's list opens in 460,463 (libs_key, list_enter and a
 ; cold frame) and a cursor move takes 223,026 by a row and 227,608 by a page with its frame; the idle
-; call that lays out a preview takes a median of 77,110 and at most 1,125,822 over ring, and 68,803 and
-; 331,402 over prop. Its fm calls run with interrupts off and no key is scanned until it returns, so a
-; statement inside the caps holds the keypad for at most 37,707,322 T-states (6.28 s at 6 MHz), the 253
+; call that lays out a preview takes a median of 77,137 and at most 1,125,849 over ring, and 68,830 and
+; 331,429 over prop. Its fm calls run with interrupts off and no key is scanned until it returns, so a
+; statement inside the caps holds the keypad for at most 37,707,349 T-states (6.28 s at 6 MHz), the 253
 ; nested operators of fm's nodes fixture, measured on the stub OS.
 
 LIST_ROWS	.equ 5
@@ -100,14 +104,15 @@ LV_FLAT		.equ APP_TEXT + 1
 LV_SECT		.equ APP_TEXT + 2
 LV_COUNT	.equ APP_TEXT + 3
 LV_PREVIEW	.equ APP_TEXT + 4
-LV_STAGE	.equ APP_TEXT + 5
-LV_ROW		.equ APP_TEXT + 6
-LV_CUR		.equ APP_TEXT + 7
-LV_TOP		.equ APP_TEXT + 9
-LV_END		.equ APP_TEXT + 11
-LV_AT		.equ APP_TEXT + 13
-LV_MARK		.equ APP_TEXT + 15
-LV_RIGHT	.equ APP_TEXT + 17
+LV_NOFM		.equ APP_TEXT + 5
+LV_STAGE	.equ APP_TEXT + 6
+LV_ROW		.equ APP_TEXT + 7
+LV_CUR		.equ APP_TEXT + 8
+LV_TOP		.equ APP_TEXT + 10
+LV_END		.equ APP_TEXT + 12
+LV_AT		.equ APP_TEXT + 14
+LV_MARK		.equ APP_TEXT + 16
+LV_RIGHT	.equ APP_TEXT + 18
 LV_NAME		.equ LV_RIGHT + LIST_RIGHT_SIZE
 LV_CUT		.equ LV_NAME + LIST_NAME_SIZE
 LV_LABEL	.equ LV_CUT + LIST_NAME_SIZE
@@ -177,6 +182,7 @@ le_wait:
 	ld a, LVP_PENDING
 	ld (LV_PREVIEW), a
 	xor a
+	ld (LV_NOFM), a
 	ret
 
 ; In: A = a stage. Out: DE = its end, the number of its assertions. Destroys F HL.
@@ -335,6 +341,9 @@ li_work:
 	xor a
 	ret
 li_compute:
+	ld a, (LV_NOFM)
+	or a
+	jr nz, li_none
 	push hl
 	pop ix
 	ld a, (ix + 1)
@@ -351,7 +360,11 @@ li_compute:
 	jr nz, li_loaded
 	call far_fm_open
 	or a
-	jr nz, li_none
+	jr z, li_opened
+	ld a, 1
+	ld (LV_NOFM), a
+	jr li_none
+li_opened:
 	ld hl, (LV_CUR)
 	ld e, 0FFh
 	call far_fm_statement
