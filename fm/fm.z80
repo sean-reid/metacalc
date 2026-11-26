@@ -294,7 +294,8 @@
 ;                      selection, the cursor and every variable but these are as they were: fv_fm and
 ;                      fv_fn are its own, written once fm is open and D is below 4, and fv_iff, fv_p5, fv_sp
 ;                      and kv_ready are written by the session of every call, which also clears fv_open
-;                      when fm was not owned; 128 bytes of code. Statuses, in order: FM_ERR_NOT_OPEN when fm is
+;                      when fm was not owned, and the session writes fm's private stack; 128 bytes of
+;                      code. Statuses, in order: FM_ERR_NOT_OPEN when fm is
 ;                      closed, FM_ERR_BAD for D above 3, FM_ERR_INDEX when the table is not built or has
 ;                      no node E. On a nonzero status B = 0 and C is undefined.
 ;   fm_span       in:  E = a node of the selected statement, D = the width in pixels

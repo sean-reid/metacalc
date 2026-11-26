@@ -193,7 +193,7 @@ ts_draw:
 	ld a, (TV_ROW)
 	jp far_ui_marker
 
-; In: TV_ROW, at most 6 as theorem_statement leaves a statement that starts below the window. Out: Z when
+; In: TV_ROW, at most 6 as theorem_statement skips a statement that starts below the window. Out: Z when
 ; TV_ROW is a content row, 1 to 6: its high byte is 0 and its low byte is not. Destroys AF.
 theorem_in_window:
 	ld a, (TV_ROW + 1)
