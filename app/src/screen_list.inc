@@ -74,7 +74,8 @@
 ; give the caller's state back; the screen writes no port 20h and executes no DI.
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted,
 ; measured on the app's own path with interrupts masked for each call. Stub OS: list_key 4 for a move and
-; for a key at an end, 6 for the keys that push the notice, 2 for CLEAR, a letter and F5 with no sections;
+; for a key at an end, 6 for F2 to F4, which push the notice, 8 for ENTER and F1 on a stage with an
+; assertion, which push the theorem screen, 2 for CLEAR, a letter and F5 with no sections;
 ; list_enter 22; list_idle 8 for the fit and for a tick, which holds app_tick's return address and the
 ; interrupt handler's pushes, and 2 settled; list_draw 26. Reference OS: the same but 6 for F5 where a
 ; stage has sections, list_enter 36, a tick 14 and list_draw 34, which holds the OS's lookup of the table.

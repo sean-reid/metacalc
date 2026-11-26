@@ -1,7 +1,8 @@
-; The theorem screen's draw (screen_theorem.inc has the kind's header): the title with the mark and
-; "thm" or "ax", each statement's rows inside the window by fm_draw with no fit, the numbers of the
-; hypotheses in the gutter, the marker or the cursor, and the keys. Strings built here are in FM_SCRATCH
-; and the constants are staged from theorem_block. Every routine here may destroy AF BC DE HL and IX.
+; The theorem screen's draw (screen_theorem.inc has the kind's header): the title from the strings the enter
+; built, each statement with a row inside the window by fm_draw with no fit, the numbers of the hypotheses in
+; the gutter, the marker or the cursor, and the keys. A statement whose rows all lie outside the window is
+; neither selected nor drawn. theorem_title, which the enter calls, builds the title. Strings built here are in
+; FM_SCRATCH and the constants are staged from theorem_block. Every routine here may destroy AF BC DE HL and IX.
 
 #ifdef LIBRARY
 ; In: HL = the frame.
