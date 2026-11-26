@@ -70,11 +70,11 @@
 ;              shows assertions between them. Last, LV_NOFM is set to 0.
 ; list_idle    in: HL = the frame. out: A and carry as scr_idle takes them. LV_COUNT above 0: one off the
 ;              count, one app_tick, SCR_STAY with carry set. Count 0 and the preview pending, with
-;              LV_NOFM 0 and a stage that has assertions, under a kind: one lf_next, a lib_kind_next
-;              under Theorems and Axioms or a store_next_not_one under Unchecked with a table (which
-;              writes LK_AGAIN), with LV_KIND, LV_END and LK_FR written; when the cursor's assertion
-;              is not the one it answers, the preview settles as LVP_NONE with SCR_STAY and carry clear and
-;              fm is not called. Otherwise, and under All: fm_statement of the cursor's conclusion (after
+;              LV_NOFM 0, which writes LK_FR under every kind, and a stage that has assertions, under a
+;              kind: one lf_next, a lib_kind_next under Theorems and Axioms or a store_next_not_one
+;              under Unchecked with a table (which writes LK_AGAIN), with LV_KIND and LV_END written;
+;              when the cursor's assertion is not the one it answers, the preview settles as LVP_NONE
+;              with SCR_STAY and carry clear and fm is not called. Otherwise, and under All: fm_statement of the cursor's conclusion (after
 ;              fm_open when fm answers FM_ERR_NOT_OPEN), fm_fit to one line at LIST_WIDTH pixels,
 ;              fm_clip to one line when it took more, then LVP_ROW and SCR_REDRAW with carry clear. An empty
 ;              stage settles as LVP_NONE with SCR_STAY and carry clear, calling nothing of fm. So does
@@ -102,11 +102,11 @@
 ; under a kind are in screen_list_kind.inc). Stub OS under All: list_key 4 for a move and for a key at an
 ; end, 6 for F2 and F4, which push the notice, 8 for ENTER and F1 on a stage with an assertion, which
 ; push the theorem screen (under a kind they ask lf_next first and write 16, 16 and 22 under Theorems,
-; Axioms and Unchecked on the stub and 16, 16 and 36 on the reference OS), 2 for CLEAR, a letter and F5 with no sections, F3 20 on the
-; fixture of list_depth.rs and 24 on the proofs library of list_kind_depth.rs, from the first assertion
-; and from ten rows down alike; list_enter 22; list_idle 8 for the fit and for a tick, which holds
+; Axioms and Unchecked on the stub and 16, 16 and 36 on the reference OS), 2 for CLEAR, a letter and F5 with no sections, F3 from All 20 on
+; the fixture of list_depth.rs and 24 on the proofs library of list_kind_depth.rs, from the first
+; assertion and from ten rows down alike; list_enter 22; list_idle 8 for the fit and for a tick, which holds
 ; app_tick's return address and the interrupt handler's pushes, and 2 settled; list_draw 26. Reference
-; OS, prop with a table: the same but F3 24, F5 6, a tick 14, list_enter 36, list_draw 34. An interrupt
+; OS, prop with a table: the same but F3 from All 24, F5 6, a tick 14, list_enter 36, list_draw 34. An interrupt
 ; that lands in a call can only add to these: the figures with the app's interrupts on are never below
 ; the masked ones.
 ; Cost, in T-states at 6 MHz on the reference OS, over ring (list_kind_real.rs, list_real_cost.rs). Under a

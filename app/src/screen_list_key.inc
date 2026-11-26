@@ -13,9 +13,11 @@
 ;              model's F3 does: the cursor on the first shown assertion at or after the one it was on,
 ;              else the last, the first row shown four before it among the shown, and the preview
 ;              pending with the wait when the cursor's assertion changed (a list that shows nothing
-;              has none), else kept. ENTER and F1 push KIND_THEOREM for the cursor's assertion
-;              (theorem_push), or the notice NOTICE_LIST of the stage when the kind shows no assertion
-;              (a stage with none, or a filter with no match). F2 and F4, F3 when LV_HASK is 0, and F5 when
+;              has none), else kept. ENTER and F1 push the notice NOTICE_LIST of the stage when it
+;              has no assertion, and under a kind whenever lf_next does not answer the cursor's
+;              assertion, as with a filter with no match or a refused read, and otherwise
+;              KIND_THEOREM for the cursor's assertion (theorem_push). Under a kind they write
+;              LV_KIND, LV_END and LK_FR before the lf_next call. F2 and F4, F3 when LV_HASK is 0, and F5 when
 ;              LV_SECT is 1, push the notice. CLEAR pops. Every other key stays.
 
 ; In: A = the key, HL = the frame.
