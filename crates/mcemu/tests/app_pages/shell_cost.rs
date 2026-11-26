@@ -62,6 +62,13 @@ const LIBRARIES_THREE_TABLE_COLD: u32 = 148_200;
 const STAGE_ABOUT_COLD: u32 = 136_000;
 const ABOUT_COLD: u32 = 141_900;
 const NOTICE_COLD: u32 = 116_300;
+/// The theorem screen's frame of the first assertion's conclusion, which has no hypothesis.
+const THEOREM: u32 = 122_800;
+const THEOREM_COLD: u32 = 125_100;
+/// The least it may take: 120,400 warm and 122,633 cold were measured, so a frame that costs far less did
+/// not draw the screen.
+const THEOREM_FLOOR: u32 = 119_000;
+const THEOREM_COLD_FLOOR: u32 = 121_400;
 /// The most the loop may take around app_key for a key no screen answers, scr_key included.
 const IGNORED_KEY: u32 = 2_575;
 /// The least: it takes 2,562 with the idle point.
@@ -69,8 +76,8 @@ const IGNORED_KEY_FLOOR: u32 = 2_512;
 /// The most app_stage_block may take for a block the area already holds.
 const WARM_STAGE: u32 = 120;
 /// The most bytes each code page may use: entry, draw and data.
-const PAGES_PLAIN: [u32; 3] = [2_640, 15_300, 9_250];
-const PAGES_LIBRARY: [u32; 3] = [6_820, 15_300, 9_250];
+const PAGES_PLAIN: [u32; 3] = [2_760, 15_560, 9_250];
+const PAGES_LIBRARY: [u32; 3] = [8_650, 15_560, 9_250];
 
 /// Clears the staging tag, so that the next draw copies its screen's strings.
 pub fn go_cold(app: &mut App) {
@@ -152,9 +159,16 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
         (
             "Notice, a stage's list",
             three_stages(),
-            &[F1, F1],
+            &[F1, F2],
             NOTICE,
             NOTICE_COLD,
+        ),
+        (
+            "Theorem, a stage's first assertion",
+            three_stages(),
+            &[F1, F1],
+            THEOREM,
+            THEOREM_COLD,
         ),
     ] {
         let tabled = name.ends_with("of total");
@@ -179,6 +193,17 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
                 "{name}: the screen opened"
             );
         }
+        if name.starts_with("Theorem") {
+            let depth = usize::from(app.m.read_ram(app.label("scr_count"), 1)[0]);
+            let stack = app.label("SCR_STACK") + 16 * (depth as u16 - 1);
+            assert_eq!(
+                app.m.read_ram(stack, 1),
+                [7],
+                "{name}: the top screen is the theorem"
+            );
+            let hyps = app.label("TV_NHYPS");
+            assert_eq!(app.m.read_ram(hyps, 1), [0], "{name}: no hypothesis");
+        }
         let (draw, blit) = frame(&mut app);
         println!(
             "{name}: scr_draw {draw} and ui_blit {blit}: {} T-states",
@@ -190,6 +215,13 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
             draw + blit
         );
         assert!(draw + blit < FRAME_BUDGET, "{name}: over the frame budget");
+        if name.starts_with("Theorem") {
+            assert!(
+                draw + blit >= THEOREM_FLOOR,
+                "{name}: {} under {THEOREM_FLOOR}",
+                draw + blit
+            );
+        }
         go_cold(&mut app);
         let (cold_draw, cold_blit) = frame(&mut app);
         println!(
@@ -206,6 +238,13 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
             cold_draw + cold_blit < FRAME_BUDGET,
             "{name}: cold, over the frame budget"
         );
+        if name.starts_with("Theorem") {
+            assert!(
+                cold_draw + cold_blit >= THEOREM_COLD_FLOOR,
+                "{name}: cold, {} under {THEOREM_COLD_FLOOR}",
+                cold_draw + cold_blit
+            );
+        }
     }
 }
 

@@ -51,6 +51,15 @@ fn calls(n: u16, k: u8) -> Vec<(&'static str, Regs, u8)> {
             },
             code("FM_ERR_INDEX"),
         ),
+        ("FM_STEP", regs(0, 1 << 8, 0), ok),
+        ("FM_STEP", regs(0, 4 << 8, 0), code("FM_ERR_BAD")),
+        ("FM_STEP", regs(0, 0xFF, 0), code("FM_ERR_INDEX")),
+        ("FM_SPAN", regs(0, 94 << 8, 0), ok),
+        (
+            "FM_SPAN",
+            regs(0, (94 << 8) | 0xFF, 0),
+            code("FM_ERR_INDEX"),
+        ),
         ("FM_DRAW", regs(0xFFFF, (94 << 8) | 1, 8), ok),
         ("FM_DRAW", regs(2, (20 << 8) | 3, (3 << 8) | 5), ok),
         ("FM_DRAW", regs(0, 94 << 8, (6 << 8) | 2), ok),
@@ -71,6 +80,7 @@ fn calls(n: u16, k: u8) -> Vec<(&'static str, Regs, u8)> {
         ("FM_CLIP", regs(0, 94 << 8, 1 << 8), ok),
         ("FM_CLIP", regs(0, 94 << 8, 1 << 8), code("FM_ERR_CLIPPED")),
         ("FM_FOLD", regs(0, 1 << 8, 0), code("FM_ERR_CLIPPED")),
+        ("FM_SPAN", regs(0, 94 << 8, 0), code("FM_ERR_CLIPPED")),
     ]
 }
 
@@ -117,6 +127,8 @@ fn a_routine_on_a_closed_fm_returns_not_open_and_hands_the_state_back_too() {
             ("FM_FOLD", Regs::default()),
             ("FM_FOLDED", Regs::default()),
             ("FM_CURSOR", Regs::default()),
+            ("FM_STEP", Regs::default()),
+            ("FM_SPAN", Regs::default()),
             ("FM_CLIP", Regs::default()),
             ("FM_DRAW", Regs::default()),
         ] {
@@ -521,6 +533,8 @@ fn a_session_reaches_a_stack_depth_the_header_states() {
                 assert_eq!(fm.cursor(0).status(), 0);
                 assert_eq!(fm.draw(1, -2, 94, (0, 8)).status(), 0);
                 assert_eq!(fm.draw(0, 0, 20, (0, 8)).status(), 0);
+                assert_eq!(fm.step(0, 1).status(), 0);
+                assert_eq!(fm.span(0, 94).status(), 0);
             }
             for n in 0..decoded(&bytes).assertions.len() as u16 {
                 assert_eq!(fm.assertion(n).status(), 0);

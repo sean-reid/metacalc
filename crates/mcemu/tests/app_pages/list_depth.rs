@@ -353,8 +353,8 @@ pub fn stub_figures() -> Figures {
         keys: BTreeMap::from([
             ("clear", 2),
             ("down", 4),
-            ("enter", 6),
-            ("f1", 6),
+            ("enter", 8),
+            ("f1", 8),
             ("f2", 6),
             ("f3", 6),
             ("f4", 6),

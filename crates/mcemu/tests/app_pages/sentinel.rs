@@ -29,7 +29,8 @@ fn the_sentinel_is_the_complement_of_the_frames_byte_after_every_blit() {
     }
 }
 
-const KINDS: [u8; 5] = [
+const KINDS: [u8; 6] = [
+    crate::theorem_rig::KIND_THEOREM,
     KIND_LIBRARIES,
     KIND_NOTICE,
     KIND_ABOUT,
@@ -53,7 +54,7 @@ fn an_intact_sentinel_runs_no_refresh_and_no_blit_for_an_ignored_key() {
     for built in [plain(), with_library()] {
         let mut shell = booted(built, Enter::Real);
         let library = built.library.is_some();
-        for (n, open) in [None, Some(F3), Some(CLEAR), Some(F1), Some(F1)]
+        for (n, open) in [None, Some(F3), Some(CLEAR), Some(F1), Some(F2)]
             .into_iter()
             .enumerate()
         {
@@ -78,6 +79,20 @@ fn an_intact_sentinel_runs_no_refresh_and_no_blit_for_an_ignored_key() {
             }
         }
     }
+}
+
+#[test]
+fn an_intact_sentinel_runs_no_refresh_and_no_blit_for_f5_and_a_letter_on_a_theorem() {
+    let mut shell = booted(with_library(), Enter::Real);
+    shell.tap(F1);
+    shell.app.m.run_app(3_000_000);
+    shell.tap(ENTER);
+    assert_eq!(
+        shell.top_kind(),
+        crate::theorem_rig::KIND_THEOREM,
+        "the theorem"
+    );
+    ignores(&mut shell, &[LETTER, F5, ONE], "on a theorem");
 }
 
 /// After the power down the next key, which the screen ignores, makes the top screen's enter run
@@ -137,7 +152,7 @@ fn a_power_down_while_a_stages_notice_is_open_over_its_list_refreshes_it_on_the_
     refreshed(
         built,
         Enter::Real,
-        &[F1, F1],
+        &[F1, F2],
         KIND_NOTICE,
         &model::unavailable(built.stage_name(0)),
     );

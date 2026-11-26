@@ -46,8 +46,9 @@
 ; list_key     UP, DOWN, LEFT and RIGHT move the cursor one row or five, never past either end, move the
 ;              first row shown as little as it must to keep the cursor on screen, answer SCR_REDRAW with
 ;              the preview pending and LV_COUNT at LIST_WAIT, and answer SCR_STAY when nothing moved,
-;              touching nothing. ENTER, F1, F2, F3 and F4, and F5 when LV_SECT is 1, push the notice
-;              NOTICE_LIST of the stage. CLEAR pops. Every other key stays.
+;              touching nothing. ENTER and F1 push KIND_THEOREM for the cursor's assertion
+;              (theorem_push), or the notice NOTICE_LIST of the stage when it has no assertion. F2, F3
+;              and F4, and F5 when LV_SECT is 1, push the notice. CLEAR pops. Every other key stays.
 ; list_idle    in: HL = the frame. out: A and carry as scr_idle takes them. LV_COUNT above 0: one off the
 ;              count, one app_tick, SCR_STAY with carry set. Count 0 and the preview pending: fm_statement
 ;              of the cursor's conclusion (after fm_open when fm answers FM_ERR_NOT_OPEN), fm_fit to one
@@ -73,7 +74,8 @@
 ; give the caller's state back; the screen writes no port 20h and executes no DI.
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted,
 ; measured on the app's own path with interrupts masked for each call. Stub OS: list_key 4 for a move and
-; for a key at an end, 6 for the keys that push the notice, 2 for CLEAR, a letter and F5 with no sections;
+; for a key at an end, 6 for F2 to F4, which push the notice, 8 for ENTER and F1 on a stage with an
+; assertion, which push the theorem screen, 2 for CLEAR, a letter and F5 with no sections;
 ; list_enter 22; list_idle 8 for the fit and for a tick, which holds app_tick's return address and the
 ; interrupt handler's pushes, and 2 settled; list_draw 26. Reference OS: the same but 6 for F5 where a
 ; stage has sections, list_enter 36, a tick 14 and list_draw 34, which holds the OS's lookup of the table.
@@ -209,8 +211,9 @@ list_key:
 	cp KEY_CLEAR
 	jr z, lk_pop
 	cp KEY_ENTER
-	jr z, lk_notice
+	jr z, lk_open
 	cp KEY_F1
+	jr z, lk_open
 	jr c, lk_stay
 	cp KEY_F5
 	jr c, lk_notice
@@ -224,6 +227,16 @@ lk_notice:
 	ld b, NOTICE_LIST
 	ld a, KIND_NOTICE
 	jp screen_push_param
+lk_open:
+	push hl
+	inc hl
+	ld a, (hl)
+	call list_stage_end
+	pop hl
+	ld a, d
+	or e
+	jr z, lk_notice
+	jp theorem_push
 lk_pop:
 	ld a, SCR_POP
 	ret

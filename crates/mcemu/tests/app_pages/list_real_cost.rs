@@ -225,8 +225,8 @@ fn on_the_reference_os_every_routine_of_the_list_keeps_interrupts_and_speed_and_
         keys: std::collections::BTreeMap::from([
             ("clear", 2),
             ("down", 4),
-            ("enter", 6),
-            ("f1", 6),
+            ("enter", 8),
+            ("f1", 8),
             ("f2", 6),
             ("f3", 6),
             ("f4", 6),
@@ -285,7 +285,7 @@ fn on_the_reference_os_each_stage_opens_moves_to_both_ends_opens_each_notice_and
             list.settle();
         }
         let sections = list.var("LV_SECT") == 1;
-        for (n, scan) in [ENTER, F1, F2, F3, F4, F5].into_iter().enumerate() {
+        for (n, scan) in [F2, F3, F4, F5].into_iter().enumerate() {
             if scan == F5 && !sections {
                 let before = list.frame_bytes();
                 list.tap(scan);
