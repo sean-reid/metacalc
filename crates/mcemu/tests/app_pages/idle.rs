@@ -9,8 +9,8 @@ use crate::realos::{BASE, RealOs};
 use crate::shellrig::*;
 use crate::theorem_rig::KIND_THEOREM;
 
-const SCR_PUSH: u8 = 2;
-const CARRY: u8 = 1;
+pub const SCR_PUSH: u8 = 2;
+pub const CARRY: u8 = 1;
 const BANK_C: u16 = 0xC000;
 
 /// Every declared RAM region's bytes, from the build's labels, with the bytes the call itself
@@ -18,7 +18,7 @@ const BANK_C: u16 = 0xC000;
 /// own ranges. The 0x8000 filter skips labels whose base is in flash. Bank B is read as mapped.
 /// Bank C is read from the kernel's RAM page by its number, KERNEL_RAM_PAGE, whatever page the call
 /// has mapped there.
-fn snapshot(app: &mut App) -> Vec<(u16, Vec<u8>)> {
+pub fn snapshot(app: &mut App) -> Vec<(u16, Vec<u8>)> {
     let labels = app.built.labels.clone();
     let vec = app.label("scr_vec");
     let page = app.label("KERNEL_RAM_PAGE") as u8;
