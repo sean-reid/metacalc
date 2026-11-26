@@ -42,7 +42,7 @@ fn a_read_inside_the_longest_fit_waits_it_out_and_reads_the_apps_ram() {
     println!("reads inside calls waited (instructions, T-states, bank B not the app's): {waits:?}");
     assert!(
         longest.steps > 4_000_000,
-        "{longest:?}: more than the 1,000,000 instructions the old bound allowed"
+        "{longest:?}: more than 4,000,000 instructions inside the call"
     );
     assert!(
         (36_000_000..=WORST_PREVIEW).contains(&longest.tstates),
