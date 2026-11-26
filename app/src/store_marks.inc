@@ -56,9 +56,29 @@ sao_fail:
 	ret
 
 store_next_zero:
-	call snz_enter
+	push hl
+	push de
+	call store_data
+	pop de
+	pop ix
+	or a
 	ret nz
-	jr c, snz_found
+	ld (SNZ_HDR), hl
+	ld (SNZ_CNT), bc
+	ld (SNZ_END), de
+	ld h, b
+	ld l, c
+	or a
+	sbc hl, de
+	jr c, snz_range
+	push ix
+	pop hl
+	or a
+	sbc hl, de
+	jr z, snz_found
+	jr nc, snz_range
+	push ix
+	pop de
 snz_next:
 	ld hl, (SNZ_END)
 	or a
@@ -115,39 +135,6 @@ snz_range:
 	ld a, ST_RANGE
 	ret
 
-; In: HL = from, DE = end, as store_next_zero takes them. Finds the table and keeps the scan's
-; fixed fields. Out: NZ and A = the status when the table is not usable or the range is not
-; allowed; else Z, and NC with DE = from, or C with DE = end when from is end.
-snz_enter:
-	push hl
-	push de
-	call store_data
-	pop de
-	pop ix
-	or a
-	ret nz
-	ld (SNZ_HDR), hl
-	ld (SNZ_CNT), bc
-	ld (SNZ_END), de
-	ld h, b
-	ld l, c
-	or a
-	sbc hl, de
-	jr c, snz_range
-	push ix
-	pop hl
-	or a
-	sbc hl, de
-	jr z, snz_same
-	jr nc, snz_range
-	push ix
-	pop de
-	xor a
-	ret
-snz_same:
-	scf
-	ret
-
 ; In: DE = an assertion number below the count. Out: HL = its table byte, C = its shift. Keeps DE.
 snz_at:
 	push de
@@ -171,9 +158,29 @@ snz_skip:
 	ret
 
 store_next_not_one:
-	call snz_enter
+	push hl
+	push de
+	call store_data
+	pop de
+	pop ix
+	or a
 	ret nz
-	jp c, snz_found
+	ld (SNZ_HDR), hl
+	ld (SNZ_CNT), bc
+	ld (SNZ_END), de
+	ld h, b
+	ld l, c
+	or a
+	sbc hl, de
+	jp c, snz_range
+	push ix
+	pop hl
+	or a
+	sbc hl, de
+	jp z, snz_found
+	jp nc, snz_range
+	push ix
+	pop de
 snn_next:
 	ld hl, (SNZ_END)
 	or a
