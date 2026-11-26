@@ -109,6 +109,8 @@ mod list_frames;
 mod list_keys;
 #[path = "app_pages/list_kind_depth.rs"]
 mod list_kind_depth;
+#[path = "app_pages/list_kind_edges.rs"]
+mod list_kind_edges;
 #[path = "app_pages/list_kind_f3.rs"]
 mod list_kind_f3;
 #[path = "app_pages/list_kind_far.rs"]

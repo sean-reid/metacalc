@@ -339,6 +339,10 @@ lmk_not_first:
 	ld de, (LK_T1)
 	jr lmk_commit
 lmk_far:
+	ld a, h
+	and l
+	inc a
+	jr z, lmk_top_x
 	ld a, LIST_ROWS - 2
 	call lf_backn
 	ex de, hl
@@ -408,6 +412,7 @@ list_enter_kinds:
 	or a
 	sbc hl, de
 	ret z
+	jp c, lmk_top_x
 	jp lmk_below
 lek_land:
 	jp list_kind_land

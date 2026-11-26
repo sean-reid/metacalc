@@ -145,7 +145,7 @@ fn a_library_with_no_kinds_section_keeps_the_notice_on_f3_and_works_under_all() 
 }
 
 /// The marks of a library of `n` axioms with the assertions in `checked` checked, the rest not.
-fn marks(n: usize, checked: &[usize]) -> Vec<Status> {
+pub fn marks(n: usize, checked: &[usize]) -> Vec<Status> {
     (0..n)
         .map(|i| {
             if checked.contains(&i) {
@@ -184,7 +184,8 @@ fn marks_change(
     outcome: Outcome,
 ) {
     let lands = outcome == Outcome::Lands;
-    let built = pattern_built("pages-kinds-marks", &"A".repeat(30));
+    static BUILT: std::sync::OnceLock<&'static Built> = std::sync::OnceLock::new();
+    let built = BUILT.get_or_init(|| pattern_built("pages-kinds-marks", &"A".repeat(30)));
     let n = count(built);
     let old = marks(n, old_checked);
     let new = marks(n, checked);
@@ -292,6 +293,31 @@ fn a_cursor_the_new_marks_put_below_the_view_gets_the_top_the_models_reveal_give
         &[(DOWN, Key::Down)],
         &[],
         &TWENTY,
+        Outcome::Reveals,
+    );
+}
+
+/// The cursor is exactly the fifth shown below the first row, where the walk's four steps miss it and
+/// the shown assertion before it is the fourth, and the sixth, where it is not.
+#[test]
+fn a_cursor_the_fifth_and_the_sixth_shown_below_the_first_row_get_the_top_four_above() {
+    let five = [(DOWN, Key::Down); 5];
+    let six = [(DOWN, Key::Down); 6];
+    let one = [(DOWN, Key::Down)];
+    marks_change(
+        "fifth shown",
+        &[1, 2, 3, 4],
+        &one,
+        &[],
+        &five,
+        Outcome::Reveals,
+    );
+    marks_change(
+        "sixth shown",
+        &[1, 2, 3, 4, 5],
+        &one,
+        &[],
+        &six,
         Outcome::Reveals,
     );
 }
