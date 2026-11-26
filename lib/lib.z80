@@ -1,7 +1,7 @@
 ; metacalc library reader for the TI-84 Plus SE. Reads a library in format MCL1
 ; (crates/mcpack/src/library/mod.rs) from the flash pages of the app for the screens: counts,
-; labels, kinds, statements, hypotheses, symbol names, section titles, glyph codes and parse
-; trees. The proof kernel (kernel/) checks the library; this code only reads it and trusts
+; labels, kinds, the labels that start with a prefix, statements, hypotheses, symbol names, section
+; titles, glyph codes and parse trees. The proof kernel (kernel/) checks the library; this code only reads it and trusts
 ; nothing it reads past the bounds it checks.
 ;
 ; Code runs from flash in bank A and is position dependent. Assembling this file alone places it

@@ -18,6 +18,7 @@ wk_kind             .equ lr_dc+8
 wk_best             .equ lr_dc+9
 wk_r                .equ lr_dc+11
 wk_p                .equ lr_dc+12
+wk_bm               .equ lr_dc+13
 WK_BLOCK            .equ 9
 WK_RUN              .equ 16
 FC_RUN              .equ 127
@@ -237,8 +238,9 @@ frl_end:
 	xor a
 	ret
 
-; in: DE = an assertion number below the assertion count. out: Z and B = its bit of the kinds
-; bitmap, or NZ and A = status. Destroys all but IX, IY.
+; in: DE = an assertion number below the assertion count, wk_bm = the offset of the bitmap's first
+; byte. out: Z and B = the number's bit of the kinds bitmap, or NZ and A = status. Destroys all but
+; IX, IY.
 fwk_bit:
 	ld h,d
 	ld l,e
@@ -248,12 +250,11 @@ fwk_bit:
 	rr l
 	srl h
 	rr l
+	ld bc,(wk_bm)
+	add hl,bc
+	ld a,(wk_bm+2)
+	adc a,0
 	push de
-	xor a
-	ld bc,2
-	call lr_adv
-	ld de,ls_kd
-	call lsx_add3
 	ld de,lr_hdr
 	ld bc,1
 	call lr_rd
@@ -261,17 +262,21 @@ fwk_bit:
 	ret nz
 	ld a,e
 	and 7
-	inc a
-	ld b,a
+	ld c,a
+	ld b,0
+	ld hl,fwk_bits
+	add hl,bc
 	ld a,(lr_hdr)
-fwkb_shift:
-	rrca
-	djnz fwkb_shift
-	ld a,0
-	adc a,0
-	ld b,a
+	and (hl)
+	ld b,0
+	jr z,fwkb_done
+	inc b
+fwkb_done:
 	xor a
 	ret
+
+fwk_bits:
+	.db 1,2,4,8,16,32,64,128
 
 ; in: HL = a block of 9 bytes in bank B: first index (u16) and count of a range, start (u16), bound
 ; (u16), kind (u8: 0 axiom, 1 theorem, FFh every assertion)
@@ -307,6 +312,12 @@ fwk_kind_ok:
 	xor a
 	ld (lr_wlen),a
 	ld (lr_wp),a
+	ld hl,(ls_kd)
+	ld a,(ls_kd+2)
+	ld bc,2
+	call lr_adv
+	ld (wk_bm),hl
+	ld (wk_bm+2),a
 	ld hl,(wk_idx)
 	ld de,(wk_rem)
 	add hl,de
