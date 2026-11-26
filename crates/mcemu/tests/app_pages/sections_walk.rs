@@ -1,0 +1,101 @@
+//! The sections screen walked by row and by page over every title of every stage of the rich library,
+//! each frame compared with the model's and each count with the model's.
+
+use crate::list_rig::*;
+use crate::sections_rig::*;
+use crate::shellrig::*;
+use crate::theorem_rig::Walker;
+use mcui::Key;
+
+/// The titles each stage with titles has, from the packed library and written by hand.
+const COUNTS: [usize; 5] = [3, 6, 7, 33, 49];
+
+/// A walk's keys, how many moved and how many stayed.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Tally {
+    moves: usize,
+    stays: usize,
+}
+
+/// Presses `scan` `times` times on the sections screen, every frame compared, and counts the keys that
+/// drew and the ones that did not.
+fn press(list: &mut Lister, scan: u8, key: Key, times: usize, tally: &mut Tally) {
+    for _ in 0..times {
+        if list.sections_key(scan, key) {
+            tally.moves += 1;
+        } else {
+            tally.stays += 1;
+        }
+    }
+}
+
+/// The sections screen of `stage` opened from the list's first assertion.
+fn opened(stage: usize) -> Walker {
+    let mut walker = Walker::on_list(rich(), None, stage);
+    walker.list.open_sections();
+    walker
+}
+
+#[test]
+fn a_walk_by_row_over_every_title_of_each_stage_has_the_models_frames_and_counts() {
+    let built = rich();
+    assert_eq!(&title_counts(built)[1..], &COUNTS);
+    for (n, len) in COUNTS.into_iter().enumerate() {
+        let mut walker = opened(n + 1);
+        let list = &mut walker.list;
+        let at = list.sections();
+        assert_eq!((at.cursor, at.len), (0, len), "stage {}", n + 1);
+        assert!(len > 0);
+        let mut tally = Tally::default();
+        press(list, DOWN, Key::Down, len - 1, &mut tally);
+        assert_eq!(list.sections().cursor, len - 1, "stage {}: the last", n + 1);
+        press(list, DOWN, Key::Down, 1, &mut tally);
+        press(list, UP, Key::Up, len - 1, &mut tally);
+        assert_eq!(list.sections().cursor, 0, "stage {}: the first", n + 1);
+        press(list, UP, Key::Up, 1, &mut tally);
+        assert_eq!(
+            tally,
+            Tally {
+                moves: 2 * (len - 1),
+                stays: 2
+            },
+            "stage {}",
+            n + 1
+        );
+    }
+}
+
+#[test]
+fn a_walk_by_page_from_either_end_and_from_between_has_the_models_frames() {
+    let mut pages = 0;
+    for (n, len) in COUNTS.into_iter().enumerate() {
+        for start in [0, 3] {
+            if start >= len {
+                continue;
+            }
+            let mut walker = opened(n + 1);
+            let list = &mut walker.list;
+            list.goto_title(start);
+            let mut tally = Tally::default();
+            let forward = (len - 1 - start).div_ceil(6);
+            press(list, RIGHT, Key::Right, forward, &mut tally);
+            assert_eq!(list.sections().cursor, len - 1, "stage {}: the last", n + 1);
+            press(list, RIGHT, Key::Right, 1, &mut tally);
+            let back = (len - 1).div_ceil(6);
+            press(list, LEFT, Key::Left, back, &mut tally);
+            assert_eq!(list.sections().cursor, 0, "stage {}: the first", n + 1);
+            press(list, LEFT, Key::Left, 1, &mut tally);
+            assert_eq!(
+                tally,
+                Tally {
+                    moves: forward + back,
+                    stays: 2
+                },
+                "stage {} from {start}",
+                n + 1
+            );
+            pages += forward + back;
+        }
+    }
+    assert_eq!(pages, 65, "the pages walked");
+}
