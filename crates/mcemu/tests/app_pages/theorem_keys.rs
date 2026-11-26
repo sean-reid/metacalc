@@ -352,10 +352,10 @@ fn a_keys_walk_on_a_hidden_node_answers_with_a_frame_only_when_one_changes() {
     }
     println!("{stays} of {hidden_presses} keys on a hidden node answered SCR_STAY");
     assert!(
-        hidden_presses >= 10,
+        hidden_presses >= 11,
         "{hidden_presses} keys were pressed on a hidden node"
     );
-    assert!(stays >= 10, "{stays} of them stayed");
+    assert!(stays >= 11, "{stays} of them stayed");
 }
 
 impl Lister {
