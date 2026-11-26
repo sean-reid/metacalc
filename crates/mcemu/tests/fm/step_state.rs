@@ -29,7 +29,9 @@ fn snapshot(fm: &mut Fm) -> Vec<(&'static str, Vec<u8>)> {
 }
 
 /// Every variable of fm by name, from the label file: each FV_ label owns the bytes up to the next one,
-/// the last up to the end of fm's variables.
+/// the last up to the end of fm's variables. fm's private stack, FM_STACK to FM_STACK_TOP, is written by
+/// every call too and is left out: it holds the return addresses and registers of calls that have ended,
+/// and nothing reads it before writing it.
 fn variables(fm: &mut Fm) -> Vec<(String, Vec<u8>)> {
     let mut at: Vec<(u32, &str)> = WITH_FM
         .labels
@@ -121,6 +123,14 @@ fn fm_step_and_fm_span_change_only_their_own_variables_and_a_refused_call_change
     assert_eq!(fm.step(0, 0).status(), 0);
     let before = variables(&mut fm);
     let session = ["FV_IFF", "FV_P5", "FV_SP", "FV_OPEN"];
+    let written: BTreeSet<String> = include_str!("../../../../fm/session.inc")
+        .lines()
+        .filter_map(|line| {
+            let (name, _) = line.trim().strip_prefix("ld (fv_")?.split_once("),")?;
+            Some(format!("FV_{}", name.to_uppercase()))
+        })
+        .collect();
+    assert_eq!(written, names(&session), "the variables session.inc writes");
     for name in session {
         assert!(
             before.iter().any(|(n, _)| n == name),
