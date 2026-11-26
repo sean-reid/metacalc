@@ -207,10 +207,10 @@ impl Lister {
         let mut names: Vec<(u16, &'static str)> = VARIABLES
             .iter()
             .chain(STAY_WRITES.iter())
-            .chain(["LK_T", "LK_WAS", "LK_OLD", "LK_EMPTY"].iter())
+            .chain(["LK_T", "LK_T1", "LK_WAS", "LK_OLD", "LK_EMPTY"].iter())
             .map(|&n| (app.label(n), n))
             .collect();
-        names.push((app.label("LK_AGAIN") + 2, "LV_RIGHT"));
+        names.push((app.label("LK_T1") + 2, "LV_RIGHT"));
         names.sort();
         names
     }

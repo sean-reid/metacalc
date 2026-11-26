@@ -157,16 +157,36 @@ fn marks(n: usize, checked: &[usize]) -> Vec<Status> {
         .collect()
 }
 
+/// What the list does when it is entered again after the marks changed under it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Outcome {
+    /// The cursor or the top is no longer shown: the frame lands as F3 lands it.
+    Lands,
+    /// Both are shown and the cursor is among the five shown from the top: the frame stays.
+    Kept,
+    /// Both are shown, and shown assertions between them put the cursor off the screen: the top moves,
+    /// as the model's reveal from the kept top moves it.
+    Reveals,
+}
+
 /// One way the marks change under an open Unchecked list. The app is brought to a place under the
-/// old marks, where every assertion is unchecked, by `keys`; the table is swapped for the new marks, a
-/// notice is pushed and popped, and the list is entered again. The model is built with the new marks
-/// and driven to the same place: through F3 to Axioms, `down` rows to the cursor's assertion, and F3
-/// into Unchecked, which is the model's own landing; for a list whose cursor and top stay shown it is
-/// driven by `keys` under Unchecked, where nothing lands.
-fn marks_change(name: &str, keys: &[(u8, Key)], checked: &[usize], lands: bool) {
+/// marks that check `old` by `keys`; the table is swapped for the marks that check `checked`, a notice is
+/// pushed and popped, and the list is entered again. The model is built with the new marks and driven to
+/// the same place: for `Lands` through F3 to Axioms, rows down to the cursor's assertion, and F3 into
+/// Unchecked, which is the model's own landing; otherwise through F3 to Unchecked and `model_keys`, where
+/// nothing lands and the top follows the cursor as the model's reveal moves it.
+fn marks_change(
+    name: &str,
+    old_checked: &[usize],
+    keys: &[(u8, Key)],
+    checked: &[usize],
+    model_keys: &[(u8, Key)],
+    outcome: Outcome,
+) {
+    let lands = outcome == Outcome::Lands;
     let built = pattern_built("pages-kinds-marks", &"A".repeat(30));
     let n = count(built);
-    let old = marks(n, &[]);
+    let old = marks(n, old_checked);
     let new = marks(n, checked);
     let (data_old, data_new) = (table_of(built, &old), table_of(built, &new));
     let mut list = Lister::open(built, Some((&data_old, &old)), 0);
@@ -179,6 +199,7 @@ fn marks_change(name: &str, keys: &[(u8, Key)], checked: &[usize], lands: bool) 
     let was = list.run.frames()[1].clone();
     let (cursor, top) = (list.pos().cursor, list.pos().top);
     let shown = |i: usize| !checked.contains(&i);
+    let items: Vec<usize> = (0..n).filter(|&i| shown(i)).collect();
     assert_eq!(
         (shown(cursor), shown(top)),
         match name {
@@ -190,6 +211,13 @@ fn marks_change(name: &str, keys: &[(u8, Key)], checked: &[usize], lands: bool) 
         "{name}: the precondition"
     );
     if !lands {
+        let at = |i: usize| items.iter().position(|&x| x == i).expect("shown");
+        let between = at(cursor) - at(top);
+        assert_eq!(
+            between > 4,
+            outcome == Outcome::Reveals,
+            "{name}: the cursor is {between} shown rows below the top"
+        );
         assert_ne!(
             top,
             cursor.saturating_sub(4),
@@ -218,7 +246,7 @@ fn marks_change(name: &str, keys: &[(u8, Key)], checked: &[usize], lands: bool) 
         for _ in 0..3 {
             model.press(Key::F3);
         }
-        for &(_, key) in keys {
+        for &(_, key) in model_keys {
             model.press(key);
         }
     }
@@ -228,21 +256,40 @@ fn marks_change(name: &str, keys: &[(u8, Key)], checked: &[usize], lands: bool) 
     list.same_kind_position(name);
     let now = list.run.frames()[1].clone();
     assert_eq!(now[6], 3);
-    assert_eq!(now != was, lands, "{name}: the frame {was:?} then {now:?}");
+    assert_eq!(
+        now != was,
+        outcome != Outcome::Kept,
+        "{name}: the frame {was:?} then {now:?}"
+    );
     assert!(list.settle(), "{name}");
 }
 
 const TWELVE: [(u8, Key); 12] = [(DOWN, Key::Down); 12];
+const TWENTY: [(u8, Key); 20] = [(DOWN, Key::Down); 20];
 
 #[test]
 fn marks_that_changed_under_a_list_are_met_as_f3_would_meet_them_when_it_is_entered_again() {
-    marks_change("cursor lost", &TWELVE, &[12], true);
-    marks_change("top lost", &TWELVE, &[8], true);
-    marks_change("both lost", &TWELVE, &[8, 12], true);
+    use Outcome::*;
+    marks_change("cursor lost", &[], &TWELVE, &[12], &TWELVE, Lands);
+    marks_change("top lost", &[], &TWELVE, &[8], &TWELVE, Lands);
+    marks_change("both lost", &[], &TWELVE, &[8, 12], &TWELVE, Lands);
+    let three = [(RIGHT, Key::Right), (RIGHT, Key::Right), (UP, Key::Up)];
+    marks_change("both kept", &[], &three, &[20, 25], &three, Kept);
+}
+
+/// The table checks every assertion between the first and the twentieth, so the list shows two and the
+/// cursor, on the second, is inside the view; a table with nothing checked shows all thirty, the
+/// cursor is twenty shown rows below the top, and entering the list puts the top where the model's
+/// reveal does.
+#[test]
+fn a_cursor_the_new_marks_put_below_the_view_gets_the_top_the_models_reveal_gives() {
+    let hidden: Vec<usize> = (1..20).chain(21..30).collect();
     marks_change(
-        "both kept",
-        &[(RIGHT, Key::Right), (RIGHT, Key::Right), (UP, Key::Up)],
-        &[20, 25],
-        false,
+        "both shown, far apart",
+        &hidden,
+        &[(DOWN, Key::Down)],
+        &[],
+        &TWENTY,
+        Outcome::Reveals,
     );
 }

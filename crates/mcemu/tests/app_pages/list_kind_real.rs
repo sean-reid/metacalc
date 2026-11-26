@@ -216,7 +216,7 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         k,
         f,
         MOVE_BUDGET,
-        Some(281630),
+        Some(267170),
     );
     let (k, f, a) = cost(&mut list, ax, 567, last_row(&axioms, 567), UP_KEY);
     assert_eq!(a, 1);
@@ -231,15 +231,15 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
     assert_eq!(axioms[at5 + 5], 567);
     let (k, f, a) = cost(&mut list, ax, 5, last_row(&axioms, 5), RIGHT_KEY);
     assert_eq!(a, 1);
-    report("Axioms, a page from 5", k, f, MOVE_BUDGET, Some(295911));
+    report("Axioms, a page from 5", k, f, MOVE_BUDGET, Some(296052));
     let (k, f, a) = cost(&mut list, ax, 5, 5, RIGHT_KEY);
     assert_eq!(a, 1);
     report(
         "Axioms, a page from 5 with the first row on the cursor",
         k,
         f,
-        MOVE_BUDGET + 10_000,
-        Some(303959),
+        MOVE_BUDGET,
+        Some(289499),
     );
     let a5 = after(&axioms, 137);
     let (k, f, a) = cost(&mut list, ax, a5, 137, UP_KEY);
@@ -260,7 +260,7 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         k,
         f,
         MOVE_BUDGET,
-        Some(269716),
+        Some(259683),
     );
     let (k, f, a) = cost(&mut list, th, 3019, last_row(&theorems, 3019), UP_KEY);
     assert_eq!(a, 1);
@@ -341,7 +341,7 @@ fn on_the_reference_os_unchecked_on_a_table_of_ones_with_the_first_and_the_last_
         k,
         f,
         MOVE_BUDGET + 20_000,
-        Some(306416),
+        Some(306465),
     );
     let unchecked = shown_on_ring(&list, un);
     let (k, f, a) = cost(&mut list, un, n - 1, last_row(&unchecked, n - 1), UP_KEY);
@@ -360,7 +360,7 @@ fn on_the_reference_os_unchecked_on_a_table_of_ones_with_the_first_and_the_last_
         k,
         f,
         F3_BUDGET,
-        Some(314817),
+        Some(314654),
     );
 }
 
@@ -381,17 +381,16 @@ fn on_the_reference_os_f3_goes_round_the_kinds_of_every_stage_and_the_arrows_wal
         }
         assert_eq!(list.kind(), Kind::All);
     }
-    for (stage, kinds) in [
-        (PROP, vec![Kind::Theorems, Kind::Axioms]),
-        (RING, vec![Kind::Axioms]),
+    for (stage, kind, want) in [
+        (PROP, Kind::Theorems, 756),
+        (PROP, Kind::Axioms, 23),
+        (RING, Kind::Axioms, 275),
     ] {
-        for kind in kinds {
-            let mut list = Lister::on_rom(stage);
-            list.open_on_rom();
-            list.go_to_kind(kind);
-            let len = list.walk_with(&format!("stage {stage} {kind:?}"), true);
-            println!("ROM, stage {stage} {kind:?}: {len} assertions walked");
-            assert!(len > 0);
-        }
+        let mut list = Lister::on_rom(stage);
+        list.open_on_rom();
+        list.go_to_kind(kind);
+        let len = list.walk_with(&format!("stage {stage} {kind:?}"), true);
+        println!("ROM, stage {stage} {kind:?}: {len} assertions walked");
+        assert_eq!(len, want, "stage {stage} {kind:?}");
     }
 }

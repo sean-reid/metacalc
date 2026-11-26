@@ -6,6 +6,23 @@
 ; table (store_next_not_one, store_prev_not_one) for Unchecked, and a move is a few of those calls.
 ; Every routine here destroys AF BC DE HL and IX, and reads the stage's end from LV_END and the kind from
 ; LV_KIND, which its caller sets from the frame.
+;
+; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
+; greatest over a call with interrupts masked (list_kind_depth.rs, list_kind_rom.rs). The arrows are the
+; greatest over a whole walk and F3 the greatest of two places, each pressed under the kind named:
+;   stub OS, proofs library with a table, both speeds, the whole walk
+;               DOWN RIGHT  UP LEFT  F3  key at an end  enter plain, landing  draw  idle fit
+;   Theorems      20          16     24      16            22     24            26     16
+;   Axioms        20          16     28      16            22     24            26     16
+;   Unchecked     24          20     22      22            24     28            26     22
+;   reference OS, prop with a table, 6 MHz, at most 40 keys in each direction
+;   Theorems      20          16     24      -             36     36            34     16
+;   Axioms        20          16     42      16            36     36            34     16
+;   Unchecked     38          34     36      -             38     42            36     36
+; A dash is a place the 40 keys do not reach. Under each kind the idle call settled takes 2, CLEAR and a
+; letter 2, ENTER, F1, F2 and F4 6, F5 2 on the stub and 6 on the reference OS, a tick 8 on the stub and 14
+; on the reference OS. An interrupt that lands in a call can only add to these: the figures with the app's
+; interrupts on are never below the masked ones.
 
 LISTK_ALL	.equ 0
 LISTK_THEOREMS	.equ 1
@@ -98,9 +115,10 @@ lf_first_ge:
 	jr lf_prev
 
 ; In: HL = an assertion the kind shows. Out: HL = the one four before it among those, or the first one
-; when fewer come before.
+; when fewer come before. lf_backn does A steps back instead of four.
 lf_back4:
 	ld a, 4
+lf_backn:
 	ld (LK_N), a
 lb4_step:
 	push hl
@@ -280,6 +298,10 @@ lmk_moved:
 lmk_top_x:
 	ld de, (LK_X)
 	jr lmk_commit
+; In: DE = the first row shown, LK_X = a shown assertion below it, LK_FR, LV_KIND and LV_END set. The first
+; row stays when LK_X is one of the four shown after it. When LK_X is the fifth, the first row becomes the
+; first of those four, which the walk kept in LK_T1, since the shown assertion before LK_X is the fourth.
+; Otherwise it is the one four before LK_X among the shown, found from that one. Commits the frame.
 lmk_below:
 	ld (LK_T), de
 	ld a, LIST_ROWS - 1
@@ -288,6 +310,11 @@ lmk_walk:
 	ld hl, (LK_T)
 	inc hl
 	call lf_next
+	ld a, (LK_N)
+	cp LIST_ROWS - 1
+	jr nz, lmk_not_first
+	ld (LK_T1), hl
+lmk_not_first:
 	ld de, (LK_X)
 	push hl
 	or a
@@ -299,7 +326,18 @@ lmk_walk:
 	dec (hl)
 	jr nz, lmk_walk
 	ld hl, (LK_X)
-	call lf_back4
+	call lf_prev
+	ld de, (LK_T)
+	push hl
+	or a
+	sbc hl, de
+	pop hl
+	jr nz, lmk_far
+	ld de, (LK_T1)
+	jr lmk_commit
+lmk_far:
+	ld a, LIST_ROWS - 2
+	call lf_backn
 	ex de, hl
 	jr lmk_commit
 lmk_inside:
@@ -319,4 +357,55 @@ lmk_commit:
 	ld (LV_COUNT), a
 	ld a, SCR_REDRAW
 	ret
+
+; In: LK_FR the frame. Finds out whether the library has the kinds section, which F3 needs, and for a frame
+; whose kind is not All puts the cursor and the first row shown back on assertions the kind shows, as F3
+; would: the marks may have changed since the frame was made. A cursor that is not shown lands as F3 lands it,
+; and so does a first row that is not shown. When both are shown the walk of list_move_kind goes from the
+; first row: a cursor that is one of the five shown from it stays, any other gets the first row four shown
+; assertions above it.
+list_enter_kinds:
+	call far_lib_sections
+	or a
+	ret nz
+	ld a, b
+	and LIST_KS_SECTION
+	ret z
+	ld a, 1
+	ld (LV_HASK), a
+	ld ix, (LK_FR)
+	ld a, (ix + 6)
+	or a
+	ret z
+	ld (LV_KIND), a
+	ld a, (ix + 1)
+	call list_stage_end
+	ld (LV_END), de
+	ld l, (ix + 2)
+	ld h, (ix + 3)
+	call lf_next
+	ld ix, (LK_FR)
+	ld e, (ix + 2)
+	ld d, (ix + 3)
+	or a
+	sbc hl, de
+	jr nz, lek_land
+	ld l, (ix + 4)
+	ld h, (ix + 5)
+	call lf_next
+	ld ix, (LK_FR)
+	ld e, (ix + 4)
+	ld d, (ix + 5)
+	or a
+	sbc hl, de
+	jr nz, lek_land
+	ld l, (ix + 2)
+	ld h, (ix + 3)
+	ld (LK_X), hl
+	or a
+	sbc hl, de
+	ret z
+	jp lmk_below
+lek_land:
+	jp list_kind_land
 #endif

@@ -13,14 +13,17 @@
 ; nothing in the frame says whether the preview is computed, so the enter that runs when a notice above
 ; the list pops, or a refresh after an auto power down, makes the preview pending again and leaves the
 ; kind byte, the cursor and the top as they were, except that under a kind a cursor or a first row the
-; kind no longer shows (the marks may have changed) is put back as F3 lands them. The first push and an
-; uncovering run the same enter.
+; kind does not show (the marks may have changed since the frame was made) is put back as F3 lands them,
+; and a cursor the new marks put more than four shown assertions below the first row gets the first row
+; four shown assertions above it. The first push and an uncovering run the same enter.
 ;
 ; Derived state, in APP_TEXT:
 ;   LV_HASK     1 when the library has the kinds section, which F3 needs: with 0 there is only All
 ;   LV_KIND     the frame's kind byte, copied by each routine
 ;   LV_TABLE    1 when the status table is this library's (store_has), else 0; with 0 every row is
-;               unchecked and the screen never creates a table
+;               unchecked and the screen never creates a table. A table lost after the enter leaves it
+;               at 1: the store then answers lf_next and lf_prev with a status other than 0, and they
+;               answer as with no table, so Unchecked shows every assertion
 ;   LV_FLAT     1 when the library has no trees section and an assertion: the model's "flat" prefix
 ;               on the counts. That is Lib::degraded for a library mcpack packs, which writes no
 ;               trees section exactly when the database has no grammar; a library with its trees
@@ -52,32 +55,39 @@
 ;              (store_has) whether the table is the library's, the reader whether it has trees and
 ;              where the first section title starts, and sets the preview pending, LV_COUNT to
 ;              LIST_WAIT and LV_NOFM to 0. Last, list_enter_kinds asks the reader whether it has the
-;              kinds section (LV_HASK) and, for a frame whose kind is not All, lf_next for the cursor
-;              and for the first row, one call each, with LV_KIND and LV_END set; when either is not
-;              the assertion it was given, list_kind_land rewrites bytes 2 to 5 of the frame, never
-;              byte 6.
+;              kinds section (LV_HASK) and, for a frame whose kind is not All, with LV_KIND and LV_END
+;              set, puts the frame's places back on assertions the kind shows: lf_next for the cursor
+;              and, only when the cursor is shown, lf_next for the first row; when either is not the
+;              assertion it was given, list_kind_land rewrites bytes 2 to 5 of the frame, never byte 6.
+;              When both are shown and differ, the walk of list_move_kind goes from the first row: a
+;              cursor among the five shown from it leaves the frame, any other gets the first row four
+;              shown assertions above it, which happens when a table lost or reset since the frame
+;              was made shows assertions between them.
 ; list_key     UP, DOWN, LEFT and RIGHT move the cursor one row or five over what the kind shows, never
 ;              past either end, move the first row shown as little as it must to keep the cursor on screen
 ;              (under a filter, four shown assertions above the cursor), answer SCR_REDRAW with
 ;              the preview pending and LV_COUNT at LIST_WAIT, and answer SCR_STAY when nothing moved.
 ;              A stay under All touches nothing. A stay under a kind leaves the frame, the preview and
 ;              the count as they were and writes only LV_KIND, LV_END and the scratch LK_FR, LK_CUR,
-;              LK_X, LK_N and LK_KEY, and LK_AGAIN when Unchecked asks the store. F3 steps the kind on when LV_HASK is 1, and lands as the model's F3
-;              does: the cursor on the first shown assertion at or after the one it was on, else the last,
-;              the first row shown four before it among the shown, and the preview pending with the wait
-;              when the cursor's assertion changed (a list that shows nothing has none), else kept. ENTER,
-;              F1, F2 and F4, F3 when LV_HASK is 0, and F5 when LV_SECT is 1, push the notice NOTICE_LIST of
-;              the stage. CLEAR pops. Every other key stays.
+;              LK_X, LK_N and LK_KEY, and LK_AGAIN when Unchecked asks the store. Under Unchecked a
+;              status other than 0 from the store, a table lost since list_enter, shows every
+;              assertion as with no table. F3 steps the kind on when LV_HASK is 1, and lands as the
+;              model's F3 does: the cursor on the first shown assertion at or after the one it was on,
+;              else the last, the first row shown four before it among the shown, and the preview
+;              pending with the wait when the cursor's assertion changed (a list that shows nothing
+;              has none), else kept. ENTER, F1, F2 and F4, F3 when LV_HASK is 0, and F5 when LV_SECT
+;              is 1, push the notice NOTICE_LIST of the stage. CLEAR pops. Every other key stays.
 ; list_idle    in: HL = the frame. out: A and carry as scr_idle takes them. LV_COUNT above 0: one off the
-;              count, one app_tick, SCR_STAY with carry set. Count 0 and the preview pending, under a
-;              kind: one lf_next, a lib_kind_next under Theorems and Axioms or a store_next_not_one under
-;              Unchecked with a table, with LV_KIND, LV_END and LK_FR written; when the cursor's assertion
+;              count, one app_tick, SCR_STAY with carry set. Count 0 and the preview pending, with
+;              LV_NOFM 0 and a stage that has assertions, under a kind: one lf_next, a lib_kind_next
+;              under Theorems and Axioms or a store_next_not_one under Unchecked with a table (which
+;              writes LK_AGAIN), with LV_KIND, LV_END and LK_FR written; when the cursor's assertion
 ;              is not the one it answers, the preview settles as LVP_NONE with SCR_STAY and carry clear and
-;              fm is not called. Otherwise, and under All: fm_statement of the cursor's conclusion (after fm_open when fm answers FM_ERR_NOT_OPEN), fm_fit to one
-;              line at LIST_WIDTH pixels, fm_clip to one line when it took more, then LVP_ROW and
-;              SCR_REDRAW with carry clear. An empty stage settles as LVP_NONE with SCR_STAY and carry
-;              clear, calling nothing of fm. So does LV_NOFM set, and an fm_open that answers anything
-;              but 0 sets it: a library fm cannot open costs one fm_open per list_enter, and every
+;              fm is not called. Otherwise, and under All: fm_statement of the cursor's conclusion (after
+;              fm_open when fm answers FM_ERR_NOT_OPEN), fm_fit to one line at LIST_WIDTH pixels,
+;              fm_clip to one line when it took more, then LVP_ROW and SCR_REDRAW with carry clear. An empty
+;              stage settles as LVP_NONE with SCR_STAY and carry clear, calling nothing of fm. So does
+;              LV_NOFM set, and an fm_open that answers anything but 0 sets it: a library fm cannot open costs one fm_open per list_enter, and every
 ;              other rest calls neither fm_open nor fm_statement. So does any status other than 0 from
 ;              fm_statement, fm_fit or fm_clip: FM_ERR_LIMIT is the model's "over the caps"
 ;              (statement_within), and any other (a refused read, a damaged tree) settles with nothing
@@ -97,31 +107,28 @@
 ; app_tick ends in ei. fm's sessions and the reader's reads turn interrupts off for their own length and
 ; give the caller's state back; the screen writes no port 20h and executes no DI.
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
-; greatest over a call of each routine with interrupts masked, at both speeds (list_depth.rs, and
-; list_kind_depth.rs under a kind, whose arrows are traced over a whole walk). Stub OS under All: list_key 4
-; for a move and for a key at an end, 6 for the keys that push the notice, 2 for CLEAR, a letter and F5 with
-; no sections, F3 20 on the fixture of list_depth.rs and 24 on the proofs library of list_kind_depth.rs, from
-; the first assertion and from five rows down alike; list_enter 22; list_idle 8 for the fit and for a tick,
-; which holds app_tick's return address and the interrupt handler's pushes, and 2 settled; list_draw 26.
-; Stub OS under a kind, on the proofs library: DOWN and RIGHT write 20 under Theorems and Axioms and 24
-; under Unchecked, UP and LEFT 16, 16 and 20, F3 24, 28 and 22 (the kind it steps to), a key at an end 16,
-; 16 and 22, the idle fit 16, 16 and 22, list_enter 22, 22 and 24 and 24, 24 and 28 when it lands the frame
-; again, list_draw 26 blank and with a preview; the other keys as under All. Reference OS, prop with a
-; table: the same but 6 for F5, a tick 14, list_enter 36 under All, Theorems and Axioms (38, and 42 when it
-; lands again, under Unchecked), list_draw 34 (36 under Unchecked), F3 24, 42 and 36, DOWN and RIGHT 20, 20
-; and 38, UP and LEFT 16, 16 and 34, the idle fit 16, 16 and 36, a key at an end 16 under Axioms; under
-; Theorems and Unchecked the capped walk reaches no end. An interrupt that lands in a call adds the
-; handler's bytes.
-; Cost, in T-states at 6 MHz on the reference OS, over ring: under a kind a move with its frame takes at most
-; 295,911 (the Axioms page from assertion 5, whose five matches cross the 268 assertions after 298; 303,959
-; when the first row shown is the cursor's) and F3 with its frame at most 259,343 from Theorems to Axioms and
-; 314,654 into Unchecked on a table of ones with only the first and the last assertion not 1, where the row
-; move from 0 to the last takes 306,416 and back 304,707; under All a move takes what it took. Ring's list opens in 460,463 (libs_key, list_enter and a
-; cold frame) and a cursor move takes 223,026 by a row and 227,608 by a page with its frame; the idle
-; call that lays out a preview takes a median of 77,137 and at most 1,125,849 over ring, and 68,830 and
-; 331,429 over prop. Its fm calls run with interrupts off and no key is scanned until it returns, so a
-; statement inside the caps holds the keypad for at most 37,707,349 T-states (6.28 s at 6 MHz), the 253
-; nested operators of fm's nodes fixture, measured on the stub OS.
+; greatest over a call of each routine with interrupts masked, at both speeds (list_depth.rs; the figures
+; under a kind are in screen_list_kind.inc). Stub OS under All: list_key 4 for a move and for a key at an
+; end, 6 for the keys that push the notice, 2 for CLEAR, a letter and F5 with no sections, F3 20 on the
+; fixture of list_depth.rs and 24 on the proofs library of list_kind_depth.rs, from the first assertion
+; and from ten rows down alike; list_enter 22; list_idle 8 for the fit and for a tick, which holds
+; app_tick's return address and the interrupt handler's pushes, and 2 settled; list_draw 26. Reference
+; OS, prop with a table: the same but F3 24, F5 6, a tick 14, list_enter 36, list_draw 34. An interrupt
+; that lands in a call can only add to these: the figures with the app's interrupts on are never below
+; the masked ones.
+; Cost, in T-states at 6 MHz on the reference OS, over ring (list_kind_real.rs, list_real_cost.rs). Under a
+; kind a move is list_key then scr_draw and ui_blit: under Axioms a row from 298 to 567 takes 267,170 and a
+; page from assertion 5 takes 296,052, or 289,499 with the first row on the cursor, the five matches
+; crossing the 268 assertions after 298; under Theorems a row across the run at 2,988 takes 259,683 and a
+; page 242,678. Under Unchecked on a table of ones with only the first and the last assertion not 1 the row
+; move from 0 to the last takes 306,465 and back 304,707. F3 with its frame takes 259,343 from Theorems to
+; Axioms with the cursor just after an axiom and 314,654 into Unchecked from assertion 1 on that table.
+; Under All a move takes what it took. Ring's list opens in 460,463 (libs_key, list_enter and a cold frame)
+; and a cursor move takes 223,026 by a row and 227,608 by a page with its frame; the idle call that lays
+; out a preview takes a median of 77,137 and at most 1,125,849 over ring, and 68,830 and 331,429 over prop.
+; Its fm calls run with interrupts off and no key is scanned until it returns, so a statement inside the
+; caps holds the keypad for at most 37,707,349 T-states (6.28 s at 6 MHz), the 253 nested operators of
+; fm's nodes fixture, measured on the stub OS.
 
 LIST_ROWS	.equ 5
 LIST_LABEL_MAX	.equ 48
@@ -169,8 +176,12 @@ LK_KEY		.equ LV_RIGHT + 11
 LK_OLD		.equ LV_RIGHT + 12
 LK_EMPTY	.equ LV_RIGHT + 13
 LK_AGAIN		.equ LV_RIGHT + 14
+LK_T1		.equ LV_RIGHT + 16
 #if LV_VARS_END > (APP_TEXT + APP_TEXT_SIZE)
  .error "the list screen's variables are longer than APP_TEXT"
+#endif
+#if (LK_T1 + 2) > (LV_RIGHT + LIST_RIGHT_SIZE)
+ .error "the list kind scratch runs past LV_RIGHT"
 #endif
 
 #ifdef LIBRARY
@@ -239,47 +250,6 @@ le_wait:
 	xor a
 	ld (LV_NOFM), a
 	ret
-
-; Finds out whether the library has the kinds section, which F3 needs, and for a frame whose kind is not All
-; puts the cursor and the first row shown back on assertions the kind shows, as F3 would: the marks may have
-; changed since the frame was made. A cursor and a first row that already are such assertions stay.
-list_enter_kinds:
-	call far_lib_sections
-	or a
-	ret nz
-	ld a, b
-	and LIST_KS_SECTION
-	ret z
-	ld a, 1
-	ld (LV_HASK), a
-	ld ix, (LK_FR)
-	ld a, (ix + 6)
-	or a
-	ret z
-	ld (LV_KIND), a
-	ld a, (ix + 1)
-	call list_stage_end
-	ld (LV_END), de
-	ld l, (ix + 2)
-	ld h, (ix + 3)
-	call lf_next
-	ld ix, (LK_FR)
-	ld e, (ix + 2)
-	ld d, (ix + 3)
-	or a
-	sbc hl, de
-	jr nz, lek_land
-	ld l, (ix + 4)
-	ld h, (ix + 5)
-	call lf_next
-	ld ix, (LK_FR)
-	ld e, (ix + 4)
-	ld d, (ix + 5)
-	or a
-	sbc hl, de
-	ret z
-lek_land:
-	jp list_kind_land
 
 ; In: A = a stage. Out: DE = its end, the number of its assertions. Destroys F HL.
 list_stage_end:
