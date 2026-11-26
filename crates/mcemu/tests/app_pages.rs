@@ -217,6 +217,8 @@ mod theorem_straddle;
 mod theorem_title;
 #[path = "app_pages/tick.rs"]
 mod tick;
+#[path = "app_pages/timer_spacing.rs"]
+mod timer_spacing;
 #[path = "app_pages/wide_cost.rs"]
 mod wide_cost;
 

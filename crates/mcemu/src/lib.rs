@@ -10,7 +10,7 @@ mod stub {
 }
 
 pub use app::{AppError, decode as decode_app};
-pub use ffi::{Regs, Write};
+pub use ffi::{PortWrite, Regs, Write};
 pub use vars::{E_BAD_CALL, E_MEMORY, NoRoom, Var};
 
 /// Free stub ROM: boots to a known state and jumps to `ENTRY`.
@@ -316,6 +316,19 @@ impl Machine {
             "the write record was full; take the writes more often"
         );
         writes
+    }
+
+    /// Every write to ports 1, 3 and 4 since the last call, in order, with the CPU clock when each
+    /// ran. The record holds 4096 writes; more panics.
+    pub fn take_port_writes(&mut self) -> Vec<PortWrite> {
+        let (writes, full) = self.calc.take_port_writes();
+        assert!(!full, "the port record was full; take the writes more often");
+        writes
+    }
+
+    /// Forgets the port writes recorded so far, however many.
+    pub fn clear_port_writes(&mut self) {
+        self.calc.take_port_writes();
     }
 
     /// Forces the LCD busy bit, bit 7 of port 10h, on for every read, as a controller that never
