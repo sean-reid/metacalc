@@ -18,7 +18,7 @@ fn the_notice_keys_and_the_way_back_keep_the_kind_the_cursor_and_the_top() {
         for scan in [ENTER, F1, F2, F4] {
             let mut list = Lister::open(built, Some((&data, &status)), 1);
             list.settle();
-            list.to_kind(kind);
+            list.go_to_kind(kind);
             list.key(RIGHT, Key::Right);
             list.settle();
             let at = format!("{kind:?}, key {scan:02X}");
@@ -51,7 +51,7 @@ fn clear_to_libraries_and_in_again_starts_at_all() {
     for kind in [Kind::Theorems, Kind::Axioms, Kind::Unchecked] {
         let mut list = Lister::open(built, None, 0);
         list.settle();
-        list.to_kind(kind);
+        list.go_to_kind(kind);
         list.key(RIGHT, Key::Right);
         list.settle();
         assert!(list.key(CLEAR, Key::Clear));
@@ -162,14 +162,14 @@ fn marks_that_changed_under_a_list_are_met_as_f3_would_meet_them_when_it_is_ente
             if i % 3 == 0 && i < 15 {
                 Status::Checked
             } else {
-                before[i].clone()
+                before[i]
             }
         })
         .collect();
     let (data_before, data_after) = (table_of(built, &before), table_of(built, &after));
     let mut list = Lister::open(built, Some((&data_before, &before)), 0);
     list.settle();
-    list.to_kind(Kind::Unchecked);
+    list.go_to_kind(Kind::Unchecked);
     for _ in 0..5 {
         list.key(DOWN, Key::Down);
         list.settle();
@@ -177,7 +177,7 @@ fn marks_that_changed_under_a_list_are_met_as_f3_would_meet_them_when_it_is_ente
     let was = list.run.frames()[1].clone();
     let cursor = usize::from(u16::from_le_bytes([was[2], was[3]]));
     assert!(
-        cursor >= 6 && cursor < 15 && cursor % 3 == 0,
+        (6..15).contains(&cursor) && cursor % 3 == 0,
         "the cursor is on {cursor}"
     );
     list.run.m().delete_var("MCSTAT");

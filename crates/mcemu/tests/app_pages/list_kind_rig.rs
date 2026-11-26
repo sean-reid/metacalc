@@ -75,7 +75,7 @@ impl Lister {
     }
 
     /// Presses F3 until the model shows `kind`, comparing every frame, and lets each preview settle.
-    pub fn to_kind(&mut self, kind: Kind) {
+    pub fn go_to_kind(&mut self, kind: Kind) {
         for _ in 0..4 {
             if self.kind() == kind {
                 return;

@@ -2,7 +2,6 @@
 //! registers a caller on the entry page uses.
 
 use crate::app::*;
-use crate::builds::*;
 use crate::list_rig::proofs_three;
 
 fn theorems(built: &Built) -> Vec<bool> {

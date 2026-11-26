@@ -289,7 +289,7 @@ fn on_the_reference_os_f3_goes_round_the_kinds_of_every_stage_and_the_arrows_wal
         for kind in kinds {
             let mut list = Lister::on_rom(stage);
             list.open_on_rom();
-            list.to_kind(kind);
+            list.go_to_kind(kind);
             let len = list.walk_with(&format!("stage {stage} {kind:?}"), true);
             println!("ROM, stage {stage} {kind:?}: {len} assertions walked");
             assert!(len > 0);

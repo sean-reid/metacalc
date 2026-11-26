@@ -255,7 +255,7 @@ fn the_table_and_the_operand_registers_after_op3_are_as_they_were() {
     let mut seed = 0x5EED_0001;
     let values: Vec<u8> = (0..300)
         .map(|_| {
-            if xorshift(&mut seed) % 4 == 0 {
+            if xorshift(&mut seed).is_multiple_of(4) {
                 (xorshift(&mut seed) & 3) as u8
             } else {
                 1

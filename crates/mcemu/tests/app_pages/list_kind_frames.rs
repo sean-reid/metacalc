@@ -7,7 +7,6 @@ use crate::builds::*;
 use crate::list_kind_rig::*;
 use crate::list_rig::*;
 use crate::shellrig::*;
-use crate::table;
 use mcui::{Key, Kind, Status};
 
 #[derive(Default, Debug)]
@@ -96,7 +95,7 @@ fn every_kind_is_walked_by_row_and_by_page_over_everything_it_shows() {
             for kind in [Kind::Theorems, Kind::Axioms, Kind::Unchecked] {
                 let mut list = Lister::open(built, table, stage);
                 list.settle();
-                list.to_kind(kind);
+                list.go_to_kind(kind);
                 let at = format!("stage {stage}, {kind:?}, table {}", table.is_some());
                 let len = list.walk_kind(&at);
                 *shown.entry(code(kind)).or_insert(0) += len;
@@ -121,7 +120,7 @@ fn a_filter_with_one_five_six_or_no_match_is_the_models() {
         for (kind, want) in [(Kind::Theorems, theorems), (Kind::Axioms, axioms)] {
             let mut list = Lister::open(built, None, 0);
             list.settle();
-            list.to_kind(kind);
+            list.go_to_kind(kind);
             assert_eq!(
                 list.pos().len,
                 want,
@@ -147,7 +146,7 @@ fn unchecked_with_one_five_or_six_marks_not_checked_is_the_models() {
         let data = table_of(built, &status);
         let mut list = Lister::open(built, Some((&data, &status)), 0);
         list.settle();
-        list.to_kind(Kind::Unchecked);
+        list.go_to_kind(Kind::Unchecked);
         assert_eq!(list.pos().len, k, "the model's count");
         assert_eq!(list.walk_kind(&format!("{k} unchecked")), k);
     }
@@ -158,13 +157,13 @@ fn a_filter_that_shows_nothing_says_none_and_its_keys_do_what_an_empty_stages_do
     let built = pattern_built("pages-kinds-none", "AAAAAAA");
     let mut list = Lister::open(built, None, 0);
     list.settle();
-    list.to_kind(Kind::Theorems);
+    list.go_to_kind(Kind::Theorems);
     assert_eq!(list.pos().len, 0);
     assert_eq!(list.walk_kind("no theorem"), 0);
     for scan in [ENTER, F1, F2, F4] {
         let mut list = Lister::open(built, None, 0);
         list.settle();
-        list.to_kind(Kind::Theorems);
+        list.go_to_kind(Kind::Theorems);
         list.tap(scan);
         list.run.next_blit();
         list.run.run(300_000);

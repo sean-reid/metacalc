@@ -2,7 +2,6 @@
 //! return with, on the stub OS: the keys and the idle calls of a list that shows only theorems, only
 //! axioms or only what is not checked.
 
-use crate::app::*;
 use crate::list_depth::*;
 use crate::list_kind_rig::*;
 use crate::list_rig::*;
@@ -13,7 +12,7 @@ fn open_as(kind: Kind) -> Lister {
     let (data, status) = every_mark(built);
     let mut list = Lister::open(built, Some((&data, &status)), 2);
     list.settle();
-    list.to_kind(kind);
+    list.go_to_kind(kind);
     list.key(crate::shellrig::DOWN, mcui::Key::Down);
     list
 }
