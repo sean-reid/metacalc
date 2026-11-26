@@ -1,5 +1,6 @@
 //! A status table lost after the list was entered (deleted, a wrong magic, a wrong size): under
-//! Unchecked every assertion is shown, as it is with no table, and every row draws unchecked.
+//! Unchecked every assertion is shown, as it is with no table, the ones the table hid included, and
+//! every row draws unchecked.
 
 use crate::list_kind_rig::*;
 use crate::list_rig::*;
@@ -8,6 +9,10 @@ use crate::table;
 use mcui::{Key, Kind, Status};
 
 const PATTERN: &str = "TATATAATTTATTAAT";
+
+/// The assertions the table checks, all of them past the first eight so that the places the list
+/// reaches before the loss are the same with and without the table.
+const CHECKED: [usize; 5] = [8, 9, 11, 12, 14];
 
 fn lose(list: &mut Lister, how: &str, data: &[u8]) {
     list.run.m().delete_var("MCSTAT");
@@ -28,7 +33,15 @@ fn a_table_lost_under_an_open_unchecked_list_shows_every_assertion_as_no_table_d
     let built = pattern_built("pages-kinds-lost", PATTERN);
     let n = count(built);
     assert_eq!(n, PATTERN.len());
-    let status = vec![Status::Unchecked; n];
+    let status: Vec<Status> = (0..n)
+        .map(|i| {
+            if CHECKED.contains(&i) {
+                Status::Checked
+            } else {
+                Status::Unchecked
+            }
+        })
+        .collect();
     let data = table_of(built, &status);
     let mut seen = 0;
     for how in ["deleted", "magic", "size"] {
@@ -41,6 +54,9 @@ fn a_table_lost_under_an_open_unchecked_list_shows_every_assertion_as_no_table_d
                 list.settle();
             }
             assert_eq!(list.var("LV_TABLE"), 1, "{how}: the table was there");
+            if start == Kind::Unchecked {
+                assert_eq!(list.pos().len, n - CHECKED.len(), "{how}: the table hides");
+            }
             lose(&mut list, how, &data);
             list.status = Vec::new();
             list.ui = list.replayed();
@@ -53,6 +69,11 @@ fn a_table_lost_under_an_open_unchecked_list_shows_every_assertion_as_no_table_d
             }
             list.go_to_kind(Kind::Unchecked);
             assert_eq!(list.pos().len, n, "{at}: every assertion is unchecked");
+            let items = list.items();
+            assert!(
+                CHECKED.iter().all(|i| items.contains(i)),
+                "{at}: the list shows what the table hid"
+            );
             let shown = list.walk_kind(&at);
             assert_eq!(shown, n, "{at}");
             assert_eq!(list.var("LV_TABLE"), 1, "{at}: the list never saw the loss");
