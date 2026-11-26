@@ -184,6 +184,23 @@ impl Lister {
         (len, written)
     }
 
+    /// Presses each key of `plan` the number of times it names, comparing every frame and every settled
+    /// preview with the model's, the wait of each preview skipped, and a pause after each key.
+    pub fn walk_plan(&mut self, at: &str, plan: &[(u8, Key, usize)]) -> usize {
+        let mut pressed = 0;
+        for &(scan, key, times) in plan {
+            for n in 0..times {
+                self.key(scan, key);
+                self.same_kind_position(&format!("{at}, {key:?} {n}"));
+                self.skip_the_wait();
+                self.settle();
+                self.run.run(600_000);
+                pressed += 1;
+            }
+        }
+        pressed
+    }
+
     /// The addresses of the list's variables and of the scratch of screen_list_kind.inc, by name.
     fn variable_names(&self) -> Vec<(u16, &'static str)> {
         let app = &self.run.shell.app;

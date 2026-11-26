@@ -71,6 +71,9 @@ fn on_the_reference_os_a_table_rewritten_under_an_open_unchecked_list_is_met_as_
     model.press(Key::Enter);
     model.press(Key::F3);
     model.press(Key::F3);
+    for _ in 0..axioms.len() {
+        model.press(Key::Up);
+    }
     let place = axioms.iter().position(|&a| a == cursor).unwrap();
     for _ in 0..place / 5 {
         model.press(Key::Right);
@@ -128,9 +131,31 @@ fn on_the_reference_os_pred_is_walked_under_theorems_and_axioms_by_row() {
 
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_ring_is_walked_under_unchecked_with_a_partial_table_by_row() {
-    let len = rom_walk(RING, Kind::Unchecked, Some(100), "ring Unchecked");
+fn on_the_reference_os_ring_is_walked_under_unchecked_with_a_partial_table_by_page_and_the_ends_by_row()
+ {
+    let started = Instant::now();
+    let mut list = Lister::on_rom(RING);
+    list.partial_check(100);
+    list.open_on_rom();
+    list.go_to_kind(Kind::Unchecked);
+    let len = list.pos().len;
     assert!(len > 3000, "{len}");
+    let pages = len / 5 + 2;
+    let pressed = list.walk_plan(
+        "ring Unchecked",
+        &[
+            (DOWN, Key::Down, 200),
+            (UP, Key::Up, 201),
+            (RIGHT, Key::Right, pages),
+            (UP, Key::Up, 200),
+            (DOWN, Key::Down, 201),
+            (LEFT, Key::Left, pages),
+        ],
+    );
+    println!(
+        "ROM, ring Unchecked: {len} shown, {pressed} keys in {:?}",
+        started.elapsed()
+    );
 }
 
 #[test]
@@ -203,6 +228,31 @@ fn on_the_reference_os_the_depths_under_unchecked_with_a_table_are() {
 }
 
 fn rom_want(kind: Kind) -> KindFigures {
-    let _ = kind;
-    KindFigures::default()
+    // (down, up, left, right, f3, enter plain, enter landing, ends, draw, idle fit)
+    let (down, up, left, right, f3, plain, land, ends, draw, fit) = match kind {
+        Kind::Theorems => (20, 16, 16, 20, 24, 36, 36, 0, 34, 16),
+        Kind::Axioms => (20, 16, 16, 20, 42, 36, 36, 16, 34, 16),
+        _ => (38, 34, 34, 38, 36, 38, 42, 0, 36, 36),
+    };
+    crate::list_kind_depth::fig(
+        [
+            ("clear", 2),
+            ("down", down),
+            ("enter", 6),
+            ("f1", 6),
+            ("f2", 6),
+            ("f3", f3),
+            ("f4", 6),
+            ("f5", 6),
+            ("left", left),
+            ("letter", 2),
+            ("right", right),
+            ("up", up),
+        ],
+        [f3, f3],
+        [plain, land],
+        [draw, draw],
+        ends,
+        [fit, 2, 14],
+    )
 }

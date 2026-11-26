@@ -99,6 +99,9 @@ fn model_after(list: &Lister, kind: u8, cursor: usize, top: usize, key: u8) -> (
     for _ in 0..kind {
         ui.press(Key::F3);
     }
+    for _ in 0..items.len() {
+        ui.press(Key::Up);
+    }
     for _ in 0..top_at + 4 {
         ui.press(Key::Down);
     }
@@ -224,13 +227,20 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         MOVE_BUDGET,
         Some(235996),
     );
-    let (k, f, a) = cost(&mut list, ax, 5, 0, RIGHT_KEY);
+    let at5 = axioms.iter().position(|&i| i == 5).unwrap();
+    assert_eq!(axioms[at5 + 5], 567);
+    let (k, f, a) = cost(&mut list, ax, 5, last_row(&axioms, 5), RIGHT_KEY);
     assert_eq!(a, 1);
-    assert_eq!(
-        axioms[axioms.iter().position(|&i| i == 5).unwrap() + 5],
-        567
+    report("Axioms, a page from 5", k, f, MOVE_BUDGET, None);
+    let (k, f, a) = cost(&mut list, ax, 5, 5, RIGHT_KEY);
+    assert_eq!(a, 1);
+    report(
+        "Axioms, a page from 5 with the first row on the cursor",
+        k,
+        f,
+        MOVE_BUDGET + 10_000,
+        Some(303959),
     );
-    report("Axioms, a page from 5", k, f, MOVE_BUDGET, Some(295691));
     let a5 = after(&axioms, 137);
     let (k, f, a) = cost(&mut list, ax, a5, 137, UP_KEY);
     assert_eq!(a, 1);
@@ -261,8 +271,8 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         MOVE_BUDGET,
         Some(241538),
     );
-    let (k, f, _) = cost(&mut list, th, 100, 90, LEFT_KEY);
-    report("Theorems, a page", k, f, MOVE_BUDGET, Some(252794));
+    let (k, f, _) = cost(&mut list, th, 100, last_row(&theorems, 100), LEFT_KEY);
+    report("Theorems, a page", k, f, MOVE_BUDGET, None);
 
     let just_after = 299;
     assert!(bits[just_after]);
@@ -331,16 +341,17 @@ fn on_the_reference_os_unchecked_on_a_table_of_ones_with_the_first_and_the_last_
         k,
         f,
         MOVE_BUDGET + 20_000,
-        Some(306616),
+        Some(306416),
     );
-    let (k, f, a) = cost(&mut list, un, n - 1, 0, UP_KEY);
+    let unchecked = shown_on_ring(&list, un);
+    let (k, f, a) = cost(&mut list, un, n - 1, last_row(&unchecked, n - 1), UP_KEY);
     assert_eq!(a, 1);
     report(
         "Unchecked, a row from the last to 0",
         k,
         f,
         MOVE_BUDGET + 20_000,
-        Some(290212),
+        Some(304707),
     );
     let (k, f, a) = cost(&mut list, code(Kind::Axioms), 1, 0, F3_KEY);
     assert_eq!(a, 1);

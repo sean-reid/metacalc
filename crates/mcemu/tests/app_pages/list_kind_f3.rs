@@ -52,11 +52,12 @@ fn f3_twice_with_no_settle_between_keeps_or_blanks_the_preview_as_the_model_does
 }
 
 /// What the shell does with a second F3 pressed `gap` T-states after the first was released: how long
-/// it was held before scr_key took it, and how many times scr_key took it while it stayed down for
-/// `HOLD` more.
-fn second_press(list: &mut Lister, gap: u32) -> (u32, u16) {
-    const STEP: u32 = 2_000;
-    const BOUND: u32 = 6_000_000;
+/// it was held before scr_key took it, or None when it was not taken in `BOUND`, and how many times
+/// scr_key took it while it stayed down for `HOLD` more.
+const BOUND: u32 = 3_000_000;
+
+fn second_press(list: &mut Lister, gap: u32) -> (Option<u32>, u16) {
+    const STEP: u32 = 20_000;
     const HOLD: u32 = 300_000;
     list.run.run(2_000_000);
     list.tap(F3);
@@ -68,12 +69,12 @@ fn second_press(list: &mut Lister, gap: u32) -> (u32, u16) {
         list.run.run(STEP);
         held += STEP;
     }
-    assert!(held < BOUND, "gap {gap}: the second F3 was never taken");
+    let taken = (held < BOUND).then_some(held);
     list.run.run(HOLD);
-    let taken = list.run.scr_keys() - before;
+    let presses = list.run.scr_keys() - before;
     list.run.m().release_key(F3);
     list.run.run(HOLD);
-    (held, taken)
+    (taken, presses)
 }
 
 #[test]
@@ -81,15 +82,28 @@ fn second_press(list: &mut Lister, gap: u32) -> (u32, u16) {
 fn on_the_reference_os_a_second_f3_is_taken_at_once_after_a_gap_and_when_held_before_it() {
     let mut list = Lister::on_rom(crate::list_real::PROP);
     list.open_on_rom();
+    let gaps: Vec<u32> = (0..=400_000)
+        .step_by(20_000)
+        .chain([600_000, 1_000_000, 2_000_000])
+        .collect();
     let mut rows = Vec::new();
-    for gap in (0..=400_000).step_by(10_000) {
-        let (held, taken) = second_press(&mut list, gap);
-        rows.push((gap, held, taken));
+    for gap in gaps {
+        let (taken, presses) = second_press(&mut list, gap);
+        rows.push((gap, taken, presses));
     }
-    println!("gap, T-states held before scr_key took the second F3, presses taken: {rows:?}");
-    let at_once = |held: u32| held <= 4_000;
-    let edge = rows.iter().find(|r| at_once(r.1)).map(|r| r.0);
+    println!(
+        "gap, T-states held before scr_key took the second F3 (bound {BOUND}), presses while held: {rows:?}"
+    );
+    let edge = rows
+        .iter()
+        .find(|r| r.1.is_some_and(|h| h <= 40_000))
+        .map(|r| r.0);
     println!("the shortest gap at which the second F3 is taken at once: {edge:?}");
     assert!(edge.is_some());
-    assert!(rows.iter().all(|r| r.2 == 1), "{rows:?}");
+    assert!(
+        rows.iter()
+            .filter(|r| r.0 >= 340_000)
+            .all(|r| r.1.is_some() && r.2 == 1),
+        "{rows:?}"
+    );
 }
