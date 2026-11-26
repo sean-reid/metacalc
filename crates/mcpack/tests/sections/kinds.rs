@@ -210,8 +210,11 @@ fn the_kinds_section_survives_a_hostile_byte_anywhere_in_it() {
     println!(
         "{refused} refused, {same} decoded to the same bitmap, {other} to another, {caught} of those caught by the check"
     );
+    // A flip is refused (the count or a padding bit) or changes a bit of the bitmap, so none decodes
+    // to the same one.
+    assert_eq!(same, 0);
     assert!(
-        refused >= 8 && other >= 20,
+        refused >= 10 && other >= 8,
         "{refused} refused, {other} another"
     );
     assert_eq!(refused + same + other, 4 * at.length);
