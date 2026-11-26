@@ -96,21 +96,27 @@
 ; list_idle but for the tick path, which returns with interrupts on, as the shell calls it, because
 ; app_tick ends in ei. fm's sessions and the reader's reads turn interrupts off for their own length and
 ; give the caller's state back; the screen writes no port 20h and executes no DI.
-; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted,
-; measured on the app's own path with interrupts masked for each call. Stub OS: list_key 4 for a move and
-; for a key at an end under All, 20 for F3 (24 on the reference OS), 6 for the keys that push the notice, 2 for
-; CLEAR, a letter and F5 with no sections; under a kind, tabled in tests/app_pages/list_kind_depth.rs, DOWN and
-; RIGHT write 20 under Theorems, 16 under Axioms and 22 under Unchecked, UP and LEFT 16, 16 and 20, F3 24, 28
-; and 22 (from the kind it steps away from), a key at an end 16, 16 and 22, and the idle fit 16, 16 and 22;
-; list_enter 22; list_idle 8 for the fit and for a tick, which holds app_tick's return address and the
-; interrupt handler's pushes, and 2 settled; list_draw 26. Reference OS: the same but 6 for F5 where a
-; stage has sections, list_enter 36, a tick 14 and list_draw 34, which holds the OS's lookup of the table.
-; An interrupt that lands in a call adds the handler's bytes.
+; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
+; greatest over a call of each routine with interrupts masked, at both speeds (list_depth.rs, and
+; list_kind_depth.rs under a kind, whose arrows are traced over a whole walk). Stub OS under All: list_key 4
+; for a move and for a key at an end, 6 for the keys that push the notice, 2 for CLEAR, a letter and F5 with
+; no sections, F3 20 on the fixture of list_depth.rs and 24 on the proofs library of list_kind_depth.rs, from
+; the first assertion and from five rows down alike; list_enter 22; list_idle 8 for the fit and for a tick,
+; which holds app_tick's return address and the interrupt handler's pushes, and 2 settled; list_draw 26.
+; Stub OS under a kind, on the proofs library: DOWN and RIGHT write 20 under Theorems and Axioms and 24
+; under Unchecked, UP and LEFT 16, 16 and 20, F3 24, 28 and 22 (the kind it steps to), a key at an end 16,
+; 16 and 22, the idle fit 16, 16 and 22, list_enter 22, 22 and 24 and 24, 24 and 28 when it lands the frame
+; again, list_draw 26 blank and with a preview; the other keys as under All. Reference OS, prop with a
+; table: the same but 6 for F5, a tick 14, list_enter 36 under All, Theorems and Axioms (38, and 42 when it
+; lands again, under Unchecked), list_draw 34 (36 under Unchecked), F3 24, 42 and 36, DOWN and RIGHT 20, 20
+; and 38, UP and LEFT 16, 16 and 34, the idle fit 16, 16 and 36, a key at an end 16 under Axioms; under
+; Theorems and Unchecked the capped walk reaches no end. An interrupt that lands in a call adds the
+; handler's bytes.
 ; Cost, in T-states at 6 MHz on the reference OS, over ring: under a kind a move with its frame takes at most
-; 295,691 (the Axioms page from assertion 5, whose five matches cross the 268 assertions after 298) and F3
-; with its frame at most 259,343 from Theorems to Axioms and 314,817 into Unchecked on a table of ones with
-; only the first and the last assertion not 1, where the row move from 0 to the last takes 306,616; under All a
-; move takes what it took. Ring's list opens in 460,463 (libs_key, list_enter and a
+; 295,911 (the Axioms page from assertion 5, whose five matches cross the 268 assertions after 298; 303,959
+; when the first row shown is the cursor's) and F3 with its frame at most 259,343 from Theorems to Axioms and
+; 314,654 into Unchecked on a table of ones with only the first and the last assertion not 1, where the row
+; move from 0 to the last takes 306,416 and back 304,707; under All a move takes what it took. Ring's list opens in 460,463 (libs_key, list_enter and a
 ; cold frame) and a cursor move takes 223,026 by a row and 227,608 by a page with its frame; the idle
 ; call that lays out a preview takes a median of 77,137 and at most 1,125,849 over ring, and 68,830 and
 ; 331,429 over prop. Its fm calls run with interrupts off and no key is scanned until it returns, so a
