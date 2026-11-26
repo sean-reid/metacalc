@@ -196,10 +196,10 @@ fn a_lone_match_or_a_lone_miss_at_every_bit_is_found_from_every_start() {
         }
     }
     println!("{tally:?}");
-    assert!(tally.matched > 2500, "{tally:?}");
-    assert!(tally.none > 2500, "{tally:?}");
+    assert!(tally.matched > 20_000, "{tally:?}");
+    assert!(tally.none > 9_000, "{tally:?}");
     assert_eq!(tally.arg, 0);
-    assert!(tally.index > 5000, "{tally:?}");
+    assert!(tally.index > 15_000, "{tally:?}");
 }
 
 #[test]

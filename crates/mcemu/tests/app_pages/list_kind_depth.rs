@@ -269,27 +269,33 @@ pub fn fig(
 }
 
 fn stub_want(kind: Kind) -> KindFigures {
-    let _ = kind;
+    // (down, up, left, right, f3, enter landing, ends, idle fit)
+    let (down, up, left, right, f3, land, ends, fit) = match kind {
+        Kind::Theorems => (20, 16, 16, 20, 24, 24, 16, 16),
+        Kind::Axioms => (20, 16, 16, 20, 28, 24, 16, 16),
+        _ => (24, 20, 20, 24, 22, 28, 22, 22),
+    };
+    let plain = if kind == Kind::Unchecked { 24 } else { 22 };
     fig(
         [
-            ("clear", 0),
-            ("down", 0),
-            ("enter", 0),
-            ("f1", 0),
-            ("f2", 0),
-            ("f3", 0),
-            ("f4", 0),
-            ("f5", 0),
-            ("left", 0),
-            ("letter", 0),
-            ("right", 0),
-            ("up", 0),
+            ("clear", 2),
+            ("down", down),
+            ("enter", 6),
+            ("f1", 6),
+            ("f2", 6),
+            ("f3", f3),
+            ("f4", 6),
+            ("f5", 2),
+            ("left", left),
+            ("letter", 2),
+            ("right", right),
+            ("up", up),
         ],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        0,
-        [0, 0, 0],
+        [f3, f3],
+        [plain, land],
+        [26, 26],
+        ends,
+        [fit, 2, 8],
     )
 }
 
@@ -325,5 +331,5 @@ fn f3_under_all_writes_the_depth_of_the_cursors_place_not_the_os() {
         got.push(t.depth);
     }
     println!("F3 under All on the stub: {got:?}");
-    assert_eq!(got, [0, 0]);
+    assert_eq!(got, [24, 24]);
 }

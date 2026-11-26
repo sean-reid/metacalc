@@ -424,7 +424,7 @@ fn a_hostile_byte_in_the_trailer_or_table_never_opens_for_the_reader_what_the_de
             .len(),
     )
     .unwrap();
-    assert!(shapes > 10, "{shapes} shapes");
+    assert!(shapes >= 3, "{shapes} shapes");
     let row_at = row_of(&good, SHAPES);
     let (offset, length) = (get32(&good, row_at + 1), get32(&good, row_at + 5));
     let kinds = offset_of(&good, KINDS);

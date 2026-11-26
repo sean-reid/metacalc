@@ -9,10 +9,12 @@
 ;
 ; Frame: byte 1 the stage, bytes 2 and 3 the cursor's assertion, 4 and 5 the first assertion shown,
 ; little endian, byte 6 the kind (0 All, 1 Theorems, 2 Axioms, 3 Unchecked). Both numbers are assertions the
-; kind shows, and 0 and 0 when it shows none. Position only: list_enter derives the rest in APP_TEXT and nothing in the frame says
-; whether the preview is computed, so the enter that runs when a notice above the list pops, or a
-; refresh after an auto power down, leaves the cursor and the top where they were and makes the
-; preview pending again. The first push and an uncovering run the same enter.
+; kind shows, and 0 and 0 when it shows none. Position only: list_enter derives the rest in APP_TEXT and
+; nothing in the frame says whether the preview is computed, so the enter that runs when a notice above
+; the list pops, or a refresh after an auto power down, makes the preview pending again and leaves the
+; kind byte, the cursor and the top as they were, except that under a kind a cursor or a first row the
+; kind no longer shows (the marks may have changed) is put back as F3 lands them. The first push and an
+; uncovering run the same enter.
 ;
 ; Derived state, in APP_TEXT:
 ;   LV_HASK     1 when the library has the kinds section, which F3 needs: with 0 there is only All
@@ -32,7 +34,8 @@
 ; The rest of APP_TEXT is scratch that no call reads before it writes: list_enter writes LV_STAGE,
 ; list_draw writes LV_STAGE, LV_CUR, LV_TOP, LV_END, LV_ROW, LV_AT, LV_MARK and the strings it builds,
 ; and list_idle writes LV_CUR. list_enter, list_key and list_idle also write LV_KIND and LV_END, and the
-; LK_ scratch of screen_list_kind.inc at the start of LV_RIGHT, which list_draw builds again before it reads.
+; LK_ scratch of screen_list_kind.inc at the start of LV_RIGHT, which list_draw builds again before it reads;
+; LK_AGAIN holds the number lf_next and lf_prev were given while the store is asked.
 ; The laid out row is fm's: fm_statement, fm_fit and fm_clip leave the statement, folded and cut to one
 ; line, in fm's RAM (FM_RAM, FM_LOW), and a settled draw calls fm_draw on it without fitting again.
 ; Only a kernel entry closes fm or overwrites that RAM, and none runs while a list is the top screen: the
@@ -48,20 +51,29 @@
 ;              reads, or of the reader's assertion count; else 0. Then asks the store once more
 ;              (store_has) whether the table is the library's, the reader whether it has trees and
 ;              where the first section title starts, and sets the preview pending, LV_COUNT to
-;              LIST_WAIT and LV_NOFM to 0.
+;              LIST_WAIT and LV_NOFM to 0. Last, list_enter_kinds asks the reader whether it has the
+;              kinds section (LV_HASK) and, for a frame whose kind is not All, lf_next for the cursor
+;              and for the first row, one call each, with LV_KIND and LV_END set; when either is not
+;              the assertion it was given, list_kind_land rewrites bytes 2 to 5 of the frame, never
+;              byte 6.
 ; list_key     UP, DOWN, LEFT and RIGHT move the cursor one row or five over what the kind shows, never
 ;              past either end, move the first row shown as little as it must to keep the cursor on screen
 ;              (under a filter, four shown assertions above the cursor), answer SCR_REDRAW with
-;              the preview pending and LV_COUNT at LIST_WAIT, and answer SCR_STAY when nothing moved,
-;              touching nothing. F3 steps the kind on when LV_HASK is 1, and lands as the model's F3
+;              the preview pending and LV_COUNT at LIST_WAIT, and answer SCR_STAY when nothing moved.
+;              A stay under All touches nothing. A stay under a kind leaves the frame, the preview and
+;              the count as they were and writes only LV_KIND, LV_END and the scratch LK_FR, LK_CUR,
+;              LK_X, LK_N and LK_KEY, and LK_AGAIN when Unchecked asks the store. F3 steps the kind on when LV_HASK is 1, and lands as the model's F3
 ;              does: the cursor on the first shown assertion at or after the one it was on, else the last,
 ;              the first row shown four before it among the shown, and the preview pending with the wait
 ;              when the cursor's assertion changed (a list that shows nothing has none), else kept. ENTER,
 ;              F1, F2 and F4, F3 when LV_HASK is 0, and F5 when LV_SECT is 1, push the notice NOTICE_LIST of
 ;              the stage. CLEAR pops. Every other key stays.
 ; list_idle    in: HL = the frame. out: A and carry as scr_idle takes them. LV_COUNT above 0: one off the
-;              count, one app_tick, SCR_STAY with carry set. Count 0 and the preview pending: fm_statement
-;              of the cursor's conclusion (after fm_open when fm answers FM_ERR_NOT_OPEN), fm_fit to one
+;              count, one app_tick, SCR_STAY with carry set. Count 0 and the preview pending, under a
+;              kind: one lf_next, a lib_kind_next under Theorems and Axioms or a store_next_not_one under
+;              Unchecked with a table, with LV_KIND, LV_END and LK_FR written; when the cursor's assertion
+;              is not the one it answers, the preview settles as LVP_NONE with SCR_STAY and carry clear and
+;              fm is not called. Otherwise, and under All: fm_statement of the cursor's conclusion (after fm_open when fm answers FM_ERR_NOT_OPEN), fm_fit to one
 ;              line at LIST_WIDTH pixels, fm_clip to one line when it took more, then LVP_ROW and
 ;              SCR_REDRAW with carry clear. An empty stage settles as LVP_NONE with SCR_STAY and carry
 ;              clear, calling nothing of fm. So does LV_NOFM set, and an fm_open that answers anything
@@ -77,7 +89,9 @@
 ; list_draw    in: HL = the frame. Clears the canvas, stages list_block, draws the title, the rows, the
 ;              preview when LV_PREVIEW is LVP_ROW, by one fm_draw and no fit, and the keys. It reads the
 ;              label of each row with one lib_label and, when LV_TABLE is 1, its mark with one
-;              store_get, five of each at most for a frame.
+;              store_get, five of each at most for a frame. Under a kind it also asks lf_next once
+;              whether the first row is shown (when it is not the screen says none, as for an empty
+;              stage) and once after each row drawn, six calls at most, and writes LV_KIND and LV_END.
 ; Interrupts and speed: list_enter, list_key and list_draw return with both as at the call, and so does
 ; list_idle but for the tick path, which returns with interrupts on, as the shell calls it, because
 ; app_tick ends in ei. fm's sessions and the reader's reads turn interrupts off for their own length and

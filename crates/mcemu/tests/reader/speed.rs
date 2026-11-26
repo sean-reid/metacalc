@@ -99,8 +99,9 @@ fn measure() -> Times {
     }
 }
 
-/// Ceilings in T-states, about 10 percent above what each takes. The count does not depend on the
-/// clock, since the wait-state ports are the same at both speeds.
+/// Ceilings in T-states, about 10 percent above what each takes, except open, whose ceiling is 48
+/// above the 57,752 it takes on this library. The count does not depend on the clock, since the
+/// wait-state ports are the same at both speeds.
 const CEILINGS: Times = Times {
     open: 57_800,
     label: 7_300,

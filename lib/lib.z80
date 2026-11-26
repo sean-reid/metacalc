@@ -87,7 +87,9 @@
 ;                          the trees', its offset table is longer than the section, its length
 ;                          does not fit 16 bits, or only one of shapes and trees is there, or the
 ;                          kinds section's length is not 2 + the assertion count over 8 rounded up
-;                          or its first two bytes are not the assertion count. Unknown
+;                          or its first two bytes are not the assertion count. The bits past the last
+;                          assertion are not checked: the reader opens a library with one set and the
+;                          decoder refuses it. Unknown
 ;                          ids are skipped. A glyph map for another font, or for another number of
 ;                          symbols, does not fail the open.
 ;   lib_assertion_count   out: HL = assertions
@@ -116,7 +118,9 @@
 ;   lib_hypothesis    in:  HL = assertion number; B = hypothesis number; DE = buffer of 255 bytes
 ;                     out: B = length in symbols, C = FFh for an essential hypothesis, with its
 ;                          symbols in the buffer, else the variable of a float hypothesis,
-;                          with B = 0. Consecutive numbers of one assertion cost one step each.
+;                          with B = 0. Consecutive numbers of one assertion cost one step each,
+;                          unless lib_kind_next or lib_kind_prev ran between them: they drop the
+;                          record window, so the next call reads the record again.
 ;   lib_sections       out: B = bits 0 titles, 1 glyph map, 2 trees, 4 shapes, 5 kinds: which sections the library has
 ;   lib_title_count   out: HL = titles. 9 without a titles section.
 ;   lib_title         in:  HL = title number; DE = buffer of 255 bytes
