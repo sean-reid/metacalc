@@ -206,3 +206,46 @@ fn clear_on_the_theorem_screen_gives_the_filtered_list_back_as_it_was() {
     );
     assert_eq!(backs, [18, 18, 18, 18]);
 }
+
+#[test]
+fn a_notice_popped_over_a_theorem_opened_from_a_filtered_list_gives_back_the_theorem_and_the_list()
+{
+    let moves = [(RIGHT, Key::Right), (DOWN, Key::Down)];
+    let mut met = [0; 3];
+    let mut off_the_cursor = 0;
+    for (k, kind) in KINDS.into_iter().enumerate() {
+        for stage in 0..3 {
+            for (scan, key) in OPENERS {
+                let table = kind == Kind::Unchecked || stage == 1;
+                let mut walker = filtered(kind, stage, table, &moves);
+                let at = format!("{kind:?}, stage {stage}, key {scan:02X}");
+                let pos = walker.list.pos();
+                assert!(pos.len > 0, "{at}: the kind shows something");
+                let before = walker.list.run.frames()[1].clone();
+                assert_eq!(before[6], code(kind), "{at}: the kind byte");
+                off_the_cursor += usize::from(before[2..4] != before[4..6]);
+                assert!(walker.key(scan, key), "{at}");
+                assert_eq!(walker.list.run.top_kind(), KIND_THEOREM, "{at}");
+                walker.excursion(F2, Key::F2);
+                walker.back();
+                let after = walker.list.run.frames()[1].clone();
+                assert_eq!(
+                    after[..7],
+                    before[..7],
+                    "{at}: stage, cursor, first row, kind"
+                );
+                let now = walker.list.pos();
+                assert_eq!((now.cursor, now.top), (pos.cursor, pos.top), "{at}");
+                walker.list.same_kind_position(&at);
+                assert_eq!(walker.list.kind_byte(), code(kind), "{at}");
+                walker.list.settle();
+                met[k] += 1;
+            }
+        }
+    }
+    println!(
+        "lists given back after a notice over the theorem: {met:?}, {off_the_cursor} with the first row off the cursor"
+    );
+    assert_eq!(met, [6, 6, 6]);
+    assert_eq!(off_the_cursor, 18, "the first row is never the cursor");
+}

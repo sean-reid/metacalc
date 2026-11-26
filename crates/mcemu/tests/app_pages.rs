@@ -167,6 +167,8 @@ mod screens;
 mod sentinel;
 #[path = "app_pages/shell_cost.rs"]
 mod shell_cost;
+#[path = "app_pages/shell_rest.rs"]
+mod shell_rest;
 #[path = "app_pages/shellrig.rs"]
 mod shellrig;
 #[path = "app_pages/speed.rs"]
