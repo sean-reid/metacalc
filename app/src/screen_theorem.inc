@@ -66,7 +66,7 @@
 ; theorem_key    UP, DOWN, LEFT, RIGHT, ENTER and F1 as the model's press; F2, F3 and F4 push the notice
 ;                NOTICE_LIST; CLEAR pops. F5, the letters and KEY_NONE are the model's no-op press: the frame is
 ;                left as it is when the view is following, else the view follows the cursor. On the too
-;                large screen only F2, F4 and CLEAR act. Answers SCR_REDRAW exactly when the frame changes:
+;                large screen only F2, F4 and CLEAR act. Answers SCR_REDRAW exactly when the picture changes:
 ;                the statement, the scroll, a fold of a node that is not hidden, or the node drawn as the
 ;                cursor, which is the node itself or, for a node hidden inside a fold, its outermost
 ;                folded ancestor. Up from a node under a fold to the folded node stays, as both are drawn as
@@ -75,7 +75,8 @@
 ;                and KEY_NONE while byte 8 is 1 at once, calling nothing, a key that moved nothing while
 ;                byte 8 is 1, and the keys the too large screen ignores. tk_stayed writes bytes 4 to 8 of
 ;                the frame, the statement, node, scroll and following byte, for a key that moved the node
-;                but not the node drawn as the cursor. An arrow or Enter that moves nothing selects its
+;                but not the node drawn as the cursor, and for a key that moved nothing while byte 8 is 0
+;                and found the scroll where follow puts it. An arrow or Enter that moves nothing selects its
 ;                statement once and calls fm_step, fm_folded, fm_nodes or fm_fold as its path does, and
 ;                while byte 8 is 1 asks for no span. A status from fm pushes the error notice.
 ; theorem_push   in: HL = a list's frame. Fills scr_new with the theorem frame for the list's cursor, from
