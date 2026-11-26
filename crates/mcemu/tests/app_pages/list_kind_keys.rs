@@ -197,7 +197,9 @@ fn marks_change(
         list.settle();
     }
     let was = list.run.frames()[1].clone();
-    let (cursor, top) = (list.pos().cursor, list.pos().top);
+    let place = list.frame_bytes();
+    let number = |at: usize| usize::from(u16::from_le_bytes([place[at], place[at + 1]]));
+    let (cursor, top) = (number(2), number(4));
     let shown = |i: usize| !checked.contains(&i);
     let items: Vec<usize> = (0..n).filter(|&i| shown(i)).collect();
     assert_eq!(

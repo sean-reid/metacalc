@@ -43,6 +43,10 @@ pub struct Lister {
     pub log: Vec<Key>,
     /// The preview state and the wait the app had when the frame of the last key was blitted.
     pub seen: (u8, u8),
+    /// Set when the title bar is not compared: the app's counts are the ones list_enter derived and
+    /// the model's follow its marks. `stale_titles` counts the frames whose title bar differed.
+    pub title_stale: bool,
+    pub stale_titles: usize,
 }
 
 /// What the model's list says about itself.
@@ -70,6 +74,8 @@ impl Lister {
             status: table.map_or(Vec::new(), |t| t.1.to_vec()),
             log: Vec::new(),
             seen: (0, 0),
+            title_stale: false,
+            stale_titles: 0,
         };
         for _ in 0..stage {
             lister.key(DOWN, Key::Down);
@@ -99,7 +105,7 @@ impl Lister {
         if redraws {
             let frame = self.run.next_blit();
             self.seen = (self.var("LV_PREVIEW"), self.var("LV_COUNT"));
-            same_frame(&format!("after {scan:02X}"), &frame, &want);
+            self.same(&format!("after {scan:02X}"), &frame, &want);
             let mut spent = 0;
             while self.run.blits() == blits && spent < 20_000 {
                 self.run.run(500);
@@ -116,6 +122,19 @@ impl Lister {
         );
         assert_eq!(self.run.depth(), self.ui.depth(), "after {scan:02X}: depth");
         redraws
+    }
+
+    /// `same_frame`, with the title bar's rows left out when `title_stale` is set.
+    fn same(&mut self, what: &str, got: &[u8], want: &[u8]) {
+        const TITLE: usize = 8 * 12;
+        if !self.title_stale {
+            return same_frame(what, got, want);
+        }
+        self.stale_titles += usize::from(got[..TITLE] != want[..TITLE]);
+        let (mut got, mut want) = (got.to_vec(), want.to_vec());
+        got[..TITLE].fill(0);
+        want[..TITLE].fill(0);
+        same_frame(what, &got, &want);
     }
 
     /// Holds `scan` until scr_key takes it and lets go.
@@ -190,7 +209,8 @@ impl Lister {
                 PENDING,
                 "the model and the app agree"
             );
-            same_frame("the settled list", &self.run.frame(), &self.shown());
+            let (got, want) = (self.run.frame(), self.shown());
+            self.same("the settled list", &got, &want);
             return false;
         }
         let blits = self.run.blits();
@@ -212,7 +232,8 @@ impl Lister {
             if drew { ROW } else { NOTHING },
             "what the app settled on"
         );
-        same_frame("the settled list", &self.run.frame(), &self.shown());
+        let (got, want) = (self.run.frame(), self.shown());
+        self.same("the settled list", &got, &want);
         drew
     }
 

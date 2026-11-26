@@ -54,7 +54,8 @@ fn a_key_that_moves_nothing_writes_the_scratch_the_header_names_and_nothing_else
 fn powered_down(kind: Kind, settled: bool) {
     println!("power down under {kind:?}, settled {settled}");
     let mut list = open_kind(kind, true);
-    list.key(RIGHT, Key::Right);
+    let moved = list.key(RIGHT, Key::Right) || list.key(LEFT, Key::Left);
+    assert!(moved, "{kind:?}: a key that moves the cursor");
     if settled {
         list.settle();
         assert_eq!(list.var("LV_PREVIEW"), ROW);
