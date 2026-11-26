@@ -4,8 +4,9 @@
 ; has both at 0. Nothing here keeps a table of the matching assertions: lf_next and lf_prev ask the
 ; reader's bitmap of the kinds (lib_kind_next, lib_kind_prev) for Theorems and Axioms and the status
 ; table (store_next_not_one, store_prev_not_one) for Unchecked, and a move is a few of those calls.
-; Every routine here destroys AF BC DE HL and IX, and reads the stage's end from LV_END and the kind from
-; LV_KIND, which its caller sets from the frame.
+; Every routine here destroys AF BC DE HL and IX. lf_next, lf_prev, lf_first_ge, lf_back4, lf_backn,
+; list_kind_land and lmk_below read the stage's end from LV_END and the kind from LV_KIND, which their
+; caller sets from the frame; list_kind_step, list_move_kind and list_enter_kinds set both themselves.
 ;
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
 ; greatest over a call with interrupts masked (list_kind_depth.rs, list_kind_rom.rs). The arrows are the
@@ -22,9 +23,10 @@
 ;   Theorems      16   20  16  16  24     -      36     36     36    34    16
 ;   Axioms        16   20  16  16  42    16      36     36     36    34    16
 ;   Unchecked     36   38  34  34  36     -      38     42     40    36    36
-; A dash is a place the 40 keys do not reach. Under each kind the idle call settled takes 2, CLEAR and a
-; letter 2, ENTER, F1, F2 and F4 6, F5 2 on the stub and 6 on the reference OS, a tick 8 on the stub and 14
-; on the reference OS. An interrupt that lands in a call can only add to these: the figures with the app's
+; A dash is a place the 40 keys do not reach. ENTER and F1 write what DOWN does, the greatest of the walk,
+; since they ask lf_next whether the kind shows the cursor before they open its theorem. Under each kind
+; the idle call settled takes 2, CLEAR and a letter 2, F2 and F4 6, F5 2 on the stub and 6 on the reference
+; OS, a tick 8 on the stub and 14 on the reference OS. An interrupt that lands in a call can only add to these: the figures with the app's
 ; interrupts on are never below the masked ones.
 
 LISTK_ALL	.equ 0
@@ -304,7 +306,8 @@ lmk_top_x:
 ; In: DE = the first row shown, LK_X = a shown assertion below it, LK_FR, LV_KIND and LV_END set. The first
 ; row stays when LK_X is one of the four shown after it. When LK_X is the fifth, the first row becomes the
 ; first of those four, which the walk kept in LK_T1, since the shown assertion before LK_X is the fourth.
-; Otherwise it is the one four before LK_X among the shown, found from that one. Commits the frame.
+; Otherwise it is the one four before LK_X among the shown, found from that one, or LK_X itself when the
+; reader refuses the read of the shown assertion before it. Commits the frame.
 lmk_below:
 	ld (LK_T), de
 	ld a, LIST_ROWS - 1
@@ -368,9 +371,9 @@ lmk_commit:
 ; In: LK_FR the frame. Finds out whether the library has the kinds section, which F3 needs, and for a frame
 ; whose kind is not All puts the cursor and the first row shown back on assertions the kind shows, as F3
 ; would: the marks may have changed since the frame was made. A cursor that is not shown lands as F3 lands it,
-; and so does a first row that is not shown. When both are shown the walk of list_move_kind goes from the
-; first row: a cursor that is one of the five shown from it stays, any other gets the first row four shown
-; assertions above it.
+; and so does a first row that is not shown. When both are shown, a cursor above the first row gets the first
+; row on the cursor; otherwise the walk of list_move_kind goes from the first row: a cursor that is one of the
+; five shown from it stays, any other gets the first row four shown assertions above it.
 list_enter_kinds:
 	call far_lib_sections
 	or a

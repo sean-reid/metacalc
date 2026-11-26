@@ -14,8 +14,9 @@
 ; the list pops, or a refresh after an auto power down, makes the preview pending again and leaves the
 ; kind byte, the cursor and the top as they were, except that under a kind a cursor or a first row the
 ; kind does not show (the marks may have changed since the frame was made) is put back as F3 lands them,
-; and a cursor the new marks put more than four shown assertions below the first row gets the first row
-; four shown assertions above it. The first push and an uncovering run the same enter.
+; a cursor above the first row gets the first row on the cursor, and a cursor the new marks put more than
+; four shown assertions below the first row gets the first row four shown assertions above it. The first
+; push and an uncovering run the same enter.
 ;
 ; Derived state, in APP_TEXT:
 ;   LV_HASK     1 when the library has the kinds section, which F3 needs: with 0 there is only All
@@ -52,18 +53,21 @@
 ; Registers: each routine below may destroy AF BC DE HL and IX, which the far calls and the reader leave
 ; undefined, except list_stage_end, which says what it keeps.
 ; list_enter   in: HL = the frame. out: A = the status of libs_counts, which derives the counts the title
-;              reads, or of the reader's assertion count; else 0. Then asks the store once more
-;              (store_has) whether the table is the library's, the reader whether it has trees and
-;              where the first section title starts, and sets the preview pending, LV_COUNT to
-;              LIST_WAIT and LV_NOFM to 0. Last, list_enter_kinds asks the reader whether it has the
-;              kinds section (LV_HASK) and, for a frame whose kind is not All, with LV_KIND and LV_END
-;              set, puts the frame's places back on assertions the kind shows: lf_next for the cursor
-;              and, only when the cursor is shown, lf_next for the first row; when either is not the
-;              assertion it was given, list_kind_land rewrites bytes 2 to 5 of the frame, never byte 6.
-;              When both are shown and differ, the walk of list_move_kind goes from the first row: a
-;              cursor among the five shown from it leaves the frame, any other gets the first row four
-;              shown assertions above it, which happens when a table lost or reset since the frame
-;              was made shows assertions between them.
+;              reads, or of the reader's assertion count; else 0. After the first status other than 0 it
+;              returns with every variable as it was, and after the second with LV_COUNT, LV_PREVIEW
+;              and LV_NOFM as they were and LV_TABLE, LV_FLAT, LV_SECT, LV_HASK and LV_KIND at 0.
+;              Otherwise it asks the store (store_has) whether the table is the library's, the reader
+;              whether it has trees and where the first section title starts, sets the preview pending
+;              and LV_COUNT to LIST_WAIT, and calls list_enter_kinds, which asks the reader whether it
+;              has the kinds section (LV_HASK) and, for a frame whose kind is not All, with LV_KIND and
+;              LV_END set, puts the frame's places back on assertions the kind shows: lf_next for the
+;              cursor and, only when the cursor is shown, lf_next for the first row; when either is not
+;              the assertion it was given, list_kind_land rewrites bytes 2 to 5 of the frame, never
+;              byte 6. When both are shown and differ, a cursor above the first row gets the first row
+;              on the cursor, and otherwise the walk of list_move_kind goes from the first row: a cursor
+;              among the five shown from it leaves the frame, any other gets the first row four shown
+;              assertions above it, which happens when a table lost or reset since the frame was made
+;              shows assertions between them. Last, LV_NOFM is set to 0.
 ; list_key     UP, DOWN, LEFT and RIGHT move the cursor one row or five over what the kind shows, never
 ;              past either end, move the first row shown as little as it must to keep the cursor on screen
 ;              (under a filter, four shown assertions above the cursor), answer SCR_REDRAW with
@@ -112,8 +116,9 @@
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
 ; greatest over a call of each routine with interrupts masked, at both speeds (list_depth.rs; the figures
 ; under a kind are in screen_list_kind.inc). Stub OS under All: list_key 4 for a move and for a key at an
-; end, 6 for the keys that push the notice, 8 for ENTER and F1 on a stage with an
-; assertion, which push the theorem screen, 2 for CLEAR, a letter and F5 with no sections, F3 20 on the
+; end, 6 for F2 and F4, which push the notice, 8 for ENTER and F1 on a stage with an assertion, which
+; push the theorem screen (under a kind they ask lf_next first and write 16, 16 and 22 under Theorems,
+; Axioms and Unchecked on the stub and 16, 16 and 36 on the reference OS), 2 for CLEAR, a letter and F5 with no sections, F3 20 on the
 ; fixture of list_depth.rs and 24 on the proofs library of list_kind_depth.rs, from the first assertion
 ; and from ten rows down alike; list_enter 22; list_idle 8 for the fit and for a tick, which holds
 ; app_tick's return address and the interrupt handler's pushes, and 2 settled; list_draw 26. Reference
@@ -122,10 +127,10 @@
 ; the masked ones.
 ; Cost, in T-states at 6 MHz on the reference OS, over ring (list_kind_real.rs, list_real_cost.rs). Under a
 ; kind a move is list_key then scr_draw and ui_blit: under Axioms a row from 298 to 567 takes 267,170 and a
-; page from assertion 5 takes 296,052, or 289,499 with the first row on the cursor, the five matches
+; page from assertion 5 takes 296,075, or 289,499 with the first row on the cursor, the five matches
 ; crossing the 268 assertions after 298; under Theorems a row across the run at 2,988 takes 259,683 and a
 ; page 242,678. Under Unchecked on a table of ones with only the first and the last assertion not 1 the row
-; move from 0 to the last takes 306,465 and back 304,707. F3 with its frame takes 259,343 from Theorems to
+; move from 0 to the last takes 306,465 and back 304,707, both over the 300,000 of a move. F3 with its frame takes 259,343 from Theorems to
 ; Axioms with the cursor just after an axiom and 314,654 into Unchecked from assertion 1 on that table.
 ; Ring's list opens in 461,598 (libs_key, list_enter and a cold frame) and, under All, a cursor move takes
 ; 223,339 by a row and 227,921 by a page with its frame; the idle call that lays out a preview takes a
