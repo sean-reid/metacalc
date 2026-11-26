@@ -2,7 +2,8 @@ use crate::secrig::*;
 use crate::sections::*;
 use crate::support::*;
 use mcpack::library::{
-    ENTRY_LEN, GLYPHS, HEADER_LEN, SHAPES, TITLES, TRAILER_LEN, TREES, crc32, decode, pack_kernel,
+    ENTRY_LEN, GLYPHS, HEADER_LEN, KINDS, SHAPES, TITLES, TRAILER_LEN, TREES, crc32, decode,
+    pack_kernel,
 };
 
 pub fn reseal(bytes: &mut [u8]) {
@@ -386,7 +387,7 @@ fn a_damaged_last_record_fails_the_open_only_when_there_are_sections_to_place() 
 }
 
 /// Whether any title, glyph entry or tree of the open library answers with a refusal.
-fn refuses_somewhere(rig: &mut Rig) -> bool {
+fn refuses_somewhere(rig: &mut Rig, shapes: u16) -> bool {
     let (_, titles) = rig.title_count();
     let (_, assertions, constants, variables) = rig.counts();
     let symbols = u16::from(constants) + u16::from(variables);
@@ -403,13 +404,36 @@ fn refuses_somewhere(rig: &mut Rig) -> bool {
             let s = rig.tree(n, 0xFF).status;
             s != ST_OK && s != ST_NONE
         })
+        || (0..shapes).any(|i| {
+            let s = rig.shape(i).0;
+            s != ST_OK && s != ST_NONE
+        })
 }
 
 #[test]
 fn a_hostile_byte_in_the_trailer_or_table_never_opens_for_the_reader_what_the_decoder_refuses() {
     let good = base();
     let first = rows(&good).1;
-    let (mut lazy, mut agreed) = (0, 0);
+    let shapes = u16::try_from(
+        decoded(&good)
+            .sections
+            .unwrap()
+            .shapes
+            .unwrap()
+            .axioms
+            .len(),
+    )
+    .unwrap();
+    assert!(shapes > 10, "{shapes} shapes");
+    let row_at = row_of(&good, SHAPES);
+    let (offset, length) = (get32(&good, row_at + 1), get32(&good, row_at + 5));
+    let kinds = offset_of(&good, KINDS);
+    let padding = kinds - (offset + length);
+    assert!(
+        padding > 0,
+        "the shapes section ends {padding} bytes short of the kinds section"
+    );
+    let (mut lazy, mut agreed, mut exempt) = (0, 0, 0);
     for at in first..good.len() {
         for flip in [0x01u8, 0x80, 0xFF] {
             let hostile = with(&good, |b| b[at] ^= flip);
@@ -420,18 +444,27 @@ fn a_hostile_byte_in_the_trailer_or_table_never_opens_for_the_reader_what_the_de
                 (false, true) => panic!("byte {at} ^ {flip:#x}: the reader refuses with {status}"),
                 (true, false) => {
                     let row = (at - first) / ENTRY_LEN;
-                    let length = (at - first) % ENTRY_LEN >= 5;
-                    let padding = row == 3 && length;
+                    let column = (at - first) % ENTRY_LEN;
+                    let now = get32(&hostile, row_at + 5);
+                    let grown = first + row * ENTRY_LEN == row_at
+                        && column >= 5
+                        && now > length
+                        && offset + now <= kinds;
+                    if grown {
+                        exempt += 1;
+                        continue;
+                    }
                     assert!(
-                        padding || refuses_somewhere(&mut rig),
-                        "byte {at} (row {}, column {}) ^ {flip:#x}: the decoder refuses and no lookup does",
-                        (at - first) / ENTRY_LEN,
-                        (at - first) % ENTRY_LEN
+                        refuses_somewhere(&mut rig, shapes),
+                        "byte {at} (row {row}, column {column}) ^ {flip:#x}: the decoder refuses and no lookup does"
                     );
                     lazy += 1;
                 }
             }
         }
     }
-    println!("{agreed} agree at open, {lazy} the reader refuses at the first lookup it fails");
+    println!(
+        "{agreed} agree at open, {lazy} the reader refuses at the first lookup it fails, {exempt} a shapes length grown into the {padding} bytes of padding"
+    );
+    assert!(exempt > 0 && lazy > 0 && agreed > 0);
 }

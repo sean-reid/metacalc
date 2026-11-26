@@ -42,7 +42,7 @@ fn a_key_that_moves_nothing_writes_the_scratch_the_header_names_and_nothing_else
     for (kind, table, written) in &seen {
         let want: BTreeSet<&str> = match (kind, table) {
             (Kind::All, _) => BTreeSet::new(),
-            (Kind::Unchecked, true) => core.iter().copied().chain(["LK_FROM"]).collect(),
+            (Kind::Unchecked, true) => core.iter().copied().chain(["LK_AGAIN"]).collect(),
             _ => core.iter().copied().collect(),
         };
         assert_eq!(written, &want, "{kind:?}, table {table}");

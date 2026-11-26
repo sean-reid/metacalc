@@ -14,7 +14,7 @@ const MOVE_BUDGET: u32 = 300_000;
 const F3_BUDGET: u32 = 1_800_000;
 
 /// The theorem bit of each assertion of the shipped ring library.
-fn ring_bits(list: &Lister) -> Vec<bool> {
+pub fn ring_bits(list: &Lister) -> Vec<bool> {
     crate::support::decoded(list.built.library.as_ref().unwrap())
         .assertions
         .iter()
@@ -33,7 +33,7 @@ fn timed_frame(app: &mut App) -> u32 {
 }
 
 /// A list of ring opened on the ROM, with `status` as its marks when given.
-fn ring(status: Option<&[Status]>) -> Lister {
+pub fn ring(status: Option<&[Status]>) -> Lister {
     let mut list = Lister::on_rom(RING);
     if let Some(status) = status {
         list.partial_check(1);
@@ -53,15 +53,93 @@ fn ring(status: Option<&[Status]>) -> Lister {
     list
 }
 
+/// The assertions of `kind` (a frame's kind byte) that the model shows on ring, from the library's
+/// theorem bits and the marks the model was given.
+fn shown_on_ring(list: &Lister, kind: u8) -> Vec<usize> {
+    let bits = ring_bits(list);
+    let values = (!list.status.is_empty()).then(|| crate::table::values(list.built, &list.status));
+    let end = list.built.stages[RING].end;
+    (0..end)
+        .filter(|&i| match kind {
+            0 => true,
+            1 => bits[i],
+            2 => !bits[i],
+            _ => values.as_ref().is_none_or(|v| v[i] != 1),
+        })
+        .collect()
+}
+
+const ROW_KEYS: [(u8, Key); 5] = [
+    (1, Key::Up),
+    (2, Key::Down),
+    (3, Key::Left),
+    (4, Key::Right),
+    (9, Key::F3),
+];
+
+/// The model driven to kind `kind` with its cursor on `cursor` and its first row on `top`, then pressed
+/// with `key`: the cursor and the top it lands on, as assertion numbers, and the kind byte. The place
+/// is reached by F3 from All, rows down to four below `top` and then rows up.
+fn model_after(list: &Lister, kind: u8, cursor: usize, top: usize, key: u8) -> (usize, usize, u8) {
+    let items = shown_on_ring(list, kind);
+    let at = |n: usize| items.iter().position(|&i| i == n);
+    let (cursor_at, top_at) = (
+        at(cursor).unwrap_or_else(|| panic!("cursor {cursor} is not shown by kind {kind}")),
+        at(top).unwrap_or_else(|| panic!("top {top} is not shown by kind {kind}")),
+    );
+    assert!(
+        (top_at..=top_at + 4).contains(&cursor_at),
+        "the cursor {cursor_at} is not in the view that starts at {top_at}"
+    );
+    let mut ui = crate::shellrig::model::ui(list.built, &list.status);
+    for _ in 0..RING {
+        ui.press(Key::Down);
+    }
+    ui.press(Key::Enter);
+    for _ in 0..kind {
+        ui.press(Key::F3);
+    }
+    for _ in 0..top_at + 4 {
+        ui.press(Key::Down);
+    }
+    for _ in 0..top_at + 4 - cursor_at {
+        ui.press(Key::Up);
+    }
+    let place = |ui: &mcui::Ui, items: &[usize]| match ui.state() {
+        mcui::State::List {
+            cursor, top, len, ..
+        } if len == items.len() => (items[cursor], items[top]),
+        other => panic!("{other:?}"),
+    };
+    let start = place(&ui, &items);
+    assert_eq!(
+        start,
+        (cursor, top),
+        "the model's cursor and top for kind {kind} are the case's"
+    );
+    let key = ROW_KEYS.iter().find(|k| k.0 == key).expect("a key").1;
+    ui.press(key);
+    let now = match ui.state() {
+        mcui::State::List { kind, .. } => code(kind),
+        other => panic!("{other:?}"),
+    };
+    let (c, t) = place(&ui, &shown_on_ring(list, now));
+    (c, t, now)
+}
+
 /// What `key` costs from a frame of kind `kind` at `cursor` and `top` on ring, and the frame it leaves,
-/// as the shell runs them: list_key, then scr_draw and ui_blit. Returns (key, frame, answer).
+/// as the shell runs them: list_key, then scr_draw and ui_blit. The cursor and the top are shown by the
+/// kind and the model's own for that place; the answer is SCR_REDRAW when the model's key moved
+/// anything, and the frame the key leaves holds the model's kind, cursor and top. Returns (key, frame,
+/// answer).
 fn cost(list: &mut Lister, kind: u8, cursor: usize, top: usize, key: u8) -> (u32, u32, u8) {
+    let (c, t, k) = model_after(list, kind, cursor, top, key);
     let app = &mut list.run.shell.app;
     let frame = app.label("SCR_STACK") + 16;
-    let (c, t) = ((cursor as u16).to_le_bytes(), (top as u16).to_le_bytes());
+    let (cb, tb) = ((cursor as u16).to_le_bytes(), (top as u16).to_le_bytes());
     app.m.load_ram(
         frame,
-        &[KIND_LIST, RING as u8, c[0], c[1], t[0], t[1], kind],
+        &[KIND_LIST, RING as u8, cb[0], cb[1], tb[0], tb[1], kind],
     );
     let keyed = app.timed(
         BASE,
@@ -72,6 +150,16 @@ fn cost(list: &mut Lister, kind: u8, cursor: usize, top: usize, key: u8) -> (u32
             ..In::default()
         },
     );
+    let left = list.run.peek(frame, 7);
+    let got = |at: usize| usize::from(u16::from_le_bytes([left[at], left[at + 1]]));
+    assert_eq!(
+        (got(2), got(4), left[6]),
+        (c, t, k),
+        "the frame the key leaves"
+    );
+    let moved = (c, t, k) != (cursor, top, kind);
+    assert_eq!(keyed.status(), u8::from(moved), "the answer to key {key}");
+    let app = &mut list.run.shell.app;
     let drawn = timed_frame(app);
     (keyed.tstates, drawn, keyed.status())
 }

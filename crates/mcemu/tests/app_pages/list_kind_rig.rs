@@ -193,7 +193,7 @@ impl Lister {
             .chain(["LK_T", "LK_WAS", "LK_OLD", "LK_EMPTY"].iter())
             .map(|&n| (app.label(n), n))
             .collect();
-        names.push((app.label("LK_FROM") + 2, "LV_RIGHT"));
+        names.push((app.label("LK_AGAIN") + 2, "LV_RIGHT"));
         names.sort();
         names
     }
@@ -220,7 +220,7 @@ const VARIABLES: [&str; 15] = [
 
 /// What a key that moves nothing may write under a kind, as screen_list.inc's header says.
 pub const STAY_WRITES: [&str; 8] = [
-    "LV_KIND", "LV_END", "LK_FR", "LK_CUR", "LK_X", "LK_N", "LK_KEY", "LK_FROM",
+    "LV_KIND", "LV_END", "LK_FR", "LK_CUR", "LK_X", "LK_N", "LK_KEY", "LK_AGAIN",
 ];
 
 fn name_of(names: &[(u16, &'static str)], addr: u16) -> &'static str {

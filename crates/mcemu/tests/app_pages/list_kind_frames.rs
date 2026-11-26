@@ -15,6 +15,8 @@ struct Seen {
     kept: usize,
     blanked: usize,
     empty: usize,
+    with_table: usize,
+    starts: [usize; 3],
 }
 
 /// F3 four times round from `place`: 0 the first row, 1 the middle, 2 the last.
@@ -30,13 +32,24 @@ fn round(
     let len = list.pos().len;
     let rows = match place {
         0 => 0,
-        1 => len / 10,
+        1 => (len / 10).max(1),
         _ => len / 5 + 2,
     };
     for _ in 0..rows {
         list.key(RIGHT, Key::Right);
         list.settle();
     }
+    let cursor = list.pos().cursor;
+    match place {
+        0 => assert_eq!(cursor, 0, "the round starts from the first row"),
+        1 => assert!(
+            len < 12 || (cursor > 0 && cursor + 1 < len),
+            "the round starts from a middle row: {cursor} of {len}"
+        ),
+        _ => assert_eq!(cursor + 1, len, "the round starts from the last row"),
+    }
+    seen.starts[place] += 1;
+    seen.with_table += usize::from(table.is_some());
     let at = format!(
         "{} stages, stage {stage}, place {place}",
         built.stages.len()
@@ -62,11 +75,12 @@ fn round(
 fn f3_four_times_round_from_the_first_the_middle_and_the_last_row_of_every_stage() {
     let mut seen = Seen::default();
     let proofs = proofs_three();
-    let (data, status) = every_mark(proofs);
     for built in [with_library(), three_stages(), proofs] {
+        let mut seed = 0x2468_ACE1;
+        let status = crate::table::random_status(count(built), &mut seed, 50, 4);
+        let data = table_of(built, &status);
         for with_table in [false, true] {
-            let table =
-                (with_table && std::ptr::eq(built, proofs)).then_some((&data[..], &status[..]));
+            let table = with_table.then_some((&data[..], &status[..]));
             for stage in 0..built.stages.len().max(1) {
                 for place in 0..3 {
                     round(built, table, stage, place, &mut seen);
@@ -79,6 +93,9 @@ fn f3_four_times_round_from_the_first_the_middle_and_the_last_row_of_every_stage
     assert!(seen.kept > 10, "{seen:?}");
     assert!(seen.blanked > 50, "{seen:?}");
     assert!(seen.empty > 5, "{seen:?}");
+    assert_eq!(seen.starts.iter().sum::<usize>() * 4, seen.rounds);
+    assert_eq!(seen.with_table * 2, seen.starts.iter().sum::<usize>());
+    assert!(seen.starts.iter().all(|&n| n > 10), "{seen:?}");
 }
 
 #[test]

@@ -17,12 +17,14 @@ pub struct Kit {
     pub rig: fn(Kind) -> Rig,
     /// The most keys traced in one direction of the walk.
     pub cap: usize,
+    /// The values of the speed port the figures are taken at.
+    pub speeds: &'static [u8],
 }
 
 /// The depths of one kind: the arrows' greatest over the walk, the keys of a settled list at one place,
 /// F3 from the first assertion and from a cursor with matches above it, list_enter plain and landing
 /// the frame again, list_draw blank and with a preview, a key that moves nothing, the idle calls.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct KindFigures {
     pub keys: BTreeMap<&'static str, u16>,
     pub f3: [u16; 2],
@@ -187,7 +189,7 @@ pub fn figures_of(kit: &Kit, kind: Kind, mask: bool, speed: u8) -> KindFigures {
 
 /// The figures masked, at both speeds, are `want`, and an interrupt that lands in a call only adds.
 pub fn check(kit: &Kit, kind: Kind, want: &KindFigures) {
-    for speed in [0, 1] {
+    for &speed in kit.speeds {
         let masked = figures_of(kit, kind, true, speed);
         assert_eq!(
             &masked, want,
@@ -245,6 +247,7 @@ pub const STUB: Kit = Kit {
     open: open_with,
     rig: stub_rig,
     cap: usize::MAX,
+    speeds: &[0, 1],
 };
 
 pub fn fig(

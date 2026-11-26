@@ -27,11 +27,11 @@ lf_next:
 	or a
 	ret z
 	ld de, (LV_END)
-	ld (LK_FROM), hl
+	ld (LK_AGAIN), hl
 	call store_next_not_one
 	or a
 	ret z
-	ld hl, (LK_FROM)
+	ld hl, (LK_AGAIN)
 	ret
 lfn_reader:
 	ld b, 1
@@ -58,11 +58,11 @@ lf_prev:
 	ld a, (LV_TABLE)
 	or a
 	jr z, lfp_all
-	ld (LK_FROM), hl
+	ld (LK_AGAIN), hl
 	call store_prev_not_one
 	or a
 	ret z
-	ld hl, (LK_FROM)
+	ld hl, (LK_AGAIN)
 	jr lfp_all
 lfp_reader:
 	ld b, 1

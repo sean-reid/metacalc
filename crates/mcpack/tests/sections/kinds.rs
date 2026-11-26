@@ -1,5 +1,5 @@
 use super::*;
-use mcpack::library::{CheckError, Entry, KINDS};
+use mcpack::library::{CHUNK, CheckError, Entry, KINDS};
 
 fn kinds_of(bytes: &[u8]) -> Vec<bool> {
     decode(bytes)
@@ -181,23 +181,69 @@ fn a_flipped_kind_fails_the_check_and_names_the_assertion() {
 fn the_kinds_section_survives_a_hostile_byte_anywhere_in_it() {
     let db = many(20);
     let bytes = pack(&db, &closure(&db)).unwrap();
+    let was = kinds_of(&bytes);
     let at = entry(&bytes);
+    let (mut refused, mut same, mut other, mut caught) = (0, 0, 0, 0);
     for byte in at.offset..at.offset + at.length {
         for flip in [0x01u8, 0x10, 0x80, 0xFF] {
             let mut hostile = bytes.clone();
             hostile[byte] ^= flip;
             reseal(&mut hostile);
-            let _ = decode(&hostile);
-            let _ = library::check(&hostile);
+            let checked = library::check(&hostile);
+            match decode(&hostile) {
+                Err(_) => refused += 1,
+                Ok(_) if kinds_of(&hostile) == was => {
+                    assert!(checked.is_ok(), "byte {byte} ^ {flip:#x}: the same bitmap");
+                    same += 1;
+                }
+                Ok(_) => {
+                    assert!(
+                        checked.is_err(),
+                        "byte {byte} ^ {flip:#x}: another bitmap passes the check"
+                    );
+                    caught += 1;
+                    other += 1;
+                }
+            }
         }
     }
+    println!(
+        "{refused} refused, {same} decoded to the same bitmap, {other} to another, {caught} of those caught by the check"
+    );
+    assert!(
+        refused >= 8 && other >= 20,
+        "{refused} refused, {other} another"
+    );
+    assert_eq!(refused + same + other, 4 * at.length);
 }
 
 #[test]
 fn the_section_may_cross_a_chunk() {
-    let db = many(3000);
-    let bytes = pack(&db, &closure(&db)).unwrap();
+    let (n, bytes) = (2_000..8_000)
+        .step_by(37)
+        .find_map(|n| {
+            let db = many(n);
+            let bytes = pack(&db, &closure(&db)).unwrap();
+            let at = entry(&bytes);
+            let crosses = at.offset / CHUNK != (at.offset + at.length - 1) / CHUNK;
+            crosses.then_some((n, bytes))
+        })
+        .expect("some library size puts a chunk's end inside the section");
     let at = entry(&bytes);
-    assert_eq!(at.length, 2 + 375);
-    assert_eq!(kinds_of(&bytes).iter().filter(|&&t| t).count(), 1000);
+    println!(
+        "{n} assertions: the section is {} bytes at {}, across {}",
+        at.length,
+        at.offset,
+        (at.offset / CHUNK + 1) * CHUNK
+    );
+    assert!(
+        at.offset < (at.offset / CHUNK + 1) * CHUNK
+            && (at.offset / CHUNK + 1) * CHUNK < at.offset + at.length
+    );
+    assert_eq!(at.length, 2 + n.div_ceil(8));
+    assert_eq!(
+        kinds_of(&bytes).iter().filter(|&&t| t).count(),
+        (0..n).filter(|k| k % 3 == 2).count()
+    );
+    assert!(library::check(&bytes).is_ok());
 }
