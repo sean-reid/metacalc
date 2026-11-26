@@ -105,12 +105,16 @@ mod list_fail;
 mod list_frames;
 #[path = "app_pages/list_keys.rs"]
 mod list_keys;
+#[path = "app_pages/list_kind_depth.rs"]
+mod list_kind_depth;
 #[path = "app_pages/list_kind_far.rs"]
 mod list_kind_far;
 #[path = "app_pages/list_kind_frames.rs"]
 mod list_kind_frames;
 #[path = "app_pages/list_kind_keys.rs"]
 mod list_kind_keys;
+#[path = "app_pages/list_kind_real.rs"]
+mod list_kind_real;
 #[path = "app_pages/list_kind_rig.rs"]
 mod list_kind_rig;
 #[path = "app_pages/list_power.rs"]

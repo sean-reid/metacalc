@@ -181,9 +181,9 @@
 ;                          from <= n < end, or end when there is none, and from = end gives end.
 ;                          Status 2 for a kind above 1, 9 without a kinds section, 5 for an end
 ;                          above the assertion count or a from above the end; HL is destroyed
-;                          when the status is not 0. Reads the bitmap a run of up to 32 bytes at
-;                          a time into lr_win, drops the record window with it, and skips a byte
-;                          with no match whole. The bits past end are never reported.
+;                          when the status is not 0. Reads the bitmap into lr_win, 8 bytes first
+;                          and then runs of up to 32, drops the record window with it, and skips
+;                          a byte with no match whole. The bits past end are never reported.
 ;   lib_kind_prev      in:  B = kind; HL = from
 ;                     out: A = status; HL = the number of the last assertion n of that kind with
 ;                          n < from, or FFFFh when there is none, and from = 0 gives FFFFh.

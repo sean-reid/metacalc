@@ -83,6 +83,7 @@ impl Lister {
             self.key(F3, Key::F3);
             self.same_kind_position("F3");
             self.settle();
+            self.run.run(600_000);
         }
         assert_eq!(self.kind(), kind);
     }
@@ -92,6 +93,11 @@ impl Lister {
     /// the model's, a key at an end draws nothing and leaves the frame's bytes and the preview as
     /// they were. Returns how many assertions the kind shows.
     pub fn walk_kind(&mut self, at: &str) -> usize {
+        self.walk_with(at, false)
+    }
+
+    /// `walk_kind` with the wait of each preview skipped, for a library of thousands.
+    pub fn walk_with(&mut self, at: &str, skip_waits: bool) -> usize {
         let len = self.pos().len;
         let pages = len / 5 + 2;
         let mut stays = 0;
@@ -115,6 +121,9 @@ impl Lister {
             if drew {
                 moves += 1;
                 assert_eq!(self.seen, (PENDING, 11), "{step}: blank, the wait starts");
+                if skip_waits {
+                    self.skip_the_wait();
+                }
                 self.settle();
             } else {
                 stays += 1;
@@ -175,4 +184,18 @@ pub fn table_of(built: &Built, status: &[Status]) -> Vec<u8> {
 /// How many assertions the library of `built` has.
 pub fn count(built: &Built) -> usize {
     table::header_of(built.library.as_ref().unwrap()).1 as usize
+}
+
+/// A table of the proofs library with each of the four values, and the marks it stands for.
+pub fn every_mark(built: &Built) -> (Vec<u8>, Vec<Status>) {
+    let n = count(built);
+    let mut seed = 0x1357_9BDF;
+    for _ in 0..200 {
+        let status = table::random_status(n, &mut seed, 70, 6);
+        let values = table::values(built, &status);
+        if (0..4).all(|v| values.contains(&v)) {
+            return (table::of(built.library.as_ref().unwrap(), &values), status);
+        }
+    }
+    panic!("no table with all four marks in 200 tries");
 }

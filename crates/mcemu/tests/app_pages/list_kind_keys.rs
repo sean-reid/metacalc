@@ -9,23 +9,10 @@ use crate::table;
 use crate::ui_support::same_frame;
 use mcui::{Key, Kind, Status};
 
-/// A table of the proofs library with every value, as list_kind_frames builds it.
-fn marked(built: &'static Built) -> (Vec<u8>, Vec<Status>) {
-    let n = count(built);
-    let mut seed = 0x1357_9BDF;
-    loop {
-        let status = table::random_status(n, &mut seed, 70, 6);
-        let values = table::values(built, &status);
-        if (0..4).all(|v| values.contains(&v)) {
-            return (table::of(built.library.as_ref().unwrap(), &values), status);
-        }
-    }
-}
-
 #[test]
 fn the_notice_keys_and_the_way_back_keep_the_kind_the_cursor_and_the_top() {
     let built = crate::list_rig::proofs_three();
-    let (data, status) = marked(built);
+    let (data, status) = every_mark(built);
     let mut looked = 0;
     for kind in [Kind::Theorems, Kind::Axioms, Kind::Unchecked] {
         for scan in [ENTER, F1, F2, F4] {

@@ -10,20 +10,6 @@ use crate::shellrig::*;
 use crate::table;
 use mcui::{Key, Kind, Status};
 
-/// A table of the proofs library with each of the four values.
-fn every_mark(built: &Built) -> (Vec<u8>, Vec<Status>) {
-    let n = count(built);
-    let mut seed = 0x1357_9BDF;
-    for _ in 0..200 {
-        let status = table::random_status(n, &mut seed, 70, 6);
-        let values = table::values(built, &status);
-        if (0..4).all(|v| values.contains(&v)) {
-            return (table::of(built.library.as_ref().unwrap(), &values), status);
-        }
-    }
-    panic!("no table with all four marks in 200 tries");
-}
-
 #[derive(Default, Debug)]
 struct Seen {
     rounds: usize,

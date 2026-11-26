@@ -7,6 +7,8 @@ lk_last             .equ lr_sr
 lk_kind             .equ lr_k
 lk_mask             .equ lr_tc
 lk_cnt              .equ lr_cnt
+lk_lim              .equ lr_len
+LK_FIRST_RUN        .equ 8
 
 ; in: lk_kind = the caller's kind. out: Z and lk_kind = the byte the bitmap is xored with so that
 ; a set bit is a match, or NZ and A = status. Destroys all but IX, IY.
@@ -93,21 +95,28 @@ lkn_shift_in:
 	srl h
 	rr l
 	ld (lk_p),hl
+	ld a,LK_FIRST_RUN
+	ld (lk_lim),a
 lkn_chunk:
 	ld hl,(lk_last)
 	ld de,(lk_p)
 	or a
 	sbc hl,de
+	ld a,(lk_lim)
+	ld b,a
 	ld a,h
 	or a
 	jr nz,lkn_full
+	ld a,b
+	dec a
+	cp l
+	jr c,lkn_full
+	jr z,lkn_full
 	ld a,l
-	cp LIB_WINDOW-1
-	jr nc,lkn_full
 	inc a
 	jr lkn_counted
 lkn_full:
-	ld a,LIB_WINDOW
+	ld a,b
 lkn_counted:
 	ld (lk_cnt),a
 	ld c,a
@@ -131,6 +140,8 @@ lkn_byte:
 	djnz lkn_byte
 	ld a,c
 	ld (lk_mask),a
+	ld a,LIB_WINDOW
+	ld (lk_lim),a
 	ld hl,(lk_p)
 	ld a,(lk_cnt)
 	ld e,a
@@ -218,18 +229,25 @@ lkp_shift_in:
 	srl h
 	rr l
 	ld (lk_last),hl
+	ld a,LK_FIRST_RUN
+	ld (lk_lim),a
 lkp_chunk:
 	ld hl,(lk_last)
+	ld a,(lk_lim)
+	ld b,a
 	ld a,h
 	or a
 	jr nz,lkp_full
+	ld a,b
+	dec a
+	cp l
+	jr c,lkp_full
+	jr z,lkp_full
 	ld a,l
-	cp LIB_WINDOW-1
-	jr nc,lkp_full
 	inc a
 	jr lkp_counted
 lkp_full:
-	ld a,LIB_WINDOW
+	ld a,b
 lkp_counted:
 	ld (lk_cnt),a
 	ld c,a
@@ -261,6 +279,8 @@ lkp_byte:
 	djnz lkp_byte
 	ld a,c
 	ld (lk_mask),a
+	ld a,LIB_WINDOW
+	ld (lk_lim),a
 	ld hl,(lk_p)
 	ld a,h
 	or l

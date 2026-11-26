@@ -804,44 +804,44 @@ fn what_the_two_calls_cost_over_ring_is_printed_and_pinned() {
         "next axiom across 298 to 567",
         NEXT,
         seeded(AXIOM, a + 1, count),
-        0,
+        8116,
     );
     run(
         &mut rig,
         "prev axiom across 567 to 298",
         PREV,
         seeded(AXIOM, b, 0),
-        0,
+        7823,
     );
     let (a, b) = longest_gap(&bits, THEOREM);
-    assert_eq!((a, b), (2988, 3018));
+    assert_eq!((a, b), (2988, 3019));
     run(
         &mut rig,
         "next theorem across ring's 30",
         NEXT,
         seeded(THEOREM, a + 1, count),
-        0,
+        3278,
     );
     run(
         &mut rig,
         "prev theorem across ring's 30",
         PREV,
         seeded(THEOREM, b, 0),
-        0,
+        3073,
     );
     run(
         &mut rig,
         "next over one assertion",
         NEXT,
         seeded(AXIOM, 0, 1),
-        0,
+        2540,
     );
     run(
         &mut rig,
         "prev over one assertion",
         PREV,
         seeded(AXIOM, 1, 0),
-        0,
+        2733,
     );
     let none = kinds_library(&vec![false; usize::from(count)]);
     let mut rig = Rig::with_library(&none);
@@ -851,14 +851,20 @@ fn what_the_two_calls_cost_over_ring_is_printed_and_pinned() {
         "next with no match to the end",
         NEXT,
         seeded(THEOREM, 0, count),
-        0,
+        66546,
     );
     run(
         &mut rig,
         "prev with no match to the start",
         PREV,
         seeded(THEOREM, count, 0),
-        0,
+        66157,
     );
-    assert!(costs.iter().all(|c| c.1 > 0));
+    for (what, took, pinned) in &costs {
+        let (low, high) = (pinned - pinned / 50, pinned + pinned / 100);
+        assert!(
+            (low..=high).contains(took),
+            "{what}: {took} T-states, measured {pinned}"
+        );
+    }
 }
