@@ -767,7 +767,15 @@ fn the_shipped_libraries_answer_as_the_rule_does() {
             }
         }
         println!("{name}: {tally:?}");
-        assert!(tally.matched > 100 && tally.none > 100, "{tally:?}");
+        let (matched, none) = match name {
+            "prop" => (800, 400),
+            "pred" => (1300, 580),
+            _ => (3900, 1550),
+        };
+        assert!(
+            tally.matched > matched && tally.none > none,
+            "{name}: {tally:?}"
+        );
     }
 }
 
