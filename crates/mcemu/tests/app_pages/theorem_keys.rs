@@ -17,7 +17,7 @@ use mcui::{Key, State};
 /// SCR_STAY, the answer of a key that changes nothing.
 const SCR_STAY: u8 = 0;
 
-fn cursor(walker: &Walker) -> (usize, usize) {
+pub fn cursor(walker: &Walker) -> (usize, usize) {
     match walker.list.ui.state() {
         State::Theorem {
             statement, node, ..
@@ -26,7 +26,7 @@ fn cursor(walker: &Walker) -> (usize, usize) {
     }
 }
 
-fn scroll(walker: &Walker) -> usize {
+pub fn scroll(walker: &Walker) -> usize {
     match walker.list.ui.state() {
         State::Theorem { scroll, .. } => scroll,
         other => panic!("{other:?}"),
@@ -34,7 +34,7 @@ fn scroll(walker: &Walker) -> usize {
 }
 
 /// `walker.press` asserting whether a frame was drawn.
-fn pressed(walker: &mut Walker, scan: u8, key: Key, drew: bool, what: &str) {
+pub fn pressed(walker: &mut Walker, scan: u8, key: Key, drew: bool, what: &str) {
     assert_eq!(walker.press(scan, key), drew, "{what}");
 }
 
@@ -127,12 +127,21 @@ fn of_one_node_statements(shapes: &[(&str, usize)]) -> Vec<u8> {
     crate::fixture::custom(&src)
 }
 
-fn built_of(name: &str, shapes: &[(&str, usize)]) -> &'static Built {
-    around(name, &of_one_node_statements(shapes))
+pub fn built_of(name: &str, shapes: &[(&str, usize)]) -> &'static Built {
+    static BUILT: std::sync::Mutex<Vec<(String, &'static Built)>> =
+        std::sync::Mutex::new(Vec::new());
+    let key = format!("{name} {shapes:?}");
+    let mut all = BUILT.lock().unwrap();
+    if let Some((_, built)) = all.iter().find(|(k, _)| *k == key) {
+        return built;
+    }
+    let built = around(name, &of_one_node_statements(shapes));
+    all.push((key, built));
+    built
 }
 
 /// The index of the assertion with label `label`.
-fn index_of(built: &Built, label: &str) -> usize {
+pub fn index_of(built: &Built, label: &str) -> usize {
     let lib = lib_of(built);
     (0..lib.len())
         .find(|&i| lib.label(i) == label)

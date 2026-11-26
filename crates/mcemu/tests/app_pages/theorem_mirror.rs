@@ -51,6 +51,11 @@ impl Mirror {
         self.folds[s].toggle(statement.at(s), node)
     }
 
+    /// Whether the fold of `node` of statement `s` is set.
+    pub fn is_folded(&self, s: usize, node: usize) -> bool {
+        self.folds[s].is_folded(node)
+    }
+
     pub fn folded(&self) -> usize {
         self.folds.iter().map(Folds::count).sum()
     }

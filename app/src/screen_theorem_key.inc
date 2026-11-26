@@ -20,10 +20,13 @@ tk_main:
 	ld a, c
 	cp KEY_CLEAR
 	jr z, tk_pop
+	or a
+	jr z, tk_quiet
 	cp KEY_F2
 	jr c, tk_work
 	cp KEY_F5
 	jr c, tk_notice
+tk_quiet:
 	push hl
 	ld de, 8
 	add hl, de
@@ -244,6 +247,9 @@ tk_finish:
 	cp KEY_UP
 	jr nz, tk_changed
 	bit 0, b
+	jr z, tk_changed
+	ld a, (TV_N)
+	or a
 	jr nz, tk_stayed
 tk_changed:
 	call theorem_store
