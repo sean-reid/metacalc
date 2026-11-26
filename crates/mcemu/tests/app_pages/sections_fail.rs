@@ -68,29 +68,28 @@ fn a_list_whose_enter_fails_under_the_jump_keeps_its_frame_under_the_error_notic
 
 #[test]
 fn a_refused_read_of_the_cursors_title_pushes_the_error_notice_and_clear_brings_the_screen_back() {
-    for (stub, status) in [("far_lib_title", 0x41u8)] {
-        let mut walker = Walker::on_list(rich(), None, 5);
-        walker.goto(30);
-        let list = &mut walker.list;
-        list.open_sections();
-        list.goto_title(20);
-        let frames = list.run.frames();
-        list.fail_at(0, stub, 1, status);
-        list.tap(ENTER);
-        let frame = list.run.next_blit();
-        list.run.run(300_000);
-        same_frame("the error notice", &frame, &model::error(status));
-        assert_eq!(list.fail_calls(0), 1, "the refusal ran");
-        let now = list.run.frames();
-        assert_eq!(now.len(), 4, "the notice is over the sections screen");
-        assert_eq!(now[..3], frames[..], "which is as it was");
-        assert_eq!(now[3][..3], [KIND_NOTICE, NOTICE_ERROR, status]);
-        list.tap(CLEAR);
-        let frame = list.run.next_blit();
-        list.run.run(2_000);
-        assert_eq!(list.run.frames(), frames);
-        same_frame("back on the screen", &frame, &list.shown());
-    }
+    let (stub, status) = ("far_lib_title", 0x41u8);
+    let mut walker = Walker::on_list(rich(), None, 5);
+    walker.goto(30);
+    let list = &mut walker.list;
+    list.open_sections();
+    list.goto_title(20);
+    let frames = list.run.frames();
+    list.fail_at(0, stub, 1, status);
+    list.tap(ENTER);
+    let frame = list.run.next_blit();
+    list.run.run(300_000);
+    same_frame("the error notice", &frame, &model::error(status));
+    assert_eq!(list.fail_calls(0), 1, "the refusal ran");
+    let now = list.run.frames();
+    assert_eq!(now.len(), 4, "the notice is over the sections screen");
+    assert_eq!(now[..3], frames[..], "which is as it was");
+    assert_eq!(now[3][..3], [KIND_NOTICE, NOTICE_ERROR, status]);
+    list.tap(CLEAR);
+    let frame = list.run.next_blit();
+    list.run.run(2_000);
+    assert_eq!(list.run.frames(), frames);
+    same_frame("back on the screen", &frame, &list.shown());
 }
 
 #[test]

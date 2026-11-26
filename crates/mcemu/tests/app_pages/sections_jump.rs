@@ -67,7 +67,7 @@ pub const KINDS: [Kind; 4] = [Kind::All, Kind::Theorems, Kind::Axioms, Kind::Unc
 
 /// The order a stage's titles are visited in: every title once, jumping up and down.
 fn visit(len: usize) -> Vec<usize> {
-    assert!(len % 17 != 0);
+    assert!(!len.is_multiple_of(17));
     (0..len).map(|i| i * 17 % len).collect()
 }
 
