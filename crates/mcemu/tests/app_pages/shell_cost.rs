@@ -63,8 +63,12 @@ const STAGE_ABOUT_COLD: u32 = 136_000;
 const ABOUT_COLD: u32 = 141_900;
 const NOTICE_COLD: u32 = 116_300;
 /// The theorem screen's frame of the first assertion's conclusion, which has no hypothesis.
-const THEOREM: u32 = 129_000;
-const THEOREM_COLD: u32 = 130_400;
+const THEOREM: u32 = 122_800;
+const THEOREM_COLD: u32 = 125_100;
+/// The least it may take: 120,400 warm and 122,633 cold were measured, so a frame that costs far less did
+/// not draw the screen.
+const THEOREM_FLOOR: u32 = 119_000;
+const THEOREM_COLD_FLOOR: u32 = 121_400;
 /// The most the loop may take around app_key for a key no screen answers, scr_key included.
 const IGNORED_KEY: u32 = 2_575;
 /// The least: it takes 2,562 with the idle point.
@@ -189,6 +193,17 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
                 "{name}: the screen opened"
             );
         }
+        if name.starts_with("Theorem") {
+            let depth = usize::from(app.m.read_ram(app.label("scr_count"), 1)[0]);
+            let stack = app.label("SCR_STACK") + 16 * (depth as u16 - 1);
+            assert_eq!(
+                app.m.read_ram(stack, 1),
+                [7],
+                "{name}: the top screen is the theorem"
+            );
+            let hyps = app.label("TV_NHYPS");
+            assert_eq!(app.m.read_ram(hyps, 1), [0], "{name}: no hypothesis");
+        }
         let (draw, blit) = frame(&mut app);
         println!(
             "{name}: scr_draw {draw} and ui_blit {blit}: {} T-states",
@@ -200,6 +215,13 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
             draw + blit
         );
         assert!(draw + blit < FRAME_BUDGET, "{name}: over the frame budget");
+        if name.starts_with("Theorem") {
+            assert!(
+                draw + blit >= THEOREM_FLOOR,
+                "{name}: {} under {THEOREM_FLOOR}",
+                draw + blit
+            );
+        }
         go_cold(&mut app);
         let (cold_draw, cold_blit) = frame(&mut app);
         println!(
@@ -216,6 +238,13 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
             cold_draw + cold_blit < FRAME_BUDGET,
             "{name}: cold, over the frame budget"
         );
+        if name.starts_with("Theorem") {
+            assert!(
+                cold_draw + cold_blit >= THEOREM_COLD_FLOOR,
+                "{name}: cold, {} under {THEOREM_COLD_FLOOR}",
+                cold_draw + cold_blit
+            );
+        }
     }
 }
 

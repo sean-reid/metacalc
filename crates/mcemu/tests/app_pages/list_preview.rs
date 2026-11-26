@@ -166,6 +166,14 @@ fn a_list_of_no_assertion_shows_none_and_settles_with_nothing_without_touching_f
         &frame,
         &model::unavailable(built.stage_name(0)),
     );
+    list.tap(CLEAR);
+    list.run.next_blit();
+    list.run.run(2_000);
+    assert_eq!(list.run.depth(), 2, "CLEAR pops the notice");
+    list.tap(F1);
+    let again = list.run.next_blit();
+    assert_eq!(list.run.depth(), 3, "F1 opens the notice, as ENTER does");
+    assert_eq!(again, frame, "F1 and ENTER draw the same frame");
 }
 
 #[test]
