@@ -63,10 +63,11 @@ fn long_walk(checking: bool) {
     let stream = [
         UP, DOWN, F1, f, F3, ENTER, CLEAR, F4, F5, LEFT, RIGHT, DOWN, F3, F1, ENTER, F3,
     ];
-    let mut builds = vec![three_stages(), six_stages()];
-    if !checking {
-        builds.push(crate::list_rig::proofs_three());
-    }
+    let builds = [
+        three_stages(),
+        six_stages(),
+        crate::list_rig::proofs_three(),
+    ];
     for built in builds {
         let (data, status) = if checking {
             settled_table(built)
