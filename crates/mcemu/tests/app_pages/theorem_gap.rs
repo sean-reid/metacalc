@@ -49,8 +49,8 @@ fn on_a_theorem() -> Lister {
     walker.list
 }
 
-/// The delivered counts at each gap of the table, and the gap from which every press of every longer gap
-/// was delivered.
+/// The delivered counts at each gap of the table, the gap from which every press of every longer gap
+/// was delivered, and the count at the longest gap before it.
 fn lossless_from(screen: fn() -> Lister, key: u8) -> (u32, Vec<usize>) {
     let counts: Vec<usize> = GAPS
         .iter()
@@ -58,10 +58,30 @@ fn lossless_from(screen: fn() -> Lister, key: u8) -> (u32, Vec<usize>) {
         .collect();
     let from = (0..GAPS.len())
         .rev()
-        .take_while(|&i| counts[i] == PRESSES)
+        .take_while(|&i| counts[i] >= PRESSES)
         .last()
         .expect("the longest gap loses no press");
     (GAPS[from], counts)
+}
+
+/// The edge of a screen's loss: below `from` the count is under `PRESSES`, at `from` it is exactly
+/// `PRESSES`, and past it a press that the key's repeat delivers twice counts above it. Returns the
+/// count just below the edge and the gaps at which a press repeated.
+fn edge(name: &str, from: u32, counts: &[usize]) -> (usize, Vec<u32>) {
+    let at = GAPS.iter().position(|&g| g == from).unwrap();
+    assert!(at > 0, "{name}: some gap loses presses");
+    assert!(
+        counts[at - 1] < PRESSES,
+        "{name}: {} arrived at {} ms",
+        counts[at - 1],
+        GAPS[at - 1]
+    );
+    assert_eq!(counts[at], PRESSES, "{name}: the count at {from} ms");
+    let repeats = (0..GAPS.len())
+        .filter(|&i| counts[i] > PRESSES)
+        .map(|i| GAPS[i])
+        .collect();
+    (counts[at - 1], repeats)
 }
 
 /// The milliseconds from scr_key's call for `key` to the app's next wait for a key.
@@ -95,6 +115,11 @@ fn on_the_reference_os_the_theorem_screen_needs_no_longer_gap_between_two_presse
     println!(
         "BUSY a Down: the list {list_busy} ms, the theorem {theorem_busy} ms from scr_key to the next wait"
     );
+    println!(
+        "BUSY the theorem screen is lossless from {} ms and busy {theorem_busy} ms, the list from {} ms and busy {list_busy} ms",
+        found.iter().map(|f| f.3).max().unwrap(),
+        found.iter().map(|f| f.1).max().unwrap()
+    );
     for (name, list_from, list_counts, theorem_from, theorem_counts) in found {
         assert!(
             list_counts[0] < PRESSES && theorem_counts[0] < PRESSES,
@@ -103,6 +128,14 @@ fn on_the_reference_os_the_theorem_screen_needs_no_longer_gap_between_two_presse
         assert!(
             theorem_from <= list_from,
             "{name}: the theorem screen needs {theorem_from} ms, the list {list_from} ms"
+        );
+        let (below, repeated) = edge(&format!("{name}, list"), list_from, &list_counts);
+        println!(
+            "GAP {name}: the list's last loss delivers {below} of {PRESSES}, repeats at {repeated:?} ms"
+        );
+        let (below, repeated) = edge(&format!("{name}, theorem"), theorem_from, &theorem_counts);
+        println!(
+            "GAP {name}: the theorem's last loss delivers {below} of {PRESSES}, repeats at {repeated:?} ms"
         );
     }
 }
