@@ -235,7 +235,7 @@ const VARIABLES: [&str; 15] = [
     "LV_VARS_END",
 ];
 
-/// What a key that moves nothing may write under a kind, as screen_list.inc's header says.
+/// What a key that moves nothing may write under a kind, as screen_list_key.inc's header says.
 pub const STAY_WRITES: [&str; 8] = [
     "LV_KIND", "LV_END", "LK_FR", "LK_CUR", "LK_X", "LK_N", "LK_KEY", "LK_AGAIN",
 ];

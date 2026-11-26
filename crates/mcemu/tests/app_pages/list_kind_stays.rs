@@ -7,7 +7,7 @@ use crate::ui_support::same_frame;
 use mcui::{Key, Kind};
 use std::collections::BTreeSet;
 
-const HEADER: &str = include_str!("../../../../app/src/screen_list.inc");
+const HEADER: &str = include_str!("../../../../app/src/screen_list_key.inc");
 
 fn open_kind(kind: Kind, table: bool) -> Lister {
     let built = proofs_three();
