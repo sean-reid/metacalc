@@ -61,12 +61,9 @@ fn powered_down(kind: Kind, settled: bool) {
     } else {
         assert_eq!(list.seen.0, PENDING);
         list.run.run(100_000);
-        let (count, preview) = (
-            list.run.shell.app.label("LV_COUNT"),
-            list.run.shell.app.label("LV_PREVIEW"),
-        );
-        list.run.m().load_ram(count, &[11]);
-        list.run.m().load_ram(preview, &[PENDING]);
+        let (preview, count) = (list.var("LV_PREVIEW"), list.var("LV_COUNT"));
+        assert_eq!(preview, PENDING, "the key left the preview pending");
+        assert!((1..11).contains(&count), "the wait is part way: {count}");
     }
     let at = format!("{kind:?}, settled {settled}");
     let before = list.run.frames()[1].clone();
@@ -102,8 +99,9 @@ fn a_power_down_under_a_filter_keeps_the_kind_the_cursor_and_the_top() {
 }
 
 /// A watch over every address below the first RAM address records nothing across everything the
-/// list does under each kind.
-pub fn nothing_below_ram(list: &mut Lister, at: &str, walk: bool) {
+/// list does under each kind, from the watch's arming on the Libraries screen: `open` enters the list
+/// and goes to its kind.
+pub fn nothing_below_ram(list: &mut Lister, at: &str, walk: bool, open: impl FnOnce(&mut Lister)) {
     list.run.m().watch_writes(0, 0x8000);
     let quiet = |list: &mut Lister, what: &str| {
         let w = list.run.m().take_writes();
@@ -114,6 +112,8 @@ pub fn nothing_below_ram(list: &mut Lister, at: &str, walk: bool) {
             w.first().map(|w| (w.addr, w.value, w.pc))
         );
     };
+    open(list);
+    quiet(list, "the first enter, its draw and the kinds");
     if walk {
         let len = list.pos().len;
         let plan = [
@@ -177,8 +177,14 @@ fn nothing_is_written_below_ram_under_any_kind() {
         (Kind::Axioms, false),
         (Kind::Unchecked, true),
     ] {
-        let mut list = open_kind(kind, table);
-        nothing_below_ram(&mut list, &format!("{kind:?}"), true);
+        let built = proofs_three();
+        let (data, status) = every_mark(built);
+        let mut list = Lister::at_stage(built, table.then_some((&data[..], &status[..])), 1);
+        nothing_below_ram(&mut list, &format!("{kind:?}"), true, |list| {
+            list.key(ENTER, Key::Enter);
+            list.settle();
+            list.go_to_kind(kind);
+        });
     }
 }
 

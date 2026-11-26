@@ -30,9 +30,11 @@ fn move_to(list: &mut Lister, to: usize) {
     }
 }
 
-#[test]
-#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_a_table_rewritten_under_an_open_unchecked_list_is_met_as_f3_would_meet_it() {
+/// A ring list under Unchecked with every assertion shown, its cursor on an axiom with four axioms
+/// before it and its top four above, then the table rewritten under it with the cursor checked, and the
+/// top too when `hide_top`, and entered again: the frame is the model's F3 landing, the cursor on the next
+/// assertion shown and the top four shown above it.
+fn rewritten(hide_top: bool) {
     let probe = ring(None);
     let n = count(probe.built);
     let bits = ring_bits(&probe);
@@ -45,15 +47,26 @@ fn on_the_reference_os_a_table_rewritten_under_an_open_unchecked_list_is_met_as_
     let old = vec![Status::Unchecked; n];
     let mut new = old.clone();
     new[cursor] = Status::Checked;
-    new[cursor - 4] = Status::Checked;
+    if hide_top {
+        new[cursor - 4] = Status::Checked;
+    }
     let mut list = ring(Some(&old));
     list.go_to_kind(Kind::Unchecked);
     assert_eq!(list.pos().len, n, "nothing is hidden under the old marks");
     move_to(&mut list, cursor);
+    let frame = list.run.frames()[1].clone();
+    let got = |f: &[u8], at: usize| usize::from(u16::from_le_bytes([f[at], f[at + 1]]));
+    let (was_cursor, was_top) = (got(&frame, 2), got(&frame, 4));
     assert_eq!(
-        list.pos().top,
-        cursor - 4,
+        (was_cursor, was_top),
+        (cursor, cursor - 4),
         "forward moves leave the top four above"
+    );
+    let hidden = |i: usize| new[i] == Status::Checked;
+    assert_eq!(
+        (hidden(was_cursor), hidden(was_top)),
+        (true, hide_top),
+        "the new marks hide the cursor, and the top when asked"
     );
     let rewritten = table_of(list.built, &new);
     let (at, size) = crate::real::vat::table_at(list.run.m()).expect("a table");
@@ -87,13 +100,25 @@ fn on_the_reference_os_a_table_rewritten_under_an_open_unchecked_list_is_met_as_
     list.status = new;
     list.same_kind_position("rewritten");
     let now = list.run.frames()[1].clone();
-    let got = |at: usize| usize::from(u16::from_le_bytes([now[at], now[at + 1]]));
+    let top = if hide_top { cursor - 5 } else { cursor - 4 };
     assert_eq!(
-        (got(2), got(4)),
-        (cursor + 1, cursor - 5),
+        (got(&now, 2), got(&now, 4)),
+        (cursor + 1, top),
         "the cursor and the top landed"
     );
     assert_eq!(now[6], 3);
+}
+
+#[test]
+#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn on_the_reference_os_a_table_rewritten_under_an_open_unchecked_list_is_met_as_f3_would_meet_it() {
+    rewritten(true);
+}
+
+#[test]
+#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn on_the_reference_os_a_table_that_hides_only_the_cursor_is_met_as_f3_would_meet_it() {
+    rewritten(false);
 }
 
 /// Walks every assertion `kind` shows on `stage` by row, up and down, and by page, every frame the
@@ -129,31 +154,34 @@ fn on_the_reference_os_pred_is_walked_under_theorems_and_axioms_by_row() {
     assert_eq!(rom_walk(1, Kind::Axioms, None, "pred Axioms"), 44);
 }
 
+/// Ring's status table with the first 100 assertions checked, as a partial check leaves it, and a run of
+/// 1,400 more in the middle: Unchecked hides both.
+const HIDDEN: [std::ops::Range<usize>; 2] = [0..100, 1000..2400];
+
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_ring_is_walked_under_unchecked_with_a_partial_table_by_page_and_the_ends_by_row()
+fn on_the_reference_os_ring_is_walked_under_unchecked_by_row_across_the_longest_run_the_table_hides()
  {
     let started = Instant::now();
-    let mut list = Lister::on_rom(RING);
-    list.partial_check(100);
-    list.open_on_rom();
+    let probe = Lister::on_rom(RING);
+    let n = count(probe.built);
+    drop(probe);
+    let mut status = vec![Status::Unchecked; n];
+    for run in HIDDEN {
+        status[run].fill(Status::Checked);
+    }
+    let want = n - HIDDEN.iter().map(|r| r.len()).sum::<usize>();
+    let mut list = ring(Some(&status));
     list.go_to_kind(Kind::Unchecked);
-    let len = list.pos().len;
-    assert!(len > 3000, "{len}");
-    let pages = len / 5 + 2;
+    assert_eq!(list.pos().len, want, "the marks the app shows");
+    assert_eq!(list.items().len(), want, "the marks the model shows");
     let pressed = list.walk_plan(
         "ring Unchecked",
-        &[
-            (DOWN, Key::Down, 200),
-            (UP, Key::Up, 201),
-            (RIGHT, Key::Right, pages),
-            (UP, Key::Up, 200),
-            (DOWN, Key::Down, 201),
-            (LEFT, Key::Left, pages),
-        ],
+        &[(DOWN, Key::Down, want + 1), (UP, Key::Up, want + 1)],
     );
+    assert_eq!(pressed, 2 * (want + 1));
     println!(
-        "ROM, ring Unchecked: {len} shown, {pressed} keys in {:?}",
+        "ROM, ring Unchecked: {want} of {n} shown, {pressed} keys by row over the run of 1,400 the table hides, in {:?}",
         started.elapsed()
     );
 }
@@ -164,9 +192,15 @@ fn nothing_is_written_below_ram_on_the_reference_os_under_any_kind() {
     for kind in [Kind::All, Kind::Theorems, Kind::Axioms, Kind::Unchecked] {
         let mut list = Lister::on_rom(PROP);
         list.partial_check(40);
-        list.open_on_rom();
-        list.go_to_kind(kind);
-        crate::list_kind_stays::nothing_below_ram(&mut list, &format!("ROM {kind:?}"), false);
+        crate::list_kind_stays::nothing_below_ram(
+            &mut list,
+            &format!("ROM {kind:?}"),
+            false,
+            |l| {
+                l.open_on_rom();
+                l.go_to_kind(kind);
+            },
+        );
     }
 }
 
