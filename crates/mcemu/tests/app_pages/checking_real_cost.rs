@@ -49,10 +49,10 @@ const ROM_INSIDE: [(Class, [u16; 1]); 8] = [
 
 /// The greatest depth of each class seen with interrupts on.
 const ROM_LIVE: [(Class, u16); 8] = [
-    (Class::StepStays, 52),
-    (Class::StepRedraws, 46),
+    (Class::StepStays, 50),
+    (Class::StepRedraws, 48),
     (Class::Chunk, 22),
-    (Class::EndsCrcRun, 44),
+    (Class::EndsCrcRun, 48),
     (Class::Finishing, 42),
     (Class::AfterFinish, 10),
     (Class::StopOn, 46),
@@ -265,7 +265,7 @@ fn on_the_reference_os_every_idle_call_keeps_the_interrupts_the_speed_and_the_st
     );
     assert_eq!(
         live.iter().map(|s| s.depth).max(),
-        Some(52),
+        Some(50),
         "the deepest call with interrupts on"
     );
     let shell: std::collections::BTreeSet<u16> =

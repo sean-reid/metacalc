@@ -21,12 +21,12 @@
 ;     page and no byte of page 80h is written.
 ;   LIB_STATE, default $989C, 725 bytes, in bank B after the scratch of probe/kerndriver.inc in
 ;     appBackUpScreen:
-;     $00 scratch of lib_read, $10 facts from the header, $20 the record descriptor, $40
+;     $00 scratch of lib_read, $10 facts from the header and ls_kd, the kinds section's offset, whose bitmap starts 2 bytes in (3 bytes at $1D), $20 the record descriptor, $40
 ;     scratch, $60 a 32 byte window over the record being walked, $80 a cache of eight
 ;     directory entries, $A8 the symbol index: one 16-bit offset per symbol and one past the
 ;     last, 512 bytes, $2A8 the sections:
-;       ls_have   $2A8  1  bit 0 titles, 1 glyph map, 2 trees, 4 shapes present; bit 3 the glyph
-;                          map is for this build's font
+;       ls_have   $2A8  1  bit 0 titles, 1 glyph map, 2 trees, 4 shapes, 5 kinds present; bit 3
+;                          the glyph map is for this build's font
 ;       ls_ti     $2A9  9  titles: offset, length, offset of the first item (3 bytes each)
 ;       ls_gl     $2B2  9  glyph map: the same
 ;       ls_tr     $2BB  9  trees: the same
@@ -85,7 +85,11 @@
 ;                          Status 8: a known section's index does not fit its row, or the trees
 ;                          list more than 383 syntax axioms, or the shapes section's count is not
 ;                          the trees', its offset table is longer than the section, its length
-;                          does not fit 16 bits, or only one of shapes and trees is there. Unknown
+;                          does not fit 16 bits, or only one of shapes and trees is there, or the
+;                          kinds section's length is not 2 + the assertion count over 8 rounded up
+;                          or its first two bytes are not the assertion count. The bits past the last
+;                          assertion are not checked: the reader opens a library with one set and the
+;                          decoder refuses it. Unknown
 ;                          ids are skipped. A glyph map for another font, or for another number of
 ;                          symbols, does not fail the open.
 ;   lib_assertion_count   out: HL = assertions
@@ -114,8 +118,12 @@
 ;   lib_hypothesis    in:  HL = assertion number; B = hypothesis number; DE = buffer of 255 bytes
 ;                     out: B = length in symbols, C = FFh for an essential hypothesis, with its
 ;                          symbols in the buffer, else the variable of a float hypothesis,
-;                          with B = 0. Consecutive numbers of one assertion cost one step each.
-;   lib_sections       out: B = bits 0 titles, 1 glyph map, 2 trees, 4 shapes: which sections the library has
+;                          with B = 0. Consecutive numbers of one assertion cost one step each,
+;                          unless lib_kind_next or lib_kind_prev read the bitmap between them: that
+;                          read drops the record window, so the next call reads the record again.
+;                          A kind call that answers without reading it (from equal to end, from 0
+;                          for lib_kind_prev, no kinds section, a refused argument) keeps the window.
+;   lib_sections       out: B = bits 0 titles, 1 glyph map, 2 trees, 4 shapes, 5 kinds: which sections the library has
 ;   lib_title_count   out: HL = titles. 9 without a titles section.
 ;   lib_title         in:  HL = title number; DE = buffer of 255 bytes
 ;                     out: HL = the number of the first assertion under it, B = text length,
@@ -174,6 +182,23 @@
 ;                          and an arity that is not the assertion's hypothesis count, and this does
 ;                          not check any of them: a gap after the table or bytes after the last
 ;                          item are never read.
+;   lib_kind_next      in:  B = kind, 0 axiom or 1 theorem; HL = from; DE = end
+;                     out: A = status; HL = the number of the first assertion n of that kind with
+;                          from <= n < end, or end when there is none, and from = end gives end.
+;                          Status 2 for a kind above 1, 9 without a kinds section, 5 for an end
+;                          above the assertion count or a from above the end; HL is destroyed
+;                          when the status is not 0. Reads the bitmap into lr_win, 8 bytes first
+;                          and then runs of up to 32, drops the record window with it, and skips
+;                          a byte with no match whole. The bits past end are never reported.
+;   lib_kind_prev      in:  B = kind; HL = from
+;                     out: A = status; HL = the number of the last assertion n of that kind with
+;                          n < from, or FFFFh when there is none, and from = 0 gives FFFFh.
+;                          Status 2 and 9 as lib_kind_next, 5 for a from above the assertion
+;                          count. Reads the runs downward.
+;                          Both are public section routines: 4 before lib_open, then 2, 9, 5 in
+;                          that order, B and HL and DE are read before any status, no shadow
+;                          register or port is touched outside lr_read, and the stack goes at
+;                          most 6 bytes below the return address.
 ; Statuses (LIB_ERR_*): 1 offset or length past the library, 2 a count or destination that is
 ; not allowed, 3 bytes the format forbids, 4 lib_open has not succeeded, 5 an assertion,
 ; hypothesis, symbol, title or syntax number out of range, 6 and 7 and 8 a damaged trailer, table
@@ -204,3 +229,4 @@
 #include "lib/glyphs.inc"
 #include "lib/trees.inc"
 #include "lib/shapes.inc"
+#include "lib/kinds.inc"

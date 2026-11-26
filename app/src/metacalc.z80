@@ -64,8 +64,10 @@
 ;   5 checking    runs the check job (check.inc) on a stage through the idle point, with the bar
 ;                 and counts moving; F1, CLEAR and ON stop it (screen_checking.inc)
 ;   6 list        the assertions of a stage with their marks and a preview of the cursor's
-;                 conclusion that idle lays out once the row has been still; ENTER and F1 open the
-;                 cursor's theorem, F2 to F4 and F5 push a notice, CLEAR goes back (screen_list.inc)
+;                 conclusion that idle lays out once the row has been still; F3 steps through the kinds
+;                 All, Theorems, Axioms and Unchecked; ENTER and F1 open the cursor's theorem, F2, F4
+;                 and F5 push a notice, CLEAR goes back (screen_list.inc, screen_list_key.inc,
+;                 screen_list_kind.inc)
 ;   7 theorem     an assertion's statements folded to six rows, with a cursor that moves by
 ;                 subexpression and folds on ENTER and F1; F2 to F4 push a notice, CLEAR goes back
 ;                 (screen_theorem.inc)
@@ -349,6 +351,7 @@ STAGE_COUNT .equ 0
 #include "screen_checking.inc"
 #include "screen_list.inc"
 #include "screen_list_draw.inc"
+#include "screen_list_kind.inc"
 #include "screen_theorem.inc"
 #include "screen_theorem_rows.inc"
 #include "screen_theorem_key.inc"

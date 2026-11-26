@@ -1386,13 +1386,13 @@ fn assemble_reader(out: &Path) {
     spasm(
         src,
         &out.join("fm_test.bin"),
-        &["WITH_FM", "IMAGE_ORG=$2000"],
+        &["WITH_FM", "IMAGE_ORG=$1E00"],
         &fm_args,
     );
     spasm(
         src,
         &out.join("fm_short.bin"),
-        &["WITH_FM", "IMAGE_ORG=$2000", "FM_RUN_MAX=8"],
+        &["WITH_FM", "IMAGE_ORG=$1E00", "FM_RUN_MAX=8"],
         &fm_args,
     );
     for (defines, refusal) in [
@@ -1447,7 +1447,7 @@ fn assemble_reader(out: &Path) {
         ),
     ] {
         let mut defines = defines.to_vec();
-        defines.extend(["WITH_FM", "IMAGE_ORG=$2000"]);
+        defines.extend(["WITH_FM", "IMAGE_ORG=$1E00"]);
         expect(src, &out.join("fm_probe.bin"), &defines, &fm_args, refusal);
     }
     spasm(

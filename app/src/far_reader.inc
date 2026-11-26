@@ -25,6 +25,8 @@ FAR_DATA_ENTRY(lib_tree, far_lib_tree)
 FAR_DATA_ENTRY(lib_arities, far_lib_arities)
 FAR_DATA_ENTRY(lib_shapes, far_lib_shapes)
 FAR_DATA_ENTRY(lib_shape, far_lib_shape)
+FAR_DATA_ENTRY(lib_kind_next, far_lib_kind_next)
+FAR_DATA_ENTRY(lib_kind_prev, far_lib_kind_prev)
 #endif
 #ifdef FAR_ALIASES
 #define lib_read far_lib_read
@@ -49,6 +51,8 @@ FAR_DATA_ENTRY(lib_shape, far_lib_shape)
 #define lib_arities far_lib_arities
 #define lib_shapes far_lib_shapes
 #define lib_shape far_lib_shape
+#define lib_kind_next far_lib_kind_next
+#define lib_kind_prev far_lib_kind_prev
 #endif
 #ifdef FAR_UNALIASES
 #undef lib_read
@@ -73,4 +77,6 @@ FAR_DATA_ENTRY(lib_shape, far_lib_shape)
 #undef lib_arities
 #undef lib_shapes
 #undef lib_shape
+#undef lib_kind_next
+#undef lib_kind_prev
 #endif

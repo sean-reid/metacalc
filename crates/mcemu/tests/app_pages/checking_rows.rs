@@ -17,7 +17,7 @@ fn three() -> &'static Built {
     BUILT.get_or_init(|| {
         let library = crate::fixture::proofs();
         let n = usize::from(table::header_of(&library).1);
-        staged("pages-proofs-three", &library, &[n / 3, 2 * n / 3, n])
+        staged("pages-checking-rows", &library, &[n / 3, 2 * n / 3, n])
     })
 }
 

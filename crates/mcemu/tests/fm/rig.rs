@@ -11,7 +11,7 @@ use std::ops::Range;
 pub const WITH_FM: Image = Image {
     code: include_bytes!(concat!(env!("OUT_DIR"), "/fm_test.bin")),
     labels: include_str!(concat!(env!("OUT_DIR"), "/fm_test.lab")),
-    org: 0x2000,
+    org: 0x1E00,
 };
 
 /// The same image with a run of tokens cut after 8 codes, so that the cut that keeps a run inside
@@ -19,7 +19,7 @@ pub const WITH_FM: Image = Image {
 pub const WITH_SHORT_RUNS: Image = Image {
     code: include_bytes!(concat!(env!("OUT_DIR"), "/fm_short.bin")),
     labels: include_str!(concat!(env!("OUT_DIR"), "/fm_short.lab")),
-    org: 0x2000,
+    org: 0x1E00,
 };
 
 pub const FRAME_LEN: usize = 768;

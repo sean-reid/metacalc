@@ -94,7 +94,7 @@ impl Lister {
 
 /// The greatest depth over `calls`, asserting that every call kept interrupts, as they were at the
 /// call or on when `on_exit`, and returned with the speed port as it was set to `speed`.
-fn kept(what: &str, calls: &[Trace], masked: bool, on_exit: bool, speed: u8) -> u16 {
+pub fn kept(what: &str, calls: &[Trace], masked: bool, on_exit: bool, speed: u8) -> u16 {
     assert!(!calls.is_empty(), "{what}: no call was traced");
     for (n, t) in calls.iter().enumerate() {
         let want = if on_exit { 1 } else { t.iff.0 };
@@ -356,7 +356,7 @@ pub fn stub_figures() -> Figures {
             ("enter", 8),
             ("f1", 8),
             ("f2", 6),
-            ("f3", 6),
+            ("f3", 20),
             ("f4", 6),
             ("f5", 2),
             ("left", 4),

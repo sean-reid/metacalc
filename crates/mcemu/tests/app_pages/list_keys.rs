@@ -69,7 +69,7 @@ fn the_sections_key_is_live_exactly_where_the_stage_has_section_titles() {
 fn the_function_keys_open_the_stages_notice_and_f5_only_where_there_are_sections() {
     for built in [three_stages(), titled()] {
         for stage in 0..3 {
-            for scan in [F2, F3, F4, F5] {
+            for scan in [F2, F4, F5] {
                 let mut list = moved_list(built, stage);
                 let at = format!("stage {stage}, key {scan:02X}");
                 let before = list.frame_bytes();

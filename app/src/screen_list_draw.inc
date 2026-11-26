@@ -19,6 +19,9 @@ list_draw:
 	inc hl
 	ld d, (hl)
 	ld (LV_TOP), de
+	inc hl
+	ld a, (hl)
+	ld (LV_KIND), a
 	call far_ui_clear
 	ld hl, list_block
 	ld bc, LIST_BLOCK_SIZE
@@ -30,11 +33,22 @@ list_draw:
 	ld a, d
 	or e
 	jr nz, ld_rows
+ld_none:
 	ld hl, STG_LIST_NONE
 	ld b, 3
 	call far_ui_text_centered
 	jr ld_preview
 ld_rows:
+	ld a, (LV_KIND)
+	or a
+	jr z, ld_first
+	ld hl, (LV_TOP)
+	call lf_next
+	ld de, (LV_TOP)
+	or a
+	sbc hl, de
+	jr nz, ld_none
+ld_first:
 	xor a
 	ld (LV_ROW), a
 	ld hl, (LV_TOP)
@@ -48,6 +62,9 @@ ld_row:
 	call list_row
 	ld hl, (LV_AT)
 	inc hl
+	ld a, (LV_KIND)
+	or a
+	call nz, lf_next
 	ld (LV_AT), hl
 	ld hl, LV_ROW
 	inc (hl)
@@ -173,13 +190,58 @@ lt_counts:
 	call app_strcpy
 	ld hl, LV_RIGHT
 	call list_room
+	ld a, (LV_KIND)
+	or a
+	jr z, lt_name
+	push bc
+	call list_tail
+	push hl
+	call far_ui_text_width
+	ld a, l
+	pop hl
+	pop bc
+	ld b, a
+	ld a, c
+	sub b
+	jr nc, lt_room
+	xor a
+lt_room:
+	ld c, a
+lt_name:
 	ld hl, LV_NAME
 	ld de, LV_CUT
 	ld b, LIST_NAME_SIZE
 	call far_ui_truncate
+	ld a, (LV_KIND)
+	or a
+	jr z, lt_draw
+	ld hl, LV_CUT
+lt_end:
+	ld a, (hl)
+	or a
+	jr z, lt_cut
+	inc hl
+	jr lt_end
+lt_cut:
+	ex de, hl
+	call list_tail
+	call app_strcpy
+lt_draw:
 	ld hl, LV_CUT
 	ld de, LV_RIGHT
 	jp far_ui_title
+
+; Out: HL = the string after the stage's name for the kind in LV_KIND, which is not All.
+list_tail:
+	ld hl, STG_LIST_THM
+	ld a, (LV_KIND)
+	cp LISTK_THEOREMS
+	ret z
+	ld hl, STG_LIST_AX
+	cp LISTK_AXIOMS
+	ret z
+	ld hl, STG_LIST_UNCH
+	ret
 
 ; Draws the row LV_ROW + 1 for the assertion LV_AT: its label cut to the room its mark leaves, the mark
 ; and the cursor's inversion.

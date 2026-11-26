@@ -1,3 +1,4 @@
+mod kinds;
 mod shapes;
 mod trees;
 

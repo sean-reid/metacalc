@@ -107,6 +107,30 @@ mod list_fail;
 mod list_frames;
 #[path = "app_pages/list_keys.rs"]
 mod list_keys;
+#[path = "app_pages/list_kind_depth.rs"]
+mod list_kind_depth;
+#[path = "app_pages/list_kind_edges.rs"]
+mod list_kind_edges;
+#[path = "app_pages/list_kind_f3.rs"]
+mod list_kind_f3;
+#[path = "app_pages/list_kind_far.rs"]
+mod list_kind_far;
+#[path = "app_pages/list_kind_frames.rs"]
+mod list_kind_frames;
+#[path = "app_pages/list_kind_keys.rs"]
+mod list_kind_keys;
+#[path = "app_pages/list_kind_lost.rs"]
+mod list_kind_lost;
+#[path = "app_pages/list_kind_open.rs"]
+mod list_kind_open;
+#[path = "app_pages/list_kind_real.rs"]
+mod list_kind_real;
+#[path = "app_pages/list_kind_rig.rs"]
+mod list_kind_rig;
+#[path = "app_pages/list_kind_rom.rs"]
+mod list_kind_rom;
+#[path = "app_pages/list_kind_stays.rs"]
+mod list_kind_stays;
 #[path = "app_pages/list_open.rs"]
 mod list_open;
 #[path = "app_pages/list_power.rs"]

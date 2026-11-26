@@ -108,17 +108,20 @@ pub fn settle_list(shell: &mut Shell, ui: &mut mcui::Ui) {
         spent += 20_000;
         assert!(spent < 60_000_000, "the preview never settled");
     }
-    assert_eq!(shell.app.m.run_app(300_000).stop, mcemu::Stop::Limit);
     let drew = ui.idle();
-    assert_eq!(
-        shell.blits(),
-        blits + u16::from(pending && drew),
-        "the frame of the preview"
-    );
+    let want = blits + u16::from(pending && drew);
+    let mut waited = 0u32;
+    while shell.blits() < want && waited < 2_000_000 {
+        assert_eq!(shell.app.m.run_app(20_000).stop, mcemu::Stop::Limit);
+        waited += 20_000;
+    }
+    assert_eq!(shell.app.m.run_app(300_000).stop, mcemu::Stop::Limit);
+    assert_eq!(shell.blits(), want, "the frame of the preview");
 }
 
 /// The list screen's preview state in RAM: 0 pending, 1 laid out, 2 nothing to show.
 pub fn list_preview(shell: &mut Shell) -> u8 {
+    shell.at_rest();
     let at = shell.app.label("LV_PREVIEW");
     shell.app.m.read_ram(at, 1)[0]
 }

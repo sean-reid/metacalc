@@ -43,6 +43,11 @@ pub struct Lister {
     pub log: Vec<Key>,
     /// The preview state and the wait the app had when the frame of the last key was blitted.
     pub seen: (u8, u8),
+    /// The model that has the marks list_enter derived the title's counts from, when the table has
+    /// been lost since: the title bar is compared with its frame and the rest with `ui`'s.
+    /// `stale_titles` counts the frames whose title bar differs from `ui`'s.
+    pub title_from: Option<Ui>,
+    pub stale_titles: usize,
 }
 
 /// What the model's list says about itself.
@@ -70,6 +75,8 @@ impl Lister {
             status: table.map_or(Vec::new(), |t| t.1.to_vec()),
             log: Vec::new(),
             seen: (0, 0),
+            title_from: None,
+            stale_titles: 0,
         };
         for _ in 0..stage {
             lister.key(DOWN, Key::Down);
@@ -93,13 +100,16 @@ impl Lister {
         let (before, depth) = (self.shown(), self.ui.depth());
         self.tap(scan);
         self.ui.press(key);
+        if let Some(old) = self.title_from.as_mut() {
+            old.press(key);
+        }
         self.log.push(key);
         let want = self.shown();
         let redraws = want != before || self.ui.depth() != depth;
         if redraws {
             let frame = self.run.next_blit();
             self.seen = (self.var("LV_PREVIEW"), self.var("LV_COUNT"));
-            same_frame(&format!("after {scan:02X}"), &frame, &want);
+            self.same(&format!("after {scan:02X}"), &frame, &want);
             let mut spent = 0;
             while self.run.blits() == blits && spent < 20_000 {
                 self.run.run(500);
@@ -118,6 +128,19 @@ impl Lister {
         redraws
     }
 
+    /// `same_frame`, with the title bar's rows taken from `title_from` when it is set.
+    fn same(&mut self, what: &str, got: &[u8], want: &[u8]) {
+        const TITLE: usize = 8 * 12;
+        let Some(old) = &self.title_from else {
+            return same_frame(what, got, want);
+        };
+        let mut want = want.to_vec();
+        let old = crate::shellrig::model::frame(old);
+        self.stale_titles += usize::from(want[..TITLE] != old[..TITLE]);
+        want[..TITLE].copy_from_slice(&old[..TITLE]);
+        same_frame(what, got, &want);
+    }
+
     /// Holds `scan` until scr_key takes it and lets go.
     pub fn tap(&mut self, scan: u8) {
         let code = u16::from(code_of(scan));
@@ -132,6 +155,13 @@ impl Lister {
         }
         self.run.m().release_key(scan);
         self.run.m().resume(100);
+        // The hook that counts the call needs about as many T-states as that, so an interrupt that lands
+        // in them leaves the count behind for the length of its handler.
+        let mut waited = 0;
+        while self.run.scr_keys() == before && waited < 20_000 {
+            self.run.m().resume(100);
+            waited += 100;
+        }
         assert_eq!(
             self.run.scr_keys(),
             before + 1,
@@ -183,7 +213,8 @@ impl Lister {
                 PENDING,
                 "the model and the app agree"
             );
-            same_frame("the settled list", &self.run.frame(), &self.shown());
+            let (got, want) = (self.run.frame(), self.shown());
+            self.same("the settled list", &got, &want);
             return false;
         }
         let blits = self.run.blits();
@@ -193,8 +224,13 @@ impl Lister {
             spent += 20_000;
             assert!(spent < LIMIT, "the preview never settled");
         }
-        self.run.run(300_000);
         let drew = self.ui.idle();
+        let mut waited = 0;
+        while self.run.blits() < blits + u16::from(drew) && waited < 2_000_000 {
+            self.run.run(20_000);
+            waited += 20_000;
+        }
+        self.run.run(300_000);
         assert_eq!(
             self.run.blits(),
             blits + u16::from(drew),
@@ -205,7 +241,8 @@ impl Lister {
             if drew { ROW } else { NOTHING },
             "what the app settled on"
         );
-        same_frame("the settled list", &self.run.frame(), &self.shown());
+        let (got, want) = (self.run.frame(), self.shown());
+        self.same("the settled list", &got, &want);
         drew
     }
 

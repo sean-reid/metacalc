@@ -213,6 +213,14 @@ pub mod vat {
         Some(bytes(os, entry.3 + 2, usize::from(entry.4)))
     }
 
+    /// Where the data of the status table starts after its size word, and how long it is.
+    pub fn table_at(os: &mut Machine) -> Option<(u16, u16)> {
+        let entry = list(os)
+            .into_iter()
+            .find(|e| e.0 == APPVAR && e.1 == b"MCSTAT" && e.2 == 0)?;
+        Some((entry.3 + 2, entry.4))
+    }
+
     pub fn has_table(list: &[(u8, Vec<u8>, u8, u16, u16)]) -> bool {
         list.iter().any(|e| e.0 == APPVAR && e.1 == b"MCSTAT")
     }

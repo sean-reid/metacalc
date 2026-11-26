@@ -56,6 +56,19 @@ pub fn verify_sections(library: &Library) -> Result<(), SectionCheckError> {
             )));
         }
     }
+    if let Some(kinds) = &sections.kinds {
+        let wrong = library
+            .assertions
+            .iter()
+            .zip(&kinds.theorems)
+            .find(|(a, theorem)| a.theorem != **theorem);
+        if let Some((assertion, _)) = wrong {
+            return Err(SectionCheckError(format!(
+                "the kinds section disagrees with the record of {}",
+                assertion.label
+            )));
+        }
+    }
     if let Some(trees) = &sections.trees {
         check_trees(library, trees)?;
         if let Some(shapes) = &sections.shapes {

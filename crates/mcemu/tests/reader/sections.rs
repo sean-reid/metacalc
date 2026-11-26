@@ -82,6 +82,7 @@ fn mask_of(sections: &Sections) -> u8 {
         | bit(sections.glyphs.is_some(), HAVE_GLYPHS)
         | bit(sections.trees.is_some(), HAVE_TREES)
         | bit(sections.shapes.is_some(), HAVE_SHAPES)
+        | bit(sections.kinds.is_some(), HAVE_KINDS)
 }
 
 /// Every answer of the section routines for `bytes`, against what the decoder says. `order`
@@ -385,7 +386,7 @@ fn a_database_without_a_grammar_has_no_trees_and_a_library_may_lack_any_one_sect
     assert!(sections.trees.is_none());
     assert_eq!(
         opened(&bytes).sections(),
-        (ST_OK, HAVE_TITLES | HAVE_GLYPHS)
+        (ST_OK, HAVE_TITLES | HAVE_GLYPHS | HAVE_KINDS)
     );
 }
 

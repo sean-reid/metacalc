@@ -69,6 +69,11 @@
 //!            shapes section exactly when it has a trees section; the decoder checks that each
 //!            item lies inside one chunk, and the packer keeps the whole section inside one
 //!            chunk, so no item is padded
+//! kinds      id 5: assertion count (u16, equal to the library's), then one bit per assertion in
+//!            assertion order, set for a theorem, assertion 0 in the low bit of the first byte;
+//!            the length is 2 + the count over 8 rounded up and the bits past the last assertion
+//!            are zero; it may cross a multiple of CHUNK, and the library check compares it
+//!            with every record's kind byte
 //! ```
 //!
 //! A record is only usable if its float hypotheses come before its essential ones and name
@@ -95,9 +100,9 @@ pub use read::{
     Assertion, Hypothesis, Library, ReadError, Reference, Step, Variable, decode, read,
 };
 pub use sections::{
-    AXIOM_CAPACITY, ENTRY_LEN, Entry, GLYPHS, GlyphMap, Glyphs, Node, Part, SHAPE_CAPACITY, SHAPES,
-    SectionCheckError, SectionError, Sections, Shapes, SyntaxAxiom, TITLES, TRAILER_LEN,
-    TRAILER_MAGIC, TRAILER_VERSION, TREES, Title, Tree, Trees, VARIABLE_CAPACITY,
+    AXIOM_CAPACITY, ENTRY_LEN, Entry, GLYPHS, GlyphMap, Glyphs, KINDS, Kinds, Node, Part,
+    SHAPE_CAPACITY, SHAPES, SectionCheckError, SectionError, Sections, Shapes, SyntaxAxiom, TITLES,
+    TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION, TREES, Title, Tree, Trees, VARIABLE_CAPACITY,
     locate as locate_sections, titles_in_order, verify_sections,
 };
 pub use stages::{Stage, StagesError, parse as parse_stages, render as render_stages, stages};

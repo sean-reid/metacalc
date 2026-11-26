@@ -38,42 +38,47 @@ pub fn proofs_padded(fillers: usize) -> Vec<u8> {
 const SYNTAX: [&str; 4] = ["( ph )", "( -. ph )", "( -. -. ph )", "( -. -. -. ph )"];
 
 /// `proofs`, one more syntax axiom and axioms with long labels as a library of exactly `size`
-/// bytes: the fillers come to a little under `size`, the syntax axiom is the one of `SYNTAX` that
-/// puts the size right modulo four, and the label of a last axiom takes up the rest.
+/// bytes: the fillers come to a little under `size`, short axioms put the size right modulo four,
+/// and the label of a last axiom takes up the rest.
 pub fn library_of_size(size: usize) -> Vec<u8> {
-    let build = |syntax: &str, fillers: usize, tail: usize| {
+    let build = |syntax: &str, fillers: usize, extras: usize, tail: usize| {
         let mut src = PROOFS.to_string();
         src += &format!("${{\n  wzz $a wff {syntax} $.\n$}}\n");
         for i in 0..fillers {
             src += &format!("a-long-label-to-fill-the-page-{i} $a |- ph $.\n");
+        }
+        for i in 0..extras {
+            src += &format!("e{i} $a |- ph $.\n");
         }
         if tail > 0 {
             src += &format!("z-{} $a |- ph $.\n", "t".repeat(tail - 2));
         }
         crate::support::pack_all(&crate::support::parse(&src))
     };
+    // The kinds section ends the library, so the size modulo four follows the assertion count:
+    // the short axioms move the count until it is the one that puts the size right.
     for syntax in SYNTAX {
-        // The most fillers that leave room for a last axiom.
-        let (mut low, mut high) = (0, size / 30);
-        while low < high {
-            let middle = (low + high).div_ceil(2);
-            if build(syntax, middle, 0).len() + 40 <= size {
-                low = middle;
-            } else {
-                high = middle - 1;
+        for extras in 0..32 {
+            // The most fillers that leave room for a last axiom.
+            let (mut low, mut high) = (0, size / 30);
+            while low < high {
+                let middle = (low + high).div_ceil(2);
+                if build(syntax, middle, extras, 0).len() + 40 <= size {
+                    low = middle;
+                } else {
+                    high = middle - 1;
+                }
             }
-        }
-        for fillers in [low, low.saturating_sub(1)] {
             let (mut short, mut long) = (3, 255);
             while short < long {
                 let middle = (short + long) / 2;
-                if build(syntax, fillers, middle).len() < size {
+                if build(syntax, low, extras, middle).len() < size {
                     short = middle + 1;
                 } else {
                     long = middle;
                 }
             }
-            let library = build(syntax, fillers, short);
+            let library = build(syntax, low, extras, short);
             if library.len() == size {
                 return library;
             }
