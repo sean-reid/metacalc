@@ -121,6 +121,7 @@ pub fn settle_list(shell: &mut Shell, ui: &mut mcui::Ui) {
 
 /// The list screen's preview state in RAM: 0 pending, 1 laid out, 2 nothing to show.
 pub fn list_preview(shell: &mut Shell) -> u8 {
+    shell.at_rest();
     let at = shell.app.label("LV_PREVIEW");
     shell.app.m.read_ram(at, 1)[0]
 }

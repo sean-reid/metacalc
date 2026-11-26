@@ -53,6 +53,10 @@ const IDLE_HOOK: u16 = 0xB5E8;
 /// The first and the end of the RAM the rig's counters and hooks use.
 pub const HOOKS: (u16, u16) = (BLIT_HOOK, 0xB600);
 const SAVE_SCREEN: u16 = 0x86EC;
+/// The RAM page the reader puts in bank C for a read window (LIB_SPARE_PAGE in lib/ram.inc).
+const SPARE_PAGE: u8 = 3;
+/// What port 7 reads while bank B shows the RAM the app keeps its variables in.
+const RAM_BANK_B: u8 = 0x81;
 
 /// Loads a hook at `at`, which must end by `limit`, where the next hook or the end of the rig's RAM
 /// begins.
@@ -247,7 +251,21 @@ impl Shell {
         Shell { app, patience: 1 }
     }
 
+    /// Runs on, a few T-states at a time, until the CPU is outside a reader window, where bank B shows the
+    /// library's flash page and bank C the spare RAM page, and returns with the RAM the app keeps
+    /// its variables, stack and the rig's counters in mapped as the app sees it between reads.
+    pub fn at_rest(&mut self) {
+        let m = &mut self.app.m;
+        let mut steps = 0u32;
+        while m.in_port(7) != RAM_BANK_B || m.in_port(5) == SPARE_PAGE {
+            assert_eq!(m.run_app(1).stop, Stop::Limit);
+            steps += 1;
+            assert!(steps < 1_000_000, "the app stays inside a reader window");
+        }
+    }
+
     fn word(&mut self, at: u16) -> u16 {
+        self.at_rest();
         let b = self.app.m.read_ram(at, 2);
         u16::from_le_bytes([b[0], b[1]])
     }
@@ -282,12 +300,14 @@ impl Shell {
     }
 
     pub fn depth(&mut self) -> usize {
+        self.at_rest();
         let at = self.app.label("scr_count");
         usize::from(self.app.m.read_ram(at, 1)[0])
     }
 
     /// The open frames, bottom first.
     pub fn frames(&mut self) -> Vec<Vec<u8>> {
+        self.at_rest();
         let depth = self.depth();
         let stack = self.app.label("SCR_STACK");
         self.app
