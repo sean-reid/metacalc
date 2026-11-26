@@ -322,7 +322,10 @@ impl Machine {
     /// ran. The record holds 4096 writes; more panics.
     pub fn take_port_writes(&mut self) -> Vec<PortWrite> {
         let (writes, full) = self.calc.take_port_writes();
-        assert!(!full, "the port record was full; take the writes more often");
+        assert!(
+            !full,
+            "the port record was full; take the writes more often"
+        );
         writes
     }
 
