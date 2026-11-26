@@ -15,7 +15,8 @@ LISTK_UNCHECKED	.equ 3
 #ifdef LIBRARY
 ; In: HL = a number at most LV_END. Out: HL = the first assertion from there on that the kind shows, below
 ; LV_END, or LV_END when none is. With no status table every assertion is unchecked, and the store is not
-; asked. A refused read answers LV_END.
+; asked; when the store answers a status other than 0 (a table lost since the list was entered) every
+; assertion is unchecked too. A refused reader read answers LV_END.
 lf_next:
 	ld a, (LV_KIND)
 	or a
@@ -26,10 +27,12 @@ lf_next:
 	or a
 	ret z
 	ld de, (LV_END)
+	ld (LK_FROM), hl
 	call store_next_not_one
 	or a
 	ret z
-	jr lfn_end
+	ld hl, (LK_FROM)
+	ret
 lfn_reader:
 	ld b, 1
 	cp LISTK_THEOREMS
@@ -45,6 +48,7 @@ lfn_end:
 	ret
 
 ; In: HL = a number at most LV_END. Out: HL = the last assertion below it that the kind shows, or FFFFh.
+; Unchecked treats every assertion as shown with no table and when the store answers a status other than 0.
 lf_prev:
 	ld a, (LV_KIND)
 	or a
@@ -54,8 +58,12 @@ lf_prev:
 	ld a, (LV_TABLE)
 	or a
 	jr z, lfp_all
+	ld (LK_FROM), hl
 	call store_prev_not_one
-	jr lfp_status
+	or a
+	ret z
+	ld hl, (LK_FROM)
+	jr lfp_all
 lfp_reader:
 	ld b, 1
 	cp LISTK_THEOREMS

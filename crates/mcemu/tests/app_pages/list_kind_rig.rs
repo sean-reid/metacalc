@@ -6,6 +6,7 @@ use crate::list_rig::*;
 use crate::shellrig::*;
 use crate::table;
 use mcui::{Key, Kind, State, Status};
+use std::collections::BTreeSet;
 
 pub fn code(kind: Kind) -> u8 {
     match kind {
@@ -98,10 +99,24 @@ impl Lister {
 
     /// `walk_kind` with the wait of each preview skipped, for a library of thousands.
     pub fn walk_with(&mut self, at: &str, skip_waits: bool) -> usize {
+        self.walk_stays(at, skip_waits).0
+    }
+
+    /// `walk_with`, and the names of the list's variables a key that moved nothing wrote, from the
+    /// emulator's write watch over them: with LV_TABLE up to LV_VARS_END snapshotted before and after,
+    /// every byte outside those names is the same.
+    pub fn walk_stays(&mut self, at: &str, skip_waits: bool) -> (usize, BTreeSet<&'static str>) {
         let len = self.pos().len;
         let pages = len / 5 + 2;
         let mut stays = 0;
         let mut moves = 0;
+        let mut written = BTreeSet::new();
+        let (first, end) = (
+            self.run.shell.app.label("LV_TABLE"),
+            self.run.shell.app.label("LV_VARS_END"),
+        );
+        let names = self.variable_names();
+        self.run.m().watch_writes(first, end - first);
         let keys: Vec<(u8, Key)> = [
             vec![(DOWN, Key::Down); len + 1],
             vec![(UP, Key::Up); 3],
@@ -119,6 +134,8 @@ impl Lister {
             let step = format!("{at}, key {n} ({scan:02X})");
             let before = self.run.frames().last().cloned();
             let preview = self.var("LV_PREVIEW");
+            let vars = self.run.peek(first, usize::from(end - first));
+            self.run.m().take_writes();
             let drew = self.key(scan, key);
             self.same_kind_position(&step);
             if drew {
@@ -136,16 +153,83 @@ impl Lister {
                     "{step}: the frame"
                 );
                 assert_eq!(self.var("LV_PREVIEW"), preview, "{step}: the preview");
+                let wrote: BTreeSet<&'static str> = self
+                    .run
+                    .m()
+                    .take_writes()
+                    .iter()
+                    .map(|w| name_of(&names, w.addr))
+                    .collect();
+                let after = self.run.peek(first, usize::from(end - first));
+                for (i, (a, b)) in vars.iter().zip(&after).enumerate() {
+                    let name = name_of(&names, first + i as u16);
+                    assert!(
+                        a == b || STAY_WRITES.contains(&name),
+                        "{step}: {name} changed on a stay"
+                    );
+                }
+                for name in &wrote {
+                    assert!(STAY_WRITES.contains(name), "{step}: a stay wrote {name}");
+                }
+                written.extend(wrote);
             }
         }
+        self.run.m().unwatch_writes();
         if len > 0 {
             assert!(moves >= len - 1, "{at}: {moves} moves for {len}");
         } else {
             assert_eq!(moves, 0, "{at}: nothing to move over");
         }
         assert!(stays >= 2, "{at}: {stays} keys at an end");
-        len
+        (len, written)
     }
+
+    /// The addresses of the list's variables and of the scratch of screen_list_kind.inc, by name.
+    fn variable_names(&self) -> Vec<(u16, &'static str)> {
+        let app = &self.run.shell.app;
+        let mut names: Vec<(u16, &'static str)> = VARIABLES
+            .iter()
+            .chain(STAY_WRITES.iter())
+            .chain(["LK_T", "LK_WAS", "LK_OLD", "LK_EMPTY"].iter())
+            .map(|&n| (app.label(n), n))
+            .collect();
+        names.push((app.label("LK_FROM") + 2, "LV_RIGHT"));
+        names.sort();
+        names
+    }
+}
+
+/// The list's variables, in APP_TEXT.
+const VARIABLES: [&str; 15] = [
+    "LV_TABLE",
+    "LV_FLAT",
+    "LV_SECT",
+    "LV_COUNT",
+    "LV_PREVIEW",
+    "LV_NOFM",
+    "LV_STAGE",
+    "LV_ROW",
+    "LV_CUR",
+    "LV_TOP",
+    "LV_AT",
+    "LV_MARK",
+    "LV_HASK",
+    "LV_NAME",
+    "LV_VARS_END",
+];
+
+/// What a key that moves nothing may write under a kind, as screen_list.inc's header says.
+pub const STAY_WRITES: [&str; 8] = [
+    "LV_KIND", "LV_END", "LK_FR", "LK_CUR", "LK_X", "LK_N", "LK_KEY", "LK_FROM",
+];
+
+fn name_of(names: &[(u16, &'static str)], addr: u16) -> &'static str {
+    names
+        .iter()
+        .rev()
+        .find(|(at, _)| *at <= addr)
+        .map(|(_, n)| *n)
+        .expect("a variable")
 }
 
 /// A one-stage app over a library of axioms and theorems in the order `pattern` gives, `A` for an

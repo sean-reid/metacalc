@@ -148,6 +148,7 @@ LK_N		.equ LV_RIGHT + 10
 LK_KEY		.equ LV_RIGHT + 11
 LK_OLD		.equ LV_RIGHT + 12
 LK_EMPTY	.equ LV_RIGHT + 13
+LK_FROM		.equ LV_RIGHT + 14
 #if LV_VARS_END > (APP_TEXT + APP_TEXT_SIZE)
  .error "the list screen's variables are longer than APP_TEXT"
 #endif

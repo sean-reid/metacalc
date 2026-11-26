@@ -144,78 +144,105 @@ fn a_library_with_no_kinds_section_keeps_the_notice_on_f3_and_works_under_all() 
     }
 }
 
-#[test]
-fn marks_that_changed_under_a_list_are_met_as_f3_would_meet_them_when_it_is_entered_again() {
-    let built = crate::list_rig::proofs_three();
-    let n = count(built);
-    let before: Vec<Status> = (0..n)
+/// The marks of a library of `n` axioms with the assertions in `checked` checked, the rest not.
+fn marks(n: usize, checked: &[usize]) -> Vec<Status> {
+    (0..n)
         .map(|i| {
-            if i % 3 == 0 {
+            if checked.contains(&i) {
+                Status::Checked
+            } else {
                 Status::Unchecked
-            } else {
-                Status::Checked
             }
         })
-        .collect();
-    let after: Vec<Status> = (0..n)
-        .map(|i| {
-            if i % 3 == 0 && i < 15 {
-                Status::Checked
-            } else {
-                before[i]
-            }
-        })
-        .collect();
-    let (data_before, data_after) = (table_of(built, &before), table_of(built, &after));
-    let mut list = Lister::open(built, Some((&data_before, &before)), 0);
+        .collect()
+}
+
+/// One way the marks change under an open Unchecked list. The app is brought to a place under the
+/// old marks, where every assertion is unchecked, by `keys`; the table is swapped for the new marks, a
+/// notice is pushed and popped, and the list is entered again. The model is built with the new marks
+/// and driven to the same place: through F3 to Axioms, `down` rows to the cursor's assertion, and F3
+/// into Unchecked, which is the model's own landing; for a list whose cursor and top stay shown it is
+/// driven by `keys` under Unchecked, where nothing lands.
+fn marks_change(name: &str, keys: &[(u8, Key)], checked: &[usize], lands: bool) {
+    let built = pattern_built("pages-kinds-marks", &"A".repeat(30));
+    let n = count(built);
+    let old = marks(n, &[]);
+    let new = marks(n, checked);
+    let (data_old, data_new) = (table_of(built, &old), table_of(built, &new));
+    let mut list = Lister::open(built, Some((&data_old, &old)), 0);
     list.settle();
     list.go_to_kind(Kind::Unchecked);
-    for _ in 0..5 {
-        list.key(DOWN, Key::Down);
+    for &(scan, key) in keys {
+        list.key(scan, key);
         list.settle();
     }
     let was = list.run.frames()[1].clone();
-    let cursor = usize::from(u16::from_le_bytes([was[2], was[3]]));
-    assert!(
-        (6..15).contains(&cursor) && cursor % 3 == 0,
-        "the cursor is on {cursor}"
+    let (cursor, top) = (list.pos().cursor, list.pos().top);
+    let shown = |i: usize| !checked.contains(&i);
+    assert_eq!(
+        (shown(cursor), shown(top)),
+        match name {
+            "cursor lost" => (false, true),
+            "top lost" => (true, false),
+            "both lost" => (false, false),
+            _ => (true, true),
+        },
+        "{name}: the precondition"
     );
+    if !lands {
+        assert_ne!(
+            top,
+            cursor.saturating_sub(4),
+            "{name}: the top is not the landing's"
+        );
+    }
     list.run.m().delete_var("MCSTAT");
-    table::install(list.run.m(), &data_after);
+    table::install(list.run.m(), &data_new);
     list.tap(F4);
     list.run.next_blit();
     list.run.run(300_000);
     list.tap(CLEAR);
-    list.run.next_blit();
+    let frame = list.run.next_blit();
     list.run.run(2_000);
     assert_eq!(list.var("LV_TABLE"), 1);
-    let frame = list.run.frames()[1].clone();
-    let end = built.stages[0].end;
-    assert!(end > 17, "the stage is long enough: {end}");
-    let values = table::values(built, &after);
-    let items: Vec<usize> = (0..end).filter(|&i| values[i] != 1).collect();
-    assert!(
-        !items.contains(&cursor),
-        "the cursor's assertion is not unchecked now"
-    );
-    let mut model = crate::shellrig::model::ui(built, &after);
+    let mut model = crate::shellrig::model::ui(built, &new);
     model.press(Key::Enter);
-    for _ in 0..3 {
+    if lands {
         model.press(Key::F3);
-    }
-    match model.state() {
-        mcui::State::List { kind, len, .. } => {
-            assert_eq!((kind, len), (Kind::Unchecked, items.len()))
+        model.press(Key::F3);
+        for _ in 0..cursor {
+            model.press(Key::Down);
         }
-        other => panic!("{other:?}"),
+        model.press(Key::F3);
+    } else {
+        for _ in 0..3 {
+            model.press(Key::F3);
+        }
+        for &(_, key) in keys {
+            model.press(key);
+        }
     }
-    let at = items
-        .iter()
-        .position(|&i| i >= cursor)
-        .unwrap_or(items.len() - 1);
-    let top = if at < 5 { 0 } else { at - 4 };
-    let got = |at: usize| usize::from(u16::from_le_bytes([frame[at], frame[at + 1]]));
-    assert_eq!((got(2), got(4)), (items[at], items[top]), "F3's rule");
-    assert_ne!(got(2), cursor);
-    assert_eq!(frame[6], 3);
+    crate::ui_support::same_frame(name, &frame, &crate::shellrig::model::frame(&model));
+    list.ui = model;
+    list.status = new;
+    list.same_kind_position(name);
+    let now = list.run.frames()[1].clone();
+    assert_eq!(now[6], 3);
+    assert_eq!(now != was, lands, "{name}: the frame {was:?} then {now:?}");
+    assert!(list.settle(), "{name}");
+}
+
+const TWELVE: [(u8, Key); 12] = [(DOWN, Key::Down); 12];
+
+#[test]
+fn marks_that_changed_under_a_list_are_met_as_f3_would_meet_them_when_it_is_entered_again() {
+    marks_change("cursor lost", &TWELVE, &[12], true);
+    marks_change("top lost", &TWELVE, &[8], true);
+    marks_change("both lost", &TWELVE, &[8, 12], true);
+    marks_change(
+        "both kept",
+        &[(RIGHT, Key::Right), (RIGHT, Key::Right), (UP, Key::Up)],
+        &[20, 25],
+        false,
+    );
 }
