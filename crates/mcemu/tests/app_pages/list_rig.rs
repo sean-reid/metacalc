@@ -132,6 +132,13 @@ impl Lister {
         }
         self.run.m().release_key(scan);
         self.run.m().resume(100);
+        // The hook that counts the call needs about as many T-states as that, so an interrupt that lands
+        // in them leaves the count behind for the length of its handler.
+        let mut waited = 0;
+        while self.run.scr_keys() == before && waited < 20_000 {
+            self.run.m().resume(100);
+            waited += 100;
+        }
         assert_eq!(
             self.run.scr_keys(),
             before + 1,
