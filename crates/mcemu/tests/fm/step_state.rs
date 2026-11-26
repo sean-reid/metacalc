@@ -130,7 +130,11 @@ fn fm_step_and_fm_span_change_only_their_own_variables_and_a_refused_call_change
             Some(format!("FV_{}", name.to_uppercase()))
         })
         .collect();
-    assert_eq!(written, names(&session), "the variables session.inc writes");
+    assert_eq!(
+        written,
+        names(&session),
+        "session.inc's `ld (fv_..)` stores"
+    );
     for name in session {
         assert!(
             before.iter().any(|(n, _)| n == name),

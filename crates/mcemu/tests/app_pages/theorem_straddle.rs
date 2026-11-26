@@ -61,6 +61,7 @@ fn a_hypothesis_starting_one_row_above_the_window_has_no_number_and_one_at_its_f
         println!("{label}: {total} rows, scroll {scroll}, TV_ROW of the third hypothesis {got}");
         assert_eq!(got, row, "{label}: TV_ROW");
         let frame = walker.list.run.frame();
+        // At TV_ROW 0 a number drawn by mistake lands on the title row: same_frame is what fails.
         same_frame(label, &frame, &walker.list.shown());
         assert_eq!(
             number_drawn(&frame, 1),

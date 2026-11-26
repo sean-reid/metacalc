@@ -355,7 +355,7 @@ fn a_keys_walk_on_a_hidden_node_answers_with_a_frame_only_when_one_changes() {
         hidden_presses >= 11,
         "{hidden_presses} keys were pressed on a hidden node"
     );
-    assert!(stays >= 11, "{stays} of them stayed");
+    assert_eq!(stays, hidden_presses, "every one of them stayed");
 }
 
 impl Lister {

@@ -1,5 +1,5 @@
 //! The stack theorem_key and theorem_draw write on each path the header names, on states built for the
-//! path and asserted from the model first: the same states on the stub OS and on the reference OS.
+//! path and asserted from the model first: the same paths on the stub OS and on the reference OS.
 
 use crate::app::*;
 use crate::list_rig::Lister;

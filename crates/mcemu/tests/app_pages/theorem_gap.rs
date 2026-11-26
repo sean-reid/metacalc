@@ -49,8 +49,8 @@ fn on_a_theorem() -> Lister {
     walker.list
 }
 
-/// The delivered counts at each gap of the table, the gap from which every press of every longer gap
-/// was delivered, and the count at the longest gap before it.
+/// The gap from which every press of every longer gap was delivered, and the delivered counts at
+/// each gap of the table.
 fn lossless_from(screen: fn() -> Lister, key: u8) -> (u32, Vec<usize>) {
     let counts: Vec<usize> = GAPS
         .iter()
@@ -65,8 +65,8 @@ fn lossless_from(screen: fn() -> Lister, key: u8) -> (u32, Vec<usize>) {
 }
 
 /// The edge of a screen's loss: below `from` the count is under `PRESSES`, at `from` it is exactly
-/// `PRESSES`, and past it a press that the key's repeat delivers twice counts above it. Returns the
-/// count just below the edge and the gaps at which a press repeated.
+/// `PRESSES`, and no gap delivers more, so no repeat stands in for a lost press. Returns the count
+/// just below the edge and the gaps at which a press repeated, which are none.
 fn edge(name: &str, from: u32, counts: &[usize]) -> (usize, Vec<u32>) {
     let at = GAPS.iter().position(|&g| g == from).unwrap();
     assert!(at > 0, "{name}: some gap loses presses");
@@ -80,7 +80,11 @@ fn edge(name: &str, from: u32, counts: &[usize]) -> (usize, Vec<u32>) {
     let repeats = (0..GAPS.len())
         .filter(|&i| counts[i] > PRESSES)
         .map(|i| GAPS[i])
-        .collect();
+        .collect::<Vec<u32>>();
+    assert!(
+        repeats.is_empty(),
+        "{name}: a press repeated at {repeats:?} ms"
+    );
     (counts[at - 1], repeats)
 }
 
