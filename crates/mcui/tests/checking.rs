@@ -323,7 +323,10 @@ fn reading(state: State) -> (usize, usize, usize, bool, Option<(usize, usize)>) 
 fn a_library_with_no_table_is_read_a_chunk_at_a_time_before_its_assertions() {
     let bytes = many_chunks();
     let chunks = bytes.len().div_ceil(1 << 14);
-    assert_eq!(chunks, 11, "the library is eleven chunks, the last one short");
+    assert_eq!(
+        chunks, 11,
+        "the library is eleven chunks, the last one short"
+    );
     assert_ne!(bytes.len() % (1 << 14), 0);
     let mut ui = unchecked_ui(bytes);
     assert!(!ui.begin_reading(), "no checking screen is open");

@@ -103,6 +103,10 @@ mod list_depth;
 mod list_exits;
 #[path = "app_pages/list_fail.rs"]
 mod list_fail;
+#[path = "app_pages/list_find_far.rs"]
+mod list_find_far;
+#[path = "app_pages/list_find_rom.rs"]
+mod list_find_rom;
 #[path = "app_pages/list_frames.rs"]
 mod list_frames;
 #[path = "app_pages/list_keys.rs"]
@@ -113,8 +117,6 @@ mod list_kind_depth;
 mod list_kind_edges;
 #[path = "app_pages/list_kind_f3.rs"]
 mod list_kind_f3;
-#[path = "app_pages/list_find_far.rs"]
-mod list_find_far;
 #[path = "app_pages/list_kind_far.rs"]
 mod list_kind_far;
 #[path = "app_pages/list_kind_frames.rs"]

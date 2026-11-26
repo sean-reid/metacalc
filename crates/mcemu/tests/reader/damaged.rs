@@ -71,7 +71,7 @@ fn a_refusal_at_open_is_the_hosts_refusal_for_the_same_bytes() {
         ("version 0", with(&good, |b| b[at + 1] = 0), ST_TRAILER),
         ("version 255", with(&good, |b| b[at + 1] = 255), ST_TRAILER),
         ("255 rows", with(&good, |b| b[at] = 255), ST_TABLE),
-        ("one row too many", with(&good, |b| b[at] = 6), ST_TABLE),
+        ("one row too many", with(&good, |b| b[at] = 7), ST_TABLE),
         (
             "a row at the file's end",
             with(&good, |b| put32(b, titles + 1, len)),
@@ -223,14 +223,14 @@ fn rows_the_reader_skips_or_does_not_need_open_as_the_decoder_opens_them() {
     assert_eq!(rig.label_of(3).0, ST_OK);
 }
 
-/// A table of `rows` rows: the packer's three and zero-length rows of unknown ids at the start of
+/// A table of `rows` rows: the packer's six and zero-length rows of unknown ids at the start of
 /// the first section.
 fn with_rows(good: &[u8], rows: usize) -> Vec<u8> {
     let at = good.len() - TRAILER_LEN;
     let at_titles = offset_of(good, TITLES);
     with(good, |b| {
         b.truncate(at);
-        for id in 0..rows - 5 {
+        for id in 0..rows - 6 {
             b.push(20 + id as u8);
             b.extend(at_titles.to_le_bytes());
             b.extend(0u32.to_le_bytes());

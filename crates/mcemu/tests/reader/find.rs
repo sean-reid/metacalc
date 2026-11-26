@@ -81,8 +81,16 @@ fn the_edges_of_the_section_and_the_shapes_of_a_miss_are_exact() {
         (b"zzz", (54, 0), "past the last label"),
         (b"~", (54, 0), "above the last label"),
         (b"q", (46, 0), "a letter no label starts with"),
-        (b"abcdefgh", (31, 5), "a whole 8 character label that starts five labels"),
-        (b"abcdefgx", (36, 0), "a label's first 7 characters and another eighth"),
+        (
+            b"abcdefgh",
+            (31, 5),
+            "a whole 8 character label that starts five labels",
+        ),
+        (
+            b"abcdefgx",
+            (36, 0),
+            "a label's first 7 characters and another eighth",
+        ),
         (b"abx", (36, 0), "a label plus a character"),
         (b"ax-m", (39, 1), "a prefix of one label"),
         (b"ax-mpx", (40, 0), "a label plus a character"),
@@ -90,9 +98,21 @@ fn the_edges_of_the_section_and_the_shapes_of_a_miss_are_exact() {
         (b"a", (11, 31), "a label that is a prefix of 30 others"),
         (b"ab", (19, 17), "a label that is a prefix of 16 others"),
         (b"abcdefg", (28, 8), "a 7 character prefix of 8 labels"),
-        (b"abcdefg1", (29, 1), "labels that differ only in the eighth character"),
-        (b"abcdefg2", (30, 1), "labels that differ only in the eighth character"),
-        (b"abcdefgh", (31, 5), "labels that differ only after the eighth"),
+        (
+            b"abcdefg1",
+            (29, 1),
+            "labels that differ only in the eighth character",
+        ),
+        (
+            b"abcdefg2",
+            (30, 1),
+            "labels that differ only in the eighth character",
+        ),
+        (
+            b"abcdefgh",
+            (31, 5),
+            "labels that differ only after the eighth",
+        ),
         (b"sy", (46, 6), "two characters"),
         (b"Z", (8, 2), "an upper case letter"),
     ];

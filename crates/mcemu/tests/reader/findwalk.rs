@@ -36,7 +36,15 @@ struct Tally {
     arg: usize,
 }
 
-fn check_walk(rig: &mut Rig, model: &Model, range: (u16, u16), s: u16, b: u16, kind: u8, t: &mut Tally) {
+fn check_walk(
+    rig: &mut Rig,
+    model: &Model,
+    range: (u16, u16),
+    s: u16,
+    b: u16,
+    kind: u8,
+    t: &mut Tally,
+) {
     let want = model.walk(range, s, b, kind);
     let out = ask_walk(rig, range, s, b, kind);
     let what = format!("range {range:?} start {s} bound {b} kind {kind}");
@@ -96,7 +104,10 @@ fn arguments_the_walk_refuses_are_refused_with_their_status_in_order() {
         check_walk(&mut rig, &model, whole, 0, 12, kind, &mut t);
         check_walk(&mut rig, &model, (40, 40), 99, 98, kind, &mut t);
     }
-    assert_eq!(t.arg, 8, "a kind that is not 0, 1 or FFh is 2 before any index is looked at");
+    assert_eq!(
+        t.arg, 8,
+        "a kind that is not 0, 1 or FFh is 2 before any index is looked at"
+    );
     let cases = [
         ((0, 13), 0, 12, "a range one past the section"),
         ((12, 1), 0, 12, "first at the count and one entry"),
@@ -135,7 +146,11 @@ fn a_block_that_is_not_allowed_is_refused_with_2() {
         let out = rig.call(WALK, walk_regs(at));
         assert_eq!(out.status(), ST_ARG, "{what}");
     }
-    for (at, what) in [(0xBFF7u16, "ends on the last byte of bank B"), (state - 9, "ends one below the state block"), (state + size, "starts one past the block")] {
+    for (at, what) in [
+        (0xBFF7u16, "ends on the last byte of bank B"),
+        (state - 9, "ends one below the state block"),
+        (state + size, "starts one past the block"),
+    ] {
         rig.poke(at, &block(0, 12, 0, 12, EVERY));
         let out = rig.call(WALK, walk_regs(at));
         assert_eq!((out.status(), out.hl), (ST_OK, 0), "{what}");
@@ -173,17 +188,32 @@ fn only_a_candidate_below_the_best_so_far_is_tested_against_the_bitmap() {
     let falling = ["k5", "k4", "k3", "k2", "k1", "k0"];
     let rising = ["k0", "k1", "k2", "k3", "k4", "k5"];
     let (falls, model) = reads_of(&falling, THEOREM);
-    assert_eq!(model.order, [5, 4, 3, 2, 1, 0], "numbers fall along the labels");
-    assert_eq!(falls, 6, "a range in falling number order tests each candidate");
+    assert_eq!(
+        model.order,
+        [5, 4, 3, 2, 1, 0],
+        "numbers fall along the labels"
+    );
+    assert_eq!(
+        falls, 6,
+        "a range in falling number order tests each candidate"
+    );
     let (rises, model) = reads_of(&rising, THEOREM);
     assert_eq!(model.order, [0, 1, 2, 3, 4, 5]);
     assert_eq!(rises, 1, "a range in rising number order tests one");
-    assert_eq!(reads_of(&falling, EVERY).0, 0, "every assertion reads no bitmap");
+    assert_eq!(
+        reads_of(&falling, EVERY).0,
+        0,
+        "every assertion reads no bitmap"
+    );
     assert_eq!(reads_of(&rising, EVERY).0, 0);
     let all_axioms = strings(&rising);
     let mut rig = opened(&library(&all_axioms, Some(&vec![true; 6])));
     let (n, reads) = bitmap_reads(&mut rig, (0, 6), 0, 6, AXIOM);
-    assert_eq!((n, reads), (6, 6), "no axiom: every candidate is tested and none lowers the best");
+    assert_eq!(
+        (n, reads),
+        (6, 6),
+        "no axiom: every candidate is tested and none lowers the best"
+    );
 }
 
 #[test]
@@ -193,7 +223,17 @@ fn candidates_outside_start_and_bound_are_not_tested() {
     let mut rig = opened(&library(&labels, Some(&bits)));
     let model = Model::new(&labels, Some(bits));
     let mut seen = Vec::new();
-    for (start, bound) in [(0u16, 6u16), (2, 6), (0, 4), (2, 4), (3, 3), (6, 6), (5, 6), (0, 1), (4, 5)] {
+    for (start, bound) in [
+        (0u16, 6u16),
+        (2, 6),
+        (0, 4),
+        (2, 4),
+        (3, 3),
+        (6, 6),
+        (5, 6),
+        (0, 1),
+        (4, 5),
+    ] {
         let want = model.walk((0, 6), start, bound, THEOREM).unwrap();
         let got = bitmap_reads(&mut rig, (0, 6), start, bound, THEOREM);
         assert_eq!(got, (want.0, want.1), "start {start} bound {bound}");
@@ -211,7 +251,11 @@ fn the_reads_of_every_walk_of_a_small_library_are_the_rules_count() {
         for kind in [AXIOM, THEOREM] {
             for (s, b) in [(0u16, 12u16), (3, 9), (0, 5), (7, 12), (4, 4), (1, 11)] {
                 let (want, reads) = model.walk(range, s, b, kind).unwrap();
-                assert_eq!(bitmap_reads(&mut rig, range, s, b, kind), (want, reads), "{range:?} {s} {b} {kind}");
+                assert_eq!(
+                    bitmap_reads(&mut rig, range, s, b, kind),
+                    (want, reads),
+                    "{range:?} {s} {b} {kind}"
+                );
                 total += 1;
                 zero += usize::from(reads == 0);
                 many += usize::from(reads > 2);
@@ -250,7 +294,10 @@ fn a_range_across_a_chunk_and_a_range_longer_than_a_window_are_walked_whole() {
     for prefix in [&b"ax-"[..], b"ax-1", b"ax-12", b"ax-2", b"ax-3"] {
         let range = model.range(prefix).unwrap();
         let (first, count) = (usize::from(range.0), usize::from(range.1));
-        assert!(count > 40, "{prefix:?}: a range longer than the 32 byte window holds");
+        assert!(
+            count > 40,
+            "{prefix:?}: a range longer than the 32 byte window holds"
+        );
         let spans = first + 1 < entry && entry + 1 < first + count;
         crossed += usize::from(spans);
         let members: Vec<u16> = {
@@ -258,7 +305,11 @@ fn a_range_across_a_chunk_and_a_range_longer_than_a_window_are_walked_whole() {
             m.sort();
             m
         };
-        let (lo, hi, mid) = (members[0], members[members.len() - 1], members[members.len() / 2]);
+        let (lo, hi, mid) = (
+            members[0],
+            members[members.len() - 1],
+            members[members.len() / 2],
+        );
         let around = |m: u16| [m.saturating_sub(1), m, (m + 1).min(n)];
         let mut points: Vec<u16> = [lo, hi, mid, 0, n].into_iter().flat_map(around).collect();
         points.sort();
@@ -274,7 +325,10 @@ fn a_range_across_a_chunk_and_a_range_longer_than_a_window_are_walked_whole() {
         }
     }
     println!("{crossed} ranges across the chunk: {t:?}");
-    assert!(crossed >= 1, "a range that spans the boundary at entry {entry}");
+    assert!(
+        crossed >= 1,
+        "a range that spans the boundary at entry {entry}"
+    );
     assert!(t.found > 100 && t.bound > 100, "{t:?}");
 }
 

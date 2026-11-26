@@ -27,9 +27,11 @@ const ON_AND_KEY: Answer = Answer {
 /// scr_idle runs again and acts on it once. Where the OS has scanned the key by then, the answer is
 /// its code, and the key is acted on once all the same.
 ///
-/// The stub codes one more of the twelve phases than the ROM (4 coded answers and 8 not, against
-/// 3 and 9). Its timer interrupts measure 9.9 ms apart here and the ROM's 9.5 to 9.6 ms; what sets
-/// that spacing is not established.
+/// Where the OS has scanned the key by the idle point depends on where the timer interrupt falls
+/// against the press, so the split of the twelve phases moves with the cycles the app spends before
+/// the loop starts: the stub codes 1 and leaves 11 uncoded, the ROM 3 and 9. Its timer interrupts
+/// measure 9.9 ms apart here and the ROM's 9.5 to 9.6 ms; what sets that spacing is not
+/// established.
 fn a_key_with_on_down_and_the_byte_clear_goes_to_app_key(real: bool) {
     let mut sc = script(&[KIND_LIBRARIES], &[Slice::ms(3).off().more()]);
     sc.forever = true;
@@ -81,7 +83,7 @@ fn a_key_with_on_down_and_the_byte_clear_goes_to_app_key(real: bool) {
          {coded}: A = {seen:?}",
         os_name(real)
     );
-    let expected = if real { (9, 3) } else { (8, 4) };
+    let expected = if real { (9, 3) } else { (11, 1) };
     assert_eq!((both, coded), expected, "of twelve phases");
 }
 

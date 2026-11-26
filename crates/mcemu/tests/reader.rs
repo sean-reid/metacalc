@@ -18,6 +18,10 @@ mod findcost;
 mod findexits;
 #[path = "reader/findrig.rs"]
 mod findrig;
+#[path = "reader/findstages.rs"]
+mod findstages;
+#[path = "reader/findstate.rs"]
+mod findstate;
 #[path = "reader/findwalk.rs"]
 mod findwalk;
 #[path = "reader/flags.rs"]

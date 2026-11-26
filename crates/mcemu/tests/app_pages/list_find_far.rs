@@ -33,7 +33,9 @@ fn lib(built: &Built) -> Lib {
 impl Lib {
     fn range(&self, prefix: &[u8]) -> (u16, u16) {
         let at = |i: usize| &self.labels[usize::from(self.order[i])];
-        let first = (0..self.order.len()).take_while(|&i| at(i).as_slice() < prefix).count();
+        let first = (0..self.order.len())
+            .take_while(|&i| at(i).as_slice() < prefix)
+            .count();
         let count = (first..self.order.len())
             .take_while(|&i| at(i).starts_with(prefix))
             .count();
@@ -63,7 +65,10 @@ fn the_far_entries_find_a_range_walk_it_and_copy_it() {
                     },
                 );
                 let want = lib.range(prefix);
-                assert_eq!((done.status(), done.regs.hl, done.regs.bc), (0, want.0, want.1));
+                assert_eq!(
+                    (done.status(), done.regs.hl, done.regs.bc),
+                    (0, want.0, want.1)
+                );
                 ranges += 1;
                 for kind in [0u8, 1, 0xFF] {
                     let mut block = Vec::new();
@@ -115,6 +120,9 @@ fn the_far_entries_find_a_range_walk_it_and_copy_it() {
                 copies += 1;
             }
         }
-        assert!(ranges > 30 && walks == 3 * ranges && copies == ranges, "{ranges} {walks} {copies}");
+        assert!(
+            ranges > 30 && walks == 3 * ranges && copies == ranges,
+            "{ranges} {walks} {copies}"
+        );
     }
 }
