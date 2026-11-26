@@ -39,7 +39,7 @@ impl Lister {
             status: Vec::new(),
             log: vec![Key::Down; stage],
             seen: (0, 0),
-            title_stale: false,
+            title_from: None,
             stale_titles: 0,
         }
     }

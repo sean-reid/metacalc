@@ -43,9 +43,10 @@ pub struct Lister {
     pub log: Vec<Key>,
     /// The preview state and the wait the app had when the frame of the last key was blitted.
     pub seen: (u8, u8),
-    /// Set when the title bar is not compared: the app's counts are the ones list_enter derived and
-    /// the model's follow its marks. `stale_titles` counts the frames whose title bar differed.
-    pub title_stale: bool,
+    /// The model that has the marks list_enter derived the title's counts from, when the table has
+    /// been lost since: the title bar is compared with its frame and the rest with `ui`'s.
+    /// `stale_titles` counts the frames whose title bar differs from `ui`'s.
+    pub title_from: Option<Ui>,
     pub stale_titles: usize,
 }
 
@@ -74,7 +75,7 @@ impl Lister {
             status: table.map_or(Vec::new(), |t| t.1.to_vec()),
             log: Vec::new(),
             seen: (0, 0),
-            title_stale: false,
+            title_from: None,
             stale_titles: 0,
         };
         for _ in 0..stage {
@@ -99,6 +100,9 @@ impl Lister {
         let (before, depth) = (self.shown(), self.ui.depth());
         self.tap(scan);
         self.ui.press(key);
+        if let Some(old) = self.title_from.as_mut() {
+            old.press(key);
+        }
         self.log.push(key);
         let want = self.shown();
         let redraws = want != before || self.ui.depth() != depth;
@@ -124,17 +128,17 @@ impl Lister {
         redraws
     }
 
-    /// `same_frame`, with the title bar's rows left out when `title_stale` is set.
+    /// `same_frame`, with the title bar's rows taken from `title_from` when it is set.
     fn same(&mut self, what: &str, got: &[u8], want: &[u8]) {
         const TITLE: usize = 8 * 12;
-        if !self.title_stale {
+        let Some(old) = &self.title_from else {
             return same_frame(what, got, want);
-        }
-        self.stale_titles += usize::from(got[..TITLE] != want[..TITLE]);
-        let (mut got, mut want) = (got.to_vec(), want.to_vec());
-        got[..TITLE].fill(0);
-        want[..TITLE].fill(0);
-        same_frame(what, &got, &want);
+        };
+        let mut want = want.to_vec();
+        let old = crate::shellrig::model::frame(old);
+        self.stale_titles += usize::from(want[..TITLE] != old[..TITLE]);
+        want[..TITLE].copy_from_slice(&old[..TITLE]);
+        same_frame(what, got, &want);
     }
 
     /// Holds `scan` until scr_key takes it and lets go.

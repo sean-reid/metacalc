@@ -339,7 +339,7 @@ fn a_theorem_opened_right_after_a_check_opens_fm_again_once() {
         status,
         log: Vec::new(),
         seen: (0, 0),
-        title_stale: false,
+        title_from: None,
         stale_titles: 0,
     };
     assert!(list.key(ENTER, Key::Enter), "the list opens");

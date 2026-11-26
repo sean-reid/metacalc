@@ -1,7 +1,7 @@
 //! A status table lost after the list was entered (deleted, a wrong magic, a wrong size): under
 //! Unchecked every assertion is shown, as it is with no table, the ones the table hid included, and
-//! every row draws unchecked. The title keeps the count list_enter derived from the table, so its bar
-//! is not compared after the loss.
+//! every row draws unchecked. The title keeps the count list_enter derived from the table: its bar is
+//! compared with the model that has the old marks and the rows with the model that has none.
 
 use crate::list_kind_rig::*;
 use crate::list_rig::*;
@@ -59,9 +59,11 @@ fn a_table_lost_under_an_open_unchecked_list_shows_every_assertion_as_no_table_d
                 assert_eq!(list.pos().len, n - CHECKED.len(), "{how}: the table hides");
             }
             lose(&mut list, how, &data);
+            let mut old = list.replayed();
+            old.idle();
             list.status = Vec::new();
             list.ui = list.replayed();
-            list.title_stale = true;
+            list.title_from = Some(old);
             list.ui.idle();
             let at = format!("{how}, from {start:?}");
             for round in 0..4 {
