@@ -13,6 +13,8 @@ mod fixture;
 mod kinds;
 #[path = "store/layout.rs"]
 mod layout;
+#[path = "store/least.rs"]
+mod least;
 #[path = "store/marks.rs"]
 mod marks;
 #[path = "store/open.rs"]

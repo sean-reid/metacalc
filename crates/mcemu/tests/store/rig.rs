@@ -105,6 +105,8 @@ pub enum Cmd {
     NextNotOne(u16, u16),
     /// The last value other than 1 below this number.
     PrevNotOne(u16),
+    /// The least number of the list from start up to below limit whose value is not 1.
+    LeastNotOne(u16, u16, &'static [u16]),
     /// Asks _EnoughMem for this many bytes: 0 when they are free, 1 when not.
     Room(u16),
 }
@@ -156,6 +158,14 @@ impl Cmd {
                 [&[23][..], &from.to_le_bytes(), &end.to_le_bytes()].concat()
             }
             Cmd::PrevNotOne(from) => [&[24][..], &from.to_le_bytes()].concat(),
+            Cmd::LeastNotOne(start, limit, list) => {
+                let mut b = vec![25];
+                b.extend(start.to_le_bytes());
+                b.extend(limit.to_le_bytes());
+                b.push(list.len() as u8);
+                b.extend(list.iter().flat_map(|e| e.to_le_bytes()));
+                b
+            }
         }
     }
 }
@@ -208,7 +218,7 @@ fn record_len(at: &[u8]) -> usize {
     let (cmd, a) = (at[0], at[1]);
     match cmd {
         1 | 2 | 21 => 3,
-        4 | 22..=24 => 4,
+        4 | 22..=25 => 4,
         6 | 17 => 10,
         10 if a == 0 => 6,
         18 => 67,

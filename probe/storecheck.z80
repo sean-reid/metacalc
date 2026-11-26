@@ -28,6 +28,7 @@
 ;     CMD_NEXT_ZERO  from (2), end (2)     log: A, the answer (2)
 ;     CMD_NEXT_NOT_ONE from (2), end (2)   log: A, the answer (2)
 ;     CMD_PREV_NOT_ONE from (2)            log: A, the answer (2)
+;     CMD_LEAST_NOT_ONE start (2), limit (2), k (1), k words   log: A, the answer (2)
 ;     CMD_LIST       dim (2)               creates the list named Q, which sorts below every AppVar; log: 0
 ;     CMD_ROOM       n (2)                 log: 0 if _EnoughMem accepts n bytes, 1 if not
 ;     CMD_NOP                              log: 0
@@ -63,6 +64,7 @@ CMD_ALL_ONES   = 21
 CMD_NEXT_ZERO  = 22
 CMD_NEXT_NOT_ONE = 23
 CMD_PREV_NOT_ONE = 24
+CMD_LEAST_NOT_ONE = 25
 SCRIPT_ARCHIVED = 0FFh
 
 #include "storeram.inc"
@@ -210,6 +212,8 @@ dispatch:
 	jp z, do_next_not_one
 	cp CMD_PREV_NOT_ONE
 	jp z, do_prev_not_one
+	cp CMD_LEAST_NOT_ONE
+	jp z, do_least_not_one
 	cp CMD_LIST
 	jp z, do_list
 	cp CMD_ROOM
@@ -301,6 +305,28 @@ do_next_not_one:
 do_prev_not_one:
 	call fetch_word
 	call store_prev_not_one
+	ld (S_RES + 1), a
+	ld (S_RES + 2), hl
+	ld a, 4
+	jp result_len
+
+do_least_not_one:
+	call fetch_word
+	push hl
+	call fetch_word
+	push hl
+	call fetch
+	ld c, a
+	ld b, 0
+	ld hl, (S_PTR)
+	push hl
+	add hl, bc
+	add hl, bc
+	ld (S_PTR), hl
+	pop hl
+	pop ix
+	pop de
+	call store_least_not_one
 	ld (S_RES + 1), a
 	ld (S_RES + 2), hl
 	ld a, 4

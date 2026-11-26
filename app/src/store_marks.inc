@@ -1,6 +1,7 @@
 ; The mark lookups of store.inc, which includes this file: whether a list of assertions all hold
-; the value 1, where the next unchecked assertion is, and where the next and the previous
-; assertion is whose value is not 1.
+; the value 1, where the next unchecked assertion is, where the next and the previous
+; assertion is whose value is not 1, and which of a list of assertions is the least one whose
+; value is not 1.
 SAO_HDR  = OP2
 SAO_CNT  = OP2 + 2
 SAO_LEFT = OP2 + 4
@@ -11,6 +12,12 @@ SNZ_END  = OP2 + 4
 SNZ_LEFT = OP2 + 6
 SNZ_K    = OP2 + 8
 SNZ_P    = OP2 + 10
+
+SLN_HDR   = OP2
+SLN_CNT   = OP2 + 2
+SLN_BEST  = OP2 + 4
+SLN_LEFT  = OP2 + 6
+SLN_START = OP2 + 8
 
 store_all_ones:
 	push hl
@@ -287,5 +294,69 @@ spn_one:
 	dec a
 	jr z, spn_step
 	ex de, hl
+	xor a
+	ret
+
+store_least_not_one:
+	push bc
+	push de
+	push hl
+	push ix
+	call store_data
+	ld (SLN_HDR), hl
+	ld (SLN_CNT), bc
+	pop hl
+	pop ix
+	pop de
+	pop bc
+	or a
+	ret nz
+	ld (SLN_START), de
+	ld (SLN_BEST), hl
+	ld (SLN_LEFT), bc
+	ex de, hl
+	ld hl, (SLN_CNT)
+	or a
+	sbc hl, de
+	jp c, snz_range
+	ex de, hl
+	ld de, (SLN_START)
+	or a
+	sbc hl, de
+	jp c, snz_range
+sln_next:
+	ld hl, (SLN_LEFT)
+	ld a, h
+	or l
+	jr z, sln_done
+	dec hl
+	ld (SLN_LEFT), hl
+	ld e, (ix + 0)
+	ld d, (ix + 1)
+	inc ix
+	inc ix
+	ld hl, (SLN_START)
+	or a
+	sbc hl, de
+	jr z, sln_above
+	jr nc, sln_next
+sln_above:
+	ld hl, (SLN_BEST)
+	or a
+	sbc hl, de
+	jr z, sln_next
+	jr c, sln_next
+	push de
+	ld hl, (SLN_HDR)
+	ld bc, (SLN_CNT)
+	call store_locate
+	call store_unpack
+	pop de
+	cp 1
+	jr z, sln_next
+	ld (SLN_BEST), de
+	jr sln_next
+sln_done:
+	ld hl, (SLN_BEST)
 	xor a
 	ret
