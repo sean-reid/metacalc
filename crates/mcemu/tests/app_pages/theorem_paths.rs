@@ -22,6 +22,8 @@ pub struct Probe {
     pub hidden: bool,
     /// The cursor's own fold is set.
     pub folded: bool,
+    /// Steps from node 0 to the cursor's node.
+    pub depth: usize,
     pub nodes: usize,
     pub children: usize,
     pub sibling_before: bool,
@@ -43,6 +45,7 @@ pub fn probe(walker: &mut Walker, lib: &Lib, n: usize) -> Probe {
         node,
         hidden: mirror.hides(s, node),
         folded: mirror.is_folded(s, node),
+        depth: expr.depth(node),
         nodes: expr.len(),
         children: expr.children(node).len(),
         sibling_before: expr.sibling(node, false).is_some(),
@@ -88,15 +91,16 @@ pub fn onto(walker: &mut Walker, lib: &Lib, n: usize, want: &dyn Fn(&Probe) -> b
 type Want = fn(&Probe) -> bool;
 
 /// What a path of the cursor needs: where the cursor is, and the key pressed there.
-const MOVES: [(&str, u8, Key, Want); 13] = [
+const MOVES: [(&str, u8, Key, Want); 14] = [
     ("left to a sibling", LEFT, Key::Left, |p| {
         !p.hidden && p.sibling_before
     }),
     ("right to a sibling", RIGHT, Key::Right, |p| {
         !p.hidden && p.sibling_after
     }),
-    ("up to the parent", UP, Key::Up, |p| {
-        !p.hidden && p.node != 0
+    ("up to node 0", UP, Key::Up, |p| !p.hidden && p.depth == 1),
+    ("up to a parent that is not node 0", UP, Key::Up, |p| {
+        !p.hidden && p.depth >= 2
     }),
     ("down to the first child", DOWN, Key::Down, |p| {
         !p.hidden && !p.folded && p.children > 0
@@ -301,6 +305,12 @@ pub fn scrolls(site: &Site, speed: u8) -> (BTreeMap<String, u16>, Vec<String>) {
         assert_eq!(walker.frame()[8], 0, "{name}: byte 8 is 0");
         put(name.to_string(), traced(&mut walker, scan, key, speed));
     }
+    let mut walker = reach(ones[0], 0);
+    assert_eq!(walker.frame()[8], 1, "byte 8 is 1");
+    put(
+        "no key with the view following".into(),
+        traced(&mut walker, DEL, Key::Letter('A'), speed),
+    );
     (found, missing)
 }
 
@@ -343,7 +353,8 @@ pub fn figures() -> BTreeMap<String, u16> {
         ("right across statements", 12),
         ("left at the first statement", 10),
         ("right at the last statement", 10),
-        ("up to the parent", 12),
+        ("up to node 0", 12),
+        ("up to a parent that is not node 0", 14),
         ("up at the root of a statement of several nodes", 10),
         ("down to the first child", 14),
         ("down at a leaf", 10),
@@ -381,6 +392,7 @@ pub fn figures() -> BTreeMap<String, u16> {
         ("f5 with the view scrolled away", 12),
         ("a letter with the view scrolled away", 12),
         ("no key with the view scrolled away", 12),
+        ("no key with the view following", 4),
     ]
     .map(|(name, depth): (&str, u16)| (name.to_string(), depth))
     .into()
@@ -427,10 +439,13 @@ fn every_path_of_the_key_and_the_draw_writes_the_headers_figure_on_the_stub_os()
     }
 }
 
-/// The paths on the reference OS: the keys that move the cursor on an assertion of prop, the scroll case on
-/// the assertions of one-node statements the stub OS's test builds (no shipped library has a one-node
-/// hypothesis in an assertion of more than six rows), and the draw on prop's one assertion of more than six
-/// rows.
+/// The paths on the reference OS. Three states differ from the stub OS's test: the keys that move the
+/// cursor stand on an assertion of prop (three hypotheses or more, six rows or more) where the stub's stand
+/// on the fixture's (six hypotheses or more, more than six rows), because the ROM test needs a shipped
+/// library; the draw with a skipped statement stands on prop's assertion of more than six rows, for the same
+/// reason; and every path runs at speed 0 only, the stub's at both. The scroll case is the same states on
+/// both, built from one-node statements because no shipped library has a one-node hypothesis in an assertion
+/// of more than six rows.
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn on_the_reference_os_every_path_writes_the_figure_the_stub_os_does() {
