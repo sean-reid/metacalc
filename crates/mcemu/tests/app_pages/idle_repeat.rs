@@ -54,7 +54,7 @@ fn on_kind(rig: &mut Rig, kind: u8) {
         KIND_LIBRARIES => {}
         KIND_NOTICE => {
             tap(rig, F1);
-            tap(rig, F1);
+            tap(rig, F2);
         }
         KIND_STAGE => tap(rig, F3),
         KIND_ABOUT => {
