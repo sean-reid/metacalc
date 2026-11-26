@@ -154,9 +154,19 @@ fn on_the_reference_os_pred_is_walked_under_theorems_and_axioms_by_row() {
     assert_eq!(rom_walk(1, Kind::Axioms, None, "pred Axioms"), 44);
 }
 
-/// Ring's status table with the first 100 assertions checked, as a partial check leaves it, and a run of
-/// 1,400 more in the middle: Unchecked hides both.
-const HIDDEN: [std::ops::Range<usize>; 2] = [0..100, 1000..2400];
+/// Ring's status table with its first 1,500 assertions checked, as a check that runs in order leaves
+/// it: one run of 1,500 that Unchecked hides. Checked assertions after an unchecked one the model marks
+/// resting, which Unchecked shows, so the run has to start at 0.
+const CHECKED: std::ops::Range<usize> = 0..1500;
+
+/// The longest run of consecutive assertions the model marks checked.
+fn longest_hidden(values: &[u8]) -> usize {
+    values
+        .split(|&v| v != 1)
+        .map(<[u8]>::len)
+        .max()
+        .unwrap_or(0)
+}
 
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
@@ -164,24 +174,27 @@ fn on_the_reference_os_ring_is_walked_under_unchecked_by_row_across_the_longest_
  {
     let started = Instant::now();
     let probe = Lister::on_rom(RING);
-    let n = count(probe.built);
+    let probe_built = probe.built;
+    let n = count(probe_built);
     drop(probe);
     let mut status = vec![Status::Unchecked; n];
-    for run in HIDDEN {
-        status[run].fill(Status::Checked);
-    }
-    let want = n - HIDDEN.iter().map(|r| r.len()).sum::<usize>();
+    status[CHECKED].fill(Status::Checked);
+    let values = crate::table::values(probe_built, &status);
+    let want = values.iter().filter(|&&v| v != 1).count();
+    let longest = longest_hidden(&values);
+    assert_eq!(longest, CHECKED.len(), "the run the table hides");
+    assert_eq!(want, n - CHECKED.len(), "what Unchecked shows");
     let mut list = ring(Some(&status));
     list.go_to_kind(Kind::Unchecked);
-    assert_eq!(list.pos().len, want, "the marks the app shows");
-    assert_eq!(list.items().len(), want, "the marks the model shows");
+    assert_eq!(list.pos().len, want, "the marks the model shows");
+    assert_eq!(list.items().len(), want);
     let pressed = list.walk_plan(
         "ring Unchecked",
         &[(DOWN, Key::Down, want + 1), (UP, Key::Up, want + 1)],
     );
     assert_eq!(pressed, 2 * (want + 1));
     println!(
-        "ROM, ring Unchecked: {want} of {n} shown, {pressed} keys by row over the run of 1,400 the table hides, in {:?}",
+        "ROM, ring Unchecked: {want} of {n} shown, {pressed} keys by row over a run of {longest} the table hides, in {:?}",
         started.elapsed()
     );
 }
@@ -262,11 +275,11 @@ fn on_the_reference_os_the_depths_under_unchecked_with_a_table_are() {
 }
 
 fn rom_want(kind: Kind) -> KindFigures {
-    // (down, up, left, right, f3, enter plain, enter landing, ends, draw, idle fit)
-    let (down, up, left, right, f3, plain, land, ends, draw, fit) = match kind {
-        Kind::Theorems => (20, 16, 16, 20, 24, 36, 36, 0, 34, 16),
-        Kind::Axioms => (20, 16, 16, 20, 42, 36, 36, 16, 34, 16),
-        _ => (38, 34, 34, 38, 36, 38, 42, 0, 36, 36),
+    // (down, up, left, right, f3, enter plain, enter landing, enter below the view, ends, draw, idle fit)
+    let (down, up, left, right, f3, plain, land, below, ends, draw, fit) = match kind {
+        Kind::Theorems => (16, 16, 16, 20, 24, 36, 36, 36, 0, 34, 16),
+        Kind::Axioms => (16, 16, 16, 20, 42, 36, 36, 36, 16, 34, 16),
+        _ => (36, 34, 34, 38, 36, 38, 42, 40, 0, 36, 36),
     };
     crate::list_kind_depth::fig(
         [
@@ -284,7 +297,7 @@ fn rom_want(kind: Kind) -> KindFigures {
             ("up", up),
         ],
         [f3, f3],
-        [plain, land],
+        [plain, land, below],
         [draw, draw],
         ends,
         [fit, 2, 14],

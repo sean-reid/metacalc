@@ -28,7 +28,7 @@ pub struct Kit {
 pub struct KindFigures {
     pub keys: BTreeMap<&'static str, u16>,
     pub f3: [u16; 2],
-    pub enter: [u16; 2],
+    pub enter: [u16; 3],
     pub draw: [u16; 2],
     pub ends: u16,
     pub idle: BTreeMap<&'static str, u16>,
@@ -106,21 +106,50 @@ fn f3_at(kit: &Kit, kind: Kind, place: usize, mask: bool, speed: u8) -> u16 {
     kept("list_key F3", &[t], mask, false, speed)
 }
 
-/// list_enter after a notice pops, the frame untouched or, with `land`, holding a cursor and a first
-/// row the kind does not show, which the enter puts back.
-fn enter_at(kit: &Kit, kind: Kind, land: bool, mask: bool, speed: u8) -> u16 {
+/// How the frame list_enter is given stands against what the kind shows.
+#[derive(Clone, Copy)]
+enum Frame {
+    /// As the key left it.
+    Plain,
+    /// A cursor and a first row the kind does not show: the enter lands them as F3 does.
+    Land,
+    /// Both shown, the cursor the `n`th shown assertion after the first row: for `n` from 5 on the cursor is off
+    /// the screen and the enter gives the first row four shown assertions above it.
+    Below(usize),
+}
+
+/// list_enter after a notice pops, with the frame as `how` says.
+fn enter_at(kit: &Kit, kind: Kind, how: Frame, mask: bool, speed: u8) -> u16 {
     let mut list = (kit.open)(kind);
     list.tap(F4);
     list.run.run(300_000);
     let stack = list.run.shell.app.label("SCR_STACK") + 16;
-    if land {
-        let end = list.built.stages[usize::from(list.run.frames()[1][1])].end;
-        let shown = list.items();
-        let hidden = (0..end).find(|i| !shown.contains(i)).expect("a hidden one");
-        let at = (hidden as u16).to_le_bytes();
-        list.run
-            .m()
-            .load_ram(stack + 2, &[at[0], at[1], at[0], at[1]]);
+    match how {
+        Frame::Plain => {}
+        Frame::Land => {
+            let end = list.built.stages[usize::from(list.run.frames()[1][1])].end;
+            let shown = list.items();
+            let hidden = (0..end).find(|i| !shown.contains(i)).expect("a hidden one");
+            let at = (hidden as u16).to_le_bytes();
+            list.run
+                .m()
+                .load_ram(stack + 2, &[at[0], at[1], at[0], at[1]]);
+        }
+        Frame::Below(n) => {
+            let shown = list.items();
+            assert!(
+                shown.len() > n,
+                "{kind:?}: {} shown, cursor at {n}",
+                shown.len()
+            );
+            let (cursor, top) = (
+                (shown[n] as u16).to_le_bytes(),
+                (shown[0] as u16).to_le_bytes(),
+            );
+            list.run
+                .m()
+                .load_ram(stack + 2, &[cursor[0], cursor[1], top[0], top[1]]);
+        }
     }
     let before = list.run.frames()[1].clone();
     list.run.m().press_key(CLEAR);
@@ -129,10 +158,32 @@ fn enter_at(kit: &Kit, kind: Kind, land: bool, mask: bool, speed: u8) -> u16 {
     let after = list.run.frames()[1].clone();
     assert_eq!(
         after != before,
-        land,
-        "{kind:?}: the enter lands the frame: {before:?} {after:?}"
+        !matches!(how, Frame::Plain),
+        "{kind:?}: the enter changes the frame: {before:?} {after:?}"
     );
+    if let Frame::Below(n) = how {
+        let shown = list.items();
+        let top = usize::from(u16::from_le_bytes([after[4], after[5]]));
+        assert_eq!(
+            top,
+            shown[n - 4],
+            "{kind:?}: the first row four shown above the cursor"
+        );
+    }
     kept("list_enter", &[t], mask, false, speed)
+}
+
+/// list_enter given a cursor off the screen, the fifth shown after the first row and the last shown.
+fn enter_below(kit: &Kit, kind: Kind, mask: bool, speed: u8) -> u16 {
+    let shown = (kit.open)(kind).items().len();
+    assert!(shown > 6, "{kind:?}: {shown} shown");
+    enter_at(kit, kind, Frame::Below(5), mask, speed).max(enter_at(
+        kit,
+        kind,
+        Frame::Below(shown - 1),
+        mask,
+        speed,
+    ))
 }
 
 /// list_draw after a move, with the preview blank, and again when the idle call has laid the preview out.
@@ -172,8 +223,9 @@ pub fn figures_of(kit: &Kit, kind: Kind, mask: bool, speed: u8) -> KindFigures {
         keys,
         f3,
         enter: [
-            enter_at(kit, kind, false, mask, speed),
-            enter_at(kit, kind, true, mask, speed),
+            enter_at(kit, kind, Frame::Plain, mask, speed),
+            enter_at(kit, kind, Frame::Land, mask, speed),
+            enter_below(kit, kind, mask, speed),
         ],
         draw: draw_at(kit, kind, mask, speed),
         ends,
@@ -203,7 +255,8 @@ pub fn check(kit: &Kit, kind: Kind, want: &KindFigures) {
         for (name, depth) in &live.idle {
             assert!(*depth >= masked.idle[name], "{kind:?} idle {name}");
         }
-        assert!((0..2).all(|i| live.enter[i] >= masked.enter[i] && live.draw[i] >= masked.draw[i]));
+        assert!((0..3).all(|i| live.enter[i] >= masked.enter[i]));
+        assert!((0..2).all(|i| live.draw[i] >= masked.draw[i]));
         assert!(
             live.ends >= masked.ends && live.f3[0] >= masked.f3[0] && live.f3[1] >= masked.f3[1]
         );
@@ -253,7 +306,7 @@ pub const STUB: Kit = Kit {
 pub fn fig(
     keys: [(&'static str, u16); 12],
     f3: [u16; 2],
-    enter: [u16; 2],
+    enter: [u16; 3],
     draw: [u16; 2],
     ends: u16,
     idle: [u16; 3],
@@ -269,11 +322,11 @@ pub fn fig(
 }
 
 fn stub_want(kind: Kind) -> KindFigures {
-    // (down, up, left, right, f3, enter landing, ends, idle fit)
-    let (down, up, left, right, f3, land, ends, fit) = match kind {
-        Kind::Theorems => (20, 16, 16, 20, 24, 24, 16, 16),
-        Kind::Axioms => (20, 16, 16, 20, 28, 24, 16, 16),
-        _ => (24, 20, 20, 24, 22, 28, 22, 22),
+    // (down, up, left, right, f3, enter landing, enter below the view, ends, idle fit)
+    let (down, up, left, right, f3, land, below, ends, fit) = match kind {
+        Kind::Theorems => (16, 16, 16, 20, 24, 24, 22, 16, 16),
+        Kind::Axioms => (16, 16, 16, 20, 28, 24, 22, 16, 16),
+        _ => (22, 20, 20, 24, 22, 28, 26, 22, 22),
     };
     let plain = if kind == Kind::Unchecked { 24 } else { 22 };
     fig(
@@ -292,7 +345,7 @@ fn stub_want(kind: Kind) -> KindFigures {
             ("up", up),
         ],
         [f3, f3],
-        [plain, land],
+        [plain, land, below],
         [26, 26],
         ends,
         [fit, 2, 8],

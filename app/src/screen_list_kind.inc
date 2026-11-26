@@ -9,16 +9,19 @@
 ;
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
 ; greatest over a call with interrupts masked (list_kind_depth.rs, list_kind_rom.rs). The arrows are the
-; greatest over a whole walk and F3 the greatest of two places, each pressed under the kind named:
+; greatest over a whole walk. F3 is pressed under the kind named and steps to the next. Enter is list_enter
+; after a notice pops with the frame as the key left it, with a cursor and a first row the kind does not
+; show, and with both shown and the cursor off the screen (the fifth shown after the first row, and the
+; last shown):
 ;   stub OS, proofs library with a table, both speeds, the whole walk
-;               DOWN RIGHT  UP LEFT  F3  key at an end  enter plain, landing  draw  idle fit
-;   Theorems      20          16     24      16            22     24            26     16
-;   Axioms        20          16     28      16            22     24            26     16
-;   Unchecked     24          20     22      22            24     28            26     22
+;               DOWN RIGHT UP LEFT F3 at an end enter landing below draw idle fit
+;   Theorems      16   20  16  16  24    16      22     24     22    26    16
+;   Axioms        16   20  16  16  28    16      22     24     22    26    16
+;   Unchecked     22   24  20  20  22    22      24     28     26    26    22
 ;   reference OS, prop with a table, 6 MHz, at most 40 keys in each direction
-;   Theorems      20          16     24      -             36     36            34     16
-;   Axioms        20          16     42      16            36     36            34     16
-;   Unchecked     38          34     36      -             38     42            36     36
+;   Theorems      16   20  16  16  24     -      36     36     36    34    16
+;   Axioms        16   20  16  16  42    16      36     36     36    34    16
+;   Unchecked     36   38  34  34  36     -      38     42     40    36    36
 ; A dash is a place the 40 keys do not reach. Under each kind the idle call settled takes 2, CLEAR and a
 ; letter 2, ENTER, F1, F2 and F4 6, F5 2 on the stub and 6 on the reference OS, a tick 8 on the stub and 14
 ; on the reference OS. An interrupt that lands in a call can only add to these: the figures with the app's
