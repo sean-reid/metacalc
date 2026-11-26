@@ -4,23 +4,10 @@
 use crate::app::*;
 use crate::shellrig::*;
 use crate::theorem_keys::{cursor, index_of};
-use crate::theorem_return::next_node;
 use crate::theorem_rig::*;
-use mcui::canvas::{STATEMENT_WIDTH, text_width};
-use mcui::fold::{Folds, layout};
+use crate::ui_support::same_frame;
+use mcui::canvas::{GUTTER, text_width};
 use mcui::{Key, State};
-
-/// Seven hypotheses and a conclusion, the hypotheses wide enough to take three rows or more unfolded and
-/// one row each when the fit folds them.
-fn straddling() -> Vec<u8> {
-    let wide = "( ( ph -> ps ) -> ( ( ch -> th ) -> ( ( ta -> ph ) -> ( ps -> ( ch -> ( th -> ( ta -> ph ) ) ) ) ) ) )";
-    let mut src = String::from("${\n");
-    for i in 0..7 {
-        src += &format!("st.{i} $e |- {wide} $.\n");
-    }
-    src += "st $a |- ph $.\n$}\n";
-    crate::fixture::custom(&src)
-}
 
 fn scroll_of(walker: &Walker) -> usize {
     match walker.list.ui.state() {
@@ -29,55 +16,58 @@ fn scroll_of(walker: &Walker) -> usize {
     }
 }
 
+/// Two assertions of hypotheses that are one row each but the third, which takes two rows: `edge0` has four
+/// more after it, so the window at the conclusion starts one row into the third, and `edge1` has three, so
+/// the window starts at its first row.
+fn edges() -> Vec<u8> {
+    let mut src = String::from("$c WWWWWWWWWW $.\nwedge $a wff WWWWWWWWWW WWWWWWWWWW $.\n");
+    for (name, after) in [("edge0", 4), ("edge1", 3)] {
+        src += "${\n";
+        for i in 0..2 {
+            src += &format!("{name}.{i} $e |- ph $.\n");
+        }
+        src += &format!("{name}.2 $e |- WWWWWWWWWW WWWWWWWWWW $.\n");
+        for i in 0..after {
+            src += &format!("{name}.{} $e |- ph $.\n", 3 + i);
+        }
+        src += &format!("{name} $a |- ph $.\n$}}\n");
+    }
+    crate::fixture::custom(&src)
+}
+
+/// Whether any pixel is set in the gutter's columns on the window's row `row`.
+fn number_drawn(frame: &[u8], row: usize) -> bool {
+    let width = text_width("3.");
+    (8 * row..8 * row + 8)
+        .any(|y| (GUTTER..GUTTER + width).any(|x| frame[y * 12 + x / 8] & (0x80 >> (x % 8)) != 0))
+}
+
 #[test]
-fn a_hypothesis_the_window_starts_inside_has_no_number_and_the_rows_the_model_draws() {
-    let built = around("theorem-straddle", &straddling());
-    let n = index_of(built, "st");
-    let lib = lib_of(built);
-    let statement = lib.statement(n);
-    let indent = text_width("7.") + 2;
-    let unfolded = layout(
-        statement.at(0),
-        &Folds::none(statement.at(0)),
-        STATEMENT_WIDTH - indent,
-    )
-    .rows();
-    assert!(unfolded >= 3, "a hypothesis takes {unfolded} rows unfolded");
-    let mut above: Vec<isize> = Vec::new();
-    for k in [2usize, 3] {
+fn a_hypothesis_starting_one_row_above_the_window_has_no_number_and_one_at_its_first_row_has() {
+    let built = around("theorem-edges", &edges());
+    for (label, after, row, drawn) in [("edge0", 4usize, 0isize, false), ("edge1", 3, 1, true)] {
+        let n = index_of(built, label);
         let mut walker = Walker::at(built, None, 0, n);
-        for _ in 0..7 - k {
-            assert!(walker.press(LEFT, Key::Left));
-        }
-        assert_eq!(cursor(&walker), (k, 0));
-        while next_node(&mut walker) {}
-        assert_eq!(
-            cursor(&walker),
-            (k, 0),
-            "every node of hypothesis {k} is unfolded"
-        );
-        for _ in 0..7 - k {
-            assert!(walker.press(RIGHT, Key::Right));
-        }
-        assert_eq!(cursor(&walker).0, 7, "the conclusion");
+        assert_eq!(cursor(&walker), (3 + after, 0), "{label}: the conclusion");
         let (starts, total) = walker.mirror().starts();
         let scroll = scroll_of(&walker);
         assert_eq!(
-            scroll,
-            total - 6,
-            "the view follows the conclusion to the bottom"
+            starts[3] - starts[2],
+            2,
+            "{label}: the third takes two rows"
         );
-        assert!(
-            starts[k] < scroll && starts[k + 1] > scroll,
-            "hypothesis {k} straddles the top"
+        assert_eq!(scroll, total - 6, "{label}: the view is at the bottom");
+        let got = starts[2] as isize + 1 - scroll as isize;
+        println!("{label}: {total} rows, scroll {scroll}, TV_ROW of the third hypothesis {got}");
+        assert_eq!(got, row, "{label}: TV_ROW");
+        let frame = walker.list.run.frame();
+        same_frame(label, &frame, &walker.list.shown());
+        assert_eq!(
+            number_drawn(&frame, 1),
+            drawn,
+            "{label}: the number at row 1"
         );
-        above.push(starts[k] as isize + 1 - scroll as isize);
     }
-    println!("TV_ROW of the hypotheses that start above the window: {above:?}");
-    assert!(
-        above.iter().all(|&r| r <= 0) && above.iter().any(|&r| r < 0),
-        "a first row above the window's row 0: {above:?}"
-    );
 }
 
 /// A hypothesis of 251 tokens, each too wide to share a row with another and none a node to fold, then four of
