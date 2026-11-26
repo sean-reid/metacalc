@@ -3,6 +3,8 @@
 //! speed and stack of one exit of the enter and one of a key.
 
 use crate::app::*;
+use crate::list_rig::proofs_three;
+use crate::realos::BASE;
 use crate::shellrig::*;
 use crate::theorem_depth::kept;
 use crate::theorem_frames::find;
@@ -246,5 +248,89 @@ fn one_error_exit_of_the_enter_and_one_of_a_key_keep_interrupts_and_speed_and_wr
             "speed {speed}: enter error exit {enter} bytes, key error exit {key} bytes, list_key {pushed:?}"
         );
         assert_eq!((enter, key), (24, 10), "speed {speed}");
+    }
+}
+
+/// A theorem of the proofs library the table marks as checked, and the walker open on its list with the
+/// table installed.
+fn a_checked_theorem() -> (Walker, usize) {
+    let built = proofs_three();
+    let lib = lib_of(built);
+    let (data, status) = crate::theorem_floors::marked_table(built);
+    let values = crate::table::values(built, &status);
+    let i = (0..lib.len())
+        .find(|&i| lib.is_theorem(i) && values[i] == 1)
+        .expect("a theorem the table marks as checked");
+    let mut walker = Walker::on_list(built, Some((&data, &status)), 2);
+    walker.goto(i);
+    walker.hold_preview();
+    (walker, i)
+}
+
+/// The glyph codes of `text`, ended by 0.
+fn codes(walker: &Walker, text: &str) -> Vec<u8> {
+    let app = &walker.list.run.shell.app;
+    let mut codes: Vec<u8> = text
+        .chars()
+        .map(|c| app.label(&format!("UI_FONT_CH_{:X}", c as u32)) as u8)
+        .collect();
+    codes.push(0);
+    codes
+}
+
+#[test]
+fn a_refused_call_while_the_title_is_built_leaves_a_plain_title_and_no_notice() {
+    let check = mcglyph::CHECK;
+    for (what, right, empty_label) in [
+        ("far_lib_label", format!("{check} thm"), true),
+        ("far_lib_record", format!("{check} ax"), false),
+        ("store_get", "? thm".to_string(), false),
+    ] {
+        let (mut walker, _) = a_checked_theorem();
+        match what {
+            "store_get" => {
+                let at = walker.list.run.shell.app.label("store_get");
+                assert!(
+                    (0x4000..0x8000).contains(&at),
+                    "store_get is on the entry page"
+                );
+                let ret = [0x3E, 0x06, 0xC9];
+                walker
+                    .list
+                    .run
+                    .m()
+                    .load_flash(BASE, usize::from(at - 0x4000), &ret);
+            }
+            stub => walker.list.fail_at(0, stub, 1, 0x61),
+        }
+        walker.tap(ENTER);
+        walker.list.run.next_blit();
+        walker.list.run.run(300_000);
+        if what != "store_get" {
+            assert_eq!(walker.list.fail_calls(0), 1, "{what}: the refusal ran");
+        }
+        assert_eq!(
+            walker.list.run.depth(),
+            3,
+            "{what}: the list and the theorem"
+        );
+        assert_eq!(
+            walker.list.run.top_kind(),
+            KIND_THEOREM,
+            "{what}: no notice"
+        );
+        let (cut, tail) = {
+            let app = &walker.list.run.shell.app;
+            (app.label("TV_CUT"), app.label("TV_RIGHT"))
+        };
+        let want = codes(&walker, &right);
+        let got = walker.list.run.peek(tail, want.len());
+        assert_eq!(got, want, "{what}: the mark and the kind");
+        let first = walker.list.run.peek(cut, 1)[0];
+        assert_eq!(
+            first == 0,
+            empty_label,
+            "{what}: the label is empty: {empty_label}"
+        );
     }
 }
