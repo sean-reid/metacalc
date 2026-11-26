@@ -146,8 +146,7 @@ pub fn nothing_below_ram(list: &mut Lister, at: &str, walk: bool, open: impl FnO
         quiet(list, "an arrow and the idle calls");
     }
     for scan in [F2, F4, F5, LETTER] {
-        let notice =
-            matches!(scan, F2 | F4) || (scan == F5 && list.var("LV_SECT") == 1);
+        let notice = matches!(scan, F2 | F4) || (scan == F5 && list.var("LV_SECT") == 1);
         list.tap(scan);
         list.run.run(600_000);
         if notice {

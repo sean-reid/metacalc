@@ -40,7 +40,10 @@ fn cursor_assertion(walker: &mut Walker) -> usize {
 
 #[test]
 fn enter_and_f1_open_the_assertion_under_the_cursor_under_every_kind() {
-    let moves = [[(RIGHT, Key::Right), (DOWN, Key::Down)], [(DOWN, Key::Down), (RIGHT, Key::Right)]];
+    let moves = [
+        [(RIGHT, Key::Right), (DOWN, Key::Down)],
+        [(DOWN, Key::Down), (RIGHT, Key::Right)],
+    ];
     let mut opened = [0; 3];
     for (k, kind) in KINDS.into_iter().enumerate() {
         for stage in 0..3 {
@@ -74,13 +77,23 @@ fn enter_and_f1_open_the_assertion_under_the_cursor_under_every_kind() {
     assert!(opened.iter().all(|&n| n >= 8), "{opened:?}");
 }
 
-/// A one-stage library of `pattern` and the marks that make `kind` show none of it.
+/// A one-stage library and the marks that make `kind` show none of it.
 fn showing_nothing(kind: Kind) -> (&'static Built, Option<(Vec<u8>, Vec<Status>)>) {
+    static THEOREMS: std::sync::OnceLock<&'static Built> = std::sync::OnceLock::new();
+    static AXIOMS: std::sync::OnceLock<&'static Built> = std::sync::OnceLock::new();
+    static UNCHECKED: std::sync::OnceLock<&'static Built> = std::sync::OnceLock::new();
     match kind {
-        Kind::Theorems => (pattern_built("pages-open-none-thm", "AAAAAAA"), None),
-        Kind::Axioms => (pattern_built("pages-open-none-ax", "TTTTTTT"), None),
+        Kind::Theorems => (
+            THEOREMS.get_or_init(|| pattern_built("pages-open-none-thm", "AAAAAAA")),
+            None,
+        ),
+        Kind::Axioms => (
+            AXIOMS.get_or_init(|| pattern_built("pages-open-none-ax", "TTTTTTT")),
+            None,
+        ),
         Kind::Unchecked => {
-            let built = pattern_built("pages-open-none-unchecked", "ATATATA");
+            let built =
+                UNCHECKED.get_or_init(|| pattern_built("pages-open-none-unchecked", "ATATATA"));
             let status = vec![Status::Checked; count(built)];
             (built, Some((table_of(built, &status), status)))
         }
@@ -93,7 +106,9 @@ fn enter_and_f1_under_a_kind_that_shows_nothing_push_the_notice_not_the_cursors_
     for kind in KINDS {
         for (scan, _) in OPENERS {
             let (built, marks) = showing_nothing(kind);
-            let table = marks.as_ref().map(|(data, status)| (&data[..], &status[..]));
+            let table = marks
+                .as_ref()
+                .map(|(data, status)| (&data[..], &status[..]));
             let mut list = Lister::open(built, table, 0);
             list.settle();
             list.go_to_kind(kind);
@@ -120,7 +135,8 @@ fn enter_and_f1_under_a_kind_that_shows_nothing_push_the_notice_not_the_cursors_
 
 #[test]
 fn enter_and_f1_with_matches_open_what_the_list_shows_and_never_the_frames_stale_cursor() {
-    let built = pattern_built("pages-open-edge", "AAATAAA");
+    static BUILT: std::sync::OnceLock<&'static Built> = std::sync::OnceLock::new();
+    let built = BUILT.get_or_init(|| pattern_built("pages-open-edge", "AAATAAA"));
     let mut list = Lister::open(built, None, 0);
     list.settle();
     list.go_to_kind(Kind::Theorems);
@@ -144,9 +160,14 @@ fn clear_on_the_theorem_screen_gives_the_filtered_list_back_as_it_was() {
         vec![(RIGHT, Key::Right), (DOWN, Key::Down), (RIGHT, Key::Right)],
     ];
     let mut backs = [0; 4];
-    for (k, kind) in [Kind::Theorems, Kind::Axioms, Kind::Unchecked, Kind::Unchecked]
-        .into_iter()
-        .enumerate()
+    for (k, kind) in [
+        Kind::Theorems,
+        Kind::Axioms,
+        Kind::Unchecked,
+        Kind::Unchecked,
+    ]
+    .into_iter()
+    .enumerate()
     {
         let table = k != 2;
         for stage in 0..3 {
@@ -163,7 +184,11 @@ fn clear_on_the_theorem_screen_gives_the_filtered_list_back_as_it_was() {
                     assert_eq!(walker.list.run.top_kind(), KIND_THEOREM, "{at}");
                     walker.back();
                     let after = walker.list.run.frames()[1].clone();
-                    assert_eq!(after[..7], before[..7], "{at}: stage, cursor, first row, kind");
+                    assert_eq!(
+                        after[..7],
+                        before[..7],
+                        "{at}: stage, cursor, first row, kind"
+                    );
                     assert_eq!(walker.list.pos().top, top, "{at}: the model's first row");
                     walker.list.same_kind_position(&at);
                     assert_eq!(walker.list.kind_byte(), code(kind), "{at}");
@@ -173,6 +198,8 @@ fn clear_on_the_theorem_screen_gives_the_filtered_list_back_as_it_was() {
             }
         }
     }
-    println!("lists given back under Theorems, Axioms, Unchecked with and without a table: {backs:?}");
+    println!(
+        "lists given back under Theorems, Axioms, Unchecked with and without a table: {backs:?}"
+    );
     assert!(backs.iter().all(|&n| n >= 8), "{backs:?}");
 }
