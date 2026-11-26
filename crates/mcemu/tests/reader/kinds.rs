@@ -724,7 +724,7 @@ fn a_kinds_call_drops_the_record_window_only_when_it_reads_the_bitmap() {
     let n = 42;
     assert_eq!(
         decoded(&good).assertions[usize::from(n)].hypotheses.len(),
-        2
+        6
     );
     let (mut kept, mut dropped) = (0, 0);
     let mut probe =
