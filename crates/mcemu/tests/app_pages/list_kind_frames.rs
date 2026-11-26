@@ -89,13 +89,13 @@ fn f3_four_times_round_from_the_first_the_middle_and_the_last_row_of_every_stage
         }
     }
     println!("{seen:?}");
-    assert!(seen.rounds > 150, "{seen:?}");
-    assert!(seen.kept > 10, "{seen:?}");
-    assert!(seen.blanked > 50, "{seen:?}");
-    assert!(seen.empty > 5, "{seen:?}");
+    assert!(seen.rounds > 160, "{seen:?}");
+    assert!(seen.kept > 70, "{seen:?}");
+    assert!(seen.blanked > 85, "{seen:?}");
+    assert!(seen.empty > 20, "{seen:?}");
     assert_eq!(seen.starts.iter().sum::<usize>() * 4, seen.rounds);
     assert_eq!(seen.with_table * 2, seen.starts.iter().sum::<usize>());
-    assert!(seen.starts.iter().all(|&n| n > 10), "{seen:?}");
+    assert_eq!(seen.starts, [14, 14, 14]);
 }
 
 #[test]
