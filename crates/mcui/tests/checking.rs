@@ -323,7 +323,7 @@ fn reading(state: State) -> (usize, usize, usize, bool, Option<(usize, usize)>) 
 fn a_library_with_no_table_is_read_a_chunk_at_a_time_before_its_assertions() {
     let bytes = many_chunks();
     let chunks = bytes.len().div_ceil(1 << 14);
-    assert_eq!(chunks, 10, "the library is ten chunks, the last one short");
+    assert_eq!(chunks, 11, "the library is eleven chunks, the last one short");
     assert_ne!(bytes.len() % (1 << 14), 0);
     let mut ui = unchecked_ui(bytes);
     assert!(!ui.begin_reading(), "no checking screen is open");
@@ -332,18 +332,18 @@ fn a_library_with_no_table_is_read_a_chunk_at_a_time_before_its_assertions() {
     assert!(!ui.read_chunk(), "the screen is not reading yet");
     assert_eq!(reading(ui.state()).4, None);
     assert!(ui.begin_reading());
-    assert_eq!(reading(ui.state()), (0, 6000, 0, false, Some((0, 10))));
+    assert_eq!(reading(ui.state()), (0, 6000, 0, false, Some((0, 11))));
     check(&ui, "checking-reading-start");
     for read in 1..=3 {
         assert!(ui.read_chunk());
-        assert_eq!(reading(ui.state()).4, Some((read, 10)));
+        assert_eq!(reading(ui.state()).4, Some((read, 11)));
     }
     check(&ui, "checking-reading-midway");
-    for read in 4..=10 {
+    for read in 4..=11 {
         assert!(ui.read_chunk());
-        let want = if read < 10 { Some((read, 10)) } else { None };
+        let want = if read < 11 { Some((read, 11)) } else { None };
         assert_eq!(reading(ui.state()).4, want);
-        if read == 9 {
+        if read == 10 {
             check(&ui, "checking-reading-last-chunk");
         }
     }

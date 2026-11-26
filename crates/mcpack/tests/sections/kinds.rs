@@ -66,7 +66,7 @@ fn every_library_with_sections_has_a_kinds_section_after_the_others() {
         let bytes = pack(&db, &closure(&db)).unwrap();
         let sections = decode(&bytes).unwrap().sections.unwrap();
         let ids: Vec<u8> = sections.table.iter().map(|e| e.id).collect();
-        assert_eq!(ids, [1, 2, 3, 4, KINDS]);
+        assert_eq!(ids, [1, 2, 3, 4, KINDS, library::LABEL_ORDER]);
         assert_eq!(KINDS, 5);
         library::check(&bytes).unwrap();
     }
@@ -76,7 +76,7 @@ fn every_library_with_sections_has_a_kinds_section_after_the_others() {
     let sections = decode(&bytes).unwrap().sections.unwrap();
     assert!(sections.trees.is_none(), "a database with no grammar");
     let ids: Vec<u8> = sections.table.iter().map(|e| e.id).collect();
-    assert_eq!(ids, [1, 2, KINDS]);
+    assert_eq!(ids, [1, 2, KINDS, library::LABEL_ORDER]);
 }
 
 #[test]

@@ -71,6 +71,13 @@ fn print_sections(library: &library::Library) {
             kinds.theorems.len() - theorems
         );
     }
+    if let Some(order) = &sections.label_order {
+        println!(
+            "label order: {} bytes, {} assertions",
+            size(library::LABEL_ORDER),
+            order.numbers.len()
+        );
+    }
 }
 
 pub fn pack(db: &Database, roots: &[String], output: &Path) -> Result<ExitCode, ExitCode> {
