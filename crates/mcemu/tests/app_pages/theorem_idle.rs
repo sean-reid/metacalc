@@ -1,5 +1,6 @@
 //! The theorem row's idle slot is the shell's no-op, not the list's: the screen is opened in the state
-//! where the list's idle, read over the theorem's variables, would lay out a preview.
+//! where the list's idle, read over the theorem's variables, would lay out a preview. The theorem's byte 6
+//! is the list's kind, so it is set to All.
 
 use crate::app::*;
 use crate::idle::{CARRY, SCR_PUSH, idles_to_nothing, snapshot};
@@ -40,6 +41,7 @@ fn a_theorem_the_lists_idle_would_work_on_idles_to_nothing_and_changes_no_byte()
     let kind = app.label("SCR_STACK") + 16 * (depth as u16 - 1);
     assert_eq!(app.m.read_ram(kind, 1), [KIND_THEOREM]);
     app.m.load_ram(kind, &[6]);
+    app.m.load_ram(kind + 6, &[0]);
     let before = snapshot(app);
     let at = app.label("scr_idle");
     let done = app.call(
