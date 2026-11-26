@@ -178,12 +178,12 @@ pub(super) fn append(
         .iter()
         .map(|&id| input.db.stmt(id).kind == Kind::Theorem)
         .collect();
-    kinds::encode(&mut writer, &theorems)?;
     let labels: Vec<&str> = input
         .assertions
         .iter()
         .map(|&id| input.db.stmt(id).label.as_str())
         .collect();
     label_order::encode(&mut writer, &labels)?;
+    kinds::encode(&mut writer, &theorems)?;
     writer.finish().map_err(|_| PackError::SectionTooLarge)
 }

@@ -74,11 +74,11 @@
 //!            the length is 2 + the count over 8 rounded up and the bits past the last assertion
 //!            are zero; it may cross a multiple of CHUNK, and the library check compares it
 //!            with every record's kind byte
-//! label order id 6: assertion count (u16, equal to the library's), then every assertion
-//!            number once, two bytes each, sorted by label bytewise, so the length is 2 + 2 *
-//!            count; it may cross a multiple of CHUNK between two entries, and the decoder
-//!            refuses a count or length that does not fit, a number at or above the count, a
-//!            repeat, and two neighbours out of label order
+//! label order id 6, written before kinds: assertion count (u16, equal to the library's), then
+//!            every assertion number once, two bytes each, sorted by label bytewise, so the
+//!            length is 2 + 2 * count; it may cross a multiple of CHUNK between two entries, and
+//!            the decoder refuses a count or length that does not fit, a number at or above the
+//!            count, a repeat, and two neighbours out of label order
 //! ```
 //!
 //! A record is only usable if its float hypotheses come before its essential ones and name

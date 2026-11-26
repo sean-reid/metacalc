@@ -87,7 +87,7 @@ fn put(section: &mut [u8], at: usize, number: u16) {
 }
 
 #[test]
-fn every_library_with_sections_has_a_label_order_section_after_the_kinds() {
+fn every_library_with_sections_has_a_label_order_section_before_the_kinds() {
     for src in [LOGIC.to_string(), headed()] {
         let db = parse(&src);
         let bytes = pack(&db, &closure(&db)).unwrap();
@@ -99,7 +99,7 @@ fn every_library_with_sections_has_a_label_order_section_after_the_kinds() {
             .iter()
             .map(|e| e.id)
             .collect();
-        assert_eq!(ids, [1, 2, 3, 4, 5, LABEL_ORDER]);
+        assert_eq!(ids, [1, 2, 3, 4, LABEL_ORDER, 5]);
         assert_eq!(LABEL_ORDER, 6);
         library::check(&bytes).unwrap();
     }
