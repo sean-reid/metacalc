@@ -95,7 +95,7 @@
 ;              nothing touched.
 ;              The count is in timer interrupts and the first halt ends at the next one, so the fit
 ;              starts between 10 and 11 periods after the first call that follows a key's frame:
-;              579,258 T-states (96.5 ms) measured on the reference OS.
+;              578,942 T-states (96.5 ms) measured on the reference OS.
 ; list_draw    in: HL = the frame. Clears the canvas, stages list_block, draws the title, the rows, the
 ;              preview when LV_PREVIEW is LVP_ROW, by one fm_draw and no fit, and the keys. It reads the
 ;              label of each row with one lib_label and, when LV_TABLE is 1, its mark with one
@@ -123,9 +123,9 @@
 ; page 242,678. Under Unchecked on a table of ones with only the first and the last assertion not 1 the row
 ; move from 0 to the last takes 306,465 and back 304,707. F3 with its frame takes 259,343 from Theorems to
 ; Axioms with the cursor just after an axiom and 314,654 into Unchecked from assertion 1 on that table.
-; Under All a move takes what it took. Ring's list opens in 460,463 (libs_key, list_enter and a cold frame)
-; and a cursor move takes 223,026 by a row and 227,608 by a page with its frame; the idle call that lays
-; out a preview takes a median of 77,137 and at most 1,125,849 over ring, and 68,830 and 331,429 over prop.
+; Ring's list opens in 461,598 (libs_key, list_enter and a cold frame) and, under All, a cursor move takes
+; 223,339 by a row and 227,921 by a page with its frame; the idle call that lays out a preview takes a
+; median of 77,198 and at most 1,125,910 over ring, and 68,891 and 331,490 over prop.
 ; Its fm calls run with interrupts off and no key is scanned until it returns, so a statement inside the
 ; caps holds the keypad for at most 37,707,349 T-states (6.28 s at 6 MHz), the 253 nested operators of
 ; fm's nodes fixture, measured on the stub OS.

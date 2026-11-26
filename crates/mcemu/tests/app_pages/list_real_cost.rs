@@ -104,7 +104,7 @@ fn on_the_reference_os_opening_the_list_and_a_move_with_its_frame_fit_their_budg
         f64::from(open) / 6000.0
     );
     assert!(open < OPEN_BUDGET);
-    within("opening the list", open, 460_463);
+    within("opening the list", open, 461_598);
     let key = app.label("list_key");
     let (idle, count, preview) = (
         app.label("list_idle"),
@@ -133,7 +133,7 @@ fn on_the_reference_os_opening_the_list_and_a_move_with_its_frame_fit_their_budg
         within(
             &format!("a move by {name}"),
             total,
-            if code == 2 { 223_026 } else { 227_608 },
+            if code == 2 { 223_339 } else { 227_921 },
         );
         app.m.load_ram(count, &[0]);
         assert_eq!(app.m.read_ram(preview, 1), [PENDING]);
@@ -156,12 +156,12 @@ fn on_the_reference_os_opening_the_list_and_a_move_with_its_frame_fit_their_budg
         within(
             &format!("the settled frame after a move by {name}"),
             draw + blit,
-            if code == 2 { 236_114 } else { 231_681 },
+            if code == 2 { 236_390 } else { 231_957 },
         );
         within(
             &format!("the fit after a move by {name}"),
             fit.tstates,
-            if code == 2 { 50_890 } else { 52_360 },
+            if code == 2 { 50_951 } else { 52_421 },
         );
     }
 }

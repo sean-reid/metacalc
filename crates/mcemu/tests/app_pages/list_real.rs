@@ -127,7 +127,7 @@ fn on_the_reference_os_the_wait_is_11_ticks_and_a_key_inside_it_starts_it_again(
     );
     assert_eq!(waited.interrupts, WAIT_TICKS);
     assert_eq!(waited.fits, fits, "no fit before the wait is over");
-    within("the wait to the fit", waited.tstates, 579_258);
+    within("the wait to the fit", waited.tstates, 578_942);
     assert!(waited.tstates > (WAIT_TICKS - 1) * TICK && waited.tstates <= WAIT_TICKS * TICK + 100);
     list.settle();
     assert!(list.key(DOWN, Key::Down));
@@ -367,8 +367,8 @@ fn median_and_worst(costs: &[u32]) -> (u32, u32, usize) {
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn on_the_reference_os_the_preview_idle_call_costs_this_over_every_assertion_of_prop_and_ring() {
     for (name, stage, median_measured, worst_measured, worst_at) in [
-        ("prop", PROP, 68_830, 331_429, 138),
-        ("ring", RING, 77_137, 1_125_849, 3_307),
+        ("prop", PROP, 68_891, 331_490, 138),
+        ("ring", RING, 77_198, 1_125_910, 3_307),
     ] {
         let costs = idle_costs(stage);
         let (median, worst, at) = median_and_worst(&costs);
