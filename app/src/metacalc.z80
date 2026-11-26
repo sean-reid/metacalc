@@ -67,7 +67,7 @@
 ;                 conclusion that idle lays out once the row has been still; F3 steps through the kinds
 ;                 All, Theorems, Axioms and Unchecked; ENTER and F1 open the cursor's theorem, F2 and F4
 ;                 push a notice, F5 the stage's sections when it has titles, CLEAR goes back
-;                 (screen_list.inc, screen_list_key.inc, screen_list_kind.inc)
+;                 (screen_list.inc, screen_list_key.inc, screen_list_kind.inc, screen_list_land.inc)
 ;   7 theorem     an assertion's statements folded to six rows, with a cursor that moves by
 ;                 subexpression and folds on ENTER and F1; F2 to F4 push a notice, CLEAR goes back
 ;                 (screen_theorem.inc)
@@ -354,6 +354,7 @@ STAGE_COUNT .equ 0
 #include "screen_list.inc"
 #include "screen_list_draw.inc"
 #include "screen_list_kind.inc"
+#include "screen_list_land.inc"
 #include "screen_theorem.inc"
 #include "screen_theorem_rows.inc"
 #include "screen_theorem_key.inc"

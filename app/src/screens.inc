@@ -3,8 +3,9 @@
 ; idle, for each kind. Kind 1 is in screen_libraries.inc, kind 2 in screen_notice.inc, kind 3 in
 ; screen_about.inc, kind 4 in screen_stage.inc, kind 5, checking, in screen_checking.inc, kind 6, the
 ; theorem list, in screen_list.inc, kind 7, the theorem, in screen_theorem.inc and kind 8, the sections of a
-; stage, in screen_sections.inc. No kind has a land: every row's land is screen_ret. Kinds 5 and 6 have an idle
-; routine, checking_idle and list_idle; the idle of the others is screen_idle.
+; stage, in screen_sections.inc. Only kind 6 has a land, list_land in screen_list_land.inc, and every other
+; row's land is screen_ret. Kinds 5 and 6 have an idle routine, checking_idle and list_idle; the idle of the
+; others is screen_idle.
 ;
 ; Frames, 16 bytes: byte 0 the kind, the rest 0 but what the kind keeps there.
 ;   KIND_LIBRARIES  byte 1 the cursor, byte 2 the first row shown
@@ -39,7 +40,7 @@ screen_kinds:
 	.dw about_enter, about_draw, about_key, screen_ret, screen_idle
 	.dw stage_enter, stage_draw, about_key, screen_ret, screen_idle
 	.dw checking_enter, checking_draw, checking_key, screen_ret, checking_idle
-	.dw list_enter, list_draw, list_key, screen_ret, list_idle
+	.dw list_enter, list_draw, list_key, list_land, list_idle
 	.dw theorem_enter, theorem_draw, theorem_key, screen_ret, screen_idle
 	.dw sections_enter, sections_draw, sections_key, screen_ret, screen_idle
 

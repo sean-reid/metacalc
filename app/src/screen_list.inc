@@ -93,6 +93,9 @@
 ;              store_get, five of each at most for a frame. Under a kind it also asks lf_next once
 ;              whether the first row is shown (when it is not the screen says none, as for an empty
 ;              stage) and once after each row drawn, six calls at most, and writes LV_KIND and LV_END.
+; list_land   the land routine of the kind table, in screen_list_land.inc: after the sections screen's jump has
+;              popped and this screen's enter has run, it clears the find in byte 7 of the frame and moves the cursor
+;              and the first row to the section's first assertion that the kind shows.
 ; Interrupts and speed: list_enter, list_key and list_draw return with both as at the call, and so does
 ; list_idle but for the tick path, which returns with interrupts on, as the shell calls it, because
 ; app_tick ends in ei. fm's sessions and the reader's reads turn interrupts off for their own length and
