@@ -5,6 +5,7 @@
 use crate::app::*;
 use crate::list_rig::*;
 use crate::shellrig::*;
+use crate::theorem_mirror::Mirror;
 use crate::ui_support::same_frame;
 use mcui::canvas::{CONTENT_ROWS, STATEMENT_WIDTH, text_width};
 use mcui::data::Lib;
@@ -98,6 +99,12 @@ pub struct Walker {
     pub list: Lister,
     pub stage: usize,
     pub built: &'static Built,
+    /// The model's folds, rebuilt from the fit after the screen has been covered, and whether
+    /// byte 8 of the frame is compared with the model's following.
+    pub mirror: Option<Mirror>,
+    pub mirrored: bool,
+    /// T-states to run before each key, which the reference OS needs between two keys to see both.
+    pub gap: u32,
 }
 
 /// Runs until the blit that is under way has been counted, which an interrupt taken in the 2,000
@@ -148,6 +155,9 @@ impl Walker {
     /// Taps `scan` and does the model's `key`, as `Lister::key` does, and compares the frame the key
     /// redraws, or the absence of one, and the depth. Returns whether a frame was drawn.
     pub fn key(&mut self, scan: u8, key: Key) -> bool {
+        if self.gap > 0 {
+            self.list.run.run(self.gap);
+        }
         let list = &mut self.list;
         let blits = list.run.blits();
         let (before, depth) = (list.shown(), list.ui.depth());
@@ -182,7 +192,28 @@ impl Walker {
     ) -> Walker {
         let mut list = Lister::open(built, table, stage);
         list.settle();
-        Walker { list, stage, built }
+        Walker::new(list, stage, built)
+    }
+
+    pub fn new(list: Lister, stage: usize, built: &'static Built) -> Walker {
+        Walker {
+            list,
+            stage,
+            built,
+            mirror: None,
+            mirrored: true,
+            gap: 0,
+        }
+    }
+
+    /// The mirror of the screen that is open, from the model's fit.
+    pub fn mirror(&mut self) -> &mut Mirror {
+        if self.mirror.is_none() {
+            let frame = self.frame();
+            let n = usize::from(u16::from_le_bytes([frame[2], frame[3]]));
+            self.mirror = Some(Mirror::new(&lib_of(self.built), n));
+        }
+        self.mirror.as_mut().unwrap()
     }
 
     /// The list's cursor taken to assertion `n` by arrow keys, every frame compared.
@@ -212,6 +243,7 @@ impl Walker {
 
     /// ENTER on the list: the theorem screen of the cursor's assertion.
     pub fn open(&mut self) {
+        self.mirror = None;
         assert_eq!(self.list.run.top_kind(), KIND_LIST);
         assert!(self.key(ENTER, Key::Enter), "the screen is drawn");
         assert_eq!(self.list.run.top_kind(), KIND_THEOREM);
@@ -247,7 +279,22 @@ impl Walker {
     /// Taps `scan` and does the model's `key`: the app draws a frame exactly when the model's frame or
     /// depth changed, and the screen it leaves is the model's frame. Returns whether a frame was drawn.
     pub fn press(&mut self, scan: u8, key: Key) -> bool {
+        if self.gap > 0 {
+            self.list.run.run(self.gap);
+        }
+        let mirrored = self.mirrored && self.var("TV_LARGE") == 0;
+        if mirrored {
+            self.mirror();
+        }
         let list = &mut self.list;
+        let State::Theorem {
+            statement: s0,
+            node: n0,
+            ..
+        } = list.ui.state()
+        else {
+            panic!("the model is not on a theorem");
+        };
         let blits = list.run.blits();
         let (before, depth) = (list.shown(), list.ui.depth());
         tap(list, scan);
@@ -274,6 +321,20 @@ impl Walker {
             "after {scan:02X}: the blits"
         );
         assert_eq!(list.run.depth(), list.ui.depth(), "after {scan:02X}: depth");
+        if mirrored && matches!(key, Key::Enter | Key::F1) {
+            let State::Theorem { folded, .. } = self.list.ui.state() else {
+                panic!("the model is not on a theorem");
+            };
+            let mirror = self.mirror();
+            if folded != mirror.folded() {
+                assert!(mirror.toggle(s0, n0), "the mirror folds what the model did");
+            }
+            assert_eq!(
+                folded,
+                mirror.folded(),
+                "the mirror's folds are the model's"
+            );
+        }
         self.same_position(&format!("after {scan:02X}"));
         drew
     }
@@ -293,6 +354,12 @@ impl Walker {
         assert_eq!(frame[0], KIND_THEOREM, "{at}: the kind");
         assert_eq!(frame[1], self.stage as u8, "{at}: the stage");
         assert_eq!(frame[9], 1, "{at}: entered");
+        let want = self.model_title();
+        let got = self
+            .list
+            .run
+            .peek(self.list.run.shell.app.label("TV_RIGHT"), want.len());
+        assert_eq!(got, want, "{at}: the title's mark and kind");
         let large = self.var("TV_LARGE") == 1;
         if large {
             assert_eq!(frame[4..8], [0; 4], "{at}: too large, no position");
@@ -306,11 +373,38 @@ impl Walker {
             "{at}: scroll"
         );
         assert!(frame[8] <= 1, "{at}: following is a flag");
+        if self.mirrored {
+            let want = self.mirror().following(statement, node, scroll);
+            assert_eq!(frame[8] == 1, want, "{at}: following");
+        }
+    }
+
+    /// The glyph codes of the model's title text on the right, mark and kind, ended by 0.
+    pub fn model_title(&mut self) -> Vec<u8> {
+        let right = self
+            .list
+            .ui
+            .frame_calls()
+            .1
+            .into_iter()
+            .find_map(|call| match call {
+                mcui::canvas::Call::Title { right, .. } => Some(right),
+                _ => None,
+            })
+            .expect("the model draws a title");
+        let app = &self.list.run.shell.app;
+        let mut codes: Vec<u8> = right
+            .chars()
+            .map(|c| app.label(&format!("UI_FONT_CH_{:X}", c as u32)) as u8)
+            .collect();
+        codes.push(0);
+        codes
     }
 
     /// CLEAR on the screen: the list comes back with its cursor and top and a blank preview, which
     /// is what the model has when its keys are replayed with no idle work in between.
     pub fn back(&mut self) {
+        self.mirror = None;
         let list = &mut self.list;
         let depth = list.run.depth();
         tap(list, CLEAR);
@@ -355,6 +449,7 @@ impl Walker {
         assert!(self.key(CLEAR, Key::Clear), "the screen comes back");
         assert_eq!(self.list.run.top_kind(), KIND_THEOREM);
         assert_eq!(self.list.run.depth(), depth);
+        self.mirror = None;
         self.same_position("after the notice");
     }
 }

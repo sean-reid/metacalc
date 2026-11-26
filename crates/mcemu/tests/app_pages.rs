@@ -159,14 +159,22 @@ mod table;
 mod theorem_caps;
 #[path = "app_pages/theorem_depth.rs"]
 mod theorem_depth;
+#[path = "app_pages/theorem_errors.rs"]
+mod theorem_errors;
 #[path = "app_pages/theorem_frames.rs"]
 mod theorem_frames;
+#[path = "app_pages/theorem_keys.rs"]
+mod theorem_keys;
+#[path = "app_pages/theorem_mirror.rs"]
+mod theorem_mirror;
 #[path = "app_pages/theorem_real.rs"]
 mod theorem_real;
 #[path = "app_pages/theorem_return.rs"]
 mod theorem_return;
 #[path = "app_pages/theorem_rig.rs"]
 mod theorem_rig;
+#[path = "app_pages/theorem_shell_real.rs"]
+mod theorem_shell_real;
 #[path = "app_pages/tick.rs"]
 mod tick;
 #[path = "app_pages/wide_cost.rs"]

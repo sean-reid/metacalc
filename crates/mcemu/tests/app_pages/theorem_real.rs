@@ -103,17 +103,22 @@ fn measure(app: &mut App, target: u16, input: In) -> Done {
     panic!("the call to {target:04X} never returned");
 }
 
-/// scr_draw then ui_blit for the screen on top, timed.
-fn timed_frame(app: &mut App) -> u32 {
+/// scr_draw then ui_blit for the screen on top, timed, and each of the two.
+fn timed_frame_split(app: &mut App) -> (u32, u32, u32) {
     let draw = app.label("scr_draw");
     let draw = measure(app, draw, In::default()).tstates;
     let blit = app.label("far_ui_blit");
     let blit = measure(app, blit, In::default()).tstates;
-    if STRETCH.get() {
+    let both = if STRETCH.get() {
         draw.max(blit)
     } else {
         draw + blit
-    }
+    };
+    (both, draw, blit)
+}
+
+fn timed_frame(app: &mut App) -> u32 {
+    timed_frame_split(app).0
 }
 
 /// The app on the reference OS with the list of `stage` open, and the labels the cost walks use.
@@ -123,6 +128,8 @@ pub struct Rom {
     count: u16,
     new: u16,
     tag: u16,
+    /// The key, the draw and the blit of the last `press`, in T-states.
+    pub last: (u32, u32, u32),
 }
 
 impl Rom {
@@ -135,6 +142,7 @@ impl Rom {
             count: app.label("SCR_COUNT"),
             new: app.label("SCR_NEW"),
             tag: app.label("APP_STAGE_TAG"),
+            last: (0, 0, 0),
             list,
         }
     }
@@ -210,14 +218,17 @@ impl Rom {
         );
         let answer = done.status();
         let mut spent = done.tstates;
+        let mut split = (done.tstates, 0, 0);
         if answer == 1 {
-            let frame = timed_frame(app);
+            let (frame, draw, blit) = timed_frame_split(app);
+            split = (done.tstates, draw, blit);
             spent = if STRETCH.get() {
                 spent.max(frame)
             } else {
                 spent + frame
             };
         }
+        self.last = split;
         (answer, spent)
     }
 }
@@ -280,6 +291,9 @@ fn visit(ui: &mut mcui::Ui, rom: &mut Rom, stats: &mut Stats) {
 pub struct Stats {
     pub moves: Vec<(u32, String)>,
     pub folds: Vec<(u32, String)>,
+    /// The key, the draw and the blit of each entry of `moves` and of `folds`.
+    pub move_splits: Vec<(u32, u32, u32)>,
+    pub fold_splits: Vec<(u32, u32, u32)>,
     /// The assertion the walk is on.
     pub label: String,
 }
@@ -316,12 +330,18 @@ fn step(ui: &mut mcui::Ui, rom: &mut Rom, key: Key, stats: &mut Stats) {
     );
     if answer == 1 {
         match key {
-            Key::Enter | Key::F1 => stats
-                .folds
-                .push((spent, format!("{} {key:?} at node {node}", stats.label))),
-            _ => stats
-                .moves
-                .push((spent, format!("{} {key:?} to node {node}", stats.label))),
+            Key::Enter | Key::F1 => {
+                stats
+                    .folds
+                    .push((spent, format!("{} {key:?} at node {node}", stats.label)));
+                stats.fold_splits.push(rom.last);
+            }
+            _ => {
+                stats
+                    .moves
+                    .push((spent, format!("{} {key:?} to node {node}", stats.label)));
+                stats.move_splits.push(rom.last);
+            }
         }
     }
 }
@@ -368,6 +388,12 @@ fn open_costs(stage: usize) -> Vec<(u32, String)> {
     let mut costs = Vec::new();
     for n in 0..end {
         let (key, enter, draw) = rom.open_at(n);
+        if key + enter + draw > 1_500_000 {
+            println!(
+                "ROM, opening {}: the key {key}, the enter {enter}, the first frame {draw}",
+                lib.label(n)
+            );
+        }
         costs.push((key + enter + draw, lib.label(n).to_string()));
     }
     costs
@@ -382,8 +408,8 @@ fn on_the_reference_os_opening_every_assertion_of_prop_and_ring_costs_what_the_h
             PROP,
             Summary {
                 runs: 779,
-                median: 332_318,
-                worst: 770_485,
+                median: 326_062,
+                worst: 762_336,
                 over_200_ms: 0,
                 over_budget: 0,
             },
@@ -400,10 +426,10 @@ fn on_the_reference_os_opening_every_assertion_of_prop_and_ring_costs_what_the_h
             RING,
             Summary {
                 runs: 3326,
-                median: 302_518,
-                worst: 1_808_784,
-                over_200_ms: 6,
-                over_budget: 1,
+                median: 295_443,
+                worst: 1_781_407,
+                over_200_ms: 5,
+                over_budget: 0,
             },
             ["rglcom4d", "grpinva", "ovmpodxf", "grpinvalem", "isrng"],
         ),
@@ -481,12 +507,22 @@ fn on_the_reference_os_a_cursor_move_and_a_fold_with_their_frames_cost_what_the_
         "ROM, the worst fold: {:?}",
         stats.folds.iter().max().unwrap()
     );
-    assert_eq!((got.runs, got.over_budget), (4872, 520));
-    within("the median move", got.median, 275_281);
-    within("the worst move", got.worst, 337_104);
-    assert_eq!((fold.runs, fold.over_budget), (322, 285));
-    within("the median fold", fold.median, 321_753);
-    within("the worst fold", fold.worst, 391_103);
+    let worst_move = (0..stats.moves.len())
+        .max_by_key(|&i| stats.moves[i].0)
+        .unwrap();
+    let worst_fold = (0..stats.folds.len())
+        .max_by_key(|&i| stats.folds[i].0)
+        .unwrap();
+    println!(
+        "ROM, the worst move split into key, draw and blit: {:?}; the worst fold: {:?}",
+        stats.move_splits[worst_move], stats.fold_splits[worst_fold]
+    );
+    assert_eq!((got.runs, got.over_budget), (4872, 228));
+    within("the median move", got.median, 266_266);
+    within("the worst move", got.worst, 337_236);
+    assert_eq!((fold.runs, fold.over_budget), (322, 113));
+    within("the median fold", fold.median, 293_499);
+    within("the worst fold", fold.worst, 390_368);
 }
 
 #[test]
@@ -534,25 +570,57 @@ fn on_the_reference_os_every_routine_of_the_theorem_screen_keeps_interrupts_and_
     let built = shipped_staged();
     let lib = lib_of(built);
     let (n, _) = find(&lib, |f| f.hyps >= 3 && f.rows >= 6 && !f.large);
+    let one_node = |i: &usize| lib.statement(*i).hyps.iter().any(|e| e.len() == 1);
+    let scrolled = (0..779)
+        .filter(one_node)
+        .max_by_key(|&i| crate::theorem_rig::facts(&lib, i).rows)
+        .expect("prop has an assertion with a hypothesis of one node");
+    println!(
+        "ROM, the scroll case is pressed on assertion {scrolled} of {} rows",
+        crate::theorem_rig::facts(&lib, scrolled).rows
+    );
     let (plain, _) = find(&lib, |f| f.hyps == 0 && !f.large);
     assert!(n < 779 && plain < 779, "both are in prop, which is stage 0");
     let before = |n: usize| {
         let mut list = Lister::on_rom(PROP);
         list.open_on_rom();
-        let mut walker = Walker {
-            list,
-            stage: PROP,
-            built,
-        };
+        let mut walker = Walker::new(list, PROP, built);
         walker.goto(n);
         walker
     };
+    let with_table = |n: usize| {
+        let mut list = Lister::on_rom(PROP);
+        assert!(list.partial_check(20) >= 20, "the table has values");
+        list.open_on_rom();
+        let mut walker = Walker::new(list, PROP, built);
+        walker.goto(n);
+        walker
+    };
+    for (table, want) in [(false, 0), (true, 1)] {
+        let mut walker = if table { with_table(n) } else { before(n) };
+        walker.open();
+        assert_eq!(
+            walker.var("TV_TABLE"),
+            want,
+            "the table is installed: {table}"
+        );
+    }
     for speed in [0, 1] {
-        let masked = crate::theorem_depth::figures_of(&before, (n, plain), speed, true);
-        println!("ROM, speed {speed}, masked: {masked:?}");
-        let mut masked = masked;
-        assert_eq!(masked.remove("list_key enter"), Some(8), "speed {speed}");
-        assert_eq!(masked, crate::theorem_depth::depths(34), "speed {speed}");
-        crate::theorem_depth::figures_of(&before, (n, plain), speed, false);
+        for (what, table) in [("no table", false), ("a table", true)] {
+            let masked = if table {
+                crate::theorem_depth::figures_of(&with_table, (n, plain, scrolled), speed, true)
+            } else {
+                crate::theorem_depth::figures_of(&before, (n, plain, scrolled), speed, true)
+            };
+            println!("ROM, speed {speed}, {what}, masked: {masked:?}");
+            let mut masked = masked;
+            assert_eq!(masked.remove("list_key enter"), Some(8), "speed {speed}");
+            assert_eq!(
+                masked,
+                crate::theorem_depth::depths_on_the_reference_os(),
+                "speed {speed}, {what}"
+            );
+        }
+        crate::theorem_depth::figures_of(&before, (n, plain, scrolled), speed, false);
     }
 }

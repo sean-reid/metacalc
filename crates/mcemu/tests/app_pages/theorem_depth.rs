@@ -84,7 +84,7 @@ pub fn trace_here(run: &mut Run, label: &str, mask: bool, speed: u8) -> Trace {
 
 /// The greatest depth over `calls`, asserting that every call kept interrupts as they were at the call
 /// and returned with the speed port as it was set to `speed`.
-fn kept(what: &str, calls: &[Trace], speed: u8, mask: bool) -> u16 {
+pub fn kept(what: &str, calls: &[Trace], speed: u8, mask: bool) -> u16 {
     assert!(!calls.is_empty(), "{what}: no call was traced");
     for (n, t) in calls.iter().enumerate() {
         assert_eq!(
@@ -113,17 +113,18 @@ pub fn figures(speed: u8, mask: bool) -> BTreeMap<String, u16> {
             walker.goto(n);
             walker
         },
-        (n, plain),
+        (n, plain, n),
         speed,
         mask,
     )
 }
 
 /// `figures` for a library: `before(n)` gives both on the list with the cursor on assertion `n`, `n`
-/// being an assertion with several statements and `plain` one with none but the conclusion.
+/// being an assertion with several statements, `plain` one with none but the conclusion and `scrolled`
+/// one with a hypothesis of one node, which the scroll case of Down and Up is pressed on.
 pub fn figures_of(
     before: &dyn Fn(usize) -> Walker,
-    (n, plain): (usize, usize),
+    (n, plain, scrolled): (usize, usize, usize),
     speed: u8,
     mask: bool,
 ) -> BTreeMap<String, u16> {
@@ -182,6 +183,70 @@ pub fn figures_of(
     let t = walker.trace("theorem_enter", mask, speed);
     walker.list.run.m().release_key(CLEAR);
     put("enter on an uncovering", &[t]);
+    let key_at = |walker: &mut Walker, scan: u8| {
+        walker.list.run.m().press_key(scan);
+        let t = walker.trace("theorem_key", mask, speed);
+        walker.list.run.m().release_key(scan);
+        t
+    };
+    let mut walker = at(n);
+    let t = key_at(&mut walker, LEFT);
+    put("key left across statements", &[t]);
+    let mut walker = at(n);
+    walker.press(LEFT, Key::Left);
+    let t = key_at(&mut walker, RIGHT);
+    put("key right across statements", &[t]);
+    let mut walker = at(n);
+    for _ in 0..4 {
+        walker.press(LEFT, Key::Left);
+    }
+    let mut guard = 0;
+    while walker.frame()[5] == 0 {
+        guard += 1;
+        assert!(guard < 12, "the keys reach a node inside a statement");
+        if !walker.press(DOWN, Key::Down) {
+            walker.press(LEFT, Key::Left);
+        }
+    }
+    assert_ne!(walker.frame()[5], 0, "the cursor is inside a statement");
+    walker.tap(F2);
+    walker.list.run.run(300_000);
+    walker.list.run.m().press_key(CLEAR);
+    walker.trace("theorem_enter", mask, speed);
+    let t = walker.trace("theorem_draw", mask, speed);
+    walker.list.run.m().release_key(CLEAR);
+    put("draw with the cursor's rectangles", &[t]);
+    for (name, scan) in [
+        ("up", UP),
+        ("down", DOWN),
+        ("left", LEFT),
+        ("right", RIGHT),
+        ("enter", ENTER),
+    ] {
+        let mut walker = at(n);
+        crate::theorem_keys::onto_a_hidden_node(&mut walker, 0);
+        let t = key_at(&mut walker, scan);
+        put(&format!("key {name} on a hidden node"), &[t]);
+    }
+    let mut walker = at(n);
+    crate::theorem_keys::onto_a_folded_node(&mut walker);
+    let t = key_at(&mut walker, ENTER);
+    put("key enter on a folded node", &[t]);
+    let statement = lib_of(before(scrolled).built).statement(scrolled);
+    let hyps = statement.hyps.len();
+    let one = statement
+        .hyps
+        .iter()
+        .position(|e| e.len() == 1)
+        .expect("the assertion has a hypothesis of one node");
+    for (name, scan) in [("down", DOWN), ("up", UP)] {
+        let mut walker = at(scrolled);
+        for _ in 0..hyps - one {
+            walker.press(LEFT, Key::Left);
+        }
+        let t = key_at(&mut walker, scan);
+        put(&format!("key {name} in the scroll case"), &[t]);
+    }
     let mut walker = at(plain);
     walker.list.run.m().press_key(DOWN);
     let t = walker.trace("theorem_key", mask, speed);
@@ -190,29 +255,57 @@ pub fn figures_of(
     found
 }
 
-/// The stack each routine writes, counting the caller's return address, as the header states them; the
-/// enter's is 20 on the stub OS and 34 on the reference OS, whose lookup of the status table is deeper.
-pub fn depths(enter: u16) -> BTreeMap<String, u16> {
+/// The stack each path writes, counting the caller's return address, as the header states them; the
+/// enter's is 24 on the stub OS and more on the reference OS, whose lookup of the status table is deeper.
+pub fn depths(enter: u16, draw: u16) -> BTreeMap<String, u16> {
     [
-        ("draw", 18),
+        ("draw", draw),
+        ("draw with the cursor's rectangles", draw),
         ("enter on a push", enter),
         ("enter on an uncovering", enter),
         ("key at the root of a short statement", 14),
         ("key clear", 2),
         ("key down", 10),
+        ("key down in the scroll case", 12),
+        ("key down on a hidden node", 10),
         ("key enter", 10),
+        ("key enter on a folded node", 14),
+        ("key enter on a hidden node", 10),
         ("key f1", 10),
         ("key f2", 6),
         ("key f3", 6),
         ("key f4", 6),
         ("key f5", 4),
         ("key left", 12),
+        ("key left across statements", 12),
+        ("key left on a hidden node", 10),
         ("key letter", 4),
         ("key right", 12),
+        ("key right across statements", 12),
+        ("key right on a hidden node", 14),
         ("key up", 12),
+        ("key up in the scroll case", 12),
+        ("key up on a hidden node", 14),
     ]
     .map(|(name, depth)| (name.to_string(), depth))
     .into()
+}
+
+/// The depths on the reference OS, whose lookup of the status table is deeper: the enter writes 34 with a
+/// table and without, and the keys the figures of a longer stage reach differ from the stub's where the
+/// state differs: the scroll case of Down and Up has no row to scroll to in prop's assertions, which
+/// have no hypothesis of one node and more than six rows.
+pub fn depths_on_the_reference_os() -> BTreeMap<String, u16> {
+    let mut depths = depths(34, 18);
+    for (name, depth) in [
+        ("key down in the scroll case", 10),
+        ("key up in the scroll case", 10),
+        ("key left", 10),
+        ("key right", 14),
+    ] {
+        depths.insert(name.to_string(), depth);
+    }
+    depths
 }
 
 #[test]
@@ -225,6 +318,6 @@ fn the_routines_return_with_interrupts_and_speed_as_they_were_and_the_stack_bala
             Some(8),
             "speed {speed}: the list's push"
         );
-        assert_eq!(got, depths(24), "speed {speed}");
+        assert_eq!(got, depths(24, 18), "speed {speed}");
     }
 }

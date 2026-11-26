@@ -8,7 +8,8 @@ use crate::shellrig::*;
 use crate::table;
 use crate::theorem_rig::*;
 use mcui::canvas::Call;
-use mcui::{Key, State};
+use mcui::data::Lib;
+use mcui::{Installed, Key, State};
 use std::collections::BTreeMap;
 
 /// The counts the first-frame sweep of a library found, from the model.
@@ -26,6 +27,7 @@ pub struct Counts {
 pub fn sweep(built: &'static Built, stage: usize, limit: usize) -> Counts {
     let lib = lib_of(built);
     let mut walker = Walker::on_list(built, None, stage);
+    walker.mirrored = false;
     let mut counts = Counts::default();
     let end = built
         .stages
@@ -260,6 +262,7 @@ fn the_title_carries_each_of_the_four_marks_and_thm_or_ax() {
         })
         .expect("a table with all four marks");
     let mut seen = std::collections::BTreeSet::new();
+    let mut pairs = std::collections::BTreeSet::new();
     let mut walker = Walker::on_list(built, Some((&data, &status)), 2);
     let end = built.stages[2].end;
     for i in 0..end {
@@ -269,6 +272,9 @@ fn the_title_carries_each_of_the_four_marks_and_thm_or_ax() {
         walker.open();
         for call in walker.list.ui.frame_calls().1 {
             if let Call::Title { right, .. } = call {
+                let mut chars = right.chars();
+                let mark = chars.next().unwrap();
+                pairs.insert((mark, chars.as_str().trim().to_string()));
                 seen.insert(right);
             }
         }
@@ -283,6 +289,64 @@ fn the_title_carries_each_of_the_four_marks_and_thm_or_ax() {
         );
     }
     assert!(seen.iter().any(|t| t.ends_with("thm")) && seen.iter().any(|t| t.ends_with(" ax")));
+    println!("pairs: {pairs:?}");
+    let theorem_only = [mcglyph::CROSS, '~'];
+    let all: std::collections::BTreeSet<(char, String)> =
+        [mcglyph::CHECK, '?', mcglyph::CROSS, '~']
+            .into_iter()
+            .flat_map(|m| ["thm", "ax"].map(|k| (m, k.to_string())))
+            .filter(|(m, k)| !(theorem_only.contains(m) && k == "ax"))
+            .collect();
+    assert_eq!(
+        pairs, all,
+        "every mark with a theorem, and with an axiom but for the failed and the resting marks, which an axiom has no proof to earn"
+    );
+}
+
+#[test]
+fn the_title_is_rebuilt_by_the_enter_after_a_notice_and_after_an_auto_power_down() {
+    let built = proofs_three();
+    let lib = lib_of(built);
+    let n = lib.len();
+    let mut seed = 0x1357_9BDF;
+    let (data, status) = (0..200)
+        .find_map(|_| {
+            let status = table::random_status(n, &mut seed, 70, 6);
+            let values = table::values(built, &status);
+            (0..4)
+                .all(|v| values.contains(&v))
+                .then(|| (table::of(built.library.as_ref().unwrap(), &values), status))
+        })
+        .expect("a table with all four marks");
+    let mut walker = Walker::on_list(built, Some((&data, &status)), 2);
+    let end = built.stages[2].end.min(12);
+    let mut marks = std::collections::BTreeSet::new();
+    for i in 0..end {
+        if i > 0 {
+            assert!(walker.key(DOWN, Key::Down));
+            walker.hold_preview();
+        }
+        walker.open();
+        marks.insert(walker.model_title()[0]);
+        walker.excursion(F2, Key::F2);
+        walker.list.run.run(600_000);
+        walker.list.run.shell.power_down();
+        let at = walker.list.run.shell.app.label("TV_RIGHT");
+        walker.list.run.m().load_ram(at, &[0xFF; 8]);
+        walker.tap(LETTER);
+        walker.list.run.next_blit();
+        walker.list.run.run(2_000);
+        walker.list.ui.press(Key::Letter('A'));
+        walker.list.log.push(Key::Letter('A'));
+        walker.mirror = None;
+        walker.same_position("after an auto power down");
+        walker.back();
+        walker.hold_preview();
+    }
+    assert!(
+        marks.len() >= 3,
+        "{marks:?}: the title's marks the test saw"
+    );
 }
 
 #[test]
@@ -294,6 +358,7 @@ fn the_title_with_no_table_is_unchecked_for_an_axiom_and_a_theorem() {
     for n in [theorem, axiom] {
         let mut walker = Walker::at(built, None, 0, n);
         assert_eq!(walker.var("TV_TABLE"), 0);
+        let want = if n == theorem { "? thm" } else { "? ax" };
         let titles: Vec<String> = walker
             .list
             .ui
@@ -305,7 +370,7 @@ fn the_title_with_no_table_is_unchecked_for_an_axiom_and_a_theorem() {
                 _ => None,
             })
             .collect();
-        println!("{n}: {titles:?}");
+        assert_eq!(titles, [want], "assertion {n}");
     }
 }
 
@@ -373,4 +438,38 @@ fn long_seeded_walks_are_the_models_on_the_largest_assertions_of_ring() {
     ] {
         assert!(changed[key].1 >= floor, "{key}: {:?}", changed[key]);
     }
+}
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn the_largest_total_of_rows_of_each_shipped_library() {
+    let dir = std::env::var("MC_LIBRARIES").expect("MC_LIBRARIES names the built libraries");
+    let mut most = BTreeMap::new();
+    for name in ["prop", "pred", "ring"] {
+        let bytes = std::fs::read(format!("{dir}/{name}.mclib")).expect("library reads");
+        let n = usize::from(table::header_of(&bytes).1);
+        let lib = Lib::new(
+            Installed {
+                name: name.into(),
+                bytes,
+            },
+            vec![mcui::Status::Unchecked; n],
+        )
+        .expect("the model loads the library");
+        let rows = (0..lib.len()).map(|i| facts(&lib, i).rows).max().unwrap();
+        most.insert(name, rows);
+    }
+    println!("the largest total of rows: {most:?}");
+    assert_eq!(
+        most,
+        BTreeMap::from([("pred", 7), ("prop", 7), ("ring", 13)])
+    );
+}
+
+#[test]
+fn the_largest_total_of_rows_of_the_fixture() {
+    let lib = lib_of(with_library());
+    let rows = (0..lib.len()).map(|i| facts(&lib, i).rows).max().unwrap();
+    println!("the largest total of rows in the fixture: {rows}");
+    assert_eq!(rows, 12);
 }

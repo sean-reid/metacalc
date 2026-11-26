@@ -89,8 +89,11 @@ fn fm_refuses_exactly_what_the_models_caps_refuse_for_each_way_past_a_cap() {
                 (UP, Key::Up),
                 (DOWN, Key::Down),
                 (LEFT, Key::Left),
+                (RIGHT, Key::Right),
                 (ENTER, Key::Enter),
                 (F1, Key::F1),
+                (F3, Key::F3),
+                (LETTER, Key::Letter('A')),
             ] {
                 assert!(!walker.press(scan, key), "{what}: {scan:02X} stays");
             }
@@ -100,5 +103,20 @@ fn fm_refuses_exactly_what_the_models_caps_refuse_for_each_way_past_a_cap() {
             assert!(!walker.press(F5, Key::F5), "{what}: F5 stays");
         }
         walker.back();
+    }
+}
+
+#[test]
+fn mcpack_refuses_a_statement_of_256_tokens_and_packs_one_of_255() {
+    let tokens = |n: usize| format!("$c F $.\nstmt{n} $a |- -. {}$.\n", "F ".repeat(n - 2));
+    let pack = |n: usize| {
+        let db = crate::support::parse(&format!("{}{}", crate::fixture::source(), tokens(n)));
+        let all: Vec<mcpack::mm::StmtId> = (0..db.stmts.len() as mcpack::mm::StmtId).collect();
+        mcpack::library::pack(&db, &all)
+    };
+    assert!(pack(255).is_ok(), "255 tokens pack");
+    match pack(256) {
+        Err(mcpack::library::PackError::TooLarge(label)) => assert_eq!(label, "stmt256"),
+        other => panic!("256 tokens: {:?}", other.map(|bytes| bytes.len())),
     }
 }

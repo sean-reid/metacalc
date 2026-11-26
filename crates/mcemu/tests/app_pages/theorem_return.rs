@@ -11,7 +11,7 @@ use crate::ui_support::same_frame;
 use mcui::{Key, State};
 
 /// The states a notice has to give back.
-const HOWS: [&str; 7] = [
+pub const HOWS: [&str; 7] = [
     "conclusion",
     "hypothesis",
     "fold made",
@@ -22,7 +22,7 @@ const HOWS: [&str; 7] = [
 ];
 
 /// Opens `n` of the fixture and brings the screen to one of the states a notice has to give back.
-fn prepared(n: usize, how: &str) -> Walker {
+pub fn prepared(n: usize, how: &str) -> Walker {
     let mut walker = Walker::at(with_library(), None, 0, n);
     match how {
         "conclusion" => {}
@@ -163,6 +163,7 @@ fn an_auto_power_down_on_the_screen_brings_back_the_models_refit() {
         }
         walker.list.log.extend(keys);
         same_frame(how, &frame, &walker.list.shown());
+        walker.mirror = None;
         walker.same_position(how);
         assert_eq!(walker.frame()[4..6], before[4..6], "{how}: the cursor kept");
     }
@@ -178,7 +179,7 @@ fn node_of(walker: &Walker) -> usize {
 
 /// Moves the cursor to the next node in preorder, as far as the keys reach: Down to the first
 /// child, else Right to a sibling, else Up and the same again. False at the last.
-fn next_node(walker: &mut Walker) -> bool {
+pub fn next_node(walker: &mut Walker) -> bool {
     let before = node_of(walker);
     if matches!(walker.list.ui.state(), State::Theorem { hidden: true, .. }) {
         walker.press(ENTER, Key::Enter);
@@ -274,11 +275,7 @@ fn a_theorem_opened_right_after_a_check_opens_fm_again_once() {
     let ready = usize::from(list.run.shell.app.label("KV_READY") - 0xC000);
     list.run.shell.app.m.ram_page(3)[ready..ready + 2].fill(0);
     list.count_fm_calls();
-    let mut walker = Walker {
-        list,
-        stage: 0,
-        built,
-    };
+    let mut walker = Walker::new(list, 0, built);
     walker.open();
     assert_eq!(
         walker.list.fm_calls()[0],
@@ -302,7 +299,7 @@ fn a_theorem_opened_right_after_a_check_opens_fm_again_once() {
 
 /// The statuses fm and the reader refuse the theorem's enter with, the call each is answered at, and
 /// the status the user sees.
-const REFUSALS: [(&str, u8, u8); 7] = [
+pub const REFUSALS: [(&str, u8, u8); 7] = [
     ("far_lib_assertion_count", 1, 0x31),
     ("far_lib_read", 1, 0x32),
     ("far_fm_assertion", 1, 0x33),
@@ -312,7 +309,7 @@ const REFUSALS: [(&str, u8, u8); 7] = [
     ("far_fm_open", 1, 0x38),
 ];
 
-fn error_frames(walker: &mut Walker, depth: usize, status: u8, at: &str) {
+pub fn error_frames(walker: &mut Walker, depth: usize, status: u8, at: &str) {
     let frame = walker.list.run.next_blit();
     walker.list.run.run(300_000);
     same_frame(at, &frame, &model::error(status));
@@ -327,7 +324,7 @@ fn error_frames(walker: &mut Walker, depth: usize, status: u8, at: &str) {
 
 /// Makes `stub` answer `status` the first time, and for far_fm_open also makes fm_assertion say that fm
 /// is closed, so that fm_open is called.
-fn refuse(walker: &mut Walker, stub: &str, status: u8) {
+pub fn refuse(walker: &mut Walker, stub: &str, status: u8) {
     if stub == "far_fm_open" {
         walker.list.fail_at(1, "far_fm_assertion", 1, 1);
     }
@@ -370,10 +367,8 @@ fn a_theorem_that_fails_to_enter_on_a_push_leaves_the_list_with_the_error_notice
 #[test]
 fn a_theorem_that_fails_to_enter_on_an_uncovering_keeps_its_frame_under_the_error_notice() {
     let built = with_library();
-    for (stub, _, status) in REFUSALS {
-        if stub == "far_lib_assertion_count" || stub == "far_lib_read" {
-            continue;
-        }
+    let more = [("far_fm_nodes", 1, 0x39), ("far_fm_span", 1, 0x3A)];
+    for (stub, _, status) in REFUSALS.into_iter().chain(more) {
         let at = stub.to_string();
         let mut walker = Walker::at(built, None, 0, 4);
         walker.press(DOWN, Key::Down);
