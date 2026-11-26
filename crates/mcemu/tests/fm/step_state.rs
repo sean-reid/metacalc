@@ -9,6 +9,7 @@ use crate::rig::*;
 use crate::support::*;
 use mcui::canvas::STATEMENT_WIDTH;
 use mcui::fold::Folds;
+use std::collections::BTreeSet;
 
 /// fm's tables, node planes, token records, selection and cursor, as the label file places them.
 fn snapshot(fm: &mut Fm) -> Vec<(&'static str, Vec<u8>)> {
@@ -25,6 +26,45 @@ fn snapshot(fm: &mut Fm) -> Vec<(&'static str, Vec<u8>)> {
     .into_iter()
     .map(|(name, len)| (name, fm.memory(name, len)))
     .collect()
+}
+
+/// Every variable of fm by name, from the label file: each FV_ label owns the bytes up to the next one,
+/// the last up to the end of fm's variables.
+fn variables(fm: &mut Fm) -> Vec<(String, Vec<u8>)> {
+    let mut at: Vec<(u32, &str)> = WITH_FM
+        .labels
+        .lines()
+        .filter_map(|line| {
+            let (name, value) = line.split_once(" = ")?;
+            name.starts_with("FV_")
+                .then(|| (u32::from_str_radix(&value[1..], 16).unwrap(), name))
+        })
+        .collect();
+    at.sort();
+    let end = constant_of(WITH_FM.labels, "FM_RAM") + constant_of(WITH_FM.labels, "FM_VARS_SIZE");
+    assert!(at.len() > 50, "the label file names fm's variables");
+    (0..at.len())
+        .map(|i| {
+            let next = at.get(i + 1).map_or(end, |&(a, _)| a);
+            let (from, name) = at[i];
+            (name.to_string(), fm.memory(name, (next - from) as usize))
+        })
+        .collect()
+}
+
+/// The variables of fm that differ between `before` and `after`.
+fn changed(before: &[(String, Vec<u8>)], after: &[(String, Vec<u8>)]) -> BTreeSet<String> {
+    assert_eq!(before.len(), after.len());
+    before
+        .iter()
+        .zip(after)
+        .filter(|(b, a)| b != a)
+        .map(|(b, _)| b.0.clone())
+        .collect()
+}
+
+fn names(list: &[&str]) -> BTreeSet<String> {
+    list.iter().map(|s| s.to_string()).collect()
 }
 
 /// A statement of the fixture with several nodes, loaded, built, with two folds applied and a cursor.
@@ -75,6 +115,57 @@ fn a_good_call_and_a_refused_call_of_fm_step_and_fm_span_leave_the_tables_folds_
 }
 
 #[test]
+fn fm_step_and_fm_span_change_only_their_own_variables_and_a_refused_call_changes_what_it_wrote() {
+    let (mut fm, nodes) = prepared();
+    let first = variables(&mut fm);
+    assert_eq!(fm.step(0, 0).status(), 0);
+    let before = variables(&mut fm);
+    let session = ["FV_IFF", "FV_P5", "FV_SP", "FV_OPEN"];
+    for name in session {
+        assert!(
+            before.iter().any(|(n, _)| n == name),
+            "{name} is in the label file"
+        );
+    }
+    let own = ["FV_FM", "FV_FN"];
+    let allowed: Vec<&str> = session.into_iter().chain(own).collect();
+    assert_eq!(
+        changed(&first, &before)
+            .difference(&names(&allowed))
+            .collect::<Vec<_>>(),
+        Vec::<&String>::new(),
+        "the first call writes only its own variables and the session's"
+    );
+    assert_eq!(fm.step(1, 1).status(), 0);
+    let good = variables(&mut fm);
+    assert_eq!(
+        changed(&before, &good),
+        names(&["FV_FM", "FV_FN"]),
+        "a good fm_step writes its direction and its node"
+    );
+    assert_eq!(fm.step(1, 4).status(), code("FM_ERR_BAD"));
+    assert_eq!(
+        changed(&good, &variables(&mut fm)),
+        names(&[]),
+        "D above 3 is refused before anything is written"
+    );
+    assert_eq!(fm.step(nodes, 0).status(), code("FM_ERR_INDEX"));
+    let refused = variables(&mut fm);
+    assert_eq!(
+        changed(&good, &refused),
+        names(&["FV_FM", "FV_FN"]),
+        "a node past the table is refused after the direction and the node are written"
+    );
+    assert_eq!(fm.span(0, 94).status(), 0);
+    let span = variables(&mut fm);
+    assert_eq!(
+        changed(&refused, &span),
+        names(&["FV_CC", "FV_CL", "FV_FN", "FV_XE"]),
+        "a good fm_span writes its own variables and none of fm_step's"
+    );
+}
+
+#[test]
 fn a_closed_fm_answers_not_open_to_fm_step_before_it_looks_at_the_direction() {
     let bytes = fixture::nodes_library();
     let mut fm = Fm::bare(&bytes);
@@ -88,8 +179,20 @@ fn a_closed_fm_answers_not_open_to_fm_step_before_it_looks_at_the_direction() {
         code("FM_ERR_NOT_OPEN"),
         "D = 0, closed"
     );
+    for (node, width) in [(0, 94), (0xFF, 0), (200, 94)] {
+        assert_eq!(
+            fm.span(node, width).status(),
+            code("FM_ERR_NOT_OPEN"),
+            "fm_span of node {node} at {width}, closed"
+        );
+    }
     assert_eq!(fm.open().status(), 0);
     assert_eq!(fm.step(0, 4).status(), code("FM_ERR_BAD"), "D = 4, open");
+    assert_eq!(
+        fm.span(0, 94).status(),
+        code("FM_ERR_INDEX"),
+        "open, nothing built"
+    );
 }
 
 /// The bytes of fm's stack one call of `call` takes after `prepare`, over the statements of the
