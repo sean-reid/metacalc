@@ -27,6 +27,9 @@ FAR_DATA_ENTRY(lib_shapes, far_lib_shapes)
 FAR_DATA_ENTRY(lib_shape, far_lib_shape)
 FAR_DATA_ENTRY(lib_kind_next, far_lib_kind_next)
 FAR_DATA_ENTRY(lib_kind_prev, far_lib_kind_prev)
+FAR_DATA_ENTRY(lib_find_range, far_lib_find_range)
+FAR_DATA_ENTRY(lib_find_walk, far_lib_find_walk)
+FAR_DATA_ENTRY(lib_find_copy, far_lib_find_copy)
 #endif
 #ifdef FAR_ALIASES
 #define lib_read far_lib_read
@@ -53,6 +56,9 @@ FAR_DATA_ENTRY(lib_kind_prev, far_lib_kind_prev)
 #define lib_shape far_lib_shape
 #define lib_kind_next far_lib_kind_next
 #define lib_kind_prev far_lib_kind_prev
+#define lib_find_range far_lib_find_range
+#define lib_find_walk far_lib_find_walk
+#define lib_find_copy far_lib_find_copy
 #endif
 #ifdef FAR_UNALIASES
 #undef lib_read
@@ -79,4 +85,7 @@ FAR_DATA_ENTRY(lib_kind_prev, far_lib_kind_prev)
 #undef lib_shape
 #undef lib_kind_next
 #undef lib_kind_prev
+#undef lib_find_range
+#undef lib_find_walk
+#undef lib_find_copy
 #endif

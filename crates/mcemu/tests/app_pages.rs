@@ -113,6 +113,8 @@ mod list_kind_depth;
 mod list_kind_edges;
 #[path = "app_pages/list_kind_f3.rs"]
 mod list_kind_f3;
+#[path = "app_pages/list_find_far.rs"]
+mod list_find_far;
 #[path = "app_pages/list_kind_far.rs"]
 mod list_kind_far;
 #[path = "app_pages/list_kind_frames.rs"]

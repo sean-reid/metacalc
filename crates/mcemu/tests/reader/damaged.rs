@@ -60,7 +60,7 @@ pub fn offset_of(bytes: &[u8], id: u8) -> u32 {
 fn a_refusal_at_open_is_the_hosts_refusal_for_the_same_bytes() {
     let good = base();
     let (count, first) = rows(&good);
-    assert_eq!(count, 5);
+    assert_eq!(count, 6);
     let titles = row_of(&good, TITLES);
     let glyphs = row_of(&good, GLYPHS);
     let trees = row_of(&good, TREES);
@@ -204,7 +204,7 @@ fn rows_the_reader_skips_or_does_not_need_open_as_the_decoder_opens_them() {
     assert_eq!((status, host), (ST_OK, true));
     assert_eq!(
         rig.sections(),
-        (ST_OK, HAVE_TITLES | HAVE_GLYPHS | HAVE_KINDS)
+        (ST_OK, HAVE_TITLES | HAVE_GLYPHS | HAVE_KINDS | HAVE_ORDER)
     );
     assert!(decoded(&unknown).sections.unwrap().trees.is_none());
     assert_eq!(rig.syntax_count().0, ST_NONE);
@@ -249,7 +249,7 @@ fn the_table_holds_28_rows_and_the_host_alone_accepts_a_29th() {
         rig.sections(),
         (
             ST_OK,
-            HAVE_TITLES | HAVE_GLYPHS | HAVE_TREES | HAVE_SHAPES | HAVE_KINDS
+            HAVE_TITLES | HAVE_GLYPHS | HAVE_TREES | HAVE_SHAPES | HAVE_KINDS | HAVE_ORDER
         )
     );
     let (_, status, host) = both(&with_rows(&good, 29));
@@ -315,7 +315,7 @@ fn a_glyph_map_for_another_font_or_symbol_count_opens_and_is_unusable() {
         rig.sections(),
         (
             ST_OK,
-            HAVE_TITLES | HAVE_GLYPHS | HAVE_TREES | HAVE_SHAPES | HAVE_KINDS
+            HAVE_TITLES | HAVE_GLYPHS | HAVE_TREES | HAVE_SHAPES | HAVE_KINDS | HAVE_ORDER
         )
     );
     assert_eq!(rig.title_count().0, ST_OK, "the other sections still read");

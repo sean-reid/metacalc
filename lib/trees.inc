@@ -352,7 +352,7 @@ lib_sections:
 	call lr_need
 	ret nz
 	ld a,(ls_have)
-	and LS_TITLES|LS_GLYPHS|LS_TREES|LS_SHAPES|LS_KINDS
+	and LS_TITLES|LS_GLYPHS|LS_TREES|LS_SHAPES|LS_KINDS|LS_ORDER
 	ld b,a
 	xor a
 	ret
