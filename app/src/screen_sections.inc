@@ -14,9 +14,10 @@
 ;   SX_N        the stage's title count, from lib_title_for at the stage's last assertion, plus one
 ;   SX_STAGE, SX_CUR, SX_TOP, SX_I, SX_ROW   the draw's copies of the frame's numbers, the title being
 ;               drawn and its row, written by sections_draw before it reads them
-;   SX_LEN, SX_USED, SX_PAD   the row's text length (at most 48), how many of its characters the first
-;               pass converted (at most 24: a row that holds more is converted again whole when they fit
-;               the row) and its indent
+;   SX_LEN, SX_USED, SX_PAD   the row's text length (at most 48), how many of its characters the latest
+;               pass converted (the first pass converts at most 24; a row that holds more is converted
+;               again whole when they fit the row, and SX_USED then holds SX_LEN) and its indent. A row
+;               whose title the reader refuses leaves SX_LEN and SX_USED as the row before wrote them
 ;   SX_RIGHT    "cursor/count" as glyph codes, SX_NAME the stage's name cut to its room, SX_TEXT a row
 ; The count is the only state a key reads that the frame lacks. The enter builds it again, with the stage
 ; table (APP_LIST) it reads the stage's end from, through libs_list: nothing of APP_COUNTS, APP_CRC or
