@@ -14,6 +14,9 @@
 ;   SX_N        the stage's title count, from lib_title_for at the stage's last assertion, plus one
 ;   SX_STAGE, SX_CUR, SX_TOP, SX_I, SX_ROW   the draw's copies of the frame's numbers, the title being
 ;               drawn and its row, written by sections_draw before it reads them
+;   SX_LEN, SX_USED, SX_PAD   the row's text length (at most 48), how many of its characters the
+;               first pass converted (at most 24, a row that holds more is converted again whole when
+;               they fit the row) and its indent
 ;   SX_RIGHT    "cursor/count" as glyph codes, SX_NAME the stage's name cut to its room, SX_TEXT a row
 ; The count is the only state a key reads that the frame lacks, and the enter builds it again. APP_TEXT is
 ; written while the screen is on top by the draw, by the error notice that a refused title read pushes over
@@ -41,7 +44,7 @@
 ;                is refused, writing scr_new too. CLEAR pops. Every other key stays and writes nothing.
 ; sections_draw  in: HL = the frame. Clears the canvas, stages sections_block, and draws the title, the
 ;                rows and the key. A title the reader refuses is drawn as an empty row. Writes SX_STAGE, SX_CUR, SX_TOP,
-;                SX_I, SX_ROW, SX_RIGHT, SX_NAME, SX_TEXT, FM_SCRATCH and APP_STAGE.
+;                SX_I, SX_ROW, SX_LEN, SX_USED, SX_PAD, SX_RIGHT, SX_NAME, SX_TEXT, FM_SCRATCH and APP_STAGE.
 ; Idle is screen_idle and land is screen_ret.
 ; Interrupts and speed: every routine returns with both as at the call and the screen writes no port 20h
 ; and executes no DI; the reader's reads turn interrupts off for their own length and give the caller's
@@ -50,6 +53,7 @@
 SX_ROWS		.equ 6
 SX_INDENT_MAX	.equ 3
 SX_TEXT_MAX	.equ 48
+SX_WINDOW	.equ 24
 SX_TEXT_SIZE	.equ SX_INDENT_MAX + SX_TEXT_MAX + 1
 SX_ROW_WIDTH	.equ 94
 
@@ -59,7 +63,10 @@ SX_TOP		.equ APP_TEXT + 4
 SX_I		.equ APP_TEXT + 6
 SX_STAGE	.equ APP_TEXT + 8
 SX_ROW		.equ APP_TEXT + 9
-SX_RIGHT	.equ APP_TEXT + 10
+SX_LEN		.equ APP_TEXT + 10
+SX_USED		.equ APP_TEXT + 11
+SX_PAD		.equ APP_TEXT + 12
+SX_RIGHT	.equ APP_TEXT + 13
 SX_NAME		.equ SX_RIGHT + 12
 SX_TEXT		.equ SX_NAME + LIST_NAME_SIZE
 SX_END		.equ SX_TEXT + SX_TEXT_SIZE
@@ -329,8 +336,19 @@ sr_indent:
 	jr c, sr_pad
 	ld a, SX_TEXT_MAX
 sr_pad:
-	ld b, a
+	ld (SX_LEN), a
 	ld a, c
+	ld (SX_PAD), a
+	ld a, (SX_LEN)
+	cp SX_WINDOW + 1
+	jr c, sr_build
+	ld a, SX_WINDOW
+sr_build:
+	ld b, a
+	ld (SX_USED), a
+	ld de, SX_TEXT
+	ld a, (SX_PAD)
+	ld c, a
 	or a
 	jr z, sr_text
 sr_space:
@@ -342,17 +360,30 @@ sr_space:
 sr_text:
 	ld hl, FM_SCRATCH
 	call ll_glyph
-	jr sr_cut
+	call sr_cut
+	ld a, (SX_USED)
+	ld b, a
+	ld a, (SX_LEN)
+	cp b
+	jr z, sr_row
+	ld hl, SX_TEXT
+sr_end:
+	ld a, (hl)
+	inc hl
+	or a
+	jr nz, sr_end
+	dec hl
+	dec hl
+	ld a, (hl)
+	cp UI_FONT_CH_2026
+	jr z, sr_row
+	ld a, (SX_LEN)
+	jr sr_build
 sr_blank:
 	xor a
 	ld (de), a
-sr_cut:
-	ld hl, SX_TEXT
-	ld d, h
-	ld e, l
-	ld b, SX_TEXT_SIZE
-	ld c, SX_ROW_WIDTH
-	call far_ui_truncate
+	call sr_cut
+sr_row:
 	ld hl, (SX_I)
 	ld de, (SX_CUR)
 	or a
@@ -367,6 +398,14 @@ sr_draw:
 	ld hl, SX_TEXT
 	ld de, STG_SX_NONE
 	jp far_ui_list_row
+
+sr_cut:
+	ld hl, SX_TEXT
+	ld d, h
+	ld e, l
+	ld b, SX_TEXT_SIZE
+	ld c, SX_ROW_WIDTH
+	jp far_ui_truncate
 #else
 sections_enter:
 sections_draw:
