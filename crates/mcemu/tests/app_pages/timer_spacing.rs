@@ -210,10 +210,12 @@ const KEY: Figure = [5_866.0, 6_117.0];
 const COUNTING: Figure = [1_115.0, 1_138.0];
 const CLEARING: Figure = [1_282.0, 1_305.0];
 const ON_EDGE: Figure = [280_875.0, 280_875.0];
-/// Where the whole-keypad check falls in a handler with no ON, in T-states from the entry. The check
-/// allows 3 percent, not the handlers' 2: the stub's first delay moves in steps of 30 T-states at
-/// 15 MHz, and the steps either side of 577 are 564 and 594.
+/// Where the whole-keypad check falls in a handler with no ON, in T-states from the entry, and the
+/// fraction it may be off by at each speed. The stub's delay moves in steps of 30 T-states (os.z80):
+/// at 6 MHz its step lands within 3 of the ROM's 582, at 15 MHz the steps either side of 577 are 564
+/// and 594, so that speed allows 3 percent.
 const KEYPAD_AT: Figure = [582.0, 577.0];
+const KEYPAD_OFF: Figure = [0.02, 0.03];
 
 /// The most bytes of stack a handler holds with no ON edge, the interrupt's return address
 /// included: the stub's is that and the call into the scan, the reference OS saves registers.
@@ -314,10 +316,11 @@ fn check(real: bool, speed: usize, what: &str, found: &[Entry], kinds: &[Kind]) 
             let first = f64::from(e.ports[0].clock.wrapping_sub(e.clock));
             let at = KEYPAD_AT[speed];
             assert!(
-                (first - at).abs() <= at * 0.03,
+                (first - at).abs() <= at * KEYPAD_OFF[speed],
                 "{} OS, {what}, interrupt {i}: the keypad is checked {first} T-states in, \
-                 expected {at} within 3 percent",
-                name(real)
+                 expected {at} within {} percent",
+                name(real),
+                KEYPAD_OFF[speed] * 100.0
             );
         }
     }
