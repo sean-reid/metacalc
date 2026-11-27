@@ -115,38 +115,45 @@ fn hits_below_above_and_among_the_last_four_land_as_the_model_lands_them() {
     for (kind, table) in cases() {
         let (mut below, mut above, mut last_four, mut own, mut misses) = (0, 0, 0, 0, 0);
         for stage in 0..3 {
-        let mut list = open_under(stage, kind, table);
-        let items = list.items();
-        for p in &prefixes {
-            list.f2();
-            let (old_cursor, old_top) = (list.pos().cursor, list.pos().top);
-            let (head, last) = p.split_at(p.len() - 1);
-            if !head.is_empty() {
-                list.type_text(head);
+            let mut list = open_under(stage, kind, table);
+            let items = list.items();
+            for p in &prefixes {
+                list.f2();
+                let (old_cursor, old_top) = (list.pos().cursor, list.pos().top);
+                let (head, last) = p.split_at(p.len() - 1);
+                if !head.is_empty() {
+                    list.type_text(head);
+                }
+                let held = (list.pos().cursor, list.pos().top);
+                list.press_char(last.chars().next().unwrap());
+                list.same_find(p);
+                let pos = list.pos();
+                if list.find().missed {
+                    misses += 1;
+                    assert_eq!((pos.cursor, pos.top), held, "{p}: a miss");
+                    continue;
+                }
+                assert!(first_hit(&labels, &items, p, 0).is_some());
+                below += usize::from(pos.cursor >= old_top + 5);
+                above += usize::from(pos.cursor < old_top);
+                own += usize::from(pos.cursor == old_cursor);
+                if pos.len >= 5 && pos.cursor + 4 >= pos.len {
+                    last_four += 1;
+                    assert_eq!(
+                        pos.top,
+                        pos.len - 5,
+                        "{kind:?} {p}: the first row walks back"
+                    );
+                }
             }
-            let held = (list.pos().cursor, list.pos().top);
-            list.press_char(last.chars().next().unwrap());
-            list.same_find(p);
-            let pos = list.pos();
-            if list.find().missed {
-                misses += 1;
-                assert_eq!((pos.cursor, pos.top), held, "{p}: a miss");
-                continue;
-            }
-            assert!(first_hit(&labels, &items, p, 0).is_some());
-            below += usize::from(pos.cursor >= old_top + 5);
-            above += usize::from(pos.cursor < old_top);
-            own += usize::from(pos.cursor == old_cursor);
-            if pos.len >= 5 && pos.cursor + 4 >= pos.len {
-                last_four += 1;
-                assert_eq!(pos.top, pos.len - 5, "{kind:?} {p}: the first row walks back");
-            }
-        }
         }
         println!(
             "{kind:?} table {table}: below {below}, above {above}, last four {last_four}, own row {own}, misses {misses}"
         );
-        assert!(below >= 1 && above >= 1 && own >= 1 && misses >= 1, "{kind:?}");
+        assert!(
+            below >= 1 && above >= 1 && own >= 1 && misses >= 1,
+            "{kind:?}"
+        );
         assert!(last_four >= 1, "{kind:?}: {last_four}");
     }
 }
@@ -159,7 +166,11 @@ fn a_miss_then_letters_then_f2_and_a_new_prefix_are_the_models() {
         let at = list.frame_bytes();
         list.type_text("qzq");
         assert!(list.find().missed, "{kind:?}");
-        assert_eq!(list.frame_bytes(), at, "a miss keeps the cursor and the top");
+        assert_eq!(
+            list.frame_bytes(),
+            at,
+            "a miss keeps the cursor and the top"
+        );
         list.type_text("-1");
         assert!(list.find().missed);
         assert!(list.f2());
@@ -200,7 +211,12 @@ fn an_arrow_ends_the_find_and_at_an_end_it_still_redraws() {
     for (kind, table) in cases() {
         let built = proofs_three();
         let labels = labels_of(built);
-        for arrow in [(UP, Key::Up), (DOWN, Key::Down), (LEFT, Key::Left), (RIGHT, Key::Right)] {
+        for arrow in [
+            (UP, Key::Up),
+            (DOWN, Key::Down),
+            (LEFT, Key::Left),
+            (RIGHT, Key::Right),
+        ] {
             let mut list = open_under(1, kind, table);
             let items = list.items();
             assert!(items.len() >= 6, "{kind:?}: {} shown", items.len());
@@ -208,14 +224,21 @@ fn an_arrow_ends_the_find_and_at_an_end_it_still_redraws() {
             let target = if up { items[0] } else { items[items.len() - 1] };
             let label = &labels[target];
             let k = (1..=label.len().min(8))
-                .find(|&k| first_hit(&labels, &items, &label[..k], 0) == Some(if up { 0 } else { items.len() - 1 }))
+                .find(|&k| {
+                    first_hit(&labels, &items, &label[..k], 0)
+                        == Some(if up { 0 } else { items.len() - 1 })
+                })
                 .expect("a prefix the end's label owns");
             list.type_settled(&label[..k]);
             assert_eq!(list.pos().cursor, if up { 0 } else { items.len() - 1 });
             let preview = list.var("LV_PREVIEW");
             assert!(list.press(arrow.0, arrow.1, &format!("{kind:?} {arrow:?} at an end")));
             assert_eq!(list.find().raw[0], 0);
-            assert_eq!(list.var("LV_PREVIEW"), preview, "at an end the preview is kept");
+            assert_eq!(
+                list.var("LV_PREVIEW"),
+                preview,
+                "at an end the preview is kept"
+            );
             let mut list = open_under(1, kind, table);
             list.type_settled(&labels[items[2]][..1]);
             assert!(list.press(arrow.0, arrow.1, &format!("{kind:?} {arrow:?} inside")));
@@ -241,7 +264,11 @@ fn clear_ends_a_find_first_and_pops_without_one() {
         assert_eq!(list.run.depth(), 1, "{kind:?}: the second CLEAR leaves");
         assert!(list.key(ENTER, Key::Enter));
         assert_eq!(list.find().len, 0, "back in with no prefix");
-        assert_eq!(list.find().raw, [0u8; 9], "a push starts with bytes 7 to 15 zero");
+        assert_eq!(
+            list.find().raw,
+            [0u8; 9],
+            "a push starts with bytes 7 to 15 zero"
+        );
     }
 }
 

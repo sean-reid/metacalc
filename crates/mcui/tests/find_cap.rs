@@ -64,8 +64,15 @@ fn a_ninth_character_after_a_miss_leaves_the_cross_and_the_cursor() {
 #[test]
 fn eight_of_the_widest_characters_fit_the_prefix_room_and_overflow_what_a_miss_leaves() {
     let width = |s: &str| mcui::canvas::text_width(s);
-    let chars: Vec<char> = ('a'..='z').chain('0'..='9').chain(['-', '_', '.']).collect();
-    let widest = chars.iter().copied().max_by_key(|c| width(&c.to_string())).unwrap();
+    let chars: Vec<char> = ('a'..='z')
+        .chain('0'..='9')
+        .chain(['-', '_', '.'])
+        .collect();
+    let widest = chars
+        .iter()
+        .copied()
+        .max_by_key(|c| width(&c.to_string()))
+        .unwrap();
     let eight: String = std::iter::repeat_n(widest, 8).collect();
     assert_eq!(width(&eight), 47);
     assert!(width(&eight) <= mcui::canvas::PREFIX_WIDTH);

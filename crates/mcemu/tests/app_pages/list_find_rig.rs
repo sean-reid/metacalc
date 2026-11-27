@@ -100,7 +100,11 @@ impl Lister {
             self.run.m().resume(100);
             waited += 100;
         }
-        assert_eq!(self.run.scr_keys(), before + 1, "the key reached scr_key as none");
+        assert_eq!(
+            self.run.scr_keys(),
+            before + 1,
+            "the key reached scr_key as none"
+        );
     }
 
     /// Types `c` on the keypad and compares the frame with the model's after the model has `c`.
@@ -209,11 +213,6 @@ impl Lister {
     pub fn stage_of(built: &Built, i: usize) -> usize {
         built.stages.iter().position(|s| i < s.end).unwrap()
     }
-
-    /// The labels of the library of the open build, by assertion number.
-    pub fn labels(&self) -> Vec<String> {
-        labels_of(self.built)
-    }
 }
 
 pub fn labels_of(built: &Built) -> Vec<String> {
@@ -223,9 +222,6 @@ pub fn labels_of(built: &Built) -> Vec<String> {
         .map(|a| a.label.clone())
         .collect()
 }
-
-/// The kinds, in the order F3 steps through them.
-pub const KINDS: [Kind; 4] = [Kind::All, Kind::Theorems, Kind::Axioms, Kind::Unchecked];
 
 /// A list of `built` on `stage` under `kind`, over a table with every mark when `table`, settled.
 pub fn list_under(
@@ -273,14 +269,6 @@ impl Lister {
         self.run.peek(at, 16)
     }
 }
-
-/// The address a label of the build's label file names.
-pub fn label_of(built: &Built, name: &str) -> u16 {
-    built.label(name)
-}
-
-/// RAM written by a call, as (address, value, pc).
-pub type Writes = Vec<(u16, u8)>;
 
 /// Whether `addr` is in one of `ranges` (start, length).
 pub fn in_ranges(ranges: &[(u16, u16)], addr: u16) -> bool {

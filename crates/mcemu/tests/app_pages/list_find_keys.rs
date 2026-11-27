@@ -20,7 +20,11 @@ fn every_key_a_calculator_can_type_adds_its_character_as_the_model_does() {
         list.f2();
         list.press_char(c);
         list.same_find(&format!("{c:?}"));
-        assert_eq!(list.find().raw[1], c as u8, "{c:?}: the character is in byte 8");
+        assert_eq!(
+            list.find().raw[1],
+            c as u8,
+            "{c:?}: the character is in byte 8"
+        );
         if list.find().missed {
             misses += 1;
         } else {
@@ -29,7 +33,10 @@ fn every_key_a_calculator_can_type_adds_its_character_as_the_model_does() {
         list.skip_the_wait();
         list.settle();
     }
-    println!("typed {} characters: {hits} hits, {misses} misses", chars.len());
+    println!(
+        "typed {} characters: {hits} hits, {misses} misses",
+        chars.len()
+    );
     assert_eq!(hits + misses, 38);
     assert!(hits >= 5 && misses >= 20, "{hits} hits, {misses} misses");
 }
@@ -77,7 +84,9 @@ fn writes_of(list: &mut Lister, call: impl FnOnce(&mut Lister)) -> Vec<(u16, u8)
 
 #[test]
 fn a_character_the_model_refuses_stays_and_writes_nothing() {
-    let refused = [0x20, b'/', b':', b'@', b'[', b'`', b'{', 0x80, 0xFF, 0x00, b'!', b'~'];
+    let refused = [
+        0x20, b'/', b':', b'@', b'[', b'`', b'{', 0x80, 0xFF, 0x00, b'!', b'~',
+    ];
     for (kind, table) in [
         (Kind::All, false),
         (Kind::Theorems, false),

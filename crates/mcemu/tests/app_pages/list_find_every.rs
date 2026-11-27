@@ -18,7 +18,11 @@ fn every_label_typed_to_the_cap_lands_where_the_model_lands_it_under_each_kind()
         (Kind::Unchecked, true),
         (Kind::Unchecked, false),
     ] {
-        let stages: &[usize] = if kind == Kind::All { &[0, 1, 2] } else { &[0, 2] };
+        let stages: &[usize] = if kind == Kind::All {
+            &[0, 1, 2]
+        } else {
+            &[0, 2]
+        };
         let (mut hits, mut misses) = (0, 0);
         for &stage in stages {
             let mut list = list_under(built, stage, kind, table.then_some(&marks));
@@ -28,7 +32,11 @@ fn every_label_typed_to_the_cap_lands_where_the_model_lands_it_under_each_kind()
                 let typed: String = label.chars().take(8).collect();
                 list.type_text(&typed);
                 let owned = items.iter().any(|&i| labels[i].starts_with(&typed));
-                assert_eq!(list.find().missed, !owned, "{kind:?} stage {stage}: {typed}");
+                assert_eq!(
+                    list.find().missed,
+                    !owned,
+                    "{kind:?} stage {stage}: {typed}"
+                );
                 if owned {
                     hits += 1;
                 } else {
@@ -40,7 +48,10 @@ fn every_label_typed_to_the_cap_lands_where_the_model_lands_it_under_each_kind()
         }
         println!("{kind:?} table {table}: {hits} hits, {misses} misses");
         let floor = if kind == Kind::Axioms { 15 } else { 20 };
-        assert!(hits >= floor && misses >= 20, "{kind:?}: {hits} hits, {misses} misses");
+        assert!(
+            hits >= floor && misses >= 20,
+            "{kind:?}: {hits} hits, {misses} misses"
+        );
     }
 }
 
@@ -51,7 +62,14 @@ fn the_title_shows_the_prefix_whole_or_cut_where_it_stops_fitting_after_a_miss()
     let alphabet = ['z', 'm', 'c', 'j', 'i', '.'];
     let mut stack = vec![String::from("z")];
     while let Some(s) = stack.pop() {
-        if s.len() >= 5 && [40, 41, 42, 43, 47].contains(&width(&s)) && cases.iter().filter(|c| width(c) == width(&s) && c.len() == s.len()).count() < 2 {
+        if s.len() >= 5
+            && [40, 41, 42, 43, 47].contains(&width(&s))
+            && cases
+                .iter()
+                .filter(|c| width(c) == width(&s) && c.len() == s.len())
+                .count()
+                < 2
+        {
             cases.push(s.clone());
         }
         if s.len() < 8 {

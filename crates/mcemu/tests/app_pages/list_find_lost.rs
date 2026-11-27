@@ -74,7 +74,11 @@ fn a_letter_under_unchecked_after_the_table_was_lost_lands_as_it_does_with_no_ta
                 "{how}: {label} is on the cursor, though the table hid it"
             );
             assert!(!list.find().missed);
-            assert_eq!(list.var("LV_TABLE"), 1, "{how}: the list never saw the loss");
+            assert_eq!(
+                list.var("LV_TABLE"),
+                1,
+                "{how}: the list never saw the loss"
+            );
             landed += 1;
         }
     }
@@ -120,9 +124,17 @@ fn a_refused_reader_call_is_a_miss_that_moves_nothing_and_later_letters_search_n
         let at = format!("{kind:?} table {table}, {refuse}");
         assert_eq!(list.run.blits(), blits + 1, "{at}: a frame for the title");
         let find = list.find();
-        assert_eq!((find.len, find.missed, find.chars.as_str()), (1, true, "a"), "{at}");
+        assert_eq!(
+            (find.len, find.missed, find.chars.as_str()),
+            (1, true, "a"),
+            "{at}"
+        );
         assert_eq!(list.frame_bytes(), before, "{at}: nothing moved");
-        assert_eq!(list.fail_calls(0), 1, "{at}: the refused call was made once");
+        assert_eq!(
+            list.fail_calls(0),
+            1,
+            "{at}: the refused call was made once"
+        );
         let others = u16::from(refuse != "far_lib_find_range");
         assert_eq!(list.fail_calls(1), others, "{at}: the other call");
         list.tap(scans_for('x')[0]);

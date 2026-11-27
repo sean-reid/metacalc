@@ -124,7 +124,11 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
     assert_eq!(work.up.os.flags, plain.up.os.flags, "flags after ON is up");
     let masks = [work.up.os.mask, plain.up.os.mask];
     if real {
-        assert_eq!(masks, [9, 15], "the mask 200 ms after the release: work, plain");
+        assert_eq!(
+            masks,
+            [9, 15],
+            "the mask 200 ms after the release: work, plain"
+        );
     } else {
         assert_eq!(masks[0], masks[1], "mask after ON is up");
     }

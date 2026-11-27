@@ -21,17 +21,72 @@ const ARMS: usize = 11;
 
 fn arms() -> [Arm; ARMS] {
     [
-        Arm { name: "letter, first", typed: "", key: 0x2B, answer: 1 },
-        Arm { name: "letter, later", typed: "p", key: 0x0D, answer: 1 },
-        Arm { name: "letter, miss", typed: "", key: 0x1A, answer: 1 },
-        Arm { name: "letter after a miss", typed: "zq", key: 0x2F, answer: 1 },
-        Arm { name: "ninth letter", typed: "pm2.61d1", key: 0x2F, answer: 0 },
-        Arm { name: "f2, prefix", typed: "p", key: F2, answer: 1 },
-        Arm { name: "f2, none", typed: "", key: F2, answer: 0 },
-        Arm { name: "clear, prefix", typed: "p", key: CLEAR, answer: 1 },
-        Arm { name: "arrow, prefix", typed: "p", key: DOWN, answer: 1 },
-        Arm { name: "right, prefix", typed: "p", key: RIGHT, answer: 1 },
-        Arm { name: "f3, prefix", typed: "p", key: F3, answer: 1 },
+        Arm {
+            name: "letter, first",
+            typed: "",
+            key: 0x2B,
+            answer: 1,
+        },
+        Arm {
+            name: "letter, later",
+            typed: "p",
+            key: 0x0D,
+            answer: 1,
+        },
+        Arm {
+            name: "letter, miss",
+            typed: "",
+            key: 0x1A,
+            answer: 1,
+        },
+        Arm {
+            name: "letter after a miss",
+            typed: "zq",
+            key: 0x2F,
+            answer: 1,
+        },
+        Arm {
+            name: "ninth letter",
+            typed: "pm2.61d1",
+            key: 0x2F,
+            answer: 0,
+        },
+        Arm {
+            name: "f2, prefix",
+            typed: "p",
+            key: F2,
+            answer: 1,
+        },
+        Arm {
+            name: "f2, none",
+            typed: "",
+            key: F2,
+            answer: 0,
+        },
+        Arm {
+            name: "clear, prefix",
+            typed: "p",
+            key: CLEAR,
+            answer: 1,
+        },
+        Arm {
+            name: "arrow, prefix",
+            typed: "p",
+            key: DOWN,
+            answer: 1,
+        },
+        Arm {
+            name: "right, prefix",
+            typed: "p",
+            key: RIGHT,
+            answer: 1,
+        },
+        Arm {
+            name: "f3, prefix",
+            typed: "p",
+            key: F3,
+            answer: 1,
+        },
     ]
 }
 
@@ -148,7 +203,11 @@ fn a_letter_press_writes_only_the_frame_and_the_variables_the_header_names() {
             let frame = list.frame_now();
             assert_eq!(frame[..2], before[..2], "the kind of screen and the stage");
             assert_eq!(frame[6], before[6], "the kind");
-            assert_eq!(frame[7] & 0x0F, (before[7] & 0x0F) + 1, "one character more");
+            assert_eq!(
+                frame[7] & 0x0F,
+                (before[7] & 0x0F) + 1,
+                "one character more"
+            );
             assert!(
                 writes.iter().any(|w| w.addr == list.frame_addr() + 7),
                 "byte 7 was written"

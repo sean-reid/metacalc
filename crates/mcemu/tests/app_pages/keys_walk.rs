@@ -109,7 +109,11 @@ fn long_walk(checking: bool) {
                 State::Libraries { cursor, .. } if cursor < built.stages.len()
             );
             let in_a_list = matches!(ui.state(), State::List { .. });
-            let key = if checking && key == F2 && in_a_list { F4 } else { key };
+            let key = if checking && key == F2 && in_a_list {
+                F4
+            } else {
+                key
+            };
             if let (None, State::List { kind, .. }) = (&notice, ui.state()) {
                 under[usize::from(code(kind))] += 1;
             }
@@ -141,9 +145,7 @@ fn long_walk(checking: bool) {
                 ui = replayed(built, &status, &log);
                 shell.shows(&at, &model::frame(&ui));
                 assert_eq!(shell.depth(), 2, "{at}: back on the list");
-            } else if in_a_list
-                && !fixed
-                && ([F4, F5].contains(&key) || [ENTER, F1].contains(&key))
+            } else if in_a_list && !fixed && ([F4, F5].contains(&key) || [ENTER, F1].contains(&key))
             {
                 in_list += 1;
                 settle_list(&mut shell, &mut ui);

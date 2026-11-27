@@ -35,17 +35,29 @@ fn a_range_of_several_runs_finds_the_least_unchecked_whichever_run_holds_it() {
     let (first, last) = (at("a0"), at("a299"));
     assert!(first < last);
     let owned = labels.iter().filter(|l| l.starts_with('a')).count();
-    assert!(owned >= 300, "{owned} labels start with a: a range of three runs of 127");
+    assert!(
+        owned >= 300,
+        "{owned} labels start with a: a range of three runs of 127"
+    );
     let order: Vec<&String> = {
         let mut o: Vec<&String> = labels.iter().filter(|l| l.starts_with('a')).collect();
         o.sort();
         o
     };
     let late = order.iter().position(|l| l.as_str() == "a299").unwrap();
-    assert!(late >= 127, "a299 is at place {late} in the label order, past the first run");
+    assert!(
+        late >= 127,
+        "a299 is at place {late} in the label order, past the first run"
+    );
     for unchecked in [vec![last], vec![first, last], vec![last, first + 1]] {
         let status: Vec<Status> = (0..n)
-            .map(|i| if unchecked.contains(&i) { Status::Unchecked } else { Status::Checked })
+            .map(|i| {
+                if unchecked.contains(&i) {
+                    Status::Unchecked
+                } else {
+                    Status::Checked
+                }
+            })
             .collect();
         let data = table_of(built, &status);
         let mut list = Lister::open(built, Some((&data, &status)), 0);
@@ -56,6 +68,10 @@ fn a_range_of_several_runs_finds_the_least_unchecked_whichever_run_holds_it() {
         assert!(!list.find().missed, "{unchecked:?}");
         let frame = list.frame_bytes();
         let cursor = usize::from(u16::from_le_bytes([frame[2], frame[3]]));
-        assert_eq!(cursor, *unchecked.iter().min().unwrap(), "{unchecked:?}: the least");
+        assert_eq!(
+            cursor,
+            *unchecked.iter().min().unwrap(),
+            "{unchecked:?}: the least"
+        );
     }
 }
