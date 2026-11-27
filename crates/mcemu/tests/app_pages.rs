@@ -43,6 +43,8 @@ mod checking_returns;
 mod checking_rows;
 #[path = "app_pages/checkrig.rs"]
 mod checkrig;
+#[path = "app_pages/checkrig_wait.rs"]
+mod checkrig_wait;
 #[path = "app_pages/cost_stages.rs"]
 mod cost_stages;
 #[path = "app_pages/counts.rs"]
@@ -91,6 +93,8 @@ mod idlerig;
 mod idlerig_script;
 #[path = "app_pages/idlerig_watch.rs"]
 mod idlerig_watch;
+#[path = "app_pages/key_memory.rs"]
+mod key_memory;
 #[path = "app_pages/keys.rs"]
 mod keys;
 #[path = "app_pages/keys_walk.rs"]
@@ -217,6 +221,8 @@ mod theorem_straddle;
 mod theorem_title;
 #[path = "app_pages/tick.rs"]
 mod tick;
+#[path = "app_pages/timer_spacing.rs"]
+mod timer_spacing;
 #[path = "app_pages/wide_cost.rs"]
 mod wide_cost;
 

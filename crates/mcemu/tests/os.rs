@@ -1,6 +1,7 @@
 use mcemu::{LCD_HEIGHT, LCD_WIDTH, Lcd, Machine, STUB_ROM, Speed, Stop};
 
 const GETCSC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_getcsc.bin"));
+const GETCSC_ONCE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_getcsc_once.bin"));
 const EXIT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_exit.bin"));
 const BCALL_MISSING: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_bcall_missing.bin"));
 const BJUMP_MISSING: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/os_bjump_missing.bin"));
@@ -155,9 +156,36 @@ fn getcsc_reports_a_held_key_once() {
     assert_eq!(getcsc(&mut m), 0);
     assert_eq!(getcsc(&mut m), 0);
     m.release_key(0x09);
-    assert_eq!(getcsc(&mut m), 0);
+    for call in 1..=3 {
+        assert_eq!(getcsc(&mut m), 0, "call {call} with no key down");
+    }
     m.press_key(0x09);
     assert_eq!(getcsc(&mut m), 0x09);
+}
+
+#[test]
+fn getcsc_ignores_the_same_key_pressed_again_until_the_fifth_scan_with_no_key_down() {
+    let mut m = machine_with(GETCSC_ONCE);
+    m.press_key(0x09);
+    assert_eq!(getcsc(&mut m), 0x09);
+    m.release_key(0x09);
+    for scan in 1..=4 {
+        assert_eq!(getcsc(&mut m), 0, "scan {scan} with no key down");
+    }
+    m.press_key(0x09);
+    assert_eq!(getcsc(&mut m), 0, "the same key, one scan too soon");
+    m.release_key(0x09);
+    for scan in 1..=5 {
+        assert_eq!(getcsc(&mut m), 0, "scan {scan} with no key down");
+    }
+    m.press_key(0x09);
+    assert_eq!(getcsc(&mut m), 0x09, "the same key after the fifth scan");
+    m.release_key(0x09);
+    for scan in 1..=4 {
+        assert_eq!(getcsc(&mut m), 0, "scan {scan} with no key down");
+    }
+    m.press_key(0x35);
+    assert_eq!(getcsc(&mut m), 0x35, "a different key at once");
 }
 
 #[test]

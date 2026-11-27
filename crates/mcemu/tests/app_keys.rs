@@ -112,11 +112,16 @@ enum Rig {
 
 impl Rig {
     fn stub(app: &[u8]) -> Rig {
+        Rig::stub_after(app, 24)
+    }
+
+    /// The app launched on the stub and run `ms` milliseconds before the test begins.
+    fn stub_after(app: &[u8], ms: u32) -> Rig {
         let mut m = Machine::new(STUB_ROM).unwrap();
         m.install_app(app, STUB_BASE).unwrap();
         m.launch(STUB_BASE).unwrap();
         let mut rig = Rig::Stub(m);
-        rig.run_ms(20);
+        rig.run_ms(ms);
         rig
     }
 
@@ -397,6 +402,19 @@ fn a_press_of_on_is_cleared_and_waited_out_inside_the_wait() {
     rig.tap(0x04);
     assert_eq!(rig.count(), 1);
     assert_eq!(rig.ram(LOG, 1), [code(Key::Up)], "the next key is Up");
+}
+
+/// ON pressed 20 ms after the launch falls in the stub's lost-press window by the phase of this
+/// launch, and the flag is never set; on_press.rs pins the window itself. The other stub tests start
+/// 24 ms after the launch.
+#[test]
+fn a_press_of_on_20_ms_after_the_launch_is_lost_on_the_stub() {
+    let mut rig = Rig::stub_after(KEYS_APP, 20);
+    rig.m().press_key(Machine::KEY_ON);
+    rig.run_ms(60);
+    let flags = rig.on_flags() & ON_INTERRUPT;
+    println!("stub OS, ON 20 ms after the launch: flag after 60 ms {flags:02X}");
+    assert_eq!(flags, 0, "the press was not flagged");
 }
 
 /// What a long job's poll reads (probe/kerndriver.inc, kd_on_seen): ON down on port 4 bit 3, the

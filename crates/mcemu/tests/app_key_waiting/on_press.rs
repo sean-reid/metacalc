@@ -110,6 +110,26 @@ fn print_on_press_timing_on_the_reference_os() {
     }
 }
 
+/// Prints, for each OS at 6 MHz and a fresh machine per phase, the phases from 5900 to 6600 us in
+/// steps of 10 at which ON held for `FLAG_US` sets no flag.
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn print_the_phases_at_which_a_press_of_on_is_lost() {
+    for (name, mk) in [("stub", Rig::stub as fn() -> Rig), ("reference", Rig::real)] {
+        let lost: Vec<u32> = (5_900..=6_600)
+            .step_by(10)
+            .filter(|&phase| {
+                let mut rig = mk();
+                rig.m().set_speed(Speed::Mhz6);
+                !rig.press_flags(phase, FLAG_US)
+            })
+            .collect();
+        println!(
+            "{name} OS: phases in 5900..=6600 step 10 whose press of {FLAG_US} us set no flag: {lost:?}"
+        );
+    }
+}
+
 /// What the reference OS measured, at 6 and at 15 MHz, over presses at 48 phases: ON held for
 /// 46.5 ms or less sets no flag, held for 47 ms or more sets it, and the flag comes 46.75 ms
 /// after a press held until it does. The bounds leave 0.25 ms to 0.5 ms above that for where in
@@ -118,7 +138,7 @@ const NO_FLAG_US: u32 = 46_500;
 const FLAG_US: u32 = 47_500;
 const FLAG_BY_US: u32 = 47_250;
 const PHASES: [u32; 12] = [
-    0, 770, 1540, 2310, 3080, 3850, 4620, 5390, 6160, 6930, 7700, 8470,
+    0, 770, 1540, 2310, 3080, 3850, 4620, 5390, 6500, 6930, 7700, 8470,
 ];
 
 fn assert_on_press_timing(mk: fn() -> Rig) {
@@ -160,6 +180,32 @@ fn the_stub_flags_on_only_after_it_has_been_down_as_long_as_the_reference_os_nee
 #[ignore = "needs the reference ROM image"]
 fn the_reference_os_flags_on_only_after_it_has_been_down_about_47_ms() {
     assert_on_press_timing(Rig::real);
+}
+
+/// A press at 6 MHz that begins 6080 to 6250 us after the settle lands between the stub's status
+/// read and its acknowledge, and the acknowledge clears it: the flag never sets. The reference OS
+/// sets the flag at every phase from 5900 to 6600 us in steps of 10.
+const LOST_PHASES: [(u32, bool); 3] = [(6_070, true), (6_160, false), (6_260, true)];
+
+fn assert_lost_press(mk: fn() -> Rig, lost_at_6160: bool) {
+    for (phase, flags) in LOST_PHASES {
+        let mut rig = mk();
+        rig.m().set_speed(Speed::Mhz6);
+        let got = rig.press_flags(phase, FLAG_US);
+        let want = flags || !lost_at_6160;
+        assert_eq!(got, want, "phase {phase}: a press of {FLAG_US} us flagged");
+    }
+}
+
+#[test]
+fn the_stub_loses_a_press_of_on_that_lands_between_its_status_read_and_acknowledge() {
+    assert_lost_press(Rig::stub, true);
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn the_reference_os_loses_no_press_of_on_at_the_phases_the_stub_does() {
+    assert_lost_press(Rig::real, false);
 }
 
 impl Rig {

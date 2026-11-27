@@ -35,6 +35,11 @@ const OS_ROUTINES: &[(&str, &str, &[&str])] = &[
     ),
     (
         "os_call.z80",
+        "os_getcsc_once.bin",
+        &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GetCSC", "WAIT=1"],
+    ),
+    (
+        "os_call.z80",
         "os_getcsc_blind.bin",
         &["ENTRY=$9000", "RESULT=$A000", "SERVICE=_GetCSC"],
     ),

@@ -70,9 +70,9 @@ const THEOREM_COLD: u32 = 125_100;
 const THEOREM_FLOOR: u32 = 119_000;
 const THEOREM_COLD_FLOOR: u32 = 121_400;
 /// The most the loop may take around app_key for a key no screen answers, scr_key included.
-const IGNORED_KEY: u32 = 2_575;
-/// The least: it takes 2,562 with the idle point.
-const IGNORED_KEY_FLOOR: u32 = 2_512;
+const IGNORED_KEY: u32 = 2_470;
+/// The least: it takes 2,457 with the idle point.
+const IGNORED_KEY_FLOOR: u32 = 2_408;
 /// The most app_stage_block may take for a block the area already holds.
 const WARM_STAGE: u32 = 120;
 /// The most bytes each code page may use: entry, draw and data.
@@ -340,7 +340,7 @@ fn ignored_key(name: &str, built: &'static Built) -> (u32, u32, u32) {
 }
 
 /// What the loop and scr_key took for an ignored key on the commit the branch was cut from.
-const IGNORED_KEY_BEFORE: u32 = 1_228;
+const IGNORED_KEY_BEFORE: u32 = 1_170;
 
 #[test]
 fn the_loop_around_a_key_no_screen_answers_costs_little() {

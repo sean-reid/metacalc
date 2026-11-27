@@ -100,6 +100,15 @@ static int is_lcd_port(dword port)
 	return (port & 0xff & 0xfc) == 0x10;
 }
 
+/* One write to port 1, 3 or 4 and the CPU clock when it ran. */
+typedef struct {
+	uint32_t clock;
+	uint8_t port;
+	uint8_t value;
+} McPortWrite;
+
+#define PORT_LOG 16384
+
 /* What the harness keeps for each machine: the set of values written to ports 5, 6 and 7 since its
    last run began, whether the LCD busy bit is forced on, and the emulated time the clock ports
    report. Found by the core's pointer. */
@@ -110,6 +119,8 @@ typedef struct {
 	double us;
 	dword clock_at_bank;
 	McWatch *watch;
+	McPortWrite ports[PORT_LOG];
+	size_t nports;
 } McState;
 
 #define MAX_MACHINES 512
@@ -199,6 +210,18 @@ static void note_bank_write(TilemCalc *calc, dword port, byte value)
 		st->banks[port - 5][value >> 3] |= 1 << (value & 7);
 }
 
+static void note_port_write(TilemCalc *calc, dword port, byte value)
+{
+	McState *st;
+
+	port &= 0xff;
+	if ((port == 1 || port == 3 || port == 4) && (st = state_of(calc)) && st->nports < PORT_LOG) {
+		st->ports[st->nports].clock = calc->z80.clock;
+		st->ports[st->nports].port = port;
+		st->ports[st->nports++].value = value;
+	}
+}
+
 static void out_aliased(TilemCalc *calc, dword port, byte value)
 {
 	dword before = lcd_busy_expiry(calc);
@@ -206,6 +229,7 @@ static void out_aliased(TilemCalc *calc, dword port, byte value)
 	if ((port & 0xff) == 0x20)
 		bank_time(calc);
 	note_bank_write(calc, port, value);
+	note_port_write(calc, port, value);
 
 	xz_z80_out(calc, port, value);
 	alias_spare_pages(calc);
@@ -230,6 +254,7 @@ static void out_clocked(TilemCalc *calc, dword port, byte value)
 {
 	if ((port & 0xff) == 0x20)
 		bank_time(calc);
+	note_port_write(calc, port, value);
 	xz_z80_out(calc, port, value);
 	alias_spare_pages(calc);
 }
@@ -437,6 +462,21 @@ int mcemu_watch_suspend(TilemCalc *calc) { return mc_watch_suspend(calc, state_o
 void mcemu_watch_resume(TilemCalc *calc) { mc_watch_resume(calc, state_of(calc)->watch); }
 size_t mcemu_watch_len(TilemCalc *calc) { return mc_watch_len(state_of(calc)->watch); }
 size_t mcemu_watch_take(TilemCalc *calc, McWrite *out, size_t cap, size_t *lost) { return mc_watch_take(state_of(calc)->watch, out, cap, lost); }
+
+/* How many writes the record holds, and how many it has room for. */
+size_t mcemu_port_len(TilemCalc *calc) { return state_of(calc)->nports; }
+size_t mcemu_port_cap(void) { return PORT_LOG; }
+
+/* Copies out the writes to ports 1, 3 and 4 since the last call and clears the record; the return is how many were recorded; a record that reaches PORT_LOG stopped taking writes. */
+size_t mcemu_port_take(TilemCalc *calc, McPortWrite *out, size_t cap)
+{
+	McState *st = state_of(calc);
+	size_t n = st->nports;
+
+	memcpy(out, st->ports, (n < cap ? n : cap) * sizeof *out);
+	st->nports = 0;
+	return n;
+}
 
 /* Forces bit 7 of the LCD status port on, as a controller that never finishes would. */
 void mcemu_stick_lcd_busy(TilemCalc *calc, int on) { state_of(calc)->stuck = on; }
