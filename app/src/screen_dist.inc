@@ -58,6 +58,9 @@
 ;              an empty label, a refusal of far_lib_read or far_lib_glyph stops the walk with the rows before that pair drawn
 ;              and, for a refused second token, the first token and the comma of that pair drawn too. The next key or enter that
 ;              is refused pushes the notice.
+; Flags: undefined on return but for dist_enter's Z, which is the status in A. After CLEAR the theorem screen's enter finds in
+; FM_SCRATCH the codes of the last token this screen read, or its label, and reads none of them: FM_SCRATCH holds nothing
+; between calls, and the enter writes TV_LABEL and every buffer it reads before it reads them.
 ; Interrupts and speed: every routine returns with both as at the call, and the screen writes no port 20h and executes no DI.
 ; The reader's calls and the blit turn interrupts off for their own length and give the caller's state back.
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, with interrupts masked,

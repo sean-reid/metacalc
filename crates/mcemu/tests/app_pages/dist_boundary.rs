@@ -97,6 +97,11 @@ fn the_scroll_runs_to_the_last_row_and_back_with_every_frame_the_models() {
     let lib = lib_of(built);
     let rows = rows_of(&lib, index_of(&lib, ALL)).len();
     assert!(rows > 14, "the assertion takes {rows} rows");
+    let most = (0..lib.len())
+        .map(|n| rows_of(&lib, n).len())
+        .max()
+        .unwrap();
+    assert_eq!(rows, most, "it has the most rows of the library");
     let mut walker = dist_of(built, ALL);
     assert_eq!(app_rows(&mut walker), rows);
     let last = last_of(rows);

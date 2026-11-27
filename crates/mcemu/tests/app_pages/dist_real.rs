@@ -5,7 +5,7 @@
 use crate::app::*;
 use crate::dist_lib::{self, SCROLL};
 use crate::dist_rig::*;
-use crate::list_real::{PROP, RING};
+use crate::list_real::RING;
 use crate::list_rig::*;
 use crate::shellrig::*;
 use crate::theorem_real::{Rom, measure, timed_frame_split};
@@ -276,7 +276,8 @@ const BACK_COST: u32 = 1_755_601;
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn on_the_reference_os_a_scroll_on_a_library_packed_for_it_costs_what_the_header_says() {
+fn on_the_reference_os_a_scroll_on_the_packed_library_is_over_50_ms_and_no_shipped_library_has_one_to_scroll()
+ {
     let built = dist_lib::built();
     let mut dist = DistRom::new(built, 0);
     let n = label_index(dist.lib(), SCROLL);
@@ -284,7 +285,8 @@ fn on_the_reference_os_a_scroll_on_a_library_packed_for_it_costs_what_the_header
     let last = last_of(rows);
     assert!(rows >= 14, "{rows} rows");
     dist.open(n);
-    let mut worst = 0;
+    let mut worst = (0, Split::default(), String::new());
+    let mut scrolls = 0;
     for (what, top) in [("first", 0), ("middle", last / 2), ("last", last - 1)] {
         for (name, code, from) in [("Down", KEY_DOWN, top), ("Up", KEY_UP, top + 1)] {
             dist.show_row(from);
@@ -293,19 +295,39 @@ fn on_the_reference_os_a_scroll_on_a_library_packed_for_it_costs_what_the_header
             let to = if code == KEY_DOWN { from + 1 } else { from - 1 };
             let split = dist.split(cost, to);
             let total = cost.key + cost.draw + cost.blit;
-            worst = worst.max(total);
+            println!(
+                "ROM, {name} from row {from} of {rows} ({what}): {total} T-states ({:.1} ms), split {split:?}",
+                f64::from(total) / 6000.0
+            );
+            assert!(
+                total > SCROLL_BUDGET,
+                "{name} from row {from}: {total} is over the 50 ms the shipped libraries stay inside"
+            );
             within(
                 &format!("{name} from row {from}"),
                 total,
                 scroll_cost(code, from),
             );
-            println!(
-                "ROM, {name} from row {from} of {rows} ({what}): {total} T-states ({:.1} ms), split {split:?}",
-                f64::from(total) / 6000.0
-            );
+            scrolls += 1;
+            if total > worst.0 {
+                worst = (total, split, format!("{name} from row {from}"));
+            }
         }
     }
-    println!("ROM, the worst scroll: {worst}, budget {SCROLL_BUDGET}");
+    assert_eq!(scrolls, 6);
+    let (total, split, what) = worst;
+    println!(
+        "ROM, the worst scroll, {what}: {total} T-states ({:.1} ms) against {SCROLL_BUDGET}: the key {}, the walk to the first row shown {}, the six rows {}, the title {}, dist_open {}, the rest of the draw {}, the blit {}",
+        f64::from(total) / 6000.0,
+        split.key,
+        split.to_first_row,
+        split.six_rows,
+        split.title,
+        split.open,
+        split.rest,
+        split.blit
+    );
+    assert_eq!(what, "Down from row 9", "the worst scroll");
 }
 
 #[test]
@@ -370,7 +392,7 @@ fn walker(stage: usize) -> Walker {
 
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn through_the_real_shell_the_dist_screen_of_ring_pred_and_prop_is_the_models() {
+fn through_the_real_shell_the_dist_screen_of_ring_is_the_models_and_the_theorem_after_it_too() {
     let built = shipped_staged();
     let lib = lib_of(built);
     let with = |a: usize, b: usize, few: usize| -> usize {
@@ -385,6 +407,7 @@ fn through_the_real_shell_the_dist_screen_of_ring_pred_and_prop_is_the_models() 
     let most = label_index(&lib, "frrlem1");
     assert_eq!(lib.dist(most).len(), 33);
     let mut w = walker(RING);
+    let mut total = 0;
     for (what, n) in [("none", none), ("a few", few), ("the most", most)] {
         println!("ROM shell: {what}, assertion {n}: goto");
         w.goto(n);
@@ -400,10 +423,34 @@ fn through_the_real_shell_the_dist_screen_of_ring_pred_and_prop_is_the_models() 
             assert!(!press(&mut w, scan, key), "{what}: {scan:02X} stays");
         }
         leave(&mut w);
+        w.mirrored = true;
+        let mut drawn = 0;
+        if w.var("TV_LARGE") == 0 {
+            for (scan, key) in [
+                (LEFT, Key::Left),
+                (RIGHT, Key::Right),
+                (ENTER, Key::Enter),
+                (F1, Key::F1),
+                (DOWN, Key::Down),
+            ] {
+                println!("ROM shell: {what}: theorem key {scan:02X}");
+                drawn += usize::from(w.press(scan, key));
+            }
+        }
+        println!("ROM shell: {what}: {drawn} of the theorem's keys redrew");
+        assert!(
+            drawn > 0 || w.var("TV_LARGE") == 1,
+            "{what}: the theorem's keys redrew"
+        );
+        w.mirrored = false;
+        // back taps CLEAR with no gap, which the ROM ignores when the key before it was CLEAR
+        let gap = w.gap;
+        w.list.run.run(gap);
         w.back();
         w.hold_preview();
+        total += drawn;
     }
-    let _ = PROP;
+    assert!(total > 0, "a move or a fold on a theorem after CLEAR drew");
 }
 
 #[test]
