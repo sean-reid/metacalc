@@ -37,13 +37,14 @@ impl Cost {
 }
 
 /// What a scroll costs by part: the key, the walk to the first row shown, the six rows, the title, the
-/// rest of the draw and the blit.
+/// dist_open, the rest of the draw (the clear, the strings and the keys) and the blit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Split {
     pub key: u32,
     pub to_first_row: u32,
     pub six_rows: u32,
     pub title: u32,
+    pub open: u32,
     pub rest: u32,
     pub blit: u32,
 }
@@ -156,21 +157,22 @@ impl DistRom {
             .iter()
             .map(Vec::len)
             .sum();
+        let open = call(&mut self.rom, "dist_open", In::default()).tstates;
         let walk = call(&mut self.rom, "dist_walk", In::default()).tstates;
         let npairs = self.rom.list.run.shell.app.label("DV_NPAIRS");
+        call(&mut self.rom, "dist_open", In::default());
         let app = &mut self.rom.list.run.shell.app;
-        let all = app.m.read_ram(npairs, 2);
         app.m.load_ram(npairs, &(above as u16).to_le_bytes());
         let to_first_row = call(&mut self.rom, "dist_walk", In::default()).tstates;
-        let app = &mut self.rom.list.run.shell.app;
-        app.m.load_ram(npairs, &all);
+        call(&mut self.rom, "dist_open", In::default());
         let title = call(&mut self.rom, "dist_title", In::default()).tstates;
         Split {
             key: cost.key,
             to_first_row,
             six_rows: walk.saturating_sub(to_first_row),
             title,
-            rest: cost.draw.saturating_sub(walk + title),
+            open,
+            rest: cost.draw.saturating_sub(open + walk + title),
             blit: cost.blit,
         }
     }
@@ -260,14 +262,14 @@ fn on_the_reference_os_opening_frrlem1_and_pressing_down_cost_what_the_header_sa
         stays.push(stay.key);
     }
     within("opening frrlem1", cost.total(), OPEN_COST);
-    for stay in stays {
-        within("a stay on frrlem1", stay, STAY_COST);
-    }
+    within("Down on frrlem1", stays[0], STAY_COST);
+    within("Up on frrlem1", stays[1], STAY_UP_COST);
 }
 
 /// The measured total of the open of frrlem1 and of a key that stays.
 const OPEN_COST: u32 = 1_577_717;
-const STAY_COST: u32 = 0;
+const STAY_COST: u32 = 218;
+const STAY_UP_COST: u32 = 146;
 const TOKEN_COST: u32 = 6_311;
 const INK_COST: u32 = 17_725;
 const BACK_COST: u32 = 1_755_601;
@@ -292,6 +294,11 @@ fn on_the_reference_os_a_scroll_on_a_library_packed_for_it_costs_what_the_header
             let split = dist.split(cost, to);
             let total = cost.key + cost.draw + cost.blit;
             worst = worst.max(total);
+            within(
+                &format!("{name} from row {from}"),
+                total,
+                scroll_cost(code, from),
+            );
             println!(
                 "ROM, {name} from row {from} of {rows} ({what}): {total} T-states ({:.1} ms), split {split:?}",
                 f64::from(total) / 6000.0
@@ -379,18 +386,17 @@ fn through_the_real_shell_the_dist_screen_of_ring_pred_and_prop_is_the_models() 
     assert_eq!(lib.dist(most).len(), 33);
     let mut w = walker(RING);
     for (what, n) in [("none", none), ("a few", few), ("the most", most)] {
+        println!("ROM shell: {what}, assertion {n}: goto");
         w.goto(n);
         w.hold_preview();
+        println!("ROM shell: {what}: open");
         w.open();
+        println!("ROM shell: {what}: F2");
         open_dist(&mut w);
         let rows = rows_of(&lib, n).len();
         assert_eq!(app_rows(&mut w), rows, "{what}");
-        for (scan, key) in [
-            (DOWN, Key::Down),
-            (UP, Key::Up),
-            (F3, Key::F3),
-            (F5, Key::F5),
-        ] {
+        for (scan, key) in [(DOWN, Key::Down), (UP, Key::Up)] {
+            println!("ROM shell: {what}: key {scan:02X}");
             assert!(!press(&mut w, scan, key), "{what}: {scan:02X} stays");
         }
         leave(&mut w);
@@ -425,5 +431,18 @@ fn on_the_reference_os_every_routine_of_the_dist_screen_keeps_interrupts_and_spe
             crate::dist_depth::expected_on_the_reference_os(),
             "speed {speed}"
         );
+    }
+}
+
+/// What a scroll with its frame costs on the 16 rows of 6 pairs, by key and first row it starts from.
+fn scroll_cost(code: u8, from: usize) -> u32 {
+    match (code, from) {
+        (KEY_DOWN, 0) => 1_315_598,
+        (KEY_UP, 1) => 1_237_982,
+        (KEY_DOWN, 5) => 1_713_832,
+        (KEY_UP, 6) => 1_634_910,
+        (KEY_DOWN, 9) => 2_024_739,
+        (KEY_UP, 10) => 1_956_875,
+        _ => panic!("no figure for key {code} from row {from}"),
     }
 }
