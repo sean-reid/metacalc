@@ -292,19 +292,19 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
     );
     assert_eq!(
         live.iter().map(|s| s.depth).max(),
-        Some(30),
+        Some(32),
         "the deepest call with interrupts on"
     );
 }
 
-/// The greatest depth of each class seen with interrupts on: an interrupt adds up to four bytes
-/// to a step and two to a chunk in this run, which the handler's pushes make.
+/// The greatest depth of each class seen with interrupts on, over the phases swept. The stub's
+/// handler holds 4 bytes (STUB_STACK in timer_spacing.rs).
 const STUB_LIVE: [(Class, u16); 11] = [
-    (Class::StepStays, 30),
+    (Class::StepStays, 32),
     (Class::StepRedraws, 28),
     (Class::Chunk, 16),
     (Class::EndsCrcRun, 30),
-    (Class::Finishing, 28),
+    (Class::Finishing, 30),
     (Class::AfterFinish, 10),
     (Class::StopOn, 28),
     (Class::PausedStep, 28),

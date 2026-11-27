@@ -124,7 +124,7 @@ fn wait_for_blits(list: &mut Lister, want: u16) {
 pub fn tap(list: &mut Lister, scan: u8) {
     let code = u16::from(code_of(scan));
     let before = list.run.scr_keys();
-    list.run.m().press_key(scan);
+    list.run.press(scan);
     loop {
         list.run.run_to("scr_key", LIMIT);
         if list.run.m().regs().af >> 8 == code {
@@ -132,7 +132,7 @@ pub fn tap(list: &mut Lister, scan: u8) {
         }
         list.run.m().resume(1);
     }
-    list.run.m().release_key(scan);
+    list.run.release(scan);
     for _ in 0..200 {
         if list.run.scr_keys() > before {
             break;

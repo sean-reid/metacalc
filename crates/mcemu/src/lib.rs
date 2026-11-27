@@ -10,7 +10,7 @@ mod stub {
 }
 
 pub use app::{AppError, decode as decode_app};
-pub use ffi::{Regs, Write};
+pub use ffi::{PortWrite, Regs, Write};
 pub use vars::{E_BAD_CALL, E_MEMORY, NoRoom, Var};
 
 /// Free stub ROM: boots to a known state and jumps to `ENTRY`.
@@ -146,6 +146,8 @@ pub struct Machine {
     apps: std::collections::HashMap<u8, usize>,
     /// Whether the machine runs a real OS image, which keeps its own record of each app.
     os: bool,
+    /// The scancodes pressed and not yet released, one bit each.
+    down: u64,
 }
 
 impl Machine {
@@ -156,6 +158,7 @@ impl Machine {
                 calc,
                 apps: Default::default(),
                 os: false,
+                down: 0,
             })
             .ok_or(BootError)
     }
@@ -169,6 +172,7 @@ impl Machine {
                 calc,
                 apps: Default::default(),
                 os: true,
+                down: 0,
             })
             .ok_or(BootError)
     }
@@ -318,6 +322,28 @@ impl Machine {
         writes
     }
 
+    /// Every write to ports 1, 3 and 4 since the last call, in order, with the CPU clock when each
+    /// ran. The record holds 16384 writes; more panics.
+    pub fn take_port_writes(&mut self) -> Vec<PortWrite> {
+        let (writes, full) = self.calc.take_port_writes();
+        assert!(
+            !full,
+            "the port record was full; take the writes more often"
+        );
+        writes
+    }
+
+    /// `take_port_writes` for a caller that has a use for a full record: the flag says the record
+    /// filled and the writes after that were dropped.
+    pub fn take_port_writes_or_full(&mut self) -> (Vec<PortWrite>, bool) {
+        self.calc.take_port_writes()
+    }
+
+    /// Forgets the port writes recorded so far, however many.
+    pub fn clear_port_writes(&mut self) {
+        self.calc.take_port_writes();
+    }
+
     /// Forces the LCD busy bit, bit 7 of port 10h, on for every read, as a controller that never
     /// finishes would.
     pub fn stick_lcd_busy(&mut self, on: bool) {
@@ -341,11 +367,19 @@ impl Machine {
     pub const KEY_ON: u8 = 0x29;
 
     pub fn press_key(&mut self, scancode: u8) {
+        self.down |= 1u64.checked_shl(scancode.into()).unwrap_or(0);
         self.calc.key(scancode, true);
     }
 
     pub fn release_key(&mut self, scancode: u8) {
+        self.down &= !1u64.checked_shl(scancode.into()).unwrap_or(0);
         self.calc.key(scancode, false);
+    }
+
+    /// Whether `scancode` has been pressed and not released since.
+    pub fn key_is_down(&self, scancode: u8) -> bool {
+        1u64.checked_shl(scancode.into())
+            .is_some_and(|bit| self.down & bit != 0)
     }
 
     /// Runs from `pc` with interrupts off until a HALT executes with them off or `limit`

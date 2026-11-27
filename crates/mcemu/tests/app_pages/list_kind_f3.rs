@@ -88,6 +88,7 @@ fn second_press(list: &mut Lister, gap: u32) -> (Option<u32>, u16) {
     const HOLD: u32 = 300_000;
     list.run.run(2_000_000);
     list.tap(F3);
+    list.run.allow_raw_press();
     list.run.run(gap);
     let before = list.run.scr_keys();
     list.run.m().press_key(F3);
@@ -155,6 +156,7 @@ fn on_the_reference_os_a_second_f3_that_is_ignored_leaves_the_app_taking_the_nex
         list.open_on_rom();
         list.run.run(2_000_000);
         list.tap(F3);
+        list.run.allow_raw_press();
         list.ui.press(Key::F3);
         list.log.push(Key::F3);
         list.run.run(gap);

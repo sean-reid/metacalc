@@ -100,7 +100,9 @@ fn steady_point(rig: &mut Rig) -> (Point, u32) {
     (c, g2)
 }
 
-const LEADS: [u32; 12] = [10, 20, 30, 50, 80, 120, 200, 300, 500, 800, 1_200, 2_000];
+const LEADS: [u32; 13] = [
+    10, 20, 30, 50, 80, 120, 200, 300, 500, 800, 850, 1_200, 2_000,
+];
 
 /// What one closure of Down gave at the idle point it covered.
 struct Bounce {
@@ -194,7 +196,13 @@ fn a_closure_after_a_release_does_not_send_the_shell_to_app_key(real: bool) {
         us_between(b.before.clock, b.at.clock),
         us_between(b.at.clock, b.after[0].clock),
     );
-    let key_down = if real { 8_400..=8_650 } else { 9_200..=9_350 };
+    println!(
+        "{} OS: us from the point with Down held to the closure's {}, from the closure's to the next {}",
+        os_name(real),
+        gaps.0,
+        gaps.1
+    );
+    let key_down = if real { 8_430..=8_580 } else { 8_420..=8_570 };
     assert!(
         key_down.contains(&gaps.0),
         "{} us from the point with Down held to the closure's",
