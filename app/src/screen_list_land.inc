@@ -19,8 +19,9 @@
 ;            Writes, in the frame, byte 7 always; bytes 2 and 3 when the cursor lands on the first row
 ;            and bytes 2 to 5 when it lands anywhere else, if the stage has an assertion and the kind
 ;            shows one; LV_KIND and LV_END unless the stage is empty; LV_PREVIEW and LV_COUNT when the kind
-;            shows one; the scratch LK_FR, LK_CUR, LK_WAS, LK_OLD and LK_EMPTY (which holds LV_COUNT here,
-;            not the kind step's flag its name says), LK_X when the kind shows one, LK_N, LK_T and LK_T1
+;            shows one; the scratch LK_FR and LK_CUR always and, unless the stage is empty, LK_WAS, LK_OLD
+;            and LK_EMPTY (which holds LV_COUNT here, not the kind step's flag its name says), LK_X when
+;            the kind shows one, LK_N, LK_T and LK_T1
 ;            when the walk of lmk_below runs and, under Unchecked with a table, LK_AGAIN. What the kind
 ;            asks for writes more: the reader's LIB_STATE and FAR_VARS under Theorems and Axioms,
 ;            OP1 to OP5 under Unchecked with a table (the store). Destroys AF BC DE HL and IX; interrupts
