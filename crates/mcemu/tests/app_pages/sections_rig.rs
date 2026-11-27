@@ -121,20 +121,54 @@ pub fn wide() -> &'static Built {
     BUILT.get_or_init(|| rich_named("pages-sections-wide", "WWWWWWWWWWW"))
 }
 
+/// `rich` with stage names of eleven M and the stage's number.
+pub fn mmmm() -> &'static Built {
+    static BUILT: OnceLock<&'static Built> = OnceLock::new();
+    BUILT.get_or_init(|| rich_named("pages-sections-mmmm", "MMMMMMMMMMM"))
+}
+
 fn rich_named(dir: &str, name: &str) -> &'static Built {
+    let names: Vec<String> = (0..6).map(|i| format!("{name}{i}")).collect();
+    rich_with_names(dir, &names)
+}
+
+/// `rich` with `names` as its six stage names.
+pub fn rich_with_names(dir: &str, names: &[String]) -> &'static Built {
     let pattern = rich_pattern();
     assert_eq!(pattern.len(), 59);
+    assert_eq!(names.len(), RICH_ENDS.len());
     let library = sectioned(&pattern, &rich_titles());
     let stages: Vec<mcui::Stage> = RICH_ENDS
         .iter()
+        .zip(names)
         .enumerate()
-        .map(|(i, &end)| mcui::Stage {
-            name: format!("{name}{i}"),
+        .map(|(i, (&end, name))| mcui::Stage {
+            name: name.clone(),
             title: format!("Stage {i}"),
             end,
         })
         .collect();
     staged_with(dir, &library, &stages)
+}
+
+/// A name of at most 12 letters whose width in the font is exactly `width` pixels.
+pub fn name_of_width(width: usize) -> String {
+    use std::collections::BTreeMap;
+    let mut level: BTreeMap<usize, String> = BTreeMap::from([(0, String::new())]);
+    for _ in 0..12 {
+        let mut next: BTreeMap<usize, String> = BTreeMap::new();
+        for base in level.values() {
+            for letter in ('a'..='z').chain('A'..='Z') {
+                let name = format!("{base}{letter}");
+                next.entry(mcui::canvas::text_width(&name)).or_insert(name);
+            }
+        }
+        if let Some(name) = next.get(&width) {
+            return name.clone();
+        }
+        level = next;
+    }
+    panic!("no name of {width} pixels")
 }
 
 /// A small library whose first assertion has three titles, as a book's front matter would: stage 0 ends at

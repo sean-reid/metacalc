@@ -132,23 +132,23 @@ pub const ROM: Site = Site {
 
 /// F5 pressed on `list` and the sections screen's own routines traced after it in the order the
 /// framework runs them: the list's key, the push, the enter and the first draw.
-struct Opened {
-    list: Lister,
+pub struct Opened {
+    pub list: Lister,
 }
 
 impl Opened {
-    fn new(site: &Site, kind: Kind, table: Table, stage: usize) -> Opened {
+    pub fn new(site: &Site, kind: Kind, table: Table, stage: usize) -> Opened {
         let mut list = (site.list_at)(kind, table, stage);
         list.run.run(600_000);
         list.run.shell.at_rest();
         Opened { list }
     }
 
-    fn press(&mut self, scan: u8) {
+    pub fn press(&mut self, scan: u8) {
         self.list.run.press(scan);
     }
 
-    fn release(&mut self, scan: u8) {
+    pub fn release(&mut self, scan: u8) {
         self.list.run.release(scan);
         self.list.run.run(1_500_000);
     }
@@ -321,7 +321,7 @@ fn keys(pass: &mut Pass) {
 }
 
 /// The titles of the stage the site opens.
-fn stage_titles(list: &Lister, stage: usize) -> Vec<ModelTitle> {
+pub fn stage_titles(list: &Lister, stage: usize) -> Vec<ModelTitle> {
     let lib = lib_of(list.built);
     lib.titles()[..title_counts(list.built)[stage]].to_vec()
 }
