@@ -62,9 +62,10 @@
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
 ; greatest over a call with interrupts masked, at both speeds (sections_depth.rs). Stub OS: sections_push
 ; 18 under All, Theorems and Axioms, 22 under Unchecked with a table or when it shows nothing, 8 when the
-; reader refuses (the same as list_key's F5, which jumps to it); sections_enter 24; sections_key 4 for a
-; move, a stay and CLEAR, 18 for ENTER and F1, 8 when the read is refused; sections_draw 26. Reference OS:
-; sections_push 18 and 36, 8 refused; sections_enter 38; sections_key 4, 18 and 8; sections_draw 26.
+; reader refuses (the same as list_key's F5, which jumps to it); sections_enter 18, 8 when a read is
+; refused; sections_key 4 for a move, a stay and CLEAR, 18 for ENTER and F1, 8 when the read is refused;
+; sections_draw 26. Reference OS: sections_push 18 and 36, 8 refused; sections_enter 18 and 8;
+; sections_key 4, 18 and 8; sections_draw 26.
 
 SX_ROWS		.equ 6
 SX_INDENT_MAX	.equ 3

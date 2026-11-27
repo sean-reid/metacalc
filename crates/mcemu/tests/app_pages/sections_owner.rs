@@ -69,13 +69,11 @@ fn owner_session(stage: usize) -> (usize, usize) {
             _ => assert_eq!(list.pos().cursor, 0),
         }
         let before = list.list_frame();
+        let assertion = list.pos().cursor;
         let section = list.open_sections();
-        let opened = (section.cursor, section.top);
         println!(
-            "{at}, F5 from the {place} (assertion {}): title {}, first title {}",
-            list.pos().cursor,
-            opened.0,
-            opened.1
+            "{at}, F5 from the {place} (assertion {assertion}): title {}, first title {}",
+            section.cursor, section.top
         );
         moves += walk(&mut list, stage);
         list.leave(CLEAR, Key::Clear);
