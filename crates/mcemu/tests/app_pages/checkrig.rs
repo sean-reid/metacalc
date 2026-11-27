@@ -34,8 +34,13 @@ pub struct Run {
     pub built: &'static Built,
     /// Whether the machine runs the reference OS, whose variables are read from its symbol table.
     pub real: bool,
-    /// The key last let go with `release` and the timer interrupts since, until another key is pressed.
+    /// The key last let go with `release` and the keypad scans since, until another key is pressed.
     released: Option<(u8, usize)>,
+    pub released_at: u32,
+    /// Whether a write of 00h to port 1 has come since the last other port's write, and whether the
+    /// 08h acknowledge that followed one has not yet been followed by a 09h.
+    scan_open: bool,
+    scan_pending: bool,
     /// Whether the test presses the key it just let go raw, to test the gap.
     raw_press_allowed: bool,
 }
@@ -75,6 +80,9 @@ impl Run {
             built,
             real: false,
             released: None,
+            released_at: 0,
+            scan_open: false,
+            scan_pending: false,
             raw_press_allowed: false,
         }
     }
@@ -87,6 +95,9 @@ impl Run {
             built,
             real: true,
             released: None,
+            released_at: 0,
+            scan_open: false,
+            scan_pending: false,
             raw_press_allowed: false,
         }
     }
@@ -133,7 +144,7 @@ impl Run {
     /// this `Run`'s `m()`: a press through `shell.app.m`, `Shell::press`, `Shell::leave`,
     /// `Shell::tap_lost`, or through a `&mut Machine` kept across the window is not covered.
     pub fn m(&mut self) -> &mut Machine {
-        self.count_interrupts();
+        self.count_scans();
         &mut self.shell.app.m
     }
 
@@ -143,31 +154,45 @@ impl Run {
         self.raw_press_allowed = true;
     }
 
-    /// The timer interrupts counted since the last `release`, 0 when none has been made.
-    pub fn interrupts_since_release(&mut self) -> usize {
-        self.count_interrupts();
+    /// The keypad scans counted since the last `release`, 0 when none has been made.
+    pub fn scans_since_release(&mut self) -> usize {
+        self.count_scans();
         self.released.map_or(0, |(_, seen)| seen)
     }
 
-    /// Adds the timer interrupts since the last count to the release's, from the acknowledge the
-    /// handler writes to port 3, 09h, which neither OS writes for an ON edge.
-    fn count_interrupts(&mut self) {
+    /// Adds the keypad scans since the last count to the release's. A scan is a write of 00h and then
+    /// FFh to port 1 in an interrupt handler that goes on to acknowledge the interrupt: 08h and 09h to
+    /// port 3 with nothing but port 1 between the scan and the 08h. The reference OS scans on one
+    /// timer interrupt in three and forgets the key on the fifth scan with no key down, so counting
+    /// interrupts is wrong there; an ON edge raises an interrupt that acknowledges with 08h alone.
+    fn count_scans(&mut self) {
         let Some((scan, seen)) = &mut self.released else {
             return;
         };
         let m = &mut self.shell.app.m;
         let (writes, full) = m.take_port_writes_or_full();
-        *seen += writes
-            .iter()
-            .filter(|w| (w.port, w.value) == (3, 0x09))
-            .count();
+        for w in &writes {
+            match (w.port, w.value) {
+                (1, 0) => self.scan_open = true,
+                (3, 8) => {
+                    self.scan_pending = self.scan_open;
+                    self.scan_open = false;
+                }
+                (3, 9) => {
+                    *seen += usize::from(self.scan_pending);
+                    self.scan_pending = false;
+                }
+                (1, _) => {}
+                _ => self.scan_open = false,
+            }
+        }
         assert!(
             !full || *seen >= RELEASE_SCANS,
-            "the port record filled with {seen} interrupts counted after the release of {scan:02X}"
+            "the port record filled with {seen} scans counted after the release of {scan:02X}"
         );
         assert!(
             self.raw_press_allowed || *seen >= RELEASE_SCANS || !m.key_is_down(*scan),
-            "key {scan:02X} was pressed with the machine's press_key {seen} interrupts after its \
+            "key {scan:02X} was pressed with the machine's press_key {seen} scans after its \
              release, which the OS ignores before the fifth: use Run::press"
         );
     }
@@ -251,29 +276,30 @@ impl Run {
     }
 
     /// Lets go of `scan`. The OS takes the same key again only after its fifth scan with no key
-    /// down, so a `press` of that key first runs on until five interrupts have followed the release;
+    /// down, so a `press` of that key first runs on until five scans have followed the release;
     /// the frames the key draws are caught after the tap returns, which running on here would pass.
     /// A test about the gap after a release calls `Machine::release_key` itself.
     pub fn release(&mut self, scan: u8) {
         self.m().release_key(scan);
         self.m().clear_port_writes();
         self.released = Some((scan, 0));
+        self.released_at = self.shell.app.m.clock();
         self.raw_press_allowed = false;
     }
 
-    /// Presses `scan`, after running on until five interrupts have followed the last `release` if
+    /// Presses `scan`, after running on until five scans have followed the last `release` if
     /// that let go of the same key, which is when the OS has forgotten it. Another key is taken at once.
     pub fn press(&mut self, scan: u8) {
         let mut waited = 0;
         loop {
-            self.count_interrupts();
+            self.count_scans();
             let seen = match self.released {
                 Some((key, seen)) if key == scan && seen < RELEASE_SCANS => seen,
                 _ => break,
             };
             assert!(
                 waited < RELEASE_LIMIT,
-                "{seen} timer interrupts in {waited} T-states after the release, expected \
+                "{seen} scans in {waited} T-states after the release, expected \
                  {RELEASE_SCANS}; interrupts may have been masked for the rest"
             );
             self.run(RELEASE_STEP);

@@ -19,16 +19,12 @@ fn run_after_a_tap() -> Run {
 #[test]
 fn an_on_edge_between_a_release_and_a_press_is_not_counted_as_a_scan() {
     let mut run = run_after_a_tap();
-    assert_eq!(
-        run.interrupts_since_release(),
-        0,
-        "no scan before ON goes down"
-    );
+    assert_eq!(run.scans_since_release(), 0, "no scan before ON goes down");
     run.m().press_key(Machine::KEY_ON);
     run.run(60_000);
     run.m().release_key(Machine::KEY_ON);
-    let seen = run.interrupts_since_release();
-    assert!(seen < 5, "{seen} timer interrupts before the second Down");
+    let seen = run.scans_since_release();
+    assert!(seen < 5, "{seen} scans before the second Down");
     run.tap(DOWN);
     run.run(30_000);
     assert_eq!(run.scr_keys(), 2, "both Downs reached scr_key");

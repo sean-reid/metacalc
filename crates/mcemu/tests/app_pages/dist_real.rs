@@ -352,32 +352,23 @@ fn on_the_reference_os_the_way_back_to_the_theorem_screen_costs_what_the_theorem
         worst.1,
         worst.0
     );
-    let mut labels = vec![lib.label(worst.1).to_string()];
-    if labels[0] != "rglcom4d" {
-        labels.push("rglcom4d".to_string());
-    }
-    for label in labels {
-        let n = label_index(&lib, &label);
-        if lib.dist(n).is_empty() {
-            println!("ROM, {label} has no pairs");
-            continue;
-        }
-        dist.open(n);
-        let back = dist.back();
-        println!(
-            "ROM, back to the theorem from {label}: the key {}, the enter {}, the draw {} and the blit {}: {} T-states",
-            back.key,
-            back.enter,
-            back.draw,
-            back.blit,
-            back.total()
-        );
-        within(
-            &format!("the way back from {label}"),
-            back.total(),
-            BACK_COST,
-        );
-    }
+    let n = label_index(&lib, "rglcom4d");
+    assert_eq!(
+        worst.1, n,
+        "rglcom4d is the costliest open among ring's assertions with pairs"
+    );
+    assert!(!lib.dist(n).is_empty(), "rglcom4d has pairs");
+    dist.open(n);
+    let back = dist.back();
+    println!(
+        "ROM, back to the theorem from rglcom4d: the key {}, the enter {}, the draw {} and the blit {}: {} T-states",
+        back.key,
+        back.enter,
+        back.draw,
+        back.blit,
+        back.total()
+    );
+    within("the way back from rglcom4d", back.total(), BACK_COST);
 }
 
 /// The shipped build's list of `stage`, open on the reference OS, with the model beside it.
@@ -407,7 +398,6 @@ fn through_the_real_shell_the_dist_screen_of_ring_is_the_models_and_the_theorem_
     let most = label_index(&lib, "frrlem1");
     assert_eq!(lib.dist(most).len(), 33);
     let mut w = walker(RING);
-    let mut total = 0;
     for (what, n) in [("none", none), ("a few", few), ("the most", most)] {
         println!("ROM shell: {what}, assertion {n}: goto");
         w.goto(n);
@@ -424,33 +414,51 @@ fn through_the_real_shell_the_dist_screen_of_ring_is_the_models_and_the_theorem_
         }
         leave(&mut w);
         w.mirrored = true;
+        assert_eq!(
+            w.var("TV_LARGE"),
+            0,
+            "{what}: the theorem screen is not the too large one"
+        );
         let mut drawn = 0;
-        if w.var("TV_LARGE") == 0 {
-            for (scan, key) in [
-                (LEFT, Key::Left),
-                (RIGHT, Key::Right),
-                (ENTER, Key::Enter),
-                (F1, Key::F1),
-                (DOWN, Key::Down),
-            ] {
-                println!("ROM shell: {what}: theorem key {scan:02X}");
-                drawn += usize::from(w.press(scan, key));
-            }
+        for (scan, key) in [
+            (LEFT, Key::Left),
+            (RIGHT, Key::Right),
+            (ENTER, Key::Enter),
+            (F1, Key::F1),
+            (DOWN, Key::Down),
+        ] {
+            println!("ROM shell: {what}: theorem key {scan:02X}");
+            drawn += usize::from(w.press(scan, key));
         }
         println!("ROM shell: {what}: {drawn} of the theorem's keys redrew");
         assert!(
-            drawn > 0 || w.var("TV_LARGE") == 1,
-            "{what}: the theorem's keys redrew"
+            drawn > 0,
+            "{what}: a move or a fold on the theorem after CLEAR drew"
         );
         w.mirrored = false;
-        // back taps CLEAR with no gap, which the ROM ignores when the key before it was CLEAR
-        let gap = w.gap;
-        w.list.run.run(gap);
         w.back();
         w.hold_preview();
-        total += drawn;
     }
-    assert!(total > 0, "a move or a fold on a theorem after CLEAR drew");
+}
+
+#[test]
+#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn on_the_reference_os_clear_on_the_dist_screen_and_clear_on_the_theorem_screen_follow_with_no_gap()
+{
+    let lib = lib_of(shipped_staged());
+    let n = label_index(&lib, "frrlem1");
+    let mut w = walker(RING);
+    w.goto(n);
+    w.hold_preview();
+    w.open();
+    open_dist(&mut w);
+    leave(&mut w);
+    w.mirrored = false;
+    let since = w.list.run.scans_since_release();
+    println!("ROM shell: {since} scans since the release of the first CLEAR");
+    assert!(since < 5, "the second CLEAR follows the first");
+    w.back();
+    assert_eq!(w.list.run.top_kind(), KIND_LIST);
 }
 
 #[test]
