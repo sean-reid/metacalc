@@ -88,19 +88,19 @@ fn two_keys_between_empty_scans(real: bool, empty: usize, two: usize) -> Vec<(u3
     assert_eq!(rig.scan_code(), LETTER, "the OS took the first press");
     rig.m().release_key(LETTER);
     let mut seen: Vec<(u32, u8)> = Vec::new();
-    for e in entries(&mut rig, empty) {
-        seen.push((e.off, rig.scan_code()));
-    }
+    let mut scan = |rig: &mut Rig, n: usize| {
+        for _ in 0..n {
+            let e = &entries(rig, 1)[0];
+            seen.push((e.off, rig.scan_code()));
+        }
+    };
+    scan(&mut rig, empty);
     rig.m().press_key(LETTER);
     rig.m().press_key(ONE);
-    for e in entries(&mut rig, two) {
-        seen.push((e.off, rig.scan_code()));
-    }
+    scan(&mut rig, two);
     rig.m().release_key(LETTER);
     rig.m().release_key(ONE);
-    for e in entries(&mut rig, 8) {
-        seen.push((e.off, rig.scan_code()));
-    }
+    scan(&mut rig, 8);
     println!(
         "{} OS, {empty} empty scans, {two} with two keys down, then empty: (T-states off, scan code) {seen:?}",
         os(real)
@@ -134,6 +134,14 @@ fn two_keys_down_restart_the_count(real: bool) {
             after.starts_with("ooooCo"),
             "{} OS, {empty} empty then {two} with two keys: scans after them (o: counting or idle, \
              C: clearing) {after}",
+            os(real)
+        );
+        let clearing = empty + two + 4;
+        assert_eq!(kinds[clearing], 'C', "the clearing scan");
+        assert_eq!(
+            at(clearing).1,
+            0,
+            "{} OS: the clearing scan clears the scan code",
             os(real)
         );
         for i in empty..empty + two {

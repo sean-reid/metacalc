@@ -98,8 +98,9 @@ JUNK_HL2          .equ $A127
 ; wait of about 46.7 ms that the reference OS makes at either edge and that holds up the timer and
 ; the key scan meanwhile. It sets the OS break flag when ON then reads down and IY holds the
 ; flags pointer, so a press that ends before the wait does sets nothing. A press writes port 4 =
-; 06h at the end of the wait, as the reference OS does for its first four presses and not for the
-; fifth on, which it answers 2.8 ms in. An ON interrupt scans no keys.
+; 06h at the end of the wait, as the reference OS does at the first four presses of idle_onkey's
+; sequence, where ON goes down with every key up. From the fifth the reference OS writes it 2.8 ms
+; in, and the cause is not established. An ON interrupt scans no keys.
 ; Every interrupt acknowledges the timer and ON sources by the writes the reference OS makes to
 ; port 3: 08h, then 09h (0Ah for ON), then the mask as it was read. Without ON it makes the
 ; reference OS's one check of the whole keypad (port 1 at 00h, read, port 1 at FFh) and scans the
@@ -111,7 +112,9 @@ JUNK_HL2          .equ $A127
 ; and at 15: 1155 and 1178 with no key down, 5866 and 6117 with a key down, 1115 and 1138 for each of
 ; the four scans after a release and 1282 and 1305 for the fifth, which clears the scan code. An ON
 ; edge is the wait alone, 280875 in the reference OS and 280614 here. What the stub has no work for
-; is a delay of PAD_* passes of 26 T-states, a count for each speed.
+; is a delay of PAD_* passes, a count for each speed. A pass takes 30 T-states at both speeds, as
+; the first port 1 write moving 30 T-states per pass shows (585 to 615 at 6 MHz, 594 to 624 at 15);
+; the instructions sum to 26 and the other 4 are not accounted for.
 isr:
 	ex af,af'
 	exx
@@ -181,7 +184,7 @@ isr_done:
 	ei
 	reti
 
-; Delays by the count at HL, a word for 6 MHz and then one for 15, of passes of 26 T-states.
+; Delays by the count at HL, a word for 6 MHz and then one for 15, of passes of 30 T-states.
 pad:
 	in a,(PORT_SPEED)
 	and 3

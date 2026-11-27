@@ -28,11 +28,12 @@ const ON_AND_KEY: Answer = Answer {
 /// its code, and the key is acted on once all the same.
 ///
 /// The stub codes more of the twelve phases than the ROM (6 coded answers and 6 not, against 3 and
-/// 9). Their interrupts are spaced alike here, 9.6 ms apart. At each of the first four presses both
-/// OSes write port 4 = 06h and port 3 = 0Ah together 46.7 to 49.5 ms after the press. From the
-/// fifth press the ROM writes port 4 = 06h twice and port 3 = 0Dh 2.8 ms after the press, port 4 =
-/// 06h again 9.4 ms after it and no 0Ah for the press, and the stub still acts as at the first
-/// four; the cause is ROM state the port record does not show.
+/// 9). Their interrupts are spaced alike here, 9.6 ms apart. In this sequence ON goes down with
+/// every key up and the key follows about 100 ms later. At each of the first four presses both
+/// OSes write port 4 = 06h and port 3 = 0Ah together 46.7 to 49.5 ms after the press. At the fifth
+/// and sixth the ROM writes port 4 = 06h twice and port 3 = 0Dh 2.8 ms after the press, port 4 =
+/// 06h again 9.4 ms after it and no 0Ah for the press; the stub writes as at the first four. The
+/// cause is not established.
 fn a_key_with_on_down_and_the_byte_clear_goes_to_app_key(real: bool) {
     presses(real, 12, false);
 }

@@ -404,8 +404,9 @@ fn a_press_of_on_is_cleared_and_waited_out_inside_the_wait() {
     assert_eq!(rig.ram(LOG, 1), [code(Key::Up)], "the next key is Up");
 }
 
-/// ON pressed 20 ms after the launch lands in the stub's lost-press window (see app_key_waiting
-/// on_press): the flag is never set, which is why the other stub tests start 24 ms after it.
+/// ON pressed 20 ms after the launch falls in the stub's lost-press window by the phase of this
+/// launch, and the flag is never set; on_press.rs pins the window itself. The other stub tests start
+/// 24 ms after the launch.
 #[test]
 fn a_press_of_on_20_ms_after_the_launch_is_lost_on_the_stub() {
     let mut rig = Rig::stub_after(KEYS_APP, 20);
