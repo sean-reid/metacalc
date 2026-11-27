@@ -165,10 +165,10 @@ fn a_syntax_theorem_has_no_goal_tree() {
 }
 
 #[test]
-fn a_long_find_prefix_shows_its_tail() {
+fn a_missed_prefix_of_eight_wide_characters_shows_its_tail() {
     let mut ui = ui();
     press(&mut ui, &[Enter, F2]);
-    typed(&mut ui, "abcdefghijklmnopqrstuvwxyzabcd");
+    typed(&mut ui, "mmmmmmmm");
     check(&ui, "list-find-long");
 }
 

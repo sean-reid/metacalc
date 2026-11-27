@@ -1,6 +1,7 @@
 //! The find when the status table is lost after the list was entered, and when a reader call is
 //! refused.
 
+use crate::built::Built;
 use crate::list_find_rig::*;
 use crate::list_kind_rig::*;
 use crate::list_rig::*;

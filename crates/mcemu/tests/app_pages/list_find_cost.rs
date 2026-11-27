@@ -5,10 +5,8 @@
 use crate::app::*;
 use crate::list_find_rig::*;
 use crate::list_kind_real::ring;
-use crate::list_kind_rig::*;
 use crate::list_rig::*;
 use crate::realos::BASE;
-use crate::shellrig::*;
 use mcui::{Key, Kind, Status};
 
 const BUDGET: u32 = 1_800_000;

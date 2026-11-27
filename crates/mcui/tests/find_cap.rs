@@ -51,7 +51,7 @@ fn a_ninth_character_after_a_miss_leaves_the_cross_and_the_cursor() {
     typed(&mut ui, "axlongeq");
     let missed = place(&ui);
     assert_eq!(missed.3, "axlongeq");
-    assert_eq!(missed.0.as_deref(), Some("ax-1"));
+    assert_eq!(missed.0.as_deref(), Some("axlonger"));
     let frame = ui.frame();
     ui.press(Letter('e'));
     assert_eq!(place(&ui), missed);

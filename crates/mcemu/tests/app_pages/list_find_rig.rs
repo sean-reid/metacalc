@@ -2,7 +2,6 @@
 //! prefix the frame keeps in bytes 7 to 15 against the model's, and the expected miss.
 
 use crate::app::*;
-use crate::list_kind_rig::*;
 use crate::list_rig::*;
 use crate::shellrig::*;
 use mcui::{Key, Kind, State, Status};
@@ -235,7 +234,7 @@ pub fn label_of(built: &Built, name: &str) -> u16 {
 pub type Writes = Vec<(u16, u8)>;
 
 /// Whether `addr` is in one of `ranges` (start, length).
-pub fn within(ranges: &[(u16, u16)], addr: u16) -> bool {
+pub fn in_ranges(ranges: &[(u16, u16)], addr: u16) -> bool {
     ranges
         .iter()
         .any(|&(at, len)| (at..at.wrapping_add(len)).contains(&addr))

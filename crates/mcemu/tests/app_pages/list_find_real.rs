@@ -3,10 +3,8 @@
 //! sample under each kind, each frame the model's. Ignored in the default run.
 
 use crate::list_find_rig::*;
-use crate::list_kind_rig::*;
 use crate::list_real::{PROP, RING};
 use crate::list_rig::*;
-use crate::shellrig::*;
 use mcui::{Key, Kind, Status};
 
 /// Types `label` to the cap after F2, every frame the model's, and returns whether it missed.

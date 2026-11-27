@@ -4,8 +4,7 @@
 use crate::list_find_rig::*;
 use crate::list_kind_rig::*;
 use crate::list_rig::*;
-use crate::shellrig::*;
-use mcui::{Key, Kind};
+use mcui::Kind;
 
 #[test]
 fn every_label_typed_to_the_cap_lands_where_the_model_lands_it_under_each_kind() {

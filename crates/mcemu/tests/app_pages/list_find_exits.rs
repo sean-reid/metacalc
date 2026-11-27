@@ -129,7 +129,7 @@ fn a_letter_press_writes_only_the_frame_and_the_variables_the_header_names() {
             let outside: Vec<u16> = writes
                 .iter()
                 .map(|w| w.addr)
-                .filter(|&a| !within(&may, a))
+                .filter(|&a| !in_ranges(&may, a))
                 .collect();
             assert!(
                 outside.is_empty(),

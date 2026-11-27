@@ -1,6 +1,7 @@
 //! The characters the find takes and the ones it refuses, a library with no label order section, and a
 //! table lost or a reader call refused under a find.
 
+use crate::built::staged_with;
 use crate::list_find_rig::*;
 use crate::list_kind_rig::*;
 use crate::list_rig::*;
