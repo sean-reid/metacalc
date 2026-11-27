@@ -54,7 +54,7 @@ fn an_intact_sentinel_runs_no_refresh_and_no_blit_for_an_ignored_key() {
     for built in [plain(), with_library()] {
         let mut shell = booted(built, Enter::Real);
         let library = built.library.is_some();
-        for (n, open) in [None, Some(F3), Some(CLEAR), Some(F1), Some(F2)]
+        for (n, open) in [None, Some(F3), Some(CLEAR), Some(F1), Some(F4)]
             .into_iter()
             .enumerate()
         {
@@ -69,7 +69,7 @@ fn an_intact_sentinel_runs_no_refresh_and_no_blit_for_an_ignored_key() {
                 assert_eq!(shell.top_kind(), KIND_LIST, "{at}: the list");
                 shell.app.m.run_app(3_000_000);
                 assert_ne!(crate::builds::list_preview(&mut shell), 0, "{at}: settled");
-                ignores(&mut shell, &[LETTER, F5], &at);
+                ignores(&mut shell, &[F5], &at);
             } else {
                 if library && n == 4 {
                     assert_eq!(shell.top_kind(), KIND_NOTICE, "{at}: the stage's notice");
@@ -152,7 +152,7 @@ fn a_power_down_while_a_stages_notice_is_open_over_its_list_refreshes_it_on_the_
     refreshed(
         built,
         Enter::Real,
-        &[F1, F2],
+        &[F1, F4],
         KIND_NOTICE,
         &model::unavailable(built.stage_name(0)),
     );

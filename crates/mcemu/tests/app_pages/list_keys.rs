@@ -69,7 +69,7 @@ fn the_sections_key_is_live_exactly_where_the_stage_has_section_titles() {
 fn the_function_keys_open_the_stages_notice_and_f5_only_where_there_are_sections() {
     for built in [three_stages(), titled()] {
         for stage in 0..3 {
-            for scan in [F2, F4, F5] {
+            for scan in [F4, F5] {
                 let mut list = moved_list(built, stage);
                 let at = format!("stage {stage}, key {scan:02X}");
                 let before = list.frame_bytes();
@@ -142,7 +142,7 @@ fn keys_that_do_not_pop_leave_the_notice_and_the_list_under_it_alone() {
     for scan in [UP, DOWN, LEFT, RIGHT, F2, F3, F4, F5, LETTER] {
         let mut list = moved_list(built, 1);
         let before = list.run.frames();
-        list.tap(F2);
+        list.tap(F4);
         list.run.next_blit();
         list.run.run(300_000);
         let (blits, notice) = (list.run.blits(), list.run.frames());

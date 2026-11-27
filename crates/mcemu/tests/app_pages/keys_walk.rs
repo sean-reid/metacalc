@@ -142,7 +142,7 @@ fn long_walk(checking: bool) {
                 assert_eq!(shell.depth(), 2, "{at}: back on the list");
             } else if in_a_list
                 && !fixed
-                && ([F2, F4, F5].contains(&key) || [ENTER, F1].contains(&key))
+                && ([F4, F5].contains(&key) || [ENTER, F1].contains(&key))
             {
                 in_list += 1;
                 settle_list(&mut shell, &mut ui);

@@ -159,7 +159,7 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
         (
             "Notice, a stage's list",
             three_stages(),
-            &[F1, F2],
+            &[F1, F4],
             NOTICE,
             NOTICE_COLD,
         ),

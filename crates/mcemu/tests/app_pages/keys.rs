@@ -341,7 +341,7 @@ pub fn pops_a_notice(key: Option<Key>) -> bool {
     ui.depth() == 1
 }
 
-/// The notice a stage's list opens on F2: the model's list has the Dist screen there, which
+/// The notice a stage's list opens on F4: the model's list has the Dist screen there, which
 /// the app does not have yet, so the oracle is the notice's rule, that the keys that close the
 /// model's Notice pop and the rest change nothing, over the frame the model has for the list that
 /// is under it and its own frame for the notice.
@@ -359,7 +359,7 @@ fn every_key_the_app_can_produce_does_on_the_notice_of_a_stage_list_what_the_mod
                         probe.name
                     );
                     open_list(&mut shell, &mut ui, built, open, &at);
-                    shell.tap(F2);
+                    shell.tap(F4);
                     assert_eq!((shell.depth(), shell.top_kind()), (3, KIND_NOTICE), "{at}");
                     shell.shows(&at, &model::unavailable(title));
                     let blits = shell.blits();

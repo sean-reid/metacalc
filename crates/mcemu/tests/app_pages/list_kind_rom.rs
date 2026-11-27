@@ -336,16 +336,16 @@ fn rom_want(kind: Kind) -> KindFigures {
     };
     crate::list_kind_depth::fig(
         [
-            ("clear", 2),
+            ("clear", 4),
             ("down", down),
             ("enter", down),
             ("f1", down),
-            ("f2", 6),
+            ("f2", 4),
             ("f3", f3),
             ("f4", 6),
             ("f5", 6),
             ("left", left),
-            ("letter", 2),
+            ("letter", 20),
             ("right", right),
             ("up", up),
         ],

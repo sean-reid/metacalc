@@ -172,7 +172,7 @@ impl Lister {
         );
         self.run.m().load_ram(count, &[0]);
         self.run.m().load_ram(preview, &[PENDING]);
-        self.tap(LETTER);
+        self.tap_ignored();
         self.settle();
     }
 }
@@ -202,7 +202,7 @@ pub fn enter_depths(mask: bool, speed: u8, rig: &Rig) -> u16 {
     all.push(list.trace("list_enter", mask, speed));
     list.run.m().release_key(ENTER);
     list.run.run(1_000_000);
-    list.tap(F2);
+    list.tap(F4);
     list.run.run(300_000);
     list.run.m().press_key(CLEAR);
     all.push(list.trace("list_enter", mask, speed));
@@ -244,9 +244,9 @@ pub fn idle_depths(mask: bool, speed: u8, rig: &Rig) -> BTreeMap<&'static str, u
     };
     while trace_one(&mut list, &mut classes) != "fit" {}
     list.run.run(300_000);
-    list.run.m().press_key(LETTER);
+    list.run.m().press_key(F5);
     assert_eq!(trace_one(&mut list, &mut classes), "settled");
-    list.run.m().release_key(LETTER);
+    list.run.m().release_key(F5);
     classes
         .into_iter()
         .map(|(c, calls)| {
@@ -351,16 +351,16 @@ pub fn traced(rig: &Rig, want: &Figures) {
 pub fn stub_figures() -> Figures {
     Figures {
         keys: BTreeMap::from([
-            ("clear", 2),
+            ("clear", 4),
             ("down", 4),
             ("enter", 8),
             ("f1", 8),
-            ("f2", 6),
+            ("f2", 4),
             ("f3", 20),
             ("f4", 6),
             ("f5", 2),
             ("left", 4),
-            ("letter", 2),
+            ("letter", 20),
             ("right", 4),
             ("up", 4),
         ]),
