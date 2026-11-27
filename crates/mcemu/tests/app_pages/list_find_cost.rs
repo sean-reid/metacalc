@@ -129,7 +129,10 @@ fn typed(list: &mut Lister, mirror: &mut Mirror, text: &str, at: &str, pins: &[u
         check(list, mirror, &format!("{at}, {n}"));
         let shown = list.frame_now();
         assert_eq!(answer, if shown[7] & 0x0F == n as u8 + 1 { 1 } else { 0 });
-        println!("{at}: {:?} press {n} ({c}) cost {cost}", &text[..=n]);
+        println!(
+            "{at}: {:?} press {n} ({c}) cost {cost}",
+            text.chars().take(n + 1).collect::<String>()
+        );
         assert!(cost < BUDGET, "{at}, press {n}: {cost} against {BUDGET}");
         within(&format!("{at}, press {n}"), cost, pins[n]);
         costs.push(cost);
@@ -340,9 +343,9 @@ fn on_ring_the_keys_that_end_a_find_and_f3_with_a_prefix_fit_the_budget() {
         let (first, steps) = f3_pins(kind);
         typed(&mut list, &mut mirror, "s", "before F3", &[first]);
         let mut kinds = vec![kind];
-        for step in 0..3 {
+        for (step, &want) in steps.iter().enumerate() {
             let (cost, answer) = press(&mut list, 9, 0);
-            within(&format!("F3 from {kind:?}, step {step}"), cost, steps[step]);
+            within(&format!("F3 from {kind:?}, step {step}"), cost, want);
             assert_eq!(answer, 1);
             let next = match kinds.last().unwrap() {
                 Kind::All => Kind::Theorems,

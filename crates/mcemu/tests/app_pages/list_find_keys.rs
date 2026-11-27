@@ -114,7 +114,7 @@ fn a_ninth_character_called_in_stays_and_writes_nothing() {
     list.type_text("pm2.61d1");
     assert_eq!(list.find().len, 8);
     let before = list.frame_now();
-    for b in [b'x', b'1', b'-', b'P', b'_'] {
+    for b in *b"x1-P_" {
         let mut done = None;
         let writes = writes_of(&mut list, |l| done = Some(l.call_key(12, b)));
         assert_eq!(done.unwrap().status(), 0, "{b:02X}");
@@ -127,7 +127,7 @@ fn a_ninth_character_called_in_stays_and_writes_nothing() {
 fn a_capital_and_its_lowercase_give_the_same_frame_and_the_underscore_is_taken() {
     for (kind, table) in [(Kind::All, false), (Kind::Unchecked, true)] {
         let mut frames = Vec::new();
-        for b in [b'S', b's'] {
+        for b in *b"Ss" {
             let marks = every_mark(proofs_three());
             let mut list = list_under(proofs_three(), 1, kind, table.then_some(&marks));
             let done = list.call_key(12, b);
@@ -193,7 +193,7 @@ fn a_library_with_no_label_order_section_keeps_the_notice_on_f2_and_ignores_lett
         }
         let before = list.run.frames()[1].clone();
         let writes = writes_of(&mut list, |l| {
-            for b in [b'a', b'T', b'-', b'1'] {
+            for b in *b"aT-1" {
                 assert_eq!(l.call_key(12, b).status(), 0);
             }
         });

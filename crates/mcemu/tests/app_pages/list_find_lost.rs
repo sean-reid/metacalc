@@ -5,9 +5,8 @@ use crate::built::Built;
 use crate::list_find_rig::*;
 use crate::list_kind_rig::*;
 use crate::list_rig::*;
-use crate::shellrig::*;
 use crate::table;
-use mcui::{Key, Kind, Status};
+use mcui::{Kind, Status};
 
 const PATTERN: &str = "TATATAATTTATTAAT";
 

@@ -87,12 +87,9 @@ impl Lister {
     pub fn fire_ignored(&mut self) {
         let before = self.run.scr_keys();
         self.run.m().press_key(ONE);
-        loop {
-            self.run.run_to("scr_key", LIMIT);
-            let code = self.run.m().regs().af >> 8;
-            assert_eq!(code, 0, "the key after 2nd reached scr_key as {code}");
-            break;
-        }
+        self.run.run_to("scr_key", LIMIT);
+        let code = self.run.m().regs().af >> 8;
+        assert_eq!(code, 0, "the key after 2nd reached scr_key as {code}");
         self.run.m().release_key(ONE);
         self.run.m().resume(100);
         let mut waited = 0;

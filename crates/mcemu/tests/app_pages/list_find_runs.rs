@@ -5,7 +5,6 @@ use crate::built::staged_with;
 use crate::list_find_rig::*;
 use crate::list_kind_rig::*;
 use crate::list_rig::*;
-use crate::shellrig::*;
 use mcui::{Kind, Status};
 
 fn library_of_300() -> &'static crate::built::Built {
