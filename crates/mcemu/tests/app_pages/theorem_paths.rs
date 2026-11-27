@@ -55,9 +55,9 @@ pub fn probe(walker: &mut Walker, lib: &Lib, n: usize) -> Probe {
 
 /// A key traced, then let finish, with the model told: the frame the app draws is the model's.
 pub fn traced(walker: &mut Walker, scan: u8, key: Key, speed: u8) -> Trace {
-    walker.list.run.m().press_key(scan);
+    walker.list.run.press(scan);
     let t = walker.trace("theorem_key", true, speed);
-    walker.list.run.m().release_key(scan);
+    walker.list.run.release(scan);
     walker.list.run.run(2_000_000);
     walker.list.ui.press(key);
     walker.list.log.push(key);

@@ -214,3 +214,84 @@ fn ed_76_is_im_1_and_does_not_stop_the_run() {
         (Stop::Halted, DI + ED_76 + WRITE + HALT, 0x55)
     );
 }
+
+const OUT_NN: u32 = 11;
+
+fn out_to(port: u8, value: u8) -> [u8; 4] {
+    [0x3E, value, 0xD3, port]
+}
+
+#[test]
+fn writes_to_ports_1_3_and_4_are_recorded_in_order_with_the_clock() {
+    let mut code = vec![0xF3];
+    for (port, value) in [(3, 0x0B), (4, 0x06), (1, 0xFF), (5, 0x00), (3, 0x08)] {
+        code.extend_from_slice(&out_to(port, value));
+    }
+    code.push(0x76);
+    let mut m = boot();
+    m.load_ram(CODE, &code);
+    m.out_port(3, 0x77);
+    let before = m.take_port_writes();
+    assert_eq!(
+        before.iter().map(|w| (w.port, w.value)).collect::<Vec<_>>(),
+        [(3, 0x77)],
+        "a write made through out_port is recorded"
+    );
+    let start = m.clock();
+    assert_eq!(m.run(CODE, LIMIT).stop, Stop::Halted);
+    let writes = m.take_port_writes();
+    assert_eq!(
+        writes.iter().map(|w| (w.port, w.value)).collect::<Vec<_>>(),
+        [(3, 0x0B), (4, 0x06), (1, 0xFF), (3, 0x08)],
+        "port 5 is not recorded"
+    );
+    let first = writes[0].clock.wrapping_sub(start);
+    assert!(
+        (DI + LD_A_N..=DI + LD_A_N + OUT_NN).contains(&first),
+        "the first write ran {first} T-states in"
+    );
+    let steps: Vec<u32> = writes
+        .windows(2)
+        .map(|w| w[1].clock.wrapping_sub(w[0].clock))
+        .collect();
+    assert_eq!(
+        steps,
+        [LD_A_N + OUT_NN, LD_A_N + OUT_NN, 2 * (LD_A_N + OUT_NN)],
+        "each write is a load and an out after the one before, port 5's included"
+    );
+    assert!(m.take_port_writes().is_empty(), "taking clears the record");
+}
+
+/// `ld de,count`, then `count` writes to port 3.
+fn writes_to_port_3(count: u16) -> Vec<u8> {
+    let [lo, hi] = count.to_le_bytes();
+    let mut code = vec![0xF3, 0x11, lo, hi];
+    code.extend_from_slice(&[0x3E, 0x0B, 0xD3, 0x03, 0x1B, 0x7A, 0xB3, 0x20, 0xF7, 0x76]);
+    code
+}
+
+#[test]
+fn a_record_that_holds_every_write_is_returned_whole() {
+    let mut m = boot();
+    m.load_ram(CODE, &writes_to_port_3(16_000));
+    assert_eq!(m.run(CODE, 2_000_000).stop, Stop::Halted);
+    assert_eq!(m.take_port_writes().len(), 16_000);
+}
+
+#[test]
+#[should_panic(expected = "the port record was full")]
+fn a_full_record_panics_when_taken() {
+    let mut m = boot();
+    m.load_ram(CODE, &writes_to_port_3(16_400));
+    assert_eq!(m.run(CODE, 2_000_000).stop, Stop::Halted);
+    m.take_port_writes();
+}
+
+#[test]
+fn a_full_record_can_be_cleared() {
+    let mut m = boot();
+    m.load_ram(CODE, &writes_to_port_3(16_400));
+    assert_eq!(m.run(CODE, 2_000_000).stop, Stop::Halted);
+    m.clear_port_writes();
+    assert!(m.take_port_writes().is_empty());
+}

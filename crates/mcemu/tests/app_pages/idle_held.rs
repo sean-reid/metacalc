@@ -260,7 +260,7 @@ fn a_press_the_os_has_not_scanned_is_taken_before_the_next_slice(real: bool) {
     );
     assert_eq!(
         (port_only, scanned),
-        if real { (11, 1) } else { (10, 2) },
+        (11, 1),
         "presses seen only on the port, presses already scanned"
     );
 }

@@ -146,7 +146,7 @@ impl Lister {
     pub fn tap(&mut self, scan: u8) {
         let code = u16::from(code_of(scan));
         let before = self.run.scr_keys();
-        self.run.m().press_key(scan);
+        self.run.press(scan);
         loop {
             self.run.run_to("scr_key", LIMIT);
             if self.run.m().regs().af >> 8 == code {
@@ -154,7 +154,7 @@ impl Lister {
             }
             self.run.m().resume(1);
         }
-        self.run.m().release_key(scan);
+        self.run.release(scan);
         self.run.m().resume(100);
         // The hook that counts the call needs about as many T-states as that, so an interrupt that lands
         // in them leaves the count behind for the length of its handler.
