@@ -14,6 +14,9 @@ pub(crate) const KEYS: [&str; 5] = ["Open", "Find", "Kind", "Try", "Sect"];
 const LIST_ROWS: usize = 5;
 const PREVIEW_ROW: usize = LIST_ROWS + 1;
 
+/// Characters a typed prefix holds; a letter past it is ignored.
+pub const FIND_MAX: usize = 8;
+
 /// Which assertions the list shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -198,7 +201,10 @@ impl List {
                     return Nav::push(Screen::Sections(sections));
                 }
             }
-            Key::Letter(c) if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') => {
+            Key::Letter(c)
+                if self.find.len() < FIND_MAX
+                    && (c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) =>
+            {
                 let from = if self.find.is_empty() { 0 } else { self.cursor };
                 self.find.push(c);
                 if !self.missed {
