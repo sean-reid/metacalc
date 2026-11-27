@@ -105,7 +105,7 @@
 ; under a kind are in screen_list_kind.inc). Stub OS under All: list_key 4 for a move and for a key at an
 ; end, 6 for F2 and F4, which push the notice, 8 for ENTER and F1 on a stage with an assertion, which
 ; push the theorem screen (under a kind they ask lf_next first and write 16, 16 and 22 under Theorems,
-; Axioms and Unchecked on the stub and 16, 16 and 36 on the reference OS), 2 for CLEAR, a letter and F5 with no sections (with sections it is sections_push's, in screen_sections.inc), F3 from All 20 on
+; Axioms and Unchecked on the stub and 16, 16 and 36 on the reference OS), 2 for CLEAR, a letter and F5 with no sections (with sections it is sections_push's: 18 under All, Theorems and Axioms, and under Unchecked with a table 22 on the stub and 36 on the reference OS), F3 from All 20 on
 ; the fixture of list_depth.rs and 24 on the proofs library of list_kind_depth.rs, from the first
 ; assertion and from ten rows down alike; list_enter 22; list_idle 8 for the fit and for a tick, which holds
 ; app_tick's return address and the interrupt handler's pushes, and 2 settled; list_draw 26. Reference
