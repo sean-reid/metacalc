@@ -4,7 +4,6 @@
 //! frame the model's; and a jump from a spread of each stage's titles under every kind, with and without a
 //! status table, counted by where the model says each one lands.
 
-use crate::list_kind_rig::*;
 use crate::list_rig::*;
 use crate::sections_depth::{ROM, Table};
 use crate::sections_jump::Landing;

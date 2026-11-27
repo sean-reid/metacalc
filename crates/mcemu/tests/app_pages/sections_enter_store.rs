@@ -3,7 +3,6 @@
 //! a write watch, and they hold the marker after it, with no write recorded to them by the app.
 
 use crate::checkrig::WAIT;
-use crate::list_rig::*;
 use crate::sections_depth::{ROM, STUB, Site, Table};
 use crate::shellrig::*;
 use mcui::Kind;

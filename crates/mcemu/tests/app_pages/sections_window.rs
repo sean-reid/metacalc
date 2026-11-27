@@ -4,6 +4,7 @@
 //! frame is the model's, and a watch on SX_USED, written at the start of each pass, shows which rows ran a
 //! second pass.
 
+use crate::app::Built;
 use crate::list_rig::*;
 use crate::sections_rig::*;
 use crate::shellrig::*;
@@ -60,7 +61,7 @@ fn spelled(n: usize, sum: usize) -> String {
 
 /// A 24 character string whose row, with `indent` spaces before it, is `px` pixels wide.
 fn first24(indent: usize, px: usize) -> String {
-    let spaces = indent * (advance(' ') + 1);
+    let spaces = indent * advance(' ');
     let gaps = indent + WINDOW - 1;
     spelled(WINDOW, px - spaces - gaps)
 }
@@ -279,7 +280,8 @@ fn the_second_pass_runs_for_the_rows_whose_first_24_characters_fit_and_for_no_ot
     }
     assert_eq!(list.sections().cursor, 0);
     assert_eq!(frames, 17 + 3);
-    assert!(doubles >= 60, "{doubles} second passes over the walk");
+    println!("{frames} frames, {doubles} second passes");
+    assert_eq!(doubles, 79, "second passes over the walk");
 }
 
 #[test]

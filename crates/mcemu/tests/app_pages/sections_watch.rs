@@ -224,15 +224,7 @@ const DRAW_NEXT: &[&str] = &[
 ];
 const PUSH_REGIONS: &[&str] = &["APP_TEXT", "FAR_VARS", "LIB_STATE", "SCR_VARS"];
 const PUSH_STORE_REGIONS: &[&str] = &["APP_TEXT", "FAR_VARS", "LIB_STATE", "OP1", "SCR_VARS"];
-const ENTER_REGIONS: &[&str] = &[
-    "APP_COUNTS",
-    "APP_CRC",
-    "APP_LIST",
-    "APP_TEXT",
-    "FAR_VARS",
-    "LIB_STATE",
-    "OP1",
-];
+const ENTER_REGIONS: &[&str] = &["APP_LIST", "APP_TEXT", "FAR_VARS", "LIB_STATE"];
 const LAND_ALL: &[&str] = &[
     "LK_CUR",
     "LK_EMPTY",
