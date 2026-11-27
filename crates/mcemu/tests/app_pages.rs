@@ -175,6 +175,8 @@ mod sections_jump;
 mod sections_land;
 #[path = "app_pages/sections_power.rs"]
 mod sections_power;
+#[path = "app_pages/sections_real_cost.rs"]
+mod sections_real_cost;
 #[path = "app_pages/sections_rig.rs"]
 mod sections_rig;
 #[path = "app_pages/sections_walk.rs"]
