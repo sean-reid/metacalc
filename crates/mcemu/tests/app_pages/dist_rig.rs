@@ -62,6 +62,8 @@ pub fn open_dist(walker: &mut Walker) {
     assert_eq!(kind, KIND_THEOREM, "F2 is pressed on a theorem screen");
     let stage = walker.stage as u8;
     let n = walker.var16("TV_ASSERT");
+    let text = walker.list.run.shell.app.label("APP_TEXT");
+    walker.list.run.m().load_ram(text, &[0xA5; 173]);
     assert!(walker.key(F2, Key::F2), "F2 draws the Dist screen");
     assert_eq!(walker.list.run.top_kind(), KIND_DIST, "the kind");
     let frame = frame_of(walker);

@@ -104,3 +104,18 @@ fn the_first_frame_of_every_assertion_with_pairs_of_pred_and_ring_is_the_models(
         assert_eq!(got, want, "{name}");
     }
 }
+
+#[test]
+#[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn the_most_pairs_on_one_row_of_pred_and_ring_from_the_model() {
+    for name in ["pred", "ring"] {
+        let lib = lib_of(shipped(name));
+        let most = (0..lib.len())
+            .flat_map(|n| rows_of(&lib, n))
+            .map(|row| row.len())
+            .max()
+            .unwrap();
+        let widest = (0..lib.len()).flat_map(|n| widths(&lib, n)).max().unwrap();
+        println!("{name}: at most {most} pairs on a row, the widest pair {widest} px");
+    }
+}

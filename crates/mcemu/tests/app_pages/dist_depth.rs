@@ -3,8 +3,7 @@
 //! stack comes back balanced. Each call is traced with interrupts masked for its length, so that no
 //! handler's pushes are in the figure.
 
-use crate::app::*;
-use crate::dist_lib::{self, SEVEN};
+use crate::dist_lib::{self, EMPTY, SEVEN};
 use crate::dist_rig::*;
 use crate::shellrig::*;
 use crate::theorem_depth::{Trace, kept};
@@ -18,8 +17,9 @@ pub const SCR_REDRAW: u8 = 1;
 pub const SCR_PUSH: u8 = 2;
 pub const SCR_POP: u8 = 3;
 
-/// The Dist screen of `label` with the keys not yet pressed: the theorem screen of it, on `built`.
-fn on_theorem(built: &'static Built, label: &str) -> Walker {
+/// The theorem screen of `label` on the stub OS, with the keys not yet pressed.
+fn on_theorem_stub(label: &str) -> Walker {
+    let built = dist_lib::built();
     let n = index_of(&lib_of(built), label);
     let mut walker = Walker::at(built, None, 0, n);
     walker.mirrored = false;
@@ -42,15 +42,19 @@ pub fn traced(walker: &mut Walker, routine: &str, scan: u8, key: Key, speed: u8)
     t
 }
 
-/// What each routine of the screen did on each path, at `speed`, on the app in `built` with the
-/// assertion `label` of 7 rows and `few` of fewer.
-pub fn figures_on(built: &'static Built, label: &str, speed: u8) -> BTreeMap<String, (u16, u8)> {
+/// What each routine of the screen did on each path, at `speed`, with the theorem screen of an assertion
+/// by label `on_theorem` gives; `label` is the assertion of 7 rows.
+pub fn figures_on(
+    on_theorem: &dyn Fn(&str) -> Walker,
+    label: &str,
+    speed: u8,
+) -> BTreeMap<String, (u16, u8)> {
     let mut found = BTreeMap::new();
     let mut put = |name: &str, t: Trace| {
         let depth = kept(name, &[t], speed, true);
         found.insert(name.to_string(), (depth, t.action));
     };
-    let mut walker = on_theorem(built, label);
+    let mut walker = on_theorem(label);
     walker.list.run.press(F2);
     put(
         "key f2 on the theorem screen",
@@ -79,7 +83,53 @@ pub fn figures_on(built: &'static Built, label: &str, speed: u8) -> BTreeMap<Str
     ] {
         put(name, traced(&mut walker, "dist_key", scan, key, speed));
     }
+    for (name, stub, call) in [
+        ("enter refused at the record", "far_lib_record", 1),
+        ("enter refused at a read", "far_lib_read", 1),
+        ("enter refused at a glyph", "far_lib_glyph", 7),
+    ] {
+        let mut walker = on_theorem(label);
+        walker.list.fail_at(0, stub, call, 0x6A);
+        walker.list.run.press(F2);
+        walker.trace("theorem_key", true, speed);
+        let t = walker.trace("dist_enter", true, speed);
+        assert_eq!(t.action, 0x6A, "{name}: the reader's status");
+        put(name, t);
+        walker.list.run.release(F2);
+        walker.list.run.run(3_000_000);
+    }
+    for (name, stub, call) in [
+        ("draw refused at the record", "far_lib_record", 1),
+        ("draw refused at the label", "far_lib_label", 1),
+        ("draw refused at a read", "far_lib_read", 1),
+        ("draw refused at a glyph", "far_lib_glyph", 3),
+    ] {
+        let mut walker = on_theorem(label);
+        walker.list.run.press(F2);
+        walker.trace("theorem_key", true, speed);
+        walker.trace("dist_enter", true, speed);
+        walker.list.fail_at(0, stub, call, 0x6A);
+        put(name, walker.trace("dist_draw", true, speed));
+        walker.list.run.release(F2);
+        walker.list.run.run(3_000_000);
+        assert!(walker.list.fail_calls(0) >= u16::from(call), "{name}");
+    }
+    let mut walker = on_theorem(EMPTY);
+    walker.list.run.press(F2);
+    walker.trace("theorem_key", true, speed);
+    put(
+        "enter with no pair",
+        walker.trace("dist_enter", true, speed),
+    );
+    put("draw with no pair", walker.trace("dist_draw", true, speed));
+    walker.list.run.release(F2);
+    walker.list.run.run(3_000_000);
     found
+}
+
+/// The figures the header gives for the reference OS.
+pub fn expected_on_the_reference_os() -> BTreeMap<String, (u16, u8)> {
+    expected()
 }
 
 /// The figures the header gives, each as its stack depth and its answer.
@@ -95,6 +145,15 @@ pub fn expected() -> BTreeMap<String, (u16, u8)> {
         ("key f1", (2, SCR_STAY)),
         ("key letter", (2, SCR_STAY)),
         ("key clear", (2, SCR_POP)),
+        ("enter refused at the record", (10, 0x6A)),
+        ("enter refused at a read", (14, 0x6A)),
+        ("enter refused at a glyph", (22, 0x6A)),
+        ("draw refused at the record", (26, 0)),
+        ("draw refused at the label", (24, 0)),
+        ("draw refused at a read", (26, 0)),
+        ("draw refused at a glyph", (26, 0)),
+        ("enter with no pair", (12, 0)),
+        ("draw with no pair", (26, 0)),
     ]
     .map(|(name, figure)| (name.to_string(), figure))
     .into()
@@ -102,10 +161,9 @@ pub fn expected() -> BTreeMap<String, (u16, u8)> {
 
 #[test]
 fn the_routines_return_with_interrupts_and_speed_as_they_were_and_the_stack_balanced() {
-    let built = dist_lib::built();
     let mut seen = BTreeMap::new();
     for speed in [0, 1] {
-        let got = figures_on(built, SEVEN, speed);
+        let got = figures_on(&on_theorem_stub, SEVEN, speed);
         println!("stub, speed {speed}: {got:?}");
         seen.insert(speed, got);
     }

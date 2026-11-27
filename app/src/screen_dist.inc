@@ -1,4 +1,68 @@
-; Kind 9, the Dist screen as Dist in crates/mcui/src/screens/dist.rs draws it.
+; Kind 9, the Dist screen as Dist in crates/mcui/src/screens/dist.rs draws it: the label on the left of the title bar and "dv N" on
+; the right, N being the assertion's disjoint pair count in decimal, the pairs "x,y" set in the math font and wrapped over six rows,
+; "none" centred on row 3 when there is no pair, and five blank keys. UP and DOWN move the first row shown by one, CLEAR goes back to
+; the theorem screen or the too large screen that F2 pushed it from (theorem_key in screen_theorem_key.inc, theorem_push_kind in
+; screen_theorem.inc). Every other key stays.
+;
+; The pairs are the record's first list, which lib.z80 describes as lr_dnpairs and lr_dpairs: two symbol ids a pair, the variables the
+; statement itself requires, which is Lib::dist's list for the model. The second list of a theorem, the pairs of its dummy variables, is
+; not shown. mcpack stores each pair with the lower id first and the list sorted by id (mm/parse.rs), and the screen shows them in that
+; order, which is not the order of their tokens' text.
+;
+; Frame: byte 1 the stage, bytes 2 and 3 the assertion as the theorem screen's frame holds them, bytes 4 and 5 the first row shown. The
+; first row is two bytes: a row holds a pair at least and the pair count is 16 bits, so the rows can pass 255.
+;
+; Layout, as place in crates/mcglyph/src/layout.rs lays the model's pairs out. A pair is its first token, a comma and its second token,
+; a column between each, so it is the width of the three plus 2 columns. The first pair starts row 0 at x 0. A later pair goes 3 columns
+; after the width of the row it follows when that width plus 3 plus its own is at most DIST_WIDTH, 94, else it starts the next row at
+; x 0; a pair wider than the row sits alone. A token is drawn at 1 column (MARGIN) plus its x on text row 1 + r, r being its row less
+; the first row shown, for the six rows from the first. A token's glyph codes and width come from the reader's glyph map: far_lib_glyph
+; writes the codes to FM_SCRATCH and far_ui_text_width measures them, as fm measures a token (lt_measure in fm/statement.inc). Placing a
+; pair takes two of each. Drawing one takes two more far_lib_glyph and three far_ui_text: the first token, the comma one column after
+; it and the second token one column after the comma. fm's tables are in bank C inside fm's own sessions and no fm routine returns a
+; symbol's codes, so the screen calls nothing of fm, closes nothing and leaves selected and loaded what the theorem screen had: CLEAR
+; runs the theorem screen's enter, which loads the assertion and fits it again.
+;
+; The pairs are read DIST_RUN, 16, at a time with far_lib_read into DV_BUF, and the screen keeps no table of them: dist_walk places
+; each pair as it is read. dist_enter walks every pair once with nothing drawn to count the rows, DV_ROWS, which the key needs to know
+; the last first row, the rows less 6 and 0 for fewer. dist_draw walks again, skips the pairs of the rows above the first shown, draws
+; the six rows and stops at the first pair of the row after them, whose widths it has read.
+;
+; Derived state, in APP_TEXT from DV_ASSERT to DV_VARS_END, rebuilt by every enter and every draw: DV_ASSERT the assertion,
+; DV_NPAIRS its pair count, DV_ROWS the rows (dist_enter only), DV_TOP the first row shown (dist_draw), DV_MODE 0 to count or 1
+; to draw, DV_ST the status of dist_open in the draw, DV_ROW the row the walk is on, FFFFh before the first pair, DV_LW the
+; width of that row, DV_LEFT the pairs not yet read, DV_PTR the library offset of the next, DV_BUFN the pairs in DV_BUF not yet
+; taken and DV_BUFP the next of them, DV_WC the comma's width, DV_WA the first token's width, DV_X the x of the pair being
+; placed and, while dist_ink draws it, of the token drawn next, DV_IDA and DV_IDB its symbols, DV_TR its text row, DV_COMMA the
+; comma's glyph code and a 0, DV_RIGHT the title's right text and DV_CUT its left text cut to the room, DV_BUF the run of pairs.
+; DV_LABEL, the label before it is cut, is in FM_SCRATCH + 64, and every glyph read and its terminating 0 are in FM_SCRATCH from
+; its start, which holds nothing between calls. What else writes APP_TEXT while the screen is open or covered: the OS's
+; overwrite of saveSScreen at an auto power down, which takes APP_TEXT, and a notice above the screen, which only the error
+; notice can be, pushed when an enter of this screen fails after a power down or a pop, and which writes its own title; every
+; one of them ends in the enter of this screen, which derives DV_ROWS again, so the key never reads a lost count. The first row
+; lives in the frame and survives both. The key writes bytes 4 and 5 of the frame and nothing else, and writes nothing when it
+; answers SCR_STAY.
+;
+; Registers: each routine below may destroy AF BC DE HL and IX.
+; dist_enter   in: HL = the frame. Counts the rows. out: A = the reader's status, 0 for good, with Z as A: far_lib_record's from
+;              dist_open, far_lib_read's from dist_next, far_lib_glyph's from dist_token. A status makes the shell push the error notice.
+; dist_key     in: A = the key, HL = the frame. out: A = SCR_POP for CLEAR; SCR_REDRAW for DOWN when the first row is under DV_ROWS
+;              less 6, which is 0 for six rows or fewer, and for UP when it is not 0, with the new first row written to the frame;
+;              else SCR_STAY with nothing written.
+; dist_draw    in: HL = the frame. Draws the title, the rows or "none", and the keys. The draw has no way to answer: a refusal of
+;              far_lib_record leaves the right of the title empty and draws no row and no "none", a refusal of far_lib_label an empty
+;              label, a refusal of far_lib_read or far_lib_glyph stops the walk with the rows before that pair drawn and, for a
+;              refused second token, the first token and the comma of that pair drawn too. The next key or enter that is refused
+;              pushes the notice.
+; Interrupts and speed: every routine returns with both as at the call, and the screen writes no port 20h and executes no DI. The
+; reader's calls and the blit turn interrupts off for their own length and give the caller's state back.
+; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, with interrupts masked, measured
+; and asserted exactly in dist_depth.rs on the stub OS and in dist_real.rs on the reference OS: dist_key 2 on every path; dist_enter 22
+; and dist_draw 26; the F2 that pushes the screen 8 in theorem_key. An interrupt that lands in a call adds the handler's bytes.
+; Calls: far_lib_record, far_lib_read, far_lib_glyph and far_lib_label through list_label_text, far_ui_text_width, far_ui_text,
+; far_ui_clear, far_ui_truncate, far_ui_title, far_ui_text_centered, far_ui_soft_keys, and app_stage_block, app_strcpy, app_dec16 and
+; list_room on this page.
+; Cost, in T-states at 6 MHz on the reference OS: COSTS.
 
 DIST_ROWS	.equ 6
 DIST_WIDTH	.equ 94

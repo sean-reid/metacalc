@@ -57,6 +57,8 @@ mod dist_boundary;
 mod dist_depth;
 #[path = "app_pages/dist_errors.rs"]
 mod dist_errors;
+#[path = "app_pages/dist_far.rs"]
+mod dist_far;
 #[path = "app_pages/dist_frames.rs"]
 mod dist_frames;
 #[allow(dead_code)]
@@ -64,6 +66,8 @@ mod dist_frames;
 mod dist_lib;
 #[path = "app_pages/dist_power.rs"]
 mod dist_power;
+#[path = "app_pages/dist_real.rs"]
+mod dist_real;
 #[path = "app_pages/dist_rig.rs"]
 mod dist_rig;
 #[path = "app_pages/dist_screens.rs"]

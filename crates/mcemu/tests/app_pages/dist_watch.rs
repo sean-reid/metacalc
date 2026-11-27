@@ -44,7 +44,8 @@ fn size_of(app: &App, name: &str, label: &str) -> u16 {
     }
 }
 
-/// The name of the region `addr` is in, `stack` for a push or a call just below `sp`, else `other`.
+/// The name of the region `addr` is in, `stack` for a push or a call just below `sp`, else `other`. The
+/// app's stack is above bank B, which the watch covers, so no write is ever named `stack` here.
 fn region(app: &App, addr: u16, sp: u16) -> String {
     for (name, size) in REGIONS {
         let at = app.label(name);
@@ -112,7 +113,7 @@ fn each_routine_writes_only_the_regions_and_variables_the_header_names() {
     walker.mirrored = false;
     walker.list.run.press(F2);
     let key = watched(&mut walker, "theorem_key");
-    assert_eq!(names(&key), set(&["SCR_VARS", "stack"]), "the push's key");
+    assert_eq!(names(&key), set(&["SCR_VARS"]), "the push's key");
     let enter = watched(&mut walker, "dist_enter");
     let draw = watched(&mut walker, "dist_draw");
     walker.list.run.release(F2);
@@ -133,7 +134,7 @@ fn each_routine_writes_only_the_regions_and_variables_the_header_names() {
         (
             "the enter",
             &enter,
-            set(&["APP_TEXT", "FM_SCRATCH", "FAR_VARS", "LIB_STATE", "stack"]),
+            set(&["APP_TEXT", "FM_SCRATCH", "FAR_VARS", "LIB_STATE"]),
         ),
         (
             "the draw",
@@ -146,7 +147,6 @@ fn each_routine_writes_only_the_regions_and_variables_the_header_names() {
                 "LIB_STATE",
                 "UI_FRAME",
                 "UI_VARS",
-                "stack",
             ]),
         ),
     ] {

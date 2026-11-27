@@ -145,8 +145,45 @@ pub const SEVEN: &str = "dvseven";
 pub const NINE: &str = "dvnine";
 pub const TEN: &str = "dvten";
 pub const ALL: &str = "dvall";
+pub const SCROLL: &str = "dvscroll";
 pub const EMPTY: &str = "dvnone";
 pub const SINGLE: &str = "dvone";
+
+/// The pairs a row holds in the scroll case. Ring's fullest row holds 7, which takes pairs of 10 columns or
+/// less, and the font has six tokens as narrow as 3 columns, so 15 such pairs; 6 is the most a long run of
+/// rows holds with the tokens of 4 columns that most variables are.
+pub const PER_ROW: usize = 6;
+
+/// Every pair of the variables no wider than the widest limit that still puts `per_row` pairs on each of
+/// 16 rows, cut after the 16th row: the rows the scroll tests run over.
+pub fn scroll_pairs(per_row: usize) -> Vec<(&'static str, &'static str)> {
+    let order = variables();
+    let mut limits: Vec<usize> = order.iter().map(|v| token_width(v)).collect();
+    limits.sort_unstable();
+    limits.dedup();
+    for limit in limits.into_iter().rev() {
+        let group: Vec<&'static str> = order
+            .iter()
+            .copied()
+            .filter(|v| token_width(v) <= limit)
+            .collect();
+        if group.len() < 6 {
+            continue;
+        }
+        let mut pairs = all_pairs(&group);
+        let rows = rows_for(&pairs);
+        if rows.len() < 17 {
+            continue;
+        }
+        let sixteen: usize = rows[..16].iter().map(Vec::len).sum();
+        pairs.truncate(sixteen);
+        let rows = rows_for(&pairs);
+        if rows.len() == 16 && rows[..15].iter().all(|r| r.len() >= per_row) {
+            return pairs;
+        }
+    }
+    panic!("no group of variables fills 16 rows with {per_row} pairs a row");
+}
 
 /// The cases of the test library.
 pub fn cases() -> Vec<Case> {
@@ -188,6 +225,7 @@ pub fn cases() -> Vec<Case> {
         case(NINE, pool[..9].to_vec()),
         case(TEN, pool[..10].to_vec()),
         case(ALL, all_pairs(&vars[..24])),
+        case(SCROLL, scroll_pairs(PER_ROW)),
         case(EMPTY, Vec::new()),
         case(SINGLE, vec![pool[0]]),
     ]
@@ -200,4 +238,59 @@ pub fn library() -> Vec<u8> {
 pub fn built() -> &'static Built {
     static BUILT: OnceLock<&'static Built> = OnceLock::new();
     BUILT.get_or_init(|| around("dist", &library()))
+}
+
+/// Assertions of 255 symbols in front of the cases of `far_library`, enough to put them past the first
+/// 64 KB of the library.
+pub const FILLERS: usize = 270;
+
+/// The fixture's header and `FILLERS` long assertions followed by the cases that matter for an
+/// offset above 65,535: their records start there and their pairs are read from there.
+pub fn far_library() -> Vec<u8> {
+    let nested = 63;
+    let mut src = String::new();
+    for i in 0..FILLERS {
+        src += &format!(
+            "fill{i} $a |- -. {}ps {}$.\n",
+            "( ph /\\ ".repeat(nested),
+            ") ".repeat(nested)
+        );
+    }
+    let pairs = all_pairs(&variables()[..14]);
+    let cases: Vec<Case> = [(SEVEN, 0), (NINE, 9)]
+        .into_iter()
+        .map(|(label, count)| {
+            let mut list = pairs.clone();
+            if count > 0 {
+                list.truncate(count);
+            } else {
+                let mut seven = Vec::new();
+                for &p in &pairs {
+                    seven.push(p);
+                    if rows_for(&seven).len() == 7 {
+                        break;
+                    }
+                }
+                list = seven;
+            }
+            Case {
+                label: label.into(),
+                pairs: list,
+            }
+        })
+        .collect();
+    src += &source(&cases);
+    crate::fixture::custom(&src)
+}
+
+pub fn far_built() -> &'static Built {
+    static BUILT: OnceLock<&'static Built> = OnceLock::new();
+    BUILT.get_or_init(|| around("dist-far", &far_library()))
+}
+
+/// The library offset of assertion `n`'s record, from the directory.
+pub fn record_offset(library: &[u8], n: usize) -> u32 {
+    let word = |at: usize| u32::from_le_bytes(library[at..at + 4].try_into().unwrap());
+    let directory = word(16) as usize;
+    word(directory + 4 * n)
 }

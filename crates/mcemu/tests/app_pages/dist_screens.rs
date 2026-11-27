@@ -56,7 +56,11 @@ fn f2_on_a_theorem_opens_dist_and_clear_goes_back_to_the_models_refit() {
     leave(&mut walker);
     walker.mirrored = true;
     let after = walker.frame();
-    assert_eq!(after[..4], before[..4], "the statement and the cursor");
+    assert_eq!(
+        after[..6],
+        before[..6],
+        "the assertion, the statement and the cursor"
+    );
     for (scan, key) in [
         (DOWN, Key::Down),
         (UP, Key::Up),
@@ -98,9 +102,7 @@ fn f2_on_the_too_large_screen_opens_dist_and_clear_goes_back() {
             1,
             "{label}: the too large screen again"
         );
-        for (scan, key) in [(F4, Key::F4)] {
-            walker.excursion(scan, key);
-        }
+        walker.excursion(F4, Key::F4);
         walker.back();
     }
     assert_eq!(large, 4, "four ways past a cap");
