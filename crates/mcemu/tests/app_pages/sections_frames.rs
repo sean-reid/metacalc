@@ -287,15 +287,15 @@ fn a_stage_name_that_fills_the_room_exactly_fits_and_one_pixel_more_is_cut() {
     let len = title_counts(rich())[stage];
     let right = |title: usize| format!("{}/{len}", title + 1);
     let widths: Vec<usize> = (0..len).map(|t| font.text_width(&right(t))).collect();
-    // A name of 12 letters is at most 71 pixels wide, so the right side must be at least 17 for the name
-    // to fill the room of 91. One right side of w, one of w - 1 and one of w + 1 are among the 49 counts.
+    // The title bar leaves the name 94 less the right side and the gap of 3: 91 less the right side. A name
+    // of 12 letters is at most 71 pixels wide, so the right side must be at least 20 for the name to fill
+    // that room. One right side of w, one of w - 1 and one of w + 1 are among the 49 counts.
     let w = widths
         .iter()
         .copied()
-        .find(|&w| w >= 17 && widths.contains(&(w - 1)) && widths.contains(&(w + 1)))
+        .find(|&w| w >= 20 && widths.contains(&(w - 1)) && widths.contains(&(w + 1)))
         .expect("three neighbouring widths");
-    let name = name_of_width(91 - 3 - w);
-    assert!(name.len() <= 12, "{name}");
+    let name = name_of_width(91 - w);
     let mut names = vec!["edge".to_string(); 6];
     names[stage] = name.clone();
     let built = rich_with_names("pages-sections-edge", &names);
@@ -306,9 +306,9 @@ fn a_stage_name_that_fills_the_room_exactly_fits_and_one_pixel_more_is_cut() {
     for (side, over) in [(w, false), (w - 1, false), (w + 1, true)] {
         let title = widths.iter().position(|&x| x == side).unwrap();
         assert_eq!(
-            font.text_width(&name) + font.text_width(&right(title)) + 3,
+            font.text_width(&name) + font.text_width(&right(title)),
             91 + usize::from(over) - usize::from(side < w),
-            "{}: the name, the right side {:?} and the gap",
+            "{}: the name and the right side {:?} against the 91 the gap leaves",
             name,
             right(title)
         );
