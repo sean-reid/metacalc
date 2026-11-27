@@ -19,9 +19,16 @@ fn run_after_a_tap() -> Run {
 #[test]
 fn an_on_edge_between_a_release_and_a_press_is_not_counted_as_a_scan() {
     let mut run = run_after_a_tap();
+    assert_eq!(
+        run.interrupts_since_release(),
+        0,
+        "no scan before ON goes down"
+    );
     run.m().press_key(Machine::KEY_ON);
     run.run(60_000);
     run.m().release_key(Machine::KEY_ON);
+    let seen = run.interrupts_since_release();
+    assert!(seen < 5, "{seen} timer interrupts before the second Down");
     run.tap(DOWN);
     run.run(30_000);
     assert_eq!(run.scr_keys(), 2, "both Downs reached scr_key");
@@ -39,6 +46,19 @@ fn a_raw_press_of_the_key_just_let_go_panics() {
 fn a_test_that_allows_it_presses_the_key_just_let_go_raw() {
     let mut run = run_after_a_tap();
     run.allow_raw_press();
+    run.m().press_key(DOWN);
+    run.run(1_000);
+}
+
+#[test]
+#[should_panic(expected = "use Run::press")]
+fn an_opt_out_covers_one_gap_only() {
+    let mut run = run_after_a_tap();
+    run.allow_raw_press();
+    run.m().press_key(DOWN);
+    run.run(1_000);
+    run.m().release_key(DOWN);
+    run.release(DOWN);
     run.m().press_key(DOWN);
     run.run(1_000);
 }

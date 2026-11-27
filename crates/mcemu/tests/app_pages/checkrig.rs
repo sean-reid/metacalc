@@ -129,15 +129,24 @@ impl Run {
 
     /// The machine. While the key last let go with `release` is within its gap, a raw press of it
     /// is ignored by the OS, so it panics here, at the first use after the press; a test about
-    /// that gap calls `allow_raw_press`.
+    /// that gap calls `allow_raw_press` once for each gap. The guard sees only presses made through
+    /// this `Run`'s `m()`: a press through `shell.app.m`, `Shell::press`, `Shell::leave`,
+    /// `Shell::tap_lost`, or through a `&mut Machine` kept across the window is not covered.
     pub fn m(&mut self) -> &mut Machine {
         self.count_interrupts();
         &mut self.shell.app.m
     }
 
-    /// Lets the test press the key it let go without waiting, which the OS ignores inside the gap.
+    /// Lets the test press the key it just let go without waiting, which the OS ignores inside the
+    /// gap. It covers the gap of the last `release` and ends at the next `release` or `press`.
     pub fn allow_raw_press(&mut self) {
         self.raw_press_allowed = true;
+    }
+
+    /// The timer interrupts counted since the last `release`, 0 when none has been made.
+    pub fn interrupts_since_release(&mut self) -> usize {
+        self.count_interrupts();
+        self.released.map_or(0, |(_, seen)| seen)
     }
 
     /// Adds the timer interrupts since the last count to the release's, from the acknowledge the
@@ -249,6 +258,7 @@ impl Run {
         self.m().release_key(scan);
         self.m().clear_port_writes();
         self.released = Some((scan, 0));
+        self.raw_press_allowed = false;
     }
 
     /// Presses `scan`, after running on until five interrupts have followed the last `release` if
@@ -270,6 +280,7 @@ impl Run {
             waited += RELEASE_STEP;
         }
         self.released = None;
+        self.raw_press_allowed = false;
         self.shell.app.m.press_key(scan);
     }
 
