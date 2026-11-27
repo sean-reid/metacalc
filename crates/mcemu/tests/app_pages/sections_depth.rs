@@ -145,11 +145,11 @@ impl Opened {
     }
 
     fn press(&mut self, scan: u8) {
-        self.list.run.m().press_key(scan);
+        self.list.run.press(scan);
     }
 
     fn release(&mut self, scan: u8) {
-        self.list.run.m().release_key(scan);
+        self.list.run.release(scan);
         self.list.run.run(1_500_000);
     }
 }

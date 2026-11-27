@@ -29,7 +29,7 @@ fn enter_with_the_store_seeded(site: &Site, kind: Kind, table: Table) {
         "the counts region is the build's"
     );
     let stack = app.label("SCR_STACK");
-    list.run.m().press_key(F5);
+    list.run.press(F5);
     list.run.run_to_addr("sections_enter", at, WAIT);
     let sp = list.run.m().regs().sp;
     let ret = list.run.m().read_ram(sp, 2);
@@ -78,7 +78,7 @@ fn enter_with_the_store_seeded(site: &Site, kind: Kind, table: Table) {
         frame,
         "the enter wrote no byte of a frame"
     );
-    list.run.m().release_key(F5);
+    list.run.release(F5);
 }
 
 fn every_list(site: &Site) {

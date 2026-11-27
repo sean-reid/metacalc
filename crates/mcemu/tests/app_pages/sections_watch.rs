@@ -487,14 +487,14 @@ fn check(site: &Site) {
         let mut list = (site.list)(kind, table);
         list.run.run(600_000);
         list.run.shell.at_rest();
-        list.run.m().press_key(F5);
+        list.run.press(F5);
         let w = watched(&mut list, "list_key", &LV_NAMES);
         found.push((format!("f5 {name}"), w));
         let w = watched(&mut list, "sections_enter", &SX_NAMES);
         found.push((format!("enter {name}"), w));
         let w = watched(&mut list, "sections_draw", &SX_NAMES);
         found.push((format!("first draw {name}"), w));
-        list.run.m().release_key(F5);
+        list.run.release(F5);
         list.run.run(2_000_000);
     }
     for (name, scan) in [
@@ -505,14 +505,14 @@ fn check(site: &Site) {
         ("letter", LETTER),
     ] {
         let mut list = opened(site, Kind::All, Table::None);
-        list.run.m().press_key(scan);
+        list.run.press(scan);
         let w = watched(&mut list, "sections_key", &SX_NAMES);
         found.push((format!("key {name}"), w));
         if scan != LETTER {
             let w = watched(&mut list, "sections_draw", &SX_NAMES);
             found.push((format!("draw after {name}"), w));
         }
-        list.run.m().release_key(scan);
+        list.run.release(scan);
     }
     for (name, kind, table) in [
         ("all", Kind::All, Table::None),
@@ -524,22 +524,22 @@ fn check(site: &Site) {
         let mut list = (site.list)(kind, table);
         list.run.run(600_000);
         list.run.shell.at_rest();
-        list.run.m().press_key(F5);
+        list.run.press(F5);
         list.run.run(1_500_000);
-        list.run.m().release_key(F5);
+        list.run.release(F5);
         list.run.run(1_500_000);
         let n = list.sections_len();
         list.put_sections(n * 2 / 3, n * 2 / 3 - 5);
-        list.run.m().press_key(ENTER);
+        list.run.press(ENTER);
         watched(&mut list, "sections_key", &SX_NAMES);
         watched(&mut list, "list_enter", &LV_NAMES);
         let w = watched(&mut list, "list_land", &LV_NAMES);
         found.push((format!("land {name}"), w));
-        list.run.m().release_key(ENTER);
+        list.run.release(ENTER);
     }
     for (name, scan) in [("enter", ENTER), ("f1", F1), ("clear", CLEAR)] {
         let mut list = opened(site, Kind::All, Table::None);
-        list.run.m().press_key(scan);
+        list.run.press(scan);
         let w = watched(&mut list, "sections_key", &SX_NAMES);
         found.push((format!("key {name}"), w));
         if scan != CLEAR {
@@ -547,7 +547,7 @@ fn check(site: &Site) {
             let w = watched(&mut list, "list_land", &LV_NAMES);
             found.push((format!("land after {name}"), w));
         }
-        list.run.m().release_key(scan);
+        list.run.release(scan);
     }
     for (name, w) in &found {
         print(&format!("{} {name}", site.name), w);
