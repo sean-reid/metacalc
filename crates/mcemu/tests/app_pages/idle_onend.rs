@@ -124,9 +124,7 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
     assert_eq!(work.up.os.flags, plain.up.os.flags, "flags after ON is up");
     let masks = [work.up.os.mask, plain.up.os.mask];
     if real {
-        // The reference OS's mask reads 9, 11 or 15 here, whichever it is at the moment it is
-        // read, and the two cases are read at different moments.
-        assert!(masks.iter().all(|m| [9, 11, 15].contains(m)), "{masks:?}");
+        assert_eq!(masks, [9, 15], "the mask 200 ms after the release: work, plain");
     } else {
         assert_eq!(masks[0], masks[1], "mask after ON is up");
     }

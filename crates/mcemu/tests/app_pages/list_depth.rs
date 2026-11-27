@@ -253,9 +253,14 @@ pub fn idle_depths(mask: bool, speed: u8, rig: &Rig) -> BTreeMap<&'static str, u
     };
     while trace_one(&mut list, &mut classes) != "fit" {}
     list.run.run(300_000);
-    list.run.m().press_key(F5);
+    let quiet = list.quiet_key();
+    if quiet.is_none() {
+        list.arm_ignored();
+    }
+    let held = quiet.unwrap_or(ONE);
+    list.run.m().press_key(held);
     assert_eq!(trace_one(&mut list, &mut classes), "settled");
-    list.run.m().release_key(F5);
+    list.run.m().release_key(held);
     classes
         .into_iter()
         .map(|(c, calls)| {

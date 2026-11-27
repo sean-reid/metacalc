@@ -133,7 +133,8 @@ fn check(list: &mut Lister, mirror: &Mirror, at: &str) {
 
 /// Types `text` on a fresh frame at the first shown assertion, one press at a time, the cost of each
 /// with its frame checked against `limit`, and returns them.
-fn typed(list: &mut Lister, mirror: &mut Mirror, text: &str, at: &str) -> Vec<u32> {
+fn typed(list: &mut Lister, mirror: &mut Mirror, text: &str, at: &str, pins: &[u32]) -> Vec<u32> {
+    assert_eq!(pins.len(), text.len(), "{at}: a pin for each press");
     let mut costs = Vec::new();
     for (n, c) in text.chars().enumerate() {
         let (cost, answer) = press(list, 12, c.to_ascii_uppercase() as u8);
@@ -143,9 +144,35 @@ fn typed(list: &mut Lister, mirror: &mut Mirror, text: &str, at: &str) -> Vec<u3
         assert_eq!(answer, if shown[7] & 0x0F == n as u8 + 1 { 1 } else { 0 });
         println!("{at}: {:?} press {n} ({c}) cost {cost}", &text[..=n]);
         assert!(cost < BUDGET, "{at}, press {n}: {cost} against {BUDGET}");
+        within(&format!("{at}, press {n}"), cost, pins[n]);
         costs.push(cost);
     }
     costs
+}
+
+/// What the presses of `text` cost under `name`, measured on ring at 6 MHz with their frames.
+fn first_pins(name: &str, text: &str) -> &'static [u32] {
+    match (name, text) {
+        ("All", "s") => &[462_285],
+        ("All", "k") => &[242_064],
+        ("All", "sg") => &[462_285, 307_490],
+        ("Theorems", "s") => &[515_093],
+        ("Theorems", "k") => &[274_691],
+        ("Theorems", "sg") => &[515_093, 352_948],
+        ("Axioms", "s") => &[1_014_452],
+        ("Axioms", "k") => &[279_622],
+        ("Axioms", "sg") => &[1_014_452, 222_814],
+        ("Unchecked, ones", "s") => &[592_975],
+        ("Unchecked, ones", "k") => &[340_820],
+        ("Unchecked, ones", "sg") => &[592_975, 435_246],
+        ("Unchecked, none checked", "s") => &[569_701],
+        ("Unchecked, none checked", "k") => &[332_541],
+        ("Unchecked, none checked", "sg") => &[569_701, 428_057],
+        ("Unchecked, no table", "s") => &[465_722],
+        ("Unchecked, no table", "k") => &[245_259],
+        ("Unchecked, no table", "sg") => &[465_722, 310_886],
+        other => panic!("no pin for {other:?}"),
+    }
 }
 
 fn labels_and_items(list: &Lister) -> (Vec<String>, Vec<usize>) {
@@ -185,12 +212,12 @@ fn on_ring_a_letter_press_with_its_frame_fits_the_budget_under_every_kind() {
             place(&mut list, first);
             let mut mirror = Mirror::new(&labels, items.clone());
             let at = format!("{name}, {text}");
-            let costs = typed(&mut list, &mut mirror, text, &at);
+            let costs = typed(&mut list, &mut mirror, text, &at, first_pins(name, text));
             pins.push((at, costs[0], mirror.missed));
         }
         place(&mut list, first);
         let mut mirror = Mirror::new(&labels, items.clone());
-        let costs = typed(&mut list, &mut mirror, "sg", &format!("{name}, sg"));
+        let costs = typed(&mut list, &mut mirror, "sg", &format!("{name}, sg"), first_pins(name, "sg"));
         pins.push((format!("{name}, sg second"), costs[1], mirror.missed));
     }
     for (what, cost, missed) in &pins {
@@ -206,13 +233,16 @@ fn on_ring_the_worst_prefixes_and_the_walk_back_fit_the_budget() {
     let first = items[0] as u16;
     place(&mut list, first);
     let mut mirror = Mirror::new(&labels, items.clone());
-    let costs = typed(&mut list, &mut mirror, "eleqtrrd", "All, eleqtrrd");
+    let costs = typed(&mut list, &mut mirror, "eleqtrrd", "All, eleqtrrd", &[453_243, 354_331, 325_794, 327_212, 336_952, 339_593, 341_846, 351_502]);
     println!("PIN All, eleqtrrd: {:?}", costs);
     place(&mut list, first);
     let mut mirror = Mirror::new(&labels, items.clone());
-    let costs = typed(&mut list, &mut mirror, "sylan9er", "All, sylan9er");
+    let costs = typed(&mut list, &mut mirror, "sylan9er", "All, sylan9er", &[462_285, 329_537, 332_383, 324_283, 327_033, 321_652, 329_868, 286_023]);
     println!("PIN All, sylan9er: {:?}", costs);
-    for (kind, table) in [(Kind::Axioms, None), (Kind::Unchecked, Some(ones()))] {
+    for (kind, table, walk_pins) in [
+        (Kind::Axioms, None, &[500_831, 462_582, 428_337, 364_930, 368_389, 372_862][..]),
+        (Kind::Unchecked, Some(ones()), &[542_037, 444_274, 456_752, 460_113, 454_803][..]),
+    ] {
         let mut list = ring(table.as_deref());
         list.go_to_kind(kind);
         let (labels, items) = labels_and_items(&list);
@@ -227,10 +257,31 @@ fn on_ring_the_worst_prefixes_and_the_walk_back_fit_the_budget() {
             .expect("a prefix only the last shown label has");
         place(&mut list, items[0] as u16);
         let mut mirror = Mirror::new(&labels, items.clone());
-        let costs = typed(&mut list, &mut mirror, &last[..k], &format!("{kind:?}, {}", &last[..k]));
+        let costs = typed(&mut list, &mut mirror, &last[..k], &format!("{kind:?}, {}", &last[..k]), walk_pins);
         assert_eq!(mirror.cursor, items.len() - 1);
         assert_eq!(mirror.top, items.len() - 5, "the first row walks back");
         println!("PIN {kind:?}, walk back to {}: {costs:?}", &last[..k]);
+    }
+}
+
+fn ending(name: &str) -> u32 {
+    match name {
+        "f2" => 242_732,
+        "clear" => 242_627,
+        "down" => 243_250,
+        "right" => 244_747,
+        "up" => 234_564,
+        other => panic!("{other}"),
+    }
+}
+
+/// The cost of the first "s" and of the three F3 presses after it, from `kind`, on ring with a table of ones.
+fn f3_pins(kind: Kind) -> (u32, [u32; 3]) {
+    match kind {
+        Kind::All => (496_044, [564_898, 1_067_652, 632_866]),
+        Kind::Theorems => (548_852, [1_067_652, 632_866, 496_975]),
+        Kind::Axioms => (1_048_160, [607_678, 496_975, 564_898]),
+        Kind::Unchecked => (592_975, [496_975, 564_898, 1_067_652]),
     }
 }
 
@@ -243,8 +294,9 @@ fn on_ring_the_keys_that_end_a_find_and_f3_with_a_prefix_fit_the_budget() {
     for (name, key) in [("f2", 8u8), ("clear", 6), ("down", 2), ("right", 4), ("up", 1)] {
         place(&mut list, first);
         let mut mirror = Mirror::new(&labels, items.clone());
-        typed(&mut list, &mut mirror, "d", name);
+        typed(&mut list, &mut mirror, "d", name, &[463_151]);
         let (cost, answer) = press(&mut list, key, 0);
+        within(name, cost, ending(name));
         assert_eq!(answer, 1, "{name}");
         assert_eq!(list.frame_now()[7], 0, "{name}: the find is gone");
         println!("PIN {name} ending a find: {cost}");
@@ -256,10 +308,12 @@ fn on_ring_the_keys_that_end_a_find_and_f3_with_a_prefix_fit_the_budget() {
         let (labels, items) = labels_and_items(&list);
         let mut mirror = Mirror::new(&labels, items.clone());
         place(&mut list, items[0] as u16);
-        typed(&mut list, &mut mirror, "s", "before F3");
+        let (first, steps) = f3_pins(kind);
+        typed(&mut list, &mut mirror, "s", "before F3", &[first]);
         let mut kinds = vec![kind];
-        for _ in 0..3 {
+        for step in 0..3 {
             let (cost, answer) = press(&mut list, 9, 0);
+            within(&format!("F3 from {kind:?}, step {step}"), cost, steps[step]);
             assert_eq!(answer, 1);
             let next = match kinds.last().unwrap() {
                 Kind::All => Kind::Theorems,

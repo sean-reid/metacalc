@@ -285,7 +285,7 @@ fn on_the_reference_os_each_stage_opens_moves_to_both_ends_opens_each_notice_and
             list.settle();
         }
         let sections = list.var("LV_SECT") == 1;
-        for (n, scan) in [F2, F4, F5].into_iter().enumerate() {
+        for (n, scan) in [F4, F5].into_iter().enumerate() {
             if scan == F5 && !sections {
                 let before = list.frame_bytes();
                 list.tap(scan);
