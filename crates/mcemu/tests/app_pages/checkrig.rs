@@ -21,6 +21,11 @@ const HOOKS_AT: u16 = 0xBC10;
 const ON_FLAGS: u16 = 0x89F9;
 /// The most T-states one wait for a frame or a key may take.
 pub const WAIT: u32 = 600_000_000;
+/// The scans with no key down after which the OS takes the key it took last again, the most T-states
+/// those take (46 ms at 15 MHz is 700,000), and the steps the wait for them runs in.
+const RELEASE_SCANS: usize = 5;
+const RELEASE_LIMIT: u32 = 1_200_000;
+const RELEASE_STEP: u32 = 3_000;
 /// The steps between two frames of the screen, CKS_EVERY in screen_checking.inc.
 pub const EVERY: usize = 32;
 
@@ -29,6 +34,8 @@ pub struct Run {
     pub built: &'static Built,
     /// Whether the machine runs the reference OS, whose variables are read from its symbol table.
     pub real: bool,
+    /// The key last let go with `release`, until another key is pressed.
+    released: Option<u8>,
 }
 
 /// Puts the counters and hooks of the kernel's entries in a machine the app is installed on.
@@ -65,6 +72,7 @@ impl Run {
             shell,
             built,
             real: false,
+            released: None,
         }
     }
 
@@ -75,6 +83,7 @@ impl Run {
             shell,
             built,
             real: true,
+            released: None,
         }
     }
 
@@ -184,7 +193,7 @@ impl Run {
     /// Holds `scan` down until the shell hands it to scr_key, then lets go.
     pub fn tap(&mut self, scan: u8) {
         let code = u16::from(key_code(scan));
-        self.m().press_key(scan);
+        self.press(scan);
         loop {
             self.run_to("scr_key", WAIT);
             if self.m().regs().af >> 8 == code {
@@ -192,8 +201,39 @@ impl Run {
             }
             self.m().resume(1);
         }
-        self.m().release_key(scan);
+        self.release(scan);
         self.m().resume(1);
+    }
+
+    /// Lets go of `scan`. The OS takes the same key again only after its fifth scan with no key
+    /// down, so a `press` of that key first runs on until five interrupts have followed the release;
+    /// the frames the key draws are caught after the tap returns, which running on here would pass.
+    /// A test about the gap after a release calls `Machine::release_key` itself.
+    pub fn release(&mut self, scan: u8) {
+        self.m().release_key(scan);
+        self.m().clear_port_writes();
+        self.released = Some(scan);
+    }
+
+    /// Presses `scan`, after running on until five interrupts have followed the last `release` if
+    /// that let go of the same key, which is when the OS has forgotten it. Another key is taken at once.
+    pub fn press(&mut self, scan: u8) {
+        let (mut seen, mut waited) = (0, 0);
+        while self.released == Some(scan) {
+            let (writes, full) = self.m().take_port_writes_or_full();
+            seen += writes.iter().filter(|w| (w.port, w.value) == (3, 0x08)).count();
+            if full || seen >= RELEASE_SCANS {
+                break;
+            }
+            assert!(
+                waited < RELEASE_LIMIT,
+                "{seen} interrupts in {waited} T-states after the release, expected {RELEASE_SCANS}"
+            );
+            self.run(RELEASE_STEP);
+            waited += RELEASE_STEP;
+        }
+        self.released = None;
+        self.m().press_key(scan);
     }
 
     /// Runs `t` T-states.

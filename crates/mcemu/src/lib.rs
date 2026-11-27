@@ -329,6 +329,12 @@ impl Machine {
         writes
     }
 
+    /// `take_port_writes` for a caller that has a use for a full record: the flag says the record
+    /// filled and the writes after that were dropped.
+    pub fn take_port_writes_or_full(&mut self) -> (Vec<PortWrite>, bool) {
+        self.calc.take_port_writes()
+    }
+
     /// Forgets the port writes recorded so far, however many.
     pub fn clear_port_writes(&mut self) {
         self.calc.take_port_writes();
