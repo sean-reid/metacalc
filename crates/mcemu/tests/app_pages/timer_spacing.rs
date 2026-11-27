@@ -14,6 +14,9 @@ pub struct Entry {
     pub clock: u32,
     /// T-states from the entry until interrupts are on again.
     pub off: u32,
+    /// The most bytes the handler had on the stack at one time from the entry until interrupts were
+    /// on again, the return address the interrupt pushed included.
+    pub depth: u16,
     /// The writes to ports 1, 3 and 4 the handler made, in order.
     pub ports: Vec<PortWrite>,
 }
@@ -30,14 +33,22 @@ pub fn entries(rig: &mut Rig, n: usize) -> Vec<Entry> {
         let clock = rig.m().clock();
         rig.m().clear_port_writes();
         let mut off = 0;
+        let entry_sp = rig.m().regs().sp;
+        let mut depth = 2;
         while rig.m().regs().iff1 == 0 {
             assert!(off < 1_000_000, "interrupts stayed off for {off} T-states");
             rig.m()
                 .run_to(BASE, NEVER, if off < 3_000 { 4 } else { 256 });
             off = rig.m().clock().wrapping_sub(clock);
+            depth = depth.max(entry_sp.saturating_sub(rig.m().regs().sp) + 2);
         }
         let ports = rig.m().take_port_writes();
-        found.push(Entry { clock, off, ports });
+        found.push(Entry {
+            clock,
+            off,
+            depth,
+            ports,
+        });
     }
     found
 }
@@ -180,10 +191,11 @@ twin!(
 fn show(real: bool, mhz: f64, what: &str, found: &[Entry]) {
     for (i, e) in found.iter().enumerate() {
         println!(
-            "{} OS {mhz} MHz, {what}, interrupt {i}: off {} T-states ({:.1} us at {mhz}); at {}; writes: {}",
+            "{} OS {mhz} MHz, {what}, interrupt {i}: off {} T-states ({:.1} us at {mhz}), {} bytes of stack; at {}; writes: {}",
             name(real),
             e.off,
             f64::from(e.off) / mhz,
+            e.depth,
             spans(e),
             writes(e)
         );
@@ -198,8 +210,15 @@ const KEY: Figure = [5_866.0, 6_117.0];
 const COUNTING: Figure = [1_115.0, 1_138.0];
 const CLEARING: Figure = [1_282.0, 1_305.0];
 const ON_EDGE: Figure = [280_875.0, 280_875.0];
-/// Where the whole-keypad check falls in a handler with no ON, in T-states from the entry.
+/// Where the whole-keypad check falls in a handler with no ON, in T-states from the entry. The check
+/// allows 3 percent, not the handlers' 2: the stub's first delay moves in steps of 30 T-states at
+/// 15 MHz, and the steps either side of 577 are 564 and 594.
 const KEYPAD_AT: Figure = [582.0, 577.0];
+
+/// The most bytes of stack a handler holds with no ON edge, the interrupt's return address
+/// included: the stub's is that and the call into the scan, the reference OS saves registers.
+const STUB_STACK: u16 = 4;
+const REFERENCE_STACK: u16 = 10;
 
 const ACK: [(u8, u8); 3] = [(3, 0x08), (3, 0x09), (3, 0x0B)];
 const IDLE_WRITES: [(u8, u8); 5] = [(1, 0x00), (1, 0xFF), ACK[0], ACK[1], ACK[2]];
@@ -285,6 +304,13 @@ fn check(real: bool, speed: usize, what: &str, found: &[Entry], kinds: &[Kind]) 
             name(real)
         );
         if !matches!(kind, Kind::OnDown | Kind::OnUp) {
+            let stack = if real { REFERENCE_STACK } else { STUB_STACK };
+            assert_eq!(
+                e.depth,
+                stack,
+                "{} OS, {what}, interrupt {i} ({kind:?}): bytes of stack",
+                name(real)
+            );
             let first = f64::from(e.ports[0].clock.wrapping_sub(e.clock));
             let at = KEYPAD_AT[speed];
             assert!(

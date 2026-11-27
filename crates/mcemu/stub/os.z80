@@ -104,7 +104,8 @@ JUNK_HL2          .equ $A127
 ; port 3: 08h, then 09h (0Ah for ON), then the mask as it was read. Without ON it makes the
 ; reference OS's one check of the whole keypad (port 1 at 00h, read, port 1 at FFh) and scans the
 ; eight groups only if a key is down, writing FFh to port 1 after each. Keeps the main registers
-; and IX and IY, and the speed; the shadow set is left changed.
+; and IX and IY, and the speed; the shadow set is left changed. Uses 4 bytes of stack at most with
+; no ON edge, the interrupt's return address and one call.
 ; The handler takes as long with interrupts off as the reference OS's, within 2 percent, as
 ; timer_spacing.rs measures in T-states from the vector to EI. The reference OS's figures, at 6 MHz
 ; and at 15: 1155 and 1178 with no key down, 5866 and 6117 with a key down, 1115 and 1138 for each of
@@ -206,9 +207,10 @@ pad_key:       .dw PAD_KEY_6, PAD_KEY_15
 
 ; Looks at the whole keypad as the reference OS does, and if a key is down scans the eight groups
 ; and sets kbdScanCode to the one key that is down if it is not the one taken last, tracked in
-; kbdKey. Two or more keys down change nothing until one is up. The last key is kept, and so is
-; kbdScanCode, until RELEASE_SCANS scans in a row have found no key down (about 40 ms after a
-; release, a scan being 9.2 ms); that scan clears both. The same key pressed again before then is
+; kbdKey. Two or more keys down change neither kbdKey nor kbdScanCode. The last key is kept, and
+; so is kbdScanCode, until RELEASE_SCANS scans in a row have found no key down (about 40 ms after a
+; release, a scan being 9.2 ms); that scan clears both. Any scan with a key down, two included,
+; starts the count again. The same key pressed again before then is
 ; not taken, and a different key is taken at once. Ends in a delay by the class of the scan.
 scan_keys:
 	ld de,0
@@ -256,11 +258,11 @@ scan_up:
 	in a,(PORT_KEYS)
 	ld a,$FF
 	out (PORT_KEYS),a
+	ld a,RELEASE_SCANS
+	ld (kbdRelease),a
 	ld a,d
 	dec a
 	jr nz,scan_pad_key
-	ld a,RELEASE_SCANS
-	ld (kbdRelease),a
 	ld a,(kbdKey)
 	cp l
 	jr z,scan_pad_key
