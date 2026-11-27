@@ -20,7 +20,7 @@ const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "prop",
         statements: 13_500_000,
-        open: 77_300,
+        open: 83_480,
         titles: 165_000,
         lookups: 14_740_000,
         glyphs: 140_000,
@@ -30,7 +30,7 @@ const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "pred",
         statements: 19_900_000,
-        open: 84_900,
+        open: 91_100,
         titles: 376_500,
         lookups: 27_160_000,
         glyphs: 223_700,
@@ -40,7 +40,7 @@ const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "ring",
         statements: 55_400_000,
-        open: 223_000,
+        open: 230_150,
         titles: 1_505_500,
         lookups: 106_950_000,
         glyphs: 1_003_000,

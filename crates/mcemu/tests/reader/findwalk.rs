@@ -207,7 +207,7 @@ fn only_a_candidate_below_the_best_so_far_is_tested_against_the_bitmap() {
     );
     assert_eq!(reads_of(&rising, EVERY).0, 0);
     let all_axioms = strings(&rising);
-    let mut rig = opened(&library(&all_axioms, Some(&vec![true; 6])));
+    let mut rig = opened(&library(&all_axioms, Some(&[true; 6])));
     let (n, reads) = bitmap_reads(&mut rig, (0, 6), 0, 6, AXIOM);
     assert_eq!(
         (n, reads),

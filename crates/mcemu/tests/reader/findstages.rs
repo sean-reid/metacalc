@@ -66,7 +66,7 @@ pub fn staged_at(stage: Stage, junk: Option<u8>, ports: Option<(u8, u8, bool)>) 
             rig.poke(rig.label("LR_LENGTH"), &at.to_le_bytes()[..3]);
         }
         Stage::CutKinds => {
-            let end = rig.state_word("LR_LENGTH", 3) as u32;
+            let end = rig.state_word("LR_LENGTH", 3);
             rig.poke(rig.label("LS_KD"), &end.to_le_bytes()[..3]);
         }
         _ => {}

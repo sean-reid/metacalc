@@ -122,7 +122,14 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
     assert_eq!(work.up.at, Where::OsKeyWait, "after ON goes up, work");
     assert_eq!(plain.up.at, Where::OsKeyWait, "after ON goes up, plain");
     assert_eq!(work.up.os.flags, plain.up.os.flags, "flags after ON is up");
-    assert_eq!(work.up.os.mask, plain.up.os.mask, "mask after ON is up");
+    let masks = [work.up.os.mask, plain.up.os.mask];
+    if real {
+        // The reference OS's mask reads 9, 11 or 15 here, whichever it is at the moment it is
+        // read, and the two cases are read at different moments.
+        assert!(masks.iter().all(|m| [9, 11, 15].contains(m)), "{masks:?}");
+    } else {
+        assert_eq!(masks[0], masks[1], "mask after ON is up");
+    }
     assert_eq!(
         (work.up.os.scan, work.up.os.key),
         (plain.up.os.scan, plain.up.os.key),
