@@ -353,9 +353,33 @@ fn on_the_reference_os_the_slowest_move_on_ring_is_over_the_budget_and_costs_thi
         );
     }
     p.put(at + 4, at);
-    for (name, t) in p.profile(6) {
+    let profile = p.profile(6);
+    for (name, t) in &profile {
         println!("ROM profile {name}: {t}");
     }
+    let (_, blit) = p.frame_cost();
+    let of = |name: &str, from: usize| -> u32 {
+        profile[..profile.len() - 1]
+            .iter()
+            .enumerate()
+            .filter(|(i, (n, _))| n == name && *i >= from)
+            .map(|(_, (_, t))| t)
+            .sum()
+    };
+    let (clear, name_cut, title_bar) = (profile[0].1, profile[1].1, profile[2].1);
+    let keys = of("far_ui_soft_keys", 0);
+    let (reads, glyphs, cuts, rows) = (
+        of("far_lib_title", 3),
+        of("ll_glyph", 3),
+        of("far_ui_truncate", 3),
+        of("far_ui_list_row", 3),
+    );
+    let own = worst - (blit + clear + name_cut + title_bar + keys + reads + glyphs + cuts + rows);
+    println!(
+        "ROM worst move {worst} = blit {blit} + clear {clear} + title bar {} (name cut {name_cut}, far_ui_title {title_bar}) + soft keys {keys} + six far_ui_list_row {rows} + six far_lib_title {reads}; what the screen adds itself {}: the glyph conversion {glyphs}, the six cuts {cuts}, the rest {own} (key, name and count, indent, loop)",
+        name_cut + title_bar,
+        glyphs + cuts + own
+    );
 }
 
 #[test]
