@@ -26,7 +26,7 @@ fn powered_down(settled: bool) -> (Lister, [u8; 6]) {
     let before = list.frame_bytes();
     list.run.shell.power_down();
     let (blits, fits) = (list.run.blits(), list.fm_calls()[2]);
-    list.tap(LETTER);
+    list.tap_ignored();
     let frame = list.run.next_blit();
     list.seen = (list.var("LV_PREVIEW"), list.var("LV_COUNT"));
     list.run.run(2_000);
@@ -120,7 +120,7 @@ fn a_power_down_on_a_list_with_marks_and_sections_derives_the_table_and_the_sect
         "the power down wrote over LV_TABLE"
     );
     assert_ne!(list.var("LV_SECT"), 1, "and over LV_SECT");
-    list.tap(LETTER);
+    list.tap_ignored();
     let frame = list.run.next_blit();
     list.run.run(2_000);
     assert_eq!(

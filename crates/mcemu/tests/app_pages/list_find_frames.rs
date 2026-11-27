@@ -113,17 +113,24 @@ fn hits_below_above_and_among_the_last_four_land_as_the_model_lands_them() {
     prefixes.sort();
     prefixes.dedup();
     for (kind, table) in cases() {
-        let mut list = open_under(1, kind, table);
-        let items = list.items();
         let (mut below, mut above, mut last_four, mut own, mut misses) = (0, 0, 0, 0, 0);
+        for stage in 0..3 {
+        let mut list = open_under(stage, kind, table);
+        let items = list.items();
         for p in &prefixes {
             list.f2();
             let (old_cursor, old_top) = (list.pos().cursor, list.pos().top);
-            list.type_text(p);
+            let (head, last) = p.split_at(p.len() - 1);
+            if !head.is_empty() {
+                list.type_text(head);
+            }
+            let held = (list.pos().cursor, list.pos().top);
+            list.press_char(last.chars().next().unwrap());
+            list.same_find(p);
             let pos = list.pos();
             if list.find().missed {
                 misses += 1;
-                assert_eq!((pos.cursor, pos.top), (old_cursor, old_top), "{p}: a miss");
+                assert_eq!((pos.cursor, pos.top), held, "{p}: a miss");
                 continue;
             }
             assert!(first_hit(&labels, &items, p, 0).is_some());
@@ -135,13 +142,12 @@ fn hits_below_above_and_among_the_last_four_land_as_the_model_lands_them() {
                 assert_eq!(pos.top, pos.len - 5, "{kind:?} {p}: the first row walks back");
             }
         }
+        }
         println!(
             "{kind:?} table {table}: below {below}, above {above}, last four {last_four}, own row {own}, misses {misses}"
         );
         assert!(below >= 1 && above >= 1 && own >= 1 && misses >= 1, "{kind:?}");
-        if kind != Kind::Axioms {
-            assert!(last_four >= 1, "{kind:?}: {last_four}");
-        }
+        assert!(last_four >= 1, "{kind:?}: {last_four}");
     }
 }
 
@@ -334,7 +340,7 @@ fn an_auto_power_down_with_a_prefix_keeps_it_through_the_refresh() {
         }
         let before = list.find();
         list.run.shell.power_down();
-        list.tap(PLUS);
+        list.tap_ignored();
         let frame = list.run.next_blit();
         list.run.run(2_000);
         assert_eq!(list.find(), before);

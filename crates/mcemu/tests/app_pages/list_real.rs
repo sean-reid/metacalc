@@ -254,7 +254,7 @@ fn at_df_rng() -> (Lister, usize) {
     );
     list.run.m().load_ram(count, &[0]);
     list.run.m().load_ram(preview, &[PENDING]);
-    list.tap(LETTER);
+    list.tap_ignored();
     (list, n)
 }
 

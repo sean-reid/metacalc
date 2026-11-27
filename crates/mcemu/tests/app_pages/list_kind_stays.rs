@@ -9,6 +9,9 @@ use crate::ui_support::same_frame;
 use mcui::{Key, Kind};
 use std::collections::BTreeSet;
 
+/// Stands for the press the list ignores, which has no scancode of its own.
+const IGNORED: u8 = 0;
+
 const HEADER: &str = include_str!("../../../../app/src/screen_list_key.inc");
 
 /// The header's one sentence about a stay under a kind, its comment lines joined.
@@ -89,7 +92,7 @@ fn powered_down(kind: Kind, settled: bool) {
     assert_eq!(before[6], code(kind), "{at}");
     list.run.shell.power_down();
     let blits = list.run.blits();
-    list.tap(LETTER);
+    list.tap_ignored();
     let frame = list.run.next_blit();
     list.seen = (list.var("LV_PREVIEW"), list.var("LV_COUNT"));
     list.run.run(2_000);
@@ -163,9 +166,13 @@ pub fn nothing_below_ram(list: &mut Lister, at: &str, walk: bool, open: impl FnO
         list.settle();
         quiet(list, "an arrow and the idle calls");
     }
-    for scan in [F2, F4, F5, LETTER] {
+    for scan in [F2, F4, F5, IGNORED] {
         let notice = matches!(scan, F2 | F4) || (scan == F5 && list.var("LV_SECT") == 1);
-        list.tap(scan);
+        if scan == IGNORED {
+            list.tap_ignored();
+        } else {
+            list.tap(scan);
+        }
         list.run.run(600_000);
         if notice {
             assert_eq!(list.run.top_kind(), KIND_NOTICE, "{at}: {scan:02X}");

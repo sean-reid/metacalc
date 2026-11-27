@@ -7,8 +7,6 @@ use crate::shellrig::*;
 use mcui::{Key, Kind, State, Status};
 
 pub const ALPHA: u8 = 0x30;
-/// The plus key, which the app gives no code: a key the list ignores.
-pub const PLUS: u8 = 0x0A;
 
 /// The scancode of the key that carries each letter, A to Z.
 const LETTER_KEYS: [u8; 26] = [
@@ -55,6 +53,33 @@ pub struct Find {
 }
 
 impl Lister {
+    /// A press the list ignores: 2nd, which the OS takes, then a key after it, which reaches scr_key as
+    /// none. Returns when scr_key has taken it.
+    pub fn tap_ignored(&mut self) {
+        let before = self.run.scr_keys();
+        self.run.m().press_key(SECOND);
+        self.run.run(120_000);
+        self.run.m().release_key(SECOND);
+        self.run.run(480_000);
+        assert_eq!(self.run.scr_keys(), before, "2nd is no key");
+        self.run.m().press_key(ONE);
+        loop {
+            self.run.run_to("scr_key", LIMIT);
+            if self.run.m().regs().af >> 8 == 0 {
+                break;
+            }
+            self.run.m().resume(1);
+        }
+        self.run.m().release_key(ONE);
+        self.run.m().resume(100);
+        let mut waited = 0;
+        while self.run.scr_keys() == before && waited < 20_000 {
+            self.run.m().resume(100);
+            waited += 100;
+        }
+        assert_eq!(self.run.scr_keys(), before + 1, "the key reached scr_key as none");
+    }
+
     /// Types `c` on the keypad and compares the frame with the model's after the model has `c`.
     /// Returns whether a frame was drawn.
     pub fn press_char(&mut self, c: char) -> bool {
@@ -258,6 +283,7 @@ pub fn letter_may_write(list: &mut Lister) -> Vec<(u16, u16)> {
         (b.label("LV_CUT"), 18),
         (b.label("FM_SCRATCH"), 256),
         (b.label("LIB_STATE"), b.label("LIB_STATE_SIZE")),
+        (b.label("LIB_BOUNCE"), b.label("LIB_BOUNCE_SIZE")),
         (b.label("KD_SCRATCH"), b.label("KD_SCRATCH_SIZE")),
         (b.label("FAR_VARS"), b.label("FAR_VARS_SIZE")),
         (0x8478, 0x48),

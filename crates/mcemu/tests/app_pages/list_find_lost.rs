@@ -55,20 +55,16 @@ fn a_letter_under_unchecked_after_the_table_was_lost_lands_as_it_does_with_no_ta
     let labels = labels_of(built);
     let mut landed = 0;
     for how in ["deleted", "magic", "size"] {
-        let mut list = Lister::open(built, Some((&data, &status)), 0);
-        list.settle();
-        list.go_to_kind(Kind::Unchecked);
-        assert_eq!(list.pos().len, n - CHECKED.len(), "{how}: the table hides");
-        assert_eq!(list.var("LV_TABLE"), 1);
-        lose(&mut list, how, &data);
-        let mut old = list.replayed();
-        old.idle();
-        list.status = Vec::new();
-        list.ui = list.replayed();
-        list.title_from = Some(old);
-        list.ui.idle();
         for &hidden in &CHECKED {
-            list.key(F2, Key::F2);
+            let mut list = Lister::open(built, Some((&data, &status)), 0);
+            list.settle();
+            list.go_to_kind(Kind::Unchecked);
+            assert_eq!(list.pos().len, n - CHECKED.len(), "{how}: the table hides");
+            assert_eq!(list.var("LV_TABLE"), 1);
+            lose(&mut list, how, &data);
+            list.status = Vec::new();
+            list.ui = list.replayed();
+            list.ui.idle();
             let label = labels[hidden].clone();
             list.type_text(&label);
             let frame = list.frame_bytes();
@@ -78,10 +74,9 @@ fn a_letter_under_unchecked_after_the_table_was_lost_lands_as_it_does_with_no_ta
                 "{how}: {label} is on the cursor, though the table hid it"
             );
             assert!(!list.find().missed);
+            assert_eq!(list.var("LV_TABLE"), 1, "{how}: the list never saw the loss");
             landed += 1;
         }
-        assert_eq!(list.var("LV_TABLE"), 1, "{how}: the list never saw the loss");
-        assert!(list.stale_titles > 0, "{how}: the title keeps the old counts");
     }
     assert_eq!(landed, 15);
 }

@@ -43,12 +43,21 @@ fn open_list(kind: Kind, table: bool) -> Lister {
 /// The depth of each arm under `kind`, with interrupts masked for the call or as the app runs.
 pub fn depths(kind: Kind, table: bool, mask: bool, speed: u8) -> BTreeMap<&'static str, u16> {
     let mut found = BTreeMap::new();
-    for arm in arms() {
+    for mut arm in arms() {
+        if arm.name == "letter, later" && kind == Kind::Axioms {
+            arm.typed = "a";
+            arm.key = 0x2A;
+        }
         let mut list = open_list(kind, table);
         list.type_settled(arm.typed);
         list.run.m().press_key(arm.key);
         let t = list.trace("list_key", mask, speed);
         list.run.m().release_key(arm.key);
+        if arm.name == "letter, later" {
+            let find = list.frame_now()[7];
+            assert_eq!(find & 0x80, 0, "{kind:?}: the second letter is a hit");
+            assert_eq!(find & 0x0F, 2);
+        }
         assert_eq!(t.action, arm.answer, "{kind:?} {}: the answer", arm.name);
         let depth = kept(&format!("{kind:?} {}", arm.name), &[t], mask, false, speed);
         found.insert(arm.name, depth);
@@ -86,11 +95,11 @@ fn every_arm_keeps_interrupts_and_speed_and_writes_these_depths_under_each_kind(
 fn expected(kind: Kind, table: bool) -> BTreeMap<&'static str, u16> {
     let (letter_first, letter_later, miss, after, ninth, f2p, f2n, clr, arrow, right, f3) =
         match (kind, table) {
-            (Kind::All, _) => (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-            (Kind::Theorems, _) => (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-            (Kind::Axioms, _) => (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-            (Kind::Unchecked, true) => (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-            (Kind::Unchecked, false) => (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+            (Kind::All, _) => (20, 20, 20, 4, 4, 4, 4, 4, 6, 6, 24),
+            (Kind::Theorems, _) => (20, 20, 20, 4, 4, 4, 4, 4, 18, 18, 24),
+            (Kind::Axioms, _) => (20, 20, 20, 4, 4, 4, 4, 4, 18, 18, 20),
+            (Kind::Unchecked, true) => (26, 26, 22, 4, 4, 4, 4, 4, 24, 24, 22),
+            (Kind::Unchecked, false) => (20, 20, 20, 4, 4, 4, 4, 4, 6, 6, 20),
         };
     BTreeMap::from([
         ("letter, first", letter_first),

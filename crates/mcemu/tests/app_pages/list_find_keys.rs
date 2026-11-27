@@ -87,7 +87,7 @@ fn a_character_the_model_refuses_stays_and_writes_nothing() {
         for b in refused {
             let mut list = typed_p(kind, table);
             let before = list.frame_now();
-            assert_eq!(before[7], 1, "{kind:?}: one character typed");
+            assert_eq!(before[7] & 0x0F, 1, "{kind:?}: one character typed");
             let mut done = None;
             let writes = writes_of(&mut list, |l| done = Some(l.call_key(12, b)));
             assert_eq!(done.unwrap().status(), 0, "{kind:?} {b:02X}: SCR_STAY");
@@ -189,7 +189,7 @@ fn a_library_with_no_label_order_section_keeps_the_notice_on_f2_and_ignores_lett
             }
         });
         assert!(writes.is_empty(), "letters write nothing: {writes:02X?}");
-        assert_eq!(list.run.peek(list.frame_addr(), 16), before);
+        assert_eq!(list.frame_now(), before);
         list.tap(F2);
         let frame = list.run.next_blit();
         list.run.run(300_000);

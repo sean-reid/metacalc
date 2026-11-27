@@ -180,12 +180,12 @@ fn clear_goes_back_to_libraries_with_the_stages_row_where_it_was() {
 }
 
 #[test]
-fn letters_digits_and_a_modifier_do_nothing_on_the_list() {
+fn a_modifier_and_the_key_after_it_do_nothing_on_the_list() {
     for built in [with_library(), titled()] {
         let mut list = moved_list(built, 0);
         let (frame, state) = (list.frame_bytes(), list.var("LV_PREVIEW"));
         let blits = list.run.blits();
-        for scans in [&[LETTER][..], &[ONE], &[SECOND, ONE]] {
+        for scans in [&[SECOND, ONE][..]] {
             let before = list.run.scr_keys();
             if let [modifier, last] = scans {
                 for (n, &scan) in [*modifier, *last].iter().enumerate() {
