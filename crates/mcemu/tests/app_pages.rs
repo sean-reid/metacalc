@@ -43,6 +43,8 @@ mod checking_returns;
 mod checking_rows;
 #[path = "app_pages/checkrig.rs"]
 mod checkrig;
+#[path = "app_pages/checkrig_wait.rs"]
+mod checkrig_wait;
 #[path = "app_pages/cost_stages.rs"]
 mod cost_stages;
 #[path = "app_pages/counts.rs"]

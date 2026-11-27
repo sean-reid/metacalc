@@ -34,8 +34,10 @@ pub struct Run {
     pub built: &'static Built,
     /// Whether the machine runs the reference OS, whose variables are read from its symbol table.
     pub real: bool,
-    /// The key last let go with `release`, until another key is pressed.
-    released: Option<u8>,
+    /// The key last let go with `release` and the timer interrupts since, until another key is pressed.
+    released: Option<(u8, usize)>,
+    /// Whether the test presses the key it just let go raw, to test the gap.
+    raw_press_allowed: bool,
 }
 
 /// Puts the counters and hooks of the kernel's entries in a machine the app is installed on.
@@ -73,6 +75,7 @@ impl Run {
             built,
             real: false,
             released: None,
+            raw_press_allowed: false,
         }
     }
 
@@ -84,6 +87,7 @@ impl Run {
             built,
             real: true,
             released: None,
+            raw_press_allowed: false,
         }
     }
 
@@ -123,8 +127,40 @@ impl Run {
         self.frames().last().unwrap()[0]
     }
 
+    /// The machine. While the key last let go with `release` is within its gap, a raw press of it
+    /// is ignored by the OS, so it panics here, at the first use after the press; a test about
+    /// that gap calls `allow_raw_press`.
     pub fn m(&mut self) -> &mut Machine {
+        self.count_interrupts();
         &mut self.shell.app.m
+    }
+
+    /// Lets the test press the key it let go without waiting, which the OS ignores inside the gap.
+    pub fn allow_raw_press(&mut self) {
+        self.raw_press_allowed = true;
+    }
+
+    /// Adds the timer interrupts since the last count to the release's, from the acknowledge the
+    /// handler writes to port 3, 09h, which neither OS writes for an ON edge.
+    fn count_interrupts(&mut self) {
+        let Some((scan, seen)) = &mut self.released else {
+            return;
+        };
+        let m = &mut self.shell.app.m;
+        let (writes, full) = m.take_port_writes_or_full();
+        *seen += writes
+            .iter()
+            .filter(|w| (w.port, w.value) == (3, 0x09))
+            .count();
+        assert!(
+            !full || *seen >= RELEASE_SCANS,
+            "the port record filled with {seen} interrupts counted after the release of {scan:02X}"
+        );
+        assert!(
+            self.raw_press_allowed || *seen >= RELEASE_SCANS || !m.key_is_down(*scan),
+            "key {scan:02X} was pressed with the machine's press_key {seen} interrupts after its \
+             release, which the OS ignores before the fifth: use Run::press"
+        );
     }
 
     /// How many times the kernel's verify has been called since the boot.
@@ -212,31 +248,29 @@ impl Run {
     pub fn release(&mut self, scan: u8) {
         self.m().release_key(scan);
         self.m().clear_port_writes();
-        self.released = Some(scan);
+        self.released = Some((scan, 0));
     }
 
     /// Presses `scan`, after running on until five interrupts have followed the last `release` if
     /// that let go of the same key, which is when the OS has forgotten it. Another key is taken at once.
     pub fn press(&mut self, scan: u8) {
-        let (mut seen, mut waited) = (0, 0);
-        while self.released == Some(scan) {
-            let (writes, full) = self.m().take_port_writes_or_full();
-            seen += writes
-                .iter()
-                .filter(|w| (w.port, w.value) == (3, 0x08))
-                .count();
-            if full || seen >= RELEASE_SCANS {
-                break;
-            }
+        let mut waited = 0;
+        loop {
+            self.count_interrupts();
+            let seen = match self.released {
+                Some((key, seen)) if key == scan && seen < RELEASE_SCANS => seen,
+                _ => break,
+            };
             assert!(
                 waited < RELEASE_LIMIT,
-                "{seen} interrupts in {waited} T-states after the release, expected {RELEASE_SCANS}"
+                "{seen} timer interrupts in {waited} T-states after the release, expected \
+                 {RELEASE_SCANS}; interrupts may have been masked for the rest"
             );
             self.run(RELEASE_STEP);
             waited += RELEASE_STEP;
         }
         self.released = None;
-        self.m().press_key(scan);
+        self.shell.app.m.press_key(scan);
     }
 
     /// Runs `t` T-states.

@@ -146,6 +146,8 @@ pub struct Machine {
     apps: std::collections::HashMap<u8, usize>,
     /// Whether the machine runs a real OS image, which keeps its own record of each app.
     os: bool,
+    /// The scancodes pressed and not yet released, one bit each.
+    down: u64,
 }
 
 impl Machine {
@@ -156,6 +158,7 @@ impl Machine {
                 calc,
                 apps: Default::default(),
                 os: false,
+                down: 0,
             })
             .ok_or(BootError)
     }
@@ -169,6 +172,7 @@ impl Machine {
                 calc,
                 apps: Default::default(),
                 os: true,
+                down: 0,
             })
             .ok_or(BootError)
     }
@@ -363,11 +367,19 @@ impl Machine {
     pub const KEY_ON: u8 = 0x29;
 
     pub fn press_key(&mut self, scancode: u8) {
+        self.down |= 1u64.checked_shl(scancode.into()).unwrap_or(0);
         self.calc.key(scancode, true);
     }
 
     pub fn release_key(&mut self, scancode: u8) {
+        self.down &= !1u64.checked_shl(scancode.into()).unwrap_or(0);
         self.calc.key(scancode, false);
+    }
+
+    /// Whether `scancode` has been pressed and not released since.
+    pub fn key_is_down(&self, scancode: u8) -> bool {
+        1u64.checked_shl(scancode.into())
+            .is_some_and(|bit| self.down & bit != 0)
     }
 
     /// Runs from `pc` with interrupts off until a HALT executes with them off or `limit`

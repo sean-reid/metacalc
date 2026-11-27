@@ -36,6 +36,8 @@ unsafe extern "C" {
     fn mcemu_watch_resume(calc: *mut Raw);
     fn mcemu_watch_len(calc: *mut Raw) -> usize;
     fn mcemu_watch_take(calc: *mut Raw, out: *mut Write, cap: usize, lost: *mut usize) -> usize;
+    fn mcemu_port_len(calc: *mut Raw) -> usize;
+    fn mcemu_port_cap() -> usize;
     fn mcemu_port_take(calc: *mut Raw, out: *mut PortWrite, cap: usize) -> usize;
     fn mcemu_lcd(calc: *mut Raw, out: *mut u8, width: i32, height: i32) -> i32;
     fn mcemu_lcd_ram(calc: *mut Raw, out: *mut u8, width: i32, height: i32) -> i32;
@@ -81,8 +83,6 @@ pub struct Write {
     /// that stays.
     pub value: u8,
 }
-
-const PORT_LOG: usize = 16384;
 
 /// A write to port 1, 3 or 4 and the CPU clock in T-states when it ran.
 #[repr(C)]
@@ -257,11 +257,14 @@ impl Calc {
 
     /// The writes to ports 1, 3 and 4 since the last call, and whether the record filled up.
     pub fn take_port_writes(&mut self) -> (Vec<PortWrite>, bool) {
-        let mut out = vec![PortWrite::default(); PORT_LOG];
-        // SAFETY: `out` has room for PORT_LOG records, which is all the C side copies.
-        let n = unsafe { mcemu_port_take(self.0.as_ptr(), out.as_mut_ptr(), PORT_LOG) };
+        // SAFETY: the handle is live.
+        let len = unsafe { mcemu_port_len(self.0.as_ptr()) };
+        let mut out = vec![PortWrite::default(); len];
+        // SAFETY: `out` has room for `len` records, which is all the C side copies.
+        let n = unsafe { mcemu_port_take(self.0.as_ptr(), out.as_mut_ptr(), len) };
         out.truncate(n);
-        (out, n == PORT_LOG)
+        // SAFETY: no arguments.
+        (out, n == unsafe { mcemu_port_cap() })
     }
 
     pub fn lcd(&mut self, out: &mut [u8], width: usize, height: usize) -> bool {

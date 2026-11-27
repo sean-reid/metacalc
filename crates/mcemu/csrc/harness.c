@@ -463,6 +463,10 @@ void mcemu_watch_resume(TilemCalc *calc) { mc_watch_resume(calc, state_of(calc)-
 size_t mcemu_watch_len(TilemCalc *calc) { return mc_watch_len(state_of(calc)->watch); }
 size_t mcemu_watch_take(TilemCalc *calc, McWrite *out, size_t cap, size_t *lost) { return mc_watch_take(state_of(calc)->watch, out, cap, lost); }
 
+/* How many writes the record holds, and how many it has room for. */
+size_t mcemu_port_len(TilemCalc *calc) { return state_of(calc)->nports; }
+size_t mcemu_port_cap(void) { return PORT_LOG; }
+
 /* Copies out the writes to ports 1, 3 and 4 since the last call and clears the record; the return is how many were recorded; a record that reaches PORT_LOG stopped taking writes. */
 size_t mcemu_port_take(TilemCalc *calc, McPortWrite *out, size_t cap)
 {
