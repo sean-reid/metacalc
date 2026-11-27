@@ -86,6 +86,7 @@ const EDGE: (u32, u32) = (260_000, 340_000);
 fn second_press(list: &mut Lister, gap: u32) -> (Option<u32>, u16) {
     const STEP: u32 = 20_000;
     const HOLD: u32 = 300_000;
+    list.run.allow_raw_press();
     list.run.run(2_000_000);
     list.tap(F3);
     list.run.run(gap);
@@ -153,6 +154,7 @@ fn on_the_reference_os_a_second_f3_that_is_ignored_leaves_the_app_taking_the_nex
     for gap in [0, 100_000, EDGE.0] {
         let mut list = Lister::on_rom(crate::list_real::PROP);
         list.open_on_rom();
+        list.run.allow_raw_press();
         list.run.run(2_000_000);
         list.tap(F3);
         list.ui.press(Key::F3);
