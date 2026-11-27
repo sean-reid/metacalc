@@ -195,6 +195,8 @@ list_kind_step:
 	ld (LK_WAS), hl
 	call list_kind_land
 	ld (LK_EMPTY), a
+	call list_find_again
+	ld a, (LK_EMPTY)
 	or a
 	jr nz, lks_same
 	ld ix, (LK_FR)
@@ -378,6 +380,12 @@ list_enter_kinds:
 	call far_lib_sections
 	or a
 	ret nz
+	ld a, b
+	and LIST_LO_SECTION
+	jr z, lek_kinds
+	ld a, 1
+	ld (LV_HASO), a
+lek_kinds:
 	ld a, b
 	and LIST_KS_SECTION
 	ret z

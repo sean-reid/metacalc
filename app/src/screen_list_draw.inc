@@ -22,6 +22,10 @@ list_draw:
 	inc hl
 	ld a, (hl)
 	ld (LV_KIND), a
+	inc hl
+	ld de, LV_FIND
+	ld bc, LIST_FIND_MAX + 1
+	ldir
 	call far_ui_clear
 	ld hl, list_block
 	ld bc, LIST_BLOCK_SIZE
@@ -161,6 +165,12 @@ ll_cut:
 ; Draws the title bar: the stage's name, cut to the room the counts leave, and "checked/total" with the
 ; model's "flat " in front when LV_FLAT is 1.
 list_title:
+	ld a, (LV_FIND)
+	and LIST_FIND_LEN
+	jr z, lt_figures
+	call list_find_right
+	jr lt_stage
+lt_figures:
 	ld a, (LV_STAGE)
 	call libs_figures
 	push de
@@ -184,6 +194,7 @@ lt_counts:
 	call app_dec16
 	xor a
 	ld (de), a
+lt_stage:
 	ld a, (LV_STAGE)
 	call stage_strings
 	ld de, LV_NAME
@@ -230,6 +241,58 @@ lt_draw:
 	ld hl, LV_CUT
 	ld de, LV_RIGHT
 	jp far_ui_title
+
+; Builds LV_RIGHT, the typed prefix as the model's title shows it: the characters whole when they fit
+; 50 pixels, 41 after a miss, else an ellipsis and the longest end of them that fits, and after a miss a
+; space and the cross. In: LV_FIND the frame's bytes 7 to 15.
+list_find_right:
+	ld a, (LV_FIND)
+	and LIST_FIND_LEN
+	ld b, a
+	ld hl, LV_FIND + 1
+	ld de, LV_RIGHT + 1
+	call ll_glyph
+	ld hl, LV_RIGHT + 1
+	call lfr_fits
+	jr nc, lfr_copy
+	ld hl, LV_RIGHT
+lfr_cut:
+	ld (hl), UI_FONT_CH_2026
+	call lfr_fits
+	jr nc, lfr_copy
+	inc hl
+	jr lfr_cut
+lfr_copy:
+	ld de, LV_RIGHT
+	call app_strcpy
+	dec de
+	ld a, (LV_FIND)
+	or a
+	ret p
+	ld a, UI_FONT_CH_20
+	ld (de), a
+	inc de
+	ld a, UI_FONT_CH_2717
+	ld (de), a
+	inc de
+	xor a
+	ld (de), a
+	ret
+
+; In: HL = a string of glyph codes. Out: carry set when it is wider than the room the prefix has.
+; HL is kept.
+lfr_fits:
+	push hl
+	call far_ui_text_width
+	ld a, (LV_FIND)
+	rla
+	ld a, LIST_FIND_ROOM
+	jr nc, lfr_room
+	ld a, LIST_FIND_ROOM_MISS
+lfr_room:
+	cp l
+	pop hl
+	ret
 
 ; Out: HL = the string after the stage's name for the kind in LV_KIND, which is not All.
 list_tail:

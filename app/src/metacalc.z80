@@ -352,6 +352,7 @@ STAGE_COUNT .equ 0
 #include "screen_list.inc"
 #include "screen_list_draw.inc"
 #include "screen_list_kind.inc"
+#include "screen_list_find.inc"
 #include "screen_theorem.inc"
 #include "screen_theorem_rows.inc"
 #include "screen_theorem_key.inc"

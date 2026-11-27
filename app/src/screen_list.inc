@@ -137,6 +137,12 @@ LVP_NONE		.equ 2
 LIST_FM_NOT_OPEN	.equ 1
 LIST_LIB_NO_TREES	.equ 9
 LIST_KS_SECTION	.equ 20h
+LIST_LO_SECTION	.equ 40h
+LIST_FIND_MAX	.equ 8
+LIST_FIND_LEN	.equ 0Fh
+LIST_FIND_MISS	.equ 80h
+LIST_FIND_ROOM	.equ 50
+LIST_FIND_ROOM_MISS	.equ 41
 
 LV_TABLE	.equ APP_TEXT
 LV_FLAT		.equ APP_TEXT + 1
@@ -158,7 +164,19 @@ LV_NAME		.equ LV_RIGHT + LIST_RIGHT_SIZE
 LV_CUT		.equ LV_NAME + LIST_NAME_SIZE
 LV_LABEL	.equ LV_CUT + LIST_CUT_SIZE
 LV_TEXT		.equ LV_LABEL + LIST_LABEL_MAX + 1
-LV_VARS_END	.equ LV_TEXT + LIST_LABEL_MAX + 2
+LV_HASO		.equ LV_TEXT + LIST_LABEL_MAX + 2
+LV_VARS_END	.equ LV_HASO + 1
+LV_FIND		.equ LV_TEXT
+LF_BLOCK	.equ LV_NAME
+LF_FIRST	.equ LV_NAME
+LF_COUNT	.equ LV_NAME + 2
+LF_START	.equ LV_NAME + 4
+LF_BOUND	.equ LV_NAME + 6
+LF_KIND		.equ LV_NAME + 8
+LF_BEST		.equ LV_NAME + 9
+LF_K		.equ LV_NAME + 11
+LF_PF		.equ LV_CUT
+LF_PC		.equ LV_CUT + 2
 LK_FR		.equ LV_RIGHT
 LK_CUR		.equ LV_RIGHT + 2
 LK_X		.equ LV_RIGHT + 4
@@ -193,6 +211,7 @@ list_enter:
 	ld (LV_SECT), a
 	ld (LV_HASK), a
 	ld (LV_KIND), a
+	ld (LV_HASO), a
 	call far_lib_assertion_count
 	ret nz
 	ld a, h

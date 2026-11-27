@@ -22,16 +22,16 @@
 
 ; In: A = the key, HL = the frame.
 list_key:
-	cp KEY_UP
-	jr z, lk_move
-	cp KEY_DOWN
-	jr z, lk_move
-	cp KEY_LEFT
-	jr z, lk_move
-	cp KEY_RIGHT
-	jr z, lk_move
+	or a
+	jr nz, lk_dispatch
+lk_stay:
+	ld a, SCR_STAY
+	ret
+lk_dispatch:
+	cp KEY_RIGHT + 1
+	jp c, lk_move
 	cp KEY_CLEAR
-	jr z, lk_pop
+	jp z, lk_clear
 	cp KEY_ENTER
 	jr z, lk_open
 	cp KEY_F3
@@ -39,9 +39,11 @@ list_key:
 	cp KEY_F1
 	jr z, lk_open
 	jr c, lk_stay
+	cp KEY_F2
+	jp z, lk_f2
 	cp KEY_F5
 	jr c, lk_notice
-	jr nz, lk_stay
+	jr nz, lk_other
 	ld a, (LV_SECT)
 	or a
 	jr z, lk_stay
@@ -84,17 +86,27 @@ lk_open:
 	ld hl, (LK_FR)
 	jp z, theorem_push
 	jr lk_notice
+lk_other:
+	cp KEY_LETTER
+	jp z, lk_letter
+	jp lk_stay
 lk_pop:
 	ld a, SCR_POP
-	ret
-lk_stay:
-	ld a, SCR_STAY
 	ret
 
 lk_move:
 	ld c, a
 	push hl
 	pop ix
+	ld a, (ix + 7)
+	or a
+	jr z, lk_go
+	ld (ix + 7), 0
+	call lk_go
+	or a
+	ret nz
+	jp lk_redraw
+lk_go:
 	ld a, (ix + 6)
 	or a
 	jp nz, list_move_kind
@@ -102,7 +114,7 @@ lk_move:
 	call list_stage_end
 	ld a, d
 	or e
-	jr z, lk_stay
+	jp z, lk_stay
 	dec de
 	ld l, (ix + 2)
 	ld h, (ix + 3)
@@ -141,7 +153,7 @@ lk_moved:
 	jr nz, lk_set
 	ld a, (ix + 3)
 	cp h
-	jr z, lk_stay
+	jp z, lk_stay
 lk_set:
 	ld (ix + 2), l
 	ld (ix + 3), h
