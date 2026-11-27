@@ -35,10 +35,11 @@ fn on_the_reference_os_ring_prop_and_pred_labels_typed_on_the_keypad_land_as_the
             assert!(!type_label(&mut list, &labels[i]), "{}: a label of the stage", labels[i]);
             hits += 1;
         }
-        for foreign in ["k", "zzz", "0abc"] {
-            assert!(type_label(&mut list, foreign) || stage != PROP || foreign != "k");
+        for foreign in ["zzz", "0abc"] {
+            assert!(type_label(&mut list, foreign), "{foreign} is no label's start");
             misses += 1;
         }
+        type_label(&mut list, "k");
         println!("stage {stage}: {} labels typed, {hits} hits, {misses} misses tried", sample.len());
         assert!(sample.len() >= if stage == RING { 35 } else { 2 });
     }

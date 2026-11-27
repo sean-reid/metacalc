@@ -9,16 +9,38 @@
 ;              the count as they were and writes only LV_KIND, LV_END and the scratch LK_FR, LK_CUR,
 ;              LK_X, LK_N and LK_KEY, and LK_AGAIN when Unchecked asks the store. Under Unchecked a
 ;              status other than 0 from the store, a table lost since list_enter, shows every
-;              assertion as with no table. F3 steps the kind on when LV_HASK is 1, and lands as the
-;              model's F3 does: the cursor on the first shown assertion at or after the one it was on,
-;              else the last, the first row shown four before it among the shown, and the preview
-;              pending with the wait when the cursor's assertion changed (a list that shows nothing
-;              has none), else kept. ENTER and F1 push the notice NOTICE_LIST of the stage when it
-;              has no assertion, and under a kind whenever lf_next does not answer the cursor's
-;              assertion, as with a filter with no match or a refused read, and otherwise
-;              KIND_THEOREM for the cursor's assertion (theorem_push). Under a kind they write
-;              LV_KIND, LV_END and LK_FR before the lf_next call. F2 and F4, F3 when LV_HASK is 0, and F5 when
-;              LV_SECT is 1, push the notice. CLEAR pops. Every other key stays.
+;              assertion as with no table. With a find typed (byte 7 of the frame not 0) an arrow clears
+;              byte 7 first and then moves as above; where it moves nothing the answer is SCR_REDRAW with
+;              the preview kept, since the title changes. F3 steps the kind on when LV_HASK is 1, and
+;              lands as the model's F3 does: the cursor on the first shown assertion at or after the one
+;              it was on, else the last, the first row shown four before it among the shown, and the
+;              preview pending with the wait when the cursor's assertion changed (a list that shows
+;              nothing has none), else kept. With a find typed it then clears the miss bit and searches
+;              again from the first shown assertion of the new kind (screen_list_find.inc), and the
+;              preview is pending when the cursor is not on the assertion it was on before the key. ENTER
+;              and F1 push the notice NOTICE_LIST of the stage when it has no assertion, and under a kind
+;              whenever lf_next does not answer the cursor's assertion, as with a filter with no match or
+;              a refused read, and otherwise KIND_THEOREM for the cursor's assertion (theorem_push), with
+;              the find left in the frame. Under a kind they write LV_KIND, LV_END and LK_FR before the
+;              lf_next call. F4, F3 when LV_HASK is 0, F5 when LV_SECT is 1, and F2 when LV_HASO is 0,
+;              push the notice. With LV_HASO 1, F2 clears byte 7 and answers SCR_REDRAW with the preview
+;              kept when a find was typed, else SCR_STAY with nothing written. CLEAR with a find typed
+;              clears byte 7 and answers SCR_REDRAW with the preview kept, else it pops. A letter
+;              (KEY_LETTER, B the character) is the find's: see lk_letter in screen_list_find.inc. Every
+;              other key stays.
+;
+; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
+; greatest over a call with interrupts masked, at both speeds (list_find_exits.rs). A letter that
+; adds nothing (a ninth character, one the model refuses, LV_HASO 0, a search after a miss) 4 or 2,
+; CLEAR and F2 with or without a find 4:
+;   stub OS, proofs library
+;               letter first, later, miss   arrow with a find   F3 with a find
+;   All                20                          6                  24
+;   Theorems           20                         18                  24
+;   Axioms             20 (hit 22)                18                  20
+;   Unchecked, table   26 (miss 22)               24                  22
+;   Unchecked, none    20                          6                  20
+; A letter after a miss, a ninth character and a refused character write 4.
 
 ; In: A = the key, HL = the frame.
 list_key:

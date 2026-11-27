@@ -115,6 +115,7 @@ impl Lister {
             self.run.m().release_key(scan);
             self.run.run(120_000);
         }
+        self.run.run(200_000);
         self.keep_waiting();
         self.key(last, Key::Letter(c))
     }
