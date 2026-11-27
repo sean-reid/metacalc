@@ -14,8 +14,12 @@ mod find;
 mod findcopy;
 #[path = "reader/findcost.rs"]
 mod findcost;
+#[path = "reader/findedge.rs"]
+mod findedge;
 #[path = "reader/findexits.rs"]
 mod findexits;
+#[path = "reader/findkeep.rs"]
+mod findkeep;
 #[path = "reader/findrig.rs"]
 mod findrig;
 #[path = "reader/findstages.rs"]

@@ -7,10 +7,18 @@ struct Tally {
     one: usize,
     many: usize,
     arg: usize,
+    /// Calls that answered 0 and calls that answered 2.
+    ok: usize,
+    refused: usize,
 }
 
 impl Tally {
-    fn add(&mut self, want: Result<(u16, u16), u8>) {
+    fn add(&mut self, want: Result<(u16, u16), u8>, status: u8) {
+        match status {
+            ST_OK => self.ok += 1,
+            ST_ARG => self.refused += 1,
+            other => panic!("status {other}"),
+        }
         match want {
             Ok((_, 0)) => self.none += 1,
             Ok((_, 1)) => self.one += 1,
@@ -21,7 +29,12 @@ impl Tally {
     }
 }
 
-fn check_range(rig: &mut Rig, model: &Model, prefix: &[u8], what: &str) -> Result<(u16, u16), u8> {
+fn check_range(
+    rig: &mut Rig,
+    model: &Model,
+    prefix: &[u8],
+    what: &str,
+) -> (Result<(u16, u16), u8>, u8) {
     let want = model.range(prefix);
     rig.poke(PREFIX_AT, prefix);
     let regs = range_regs(PREFIX_AT, prefix.len() as u8);
@@ -41,7 +54,7 @@ fn check_range(rig: &mut Rig, model: &Model, prefix: &[u8], what: &str) -> Resul
         }
         Err(status) => assert_eq!(out.status(), status, "{what}"),
     }
-    want
+    (want, out.status())
 }
 
 fn purpose() -> (Model, Vec<u8>) {
@@ -59,13 +72,16 @@ fn the_range_of_every_prefix_of_every_label_is_the_rules_answer() {
     let mut tally = Tally::default();
     let prefixes = sweep_prefixes(&model);
     for prefix in &prefixes {
-        tally.add(check_range(&mut rig, &model, prefix, "sweep"));
+        let (want, status) = check_range(&mut rig, &model, prefix, "sweep");
+        tally.add(want, status);
     }
     println!("{} prefixes: {tally:?}", prefixes.len());
-    assert!(prefixes.len() > 190, "{} prefixes", prefixes.len());
-    assert!(tally.none > 120, "{tally:?}");
-    assert!(tally.one > 40, "{tally:?}");
-    assert!(tally.many > 20, "{tally:?}");
+    assert!(prefixes.len() >= 195, "{} prefixes", prefixes.len());
+    assert!(tally.none >= 122, "{tally:?}");
+    assert!(tally.one >= 45, "{tally:?}");
+    assert!(tally.many >= 24, "{tally:?}");
+    assert_eq!(tally.ok, prefixes.len(), "every call answers 0: {tally:?}");
+    assert_eq!(tally.refused, 0);
     assert_eq!(tally.arg, 0);
 }
 
@@ -117,7 +133,7 @@ fn the_edges_of_the_section_and_the_shapes_of_a_miss_are_exact() {
         (b"Z", (8, 2), "an upper case letter"),
     ];
     for (prefix, shape, what) in cases {
-        let got = check_range(&mut rig, &model, prefix, what).unwrap();
+        let got = check_range(&mut rig, &model, prefix, what).0.unwrap();
         assert_eq!(got, shape, "{what}: {prefix:?}");
     }
 }
@@ -174,7 +190,7 @@ fn bytes_above_7fh_and_below_a_label_character_sort_as_unsigned_bytes() {
         (b"\x01\xFF\xFF\xFF\xFF\xFF\xFF\xFF", (0, 0)),
         (b"-\x00", (1, 0)),
     ] {
-        let got = check_range(&mut rig, &model, prefix, "unsigned").unwrap();
+        let got = check_range(&mut rig, &model, prefix, "unsigned").0.unwrap();
         assert_eq!(got, shape, "{prefix:?}");
     }
 }

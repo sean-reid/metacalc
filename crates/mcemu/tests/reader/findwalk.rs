@@ -88,9 +88,9 @@ fn the_walk_over_every_range_kind_start_and_bound_of_a_small_library_is_the_rule
         }
     }
     println!("{} ranges: {t:?}", found.len());
-    assert!(t.found > 1250, "{t:?}");
-    assert!(t.bound > 4900, "{t:?}");
-    assert!(t.index > 5300, "{t:?}");
+    assert!(t.found >= 1250, "{t:?}");
+    assert!(t.bound >= 4900, "{t:?}");
+    assert!(t.index >= 5300, "{t:?}");
     assert_eq!(t.arg, 0);
 }
 
@@ -263,12 +263,12 @@ fn the_reads_of_every_walk_of_a_small_library_are_the_rules_count() {
         }
     }
     println!("{total} walks, {zero} with no read, {many} with more than two");
-    assert!(zero > 150 && many > 10, "{zero} {many}");
+    assert!(zero >= 170 && many >= 14, "{zero} {many}");
 }
 
 /// Labels `ax-0` to `ax-{n-1}`, whose label order is far from their number order, in a library
 /// whose section has a chunk boundary with 40 entries or more on each side.
-fn crossing() -> (Model, Vec<u8>, usize) {
+pub fn crossing() -> (Model, Vec<u8>, usize) {
     for n in (3000..4600usize).step_by(11) {
         let labels: Vec<String> = (0..n).map(|i| format!("ax-{i}")).collect();
         let bits = pseudo(n, 21);
@@ -326,10 +326,10 @@ fn a_range_across_a_chunk_and_a_range_longer_than_a_window_are_walked_whole() {
     }
     println!("{crossed} ranges across the chunk: {t:?}");
     assert!(
-        crossed >= 1,
+        crossed >= 2,
         "a range that spans the boundary at entry {entry}"
     );
-    assert!(t.found > 100 && t.bound > 100, "{t:?}");
+    assert!(t.found >= 700 && t.bound >= 280, "{t:?}");
 }
 
 #[test]
@@ -351,5 +351,6 @@ fn a_walk_that_ends_inside_the_chunk_and_one_that_starts_after_it_agree_with_the
             }
         }
     }
-    assert!(t.found > 40 && t.bound > 3, "{t:?}");
+    println!("{t:?}");
+    assert!(t.found >= 52 && t.bound >= 7, "{t:?}");
 }
