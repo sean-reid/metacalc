@@ -221,7 +221,10 @@ impl Run {
         let (mut seen, mut waited) = (0, 0);
         while self.released == Some(scan) {
             let (writes, full) = self.m().take_port_writes_or_full();
-            seen += writes.iter().filter(|w| (w.port, w.value) == (3, 0x08)).count();
+            seen += writes
+                .iter()
+                .filter(|w| (w.port, w.value) == (3, 0x08))
+                .count();
             if full || seen >= RELEASE_SCANS {
                 break;
             }
