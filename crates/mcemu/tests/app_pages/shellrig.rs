@@ -2,6 +2,7 @@
 //! kind's enter ran, and the keys the shell takes.
 
 use crate::app::*;
+use crate::list_rig::LIMIT;
 use crate::realos::BASE;
 use crate::ui_support::same_frame;
 use mcemu::{Machine, Stop};
@@ -182,6 +183,13 @@ pub fn install_hooks(m: &mut Machine, built: &Built, enter: Enter) {
     }
 }
 
+/// What `Shell::at_rest` ran through: the instructions and the T-states.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Rest {
+    pub steps: u32,
+    pub tstates: u32,
+}
+
 pub struct Shell {
     pub app: App,
     /// How many times the usual time a key gets to finish: a library of 10,000 assertions makes
@@ -251,20 +259,32 @@ impl Shell {
         Shell { app, patience: 1 }
     }
 
-    /// Runs on, an instruction at a time, until the CPU is outside a reader, fm or kernel call, where
-    /// bank B can show the library's flash page and bank C shows the spare RAM page, and returns with
-    /// the RAM the app keeps its variables, stack and the rig's counters in mapped as the app sees it.
-    pub fn at_rest(&mut self) {
+    /// Whether the CPU is inside a reader, fm or kernel call, where bank B can show the library's flash
+    /// page and bank C the spare RAM page.
+    pub fn in_call(&mut self) -> bool {
         let m = &mut self.app.m;
-        let mut steps = 0u32;
-        while m.in_port(7) != RAM_BANK_B || m.in_port(5) == SPARE_PAGE {
-            assert_eq!(m.run_app(1).stop, Stop::Limit);
-            steps += 1;
+        m.in_port(7) != RAM_BANK_B || m.in_port(5) == SPARE_PAGE
+    }
+
+    /// Runs on, an instruction at a time, until the CPU is outside a reader, fm or kernel call, and
+    /// returns with the RAM the app keeps its variables, stack and the rig's counters in mapped as the
+    /// app sees it. Gives up after `LIMIT` T-states, as the list rig does for a settle.
+    pub fn at_rest(&mut self) -> Rest {
+        let mut rest = Rest::default();
+        while self.in_call() {
+            let run = self.app.m.run_app(1);
+            assert_eq!(run.stop, Stop::Limit);
+            rest.steps += 1;
+            rest.tstates += run.tstates;
             assert!(
-                steps < 1_000_000,
-                "the app stays inside a reader, fm or kernel call for 1,000,000 instructions"
+                rest.tstates < LIMIT,
+                "still inside a reader, fm or kernel call after {} T-states, {} instructions: the rig \
+                 waits for the CPU to leave it before it reads RAM",
+                rest.tstates,
+                rest.steps
             );
         }
+        rest
     }
 
     fn word(&mut self, at: u16) -> u16 {
