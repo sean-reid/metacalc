@@ -362,6 +362,12 @@ impl Lister {
     /// Puts the open list on assertion `n` by writing the cursor and the top into the frame as the model
     /// has them after paging there, and lets its preview settle.
     pub fn jump_to(&mut self, n: usize) {
+        let quiet = self.quiet_key();
+        if quiet.is_none() {
+            let count = self.run.shell.app.label("LV_COUNT");
+            self.run.m().load_ram(count, &[255]);
+            self.arm_ignored();
+        }
         while self.pos().cursor < n {
             let key = if self.pos().cursor + 5 <= n {
                 Key::Right
@@ -386,7 +392,10 @@ impl Lister {
         );
         self.run.m().load_ram(count, &[0]);
         self.run.m().load_ram(preview, &[PENDING]);
-        self.tap(LETTER);
+        match quiet {
+            Some(scan) => self.tap(scan),
+            None => self.fire_ignored(),
+        }
         self.settle();
     }
 }

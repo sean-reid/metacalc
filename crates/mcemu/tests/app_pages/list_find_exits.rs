@@ -97,7 +97,7 @@ fn expected(kind: Kind, table: bool) -> BTreeMap<&'static str, u16> {
         match (kind, table) {
             (Kind::All, _) => (20, 20, 20, 4, 4, 4, 4, 4, 6, 6, 24),
             (Kind::Theorems, _) => (20, 20, 20, 4, 4, 4, 4, 4, 18, 18, 24),
-            (Kind::Axioms, _) => (20, 20, 20, 4, 4, 4, 4, 4, 18, 18, 20),
+            (Kind::Axioms, _) => (20, 22, 20, 4, 4, 4, 4, 4, 18, 18, 20),
             (Kind::Unchecked, true) => (26, 26, 22, 4, 4, 4, 4, 4, 24, 24, 22),
             (Kind::Unchecked, false) => (20, 20, 20, 4, 4, 4, 4, 4, 6, 6, 20),
         };

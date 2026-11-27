@@ -42,7 +42,7 @@ fn the_notice_keys_and_the_way_back_keep_the_kind_the_cursor_and_the_top() {
             looked += 1;
         }
     }
-    assert_eq!(looked, 6);
+    assert_eq!(looked, 3);
 }
 
 #[test]

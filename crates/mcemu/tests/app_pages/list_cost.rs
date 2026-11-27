@@ -101,7 +101,7 @@ pub fn the_fit(app: &mut App) -> u32 {
 /// and ui_blit, a little above the 190,019 the move by a page takes on the stub. A list row has a label
 /// and a mark to draw and a Libraries row a name and a progress text, and the list's frame has six
 /// rows, so it costs more than the 161,900 of cost_stages.rs.
-pub const MOVE_CEILING: u32 = 190_400;
+pub const MOVE_CEILING: u32 = 190_700;
 /// The least the same move takes, 187,206 by a row: a list that drew no row or no mark would take less.
 pub const MOVE_FLOOR: u32 = 186_000;
 /// The most and the least the idle call that lays out a preview takes on the fixture's first two

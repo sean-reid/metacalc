@@ -24,9 +24,10 @@ fn powered_down(settled: bool) -> (Lister, [u8; 6]) {
         assert_eq!(list.var("LV_PREVIEW"), PENDING, "the wait is not over");
     }
     let before = list.frame_bytes();
+    let quiet = list.quiet_key();
     list.run.shell.power_down();
     let (blits, fits) = (list.run.blits(), list.fm_calls()[2]);
-    list.tap_ignored();
+    list.tap_quiet(quiet);
     let frame = list.run.next_blit();
     list.seen = (list.var("LV_PREVIEW"), list.var("LV_COUNT"));
     list.run.run(2_000);

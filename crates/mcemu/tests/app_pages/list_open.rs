@@ -14,7 +14,7 @@ fn open_after_a_check_with_a_bad_map() -> Lister {
     let built = three_stages();
     let (data, status) = settled_table(built);
     let mut list = Lister::at_stage(built, Some((&data, &status)), 0);
-    list.tap(F4);
+    list.tap(F2);
     list.run.run(3_000_000);
     list.tap(CLEAR);
     list.run.run(600_000);

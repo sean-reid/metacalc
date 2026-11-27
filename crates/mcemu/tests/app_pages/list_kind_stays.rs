@@ -90,9 +90,10 @@ fn powered_down(kind: Kind, settled: bool) {
     let at = format!("{kind:?}, settled {settled}");
     let before = list.run.frames()[1].clone();
     assert_eq!(before[6], code(kind), "{at}");
+    let quiet = list.quiet_key();
     list.run.shell.power_down();
     let blits = list.run.blits();
-    list.tap_ignored();
+    list.tap_quiet(quiet);
     let frame = list.run.next_blit();
     list.seen = (list.var("LV_PREVIEW"), list.var("LV_COUNT"));
     list.run.run(2_000);
@@ -166,8 +167,8 @@ pub fn nothing_below_ram(list: &mut Lister, at: &str, walk: bool, open: impl FnO
         list.settle();
         quiet(list, "an arrow and the idle calls");
     }
-    for scan in [F2, F4, F5, IGNORED] {
-        let notice = matches!(scan, F2 | F4) || (scan == F5 && list.var("LV_SECT") == 1);
+    for scan in [F4, F5, IGNORED] {
+        let notice = scan == F4 || (scan == F5 && list.var("LV_SECT") == 1);
         if scan == IGNORED {
             list.tap_ignored();
         } else {

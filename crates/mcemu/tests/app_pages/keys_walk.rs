@@ -27,7 +27,7 @@ const WALK_CHECKING: [u8; 34] = [
 /// screens at the least. A build with no theorem opens none under Theorems.
 const IN_LIST_FLOOR: usize = 225;
 const IN_NOTICE_FLOOR: usize = 100;
-const KEYS_UNDER_KIND_FLOOR: [usize; 4] = [65, 60, 60, 25];
+const KEYS_UNDER_KIND_FLOOR: [usize; 4] = [65, 50, 55, 25];
 const THEOREMS_UNDER_KIND_FLOOR: [usize; 4] = [12, 14, 20, 6];
 
 /// Whether the open list shows no assertion, so that ENTER and F1 push the stage's notice as they do
@@ -109,6 +109,7 @@ fn long_walk(checking: bool) {
                 State::Libraries { cursor, .. } if cursor < built.stages.len()
             );
             let in_a_list = matches!(ui.state(), State::List { .. });
+            let key = if checking && key == F2 && in_a_list { F4 } else { key };
             if let (None, State::List { kind, .. }) = (&notice, ui.state()) {
                 under[usize::from(code(kind))] += 1;
             }

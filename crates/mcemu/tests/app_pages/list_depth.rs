@@ -153,6 +153,12 @@ impl Lister {
     /// Puts the open list on its last assertion by writing the cursor and the top into the frame as
     /// the model has them after paging to the end, and lets its preview settle.
     pub fn jump_to_the_end(&mut self) {
+        let quiet = self.quiet_key();
+        if quiet.is_none() {
+            let count = self.run.shell.app.label("LV_COUNT");
+            self.run.m().load_ram(count, &[255]);
+            self.arm_ignored();
+        }
         while self.pos().cursor + 1 < self.pos().len {
             self.ui.press(Key::Right);
             self.log.push(Key::Right);
@@ -172,7 +178,10 @@ impl Lister {
         );
         self.run.m().load_ram(count, &[0]);
         self.run.m().load_ram(preview, &[PENDING]);
-        self.tap_ignored();
+        match quiet {
+            Some(scan) => self.tap(scan),
+            None => self.fire_ignored(),
+        }
         self.settle();
     }
 }

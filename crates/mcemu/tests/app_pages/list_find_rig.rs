@@ -53,22 +53,45 @@ pub struct Find {
 }
 
 impl Lister {
+    /// F5 where the stage has no sections and so the list ignores it, else none.
+    pub fn quiet_key(&mut self) -> Option<u8> {
+        (self.var("LV_SECT") == 0).then_some(F5)
+    }
+
+    /// Presses what `quiet_key` chose, or the 2nd chord when it chose none.
+    pub fn tap_quiet(&mut self, key: Option<u8>) {
+        match key {
+            Some(scan) => self.tap(scan),
+            None => self.tap_ignored(),
+        }
+    }
+
     /// A press the list ignores: 2nd, which the OS takes, then a key after it, which reaches scr_key as
     /// none. Returns when scr_key has taken it.
     pub fn tap_ignored(&mut self) {
+        self.arm_ignored();
+        self.fire_ignored();
+    }
+
+    /// The 2nd of the chord, taken by the OS.
+    pub fn arm_ignored(&mut self) {
         let before = self.run.scr_keys();
         self.run.m().press_key(SECOND);
         self.run.run(120_000);
         self.run.m().release_key(SECOND);
         self.run.run(480_000);
         assert_eq!(self.run.scr_keys(), before, "2nd is no key");
+    }
+
+    /// The key after 2nd, which reaches scr_key as none.
+    pub fn fire_ignored(&mut self) {
+        let before = self.run.scr_keys();
         self.run.m().press_key(ONE);
         loop {
             self.run.run_to("scr_key", LIMIT);
-            if self.run.m().regs().af >> 8 == 0 {
-                break;
-            }
-            self.run.m().resume(1);
+            let code = self.run.m().regs().af >> 8;
+            assert_eq!(code, 0, "the key after 2nd reached scr_key as {code}");
+            break;
         }
         self.run.m().release_key(ONE);
         self.run.m().resume(100);

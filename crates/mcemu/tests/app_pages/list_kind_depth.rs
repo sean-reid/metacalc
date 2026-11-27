@@ -340,7 +340,7 @@ fn stub_want(kind: Kind) -> KindFigures {
             ("f4", 6),
             ("f5", 2),
             ("left", left),
-            ("letter", 20),
+            ("letter", if kind == Kind::Unchecked { 26 } else { 20 }),
             ("right", right),
             ("up", up),
         ],

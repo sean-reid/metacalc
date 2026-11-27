@@ -339,8 +339,9 @@ fn an_auto_power_down_with_a_prefix_keeps_it_through_the_refresh() {
             list.type_text("q");
         }
         let before = list.find();
+        list.arm_ignored();
         list.run.shell.power_down();
-        list.tap_ignored();
+        list.fire_ignored();
         let frame = list.run.next_blit();
         list.run.run(2_000);
         assert_eq!(list.find(), before);

@@ -226,7 +226,7 @@ fn a_list_opened_after_a_check_reopens_fm_for_its_first_preview_and_only_for_it(
     let (data, status) = settled_table(built);
     let mut list = Lister::at_stage(built, Some((&data, &status)), 0);
     list.count_fm_calls();
-    list.tap(F4);
+    list.tap(F2);
     list.run.run(3_000_000);
     list.tap(CLEAR);
     list.run.run(600_000);
