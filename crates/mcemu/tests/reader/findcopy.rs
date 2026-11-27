@@ -1,4 +1,4 @@
-use crate::damaged::{both, offset_of, row_of, with};
+use crate::damaged::{both, get32, offset_of, put32, row_of, with};
 use crate::findrig::*;
 use crate::secrig::*;
 use crate::support::*;
@@ -375,5 +375,23 @@ fn numbers_the_decoder_refuses_are_met_by_the_reader_as_the_header_says() {
         (out.status(), out.hl),
         (ST_OK, 7),
         "a repeated number is the answer once"
+    );
+}
+
+#[test]
+fn an_entry_equal_to_the_count_is_refused_though_the_slot_it_names_holds_an_offset() {
+    let (_, good) = many();
+    let dir = get32(&good, 16) as usize;
+    let rec0 = get32(&good, dir) as usize;
+    assert_eq!(dir + 4 * N, rec0, "the first record follows the directory");
+    let target = get32(&good, dir + 4 * 5);
+    let bad = with(&all_entries(&good, N as u16), |b| put32(b, rec0, target));
+    let (mut rig, status, host) = both(&bad);
+    assert_eq!((status, host), (ST_OK, false));
+    let out = ask_range(&mut rig, b"ax-5");
+    assert_eq!(
+        out.status(),
+        ST_BAD,
+        "the slot past the directory is not an entry"
     );
 }

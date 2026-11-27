@@ -43,16 +43,16 @@ pub(super) fn decode(
     if cur.u16().ok_or(bad)? != count || entry.length != section_len(count) {
         return Err(bad);
     }
-    let mut seen = vec![false; count];
     let mut numbers = Vec::with_capacity(count);
     for _ in 0..count {
         let n = cur.u16().ok_or(bad)?;
-        if n >= count || std::mem::replace(&mut seen[n], true) {
+        if n >= count {
             return Err(bad);
         }
         numbers.push(n as u16);
     }
     let label = |n: u16| assertions[n as usize].label.as_bytes();
+    // Labels strictly rise, so no number repeats.
     if numbers.windows(2).any(|w| label(w[0]) >= label(w[1])) {
         return Err(bad);
     }
