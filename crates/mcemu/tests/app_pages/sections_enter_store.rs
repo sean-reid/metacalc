@@ -4,13 +4,14 @@
 
 use crate::checkrig::WAIT;
 use crate::sections_depth::{ROM, STUB, Site, Table};
+use crate::sections_watch::region_size;
 use crate::shellrig::*;
 use mcui::Kind;
 
 const MARKER: u8 = 0xA5;
 
-/// The regions the store's routines write: label, size.
-const STORE: [(&str, u16); 3] = [("APP_COUNTS", 48), ("APP_CRC", 4), ("OP1", 55)];
+/// The regions the store's routines write.
+const STORE: [&str; 3] = ["APP_COUNTS", "APP_CRC", "OP1"];
 
 fn enter_with_the_store_seeded(site: &Site, kind: Kind, table: Table) {
     let mut list = (site.list)(kind, table);
@@ -20,12 +21,12 @@ fn enter_with_the_store_seeded(site: &Site, kind: Kind, table: Table) {
     let at = app.label("sections_enter");
     let regions: Vec<(&str, u16, u16)> = STORE
         .iter()
-        .map(|&(name, size)| (name, app.label(name), size))
+        .map(|&name| (name, app.label(name), region_size(app, name)))
         .collect();
     assert_eq!(
-        regions[0].2,
-        app.label("APP_COUNTS_SIZE"),
-        "the counts region is the build's"
+        regions.iter().map(|r| r.2).collect::<Vec<_>>(),
+        [48, 4, 55],
+        "the sizes the labels give are the map's"
     );
     let stack = app.label("SCR_STACK");
     list.run.press(F5);
@@ -38,7 +39,10 @@ fn enter_with_the_store_seeded(site: &Site, kind: Kind, table: Table) {
             .m()
             .load_ram(base, &vec![MARKER; usize::from(size)]);
     }
-    let frame = list.run.m().read_ram(stack, 32);
+    let given = list.run.m().regs().hl;
+    assert_eq!(given, stack + 32, "the enter is given frame 2 of the stack");
+    let size = usize::from(given - stack) + 16;
+    let frames = list.run.m().read_ram(stack, size);
     list.run.m().take_writes();
     list.run.m().watch_writes(0x8000, 0x8000);
     list.run
@@ -73,9 +77,9 @@ fn enter_with_the_store_seeded(site: &Site, kind: Kind, table: Table) {
         );
     }
     assert_eq!(
-        list.run.m().read_ram(stack, 32),
-        frame,
-        "the enter wrote no byte of a frame"
+        list.run.m().read_ram(stack, size),
+        frames,
+        "the enter wrote no byte of frames 0 to 2: Libraries, the list and the sections screen"
     );
     list.run.release(F5);
 }

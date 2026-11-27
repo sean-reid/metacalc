@@ -119,3 +119,36 @@ fn a_title_the_reader_refuses_is_an_empty_row_and_the_rest_of_the_screen_is_the_
         same_frame(&format!("title {refused} refused"), &frame, &want);
     }
 }
+
+#[test]
+fn a_title_the_reader_refuses_on_the_cursors_own_row_is_an_inverted_empty_row() {
+    let mut walker = Walker::on_list(rich(), None, 5);
+    let list = &mut walker.list;
+    list.open_sections();
+    list.fail_at(0, "far_lib_title", 2, 0x42);
+    list.tap(DOWN);
+    list.ui.press(Key::Down);
+    list.log.push(Key::Down);
+    let frame = list.run.next_blit();
+    list.run.run(2_000);
+    assert_eq!(list.fail_calls(0), 6, "the draw read six titles");
+    assert_eq!(
+        list.sections().cursor,
+        1,
+        "the cursor is on the second title, in row 2"
+    );
+    let mut want = list.shown();
+    let row = |y: usize| 12 * y..12 * (y + 1);
+    let text_rows = 8 * 2..8 * 3;
+    assert!(
+        text_rows
+            .clone()
+            .any(|y| want[row(y)].iter().any(|&b| b != 0xFF)),
+        "the model's cursor row has text in it"
+    );
+    for y in text_rows {
+        let ink = if y % 8 == 0 { 0x00 } else { 0xFF };
+        want[row(y)].fill(ink);
+    }
+    same_frame("the cursor's title refused", &frame, &want);
+}

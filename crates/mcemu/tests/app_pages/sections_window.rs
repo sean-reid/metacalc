@@ -279,8 +279,15 @@ fn the_second_pass_runs_for_the_rows_whose_first_24_characters_fit_and_for_no_ot
     assert_eq!(doubles, 79, "second passes over the walk");
 }
 
+/// T-states on the stub from the first SX_USED write of a row to the write of SX_ROW that ends it, for a
+/// row of 29 narrow characters that is converted twice and for a row of exactly 24 that is converted once, and
+/// the part of the first up to the second SX_USED write.
+const SECOND_PASS_ROW: u32 = 44_763;
+const ONE_PASS_ROW: u32 = 28_060;
+const UP_TO_THE_SECOND_PASS: u32 = 11_568;
+
 #[test]
-fn what_the_second_pass_costs_one_row_on_the_stub_is_printed() {
+fn a_row_with_a_second_pass_costs_this_many_t_states_on_the_stub() {
     let built = window();
     let cases = cases();
     let first = cases
@@ -296,7 +303,8 @@ fn what_the_second_pass_costs_one_row_on_the_stub_is_printed() {
     list.open_sections();
     let row = list.run.shell.app.label("SX_ROW");
     let used = list.run.shell.app.label("SX_USED");
-    for (name, title) in [("second pass", first), ("one pass", single)] {
+    let mut spans = Vec::new();
+    for (name, title, passes) in [("second pass", first, 2), ("one pass", single, 1)] {
         list.goto_title(title);
         list.run.m().take_writes();
         list.run.m().watch_writes(row, 3);
@@ -304,14 +312,39 @@ fn what_the_second_pass_costs_one_row_on_the_stub_is_printed() {
         let writes = list.run.m().take_writes();
         list.run.m().unwatch_writes();
         let at = list.sections();
-        let rows: Vec<_> = writes.iter().filter(|w| w.addr == used).collect();
-        let bumps: Vec<_> = writes.iter().filter(|w| w.addr == row).collect();
-        println!(
-            "{name}: title {title} at row {}, SX_USED written at {:?}, SX_ROW at {:?}",
-            title - at.top,
-            rows.iter().map(|w| w.clock).collect::<Vec<_>>(),
-            bumps.iter().map(|w| w.clock).collect::<Vec<_>>()
+        let r = title - at.top;
+        let bumps: Vec<u32> = writes
+            .iter()
+            .filter(|w| w.addr == row)
+            .map(|w| w.clock)
+            .collect();
+        assert_eq!(
+            bumps.len(),
+            7,
+            "{name}: SX_ROW is set to 0 and then bumped after each of six rows"
         );
-        assert!(!rows.is_empty() && !bumps.is_empty());
+        let in_row: Vec<u32> = writes
+            .iter()
+            .filter(|w| w.addr == used && w.clock > bumps[r] && w.clock < bumps[r + 1])
+            .map(|w| w.clock)
+            .collect();
+        assert_eq!(
+            in_row.len(),
+            passes,
+            "{name}: SX_USED written once for each pass of the row"
+        );
+        let span = bumps[r + 1] - in_row[0];
+        let to_second = in_row.get(1).map(|c| c - in_row[0]);
+        println!(
+            "{name}: title {title} at row {r}: {span} T-states, the second pass starts after {to_second:?}"
+        );
+        spans.push((span, to_second));
     }
+    within("a row with a second pass", spans[0].0, SECOND_PASS_ROW);
+    within("a row with one pass", spans[1].0, ONE_PASS_ROW);
+    within(
+        "the part before the second pass",
+        spans[0].1.unwrap(),
+        UP_TO_THE_SECOND_PASS,
+    );
 }

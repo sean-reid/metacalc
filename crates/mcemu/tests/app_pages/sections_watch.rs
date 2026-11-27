@@ -4,7 +4,7 @@
 
 use crate::checkrig::WAIT;
 use crate::list_rig::*;
-use crate::sections_depth::{ROM, STUB, Site, Table};
+use crate::sections_depth::{ROM, SCR_STAY, STUB, Site, Table};
 use crate::shellrig::*;
 use mcui::Kind;
 use std::collections::BTreeSet;
@@ -12,25 +12,39 @@ use std::collections::BTreeSet;
 const SECTIONS: &str = include_str!("../../../../app/src/screen_sections.inc");
 const LAND: &str = include_str!("../../../../app/src/screen_list_land.inc");
 
-/// The regions of the build's RAM map, each a base label and its size label.
-const REGIONS: [(&str, &str); 16] = [
-    ("UI_VARS", "UI_VARS_SIZE"),
-    ("FM_SCRATCH", "FM_SCRATCH_SIZE"),
-    ("SCR_VARS", "SCR_VARS_SIZE"),
-    ("SCR_STACK", "SCR_STACK_SIZE"),
-    ("UI_FRAME", "UI_FRAME_SIZE"),
-    ("KD_SCRATCH", "KD_SCRATCH_SIZE"),
-    ("FAR_VARS", "FAR_VARS_SIZE"),
-    ("LIB_STATE", "LIB_STATE_SIZE"),
-    ("OP1", "55"),
-    ("APP_STAGE", "APP_STAGE_SIZE"),
-    ("APP_SENTINEL", "APP_SENTINEL_SIZE"),
-    ("APP_TEXT", "APP_TEXT_SIZE"),
-    ("APP_FRAME", "16"),
-    ("APP_COUNTS", "APP_COUNTS_SIZE"),
-    ("APP_LIST", "13"),
-    ("APP_CRC", "4"),
+/// The regions of the build's RAM map.
+pub const REGIONS: [&str; 16] = [
+    "UI_VARS",
+    "FM_SCRATCH",
+    "SCR_VARS",
+    "SCR_STACK",
+    "UI_FRAME",
+    "KD_SCRATCH",
+    "FAR_VARS",
+    "LIB_STATE",
+    "OP1",
+    "APP_STAGE",
+    "APP_SENTINEL",
+    "APP_TEXT",
+    "APP_FRAME",
+    "APP_COUNTS",
+    "APP_LIST",
+    "APP_CRC",
 ];
+
+/// The size of a region of the map from the build's labels: the region's `_SIZE` label where the map has
+/// one; OP1 to OP5 is five of the OS's registers, each OP2 less OP1 long; the others APP_VAR places
+/// run to the next one's label, and APP_FRAME to the end of APP_BUF.
+pub fn region_size(app: &crate::app::App, region: &str) -> u16 {
+    let label = |name: &str| app.label(name);
+    match region {
+        "OP1" => 5 * (label("OP2") - label("OP1")),
+        "APP_LIST" => label("APP_CRC") - label("APP_LIST"),
+        "APP_CRC" => label("APP_TEXT") - label("APP_CRC"),
+        "APP_FRAME" => label("APP_BUF") + label("APP_BUF_SIZE") - label("APP_FRAME"),
+        other => label(&format!("{other}_SIZE")),
+    }
+}
 
 /// What a routine wrote.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -41,8 +55,10 @@ pub struct Wrote {
     /// (frame, byte) of SCR_STACK, the frame counted from the bottom.
     pub frames: BTreeSet<(usize, usize)>,
     pub other: std::collections::BTreeMap<u16, u16>,
-    /// Addresses the OS's own code wrote (a write whose instruction is below 4000h).
+    /// Addresses the code below 4000h wrote: the interrupt handler's, and the OS's own.
     pub os: BTreeSet<u16>,
+    /// A on return: the action of a key or push routine.
+    pub action: u8,
 }
 
 fn names(list: &Lister, of: &[(&str, u16)]) -> Vec<(u16, String)> {
@@ -121,10 +137,7 @@ pub fn watched(list: &mut Lister, label: &str, vars: &[(&str, u16)]) -> Wrote {
     let app = &list.run.shell.app;
     let regions: Vec<(&str, u16, u16)> = REGIONS
         .iter()
-        .map(|&(base, size)| {
-            let n = size.parse().unwrap_or_else(|_| app.label(size));
-            (base, app.label(base), n)
-        })
+        .map(|&base| (base, app.label(base), region_size(app, base)))
         .collect();
     let (stack, text) = (app.label("SCR_STACK"), app.label("APP_TEXT"));
     let names = names(list, vars);
@@ -132,9 +145,13 @@ pub fn watched(list: &mut Lister, label: &str, vars: &[(&str, u16)]) -> Wrote {
     list.run.m().watch_writes(0x8000, 0x8000);
     list.run
         .run_to_addr(&format!("the return of {label}"), back, WAIT);
+    let action = (list.run.m().regs().af >> 8) as u8;
     let writes = list.run.m().take_writes();
     list.run.m().unwatch_writes();
-    let mut wrote = Wrote::default();
+    let mut wrote = Wrote {
+        action,
+        ..Wrote::default()
+    };
     for w in writes {
         let a = w.addr;
         if a >= sp.wrapping_sub(512) && a < sp {
@@ -175,6 +192,36 @@ fn opened(site: &Site, kind: Kind, table: Table) -> Lister {
     list.run.run(600_000);
     list.run.shell.at_rest();
     list
+}
+
+/// The addresses code below 4000h writes while the screen sits open: the interrupt handler's, with no key
+/// down and with a key held that the screen ignores. What a routine's call to the OS would add shows
+/// as an address outside them.
+fn idle_os_writes(site: &Site) -> BTreeSet<u16> {
+    let mut list = opened(site, Kind::All, Table::None);
+    let sp = list.run.m().regs().sp;
+    let mut seen = BTreeSet::new();
+    for held in [None, Some(LETTER)] {
+        if let Some(scan) = held {
+            list.run.press(scan);
+        }
+        list.run.m().take_writes();
+        list.run.m().watch_writes(0x8000, 0x8000);
+        list.run.run(2_000_000);
+        let writes = list.run.m().take_writes();
+        list.run.m().unwatch_writes();
+        seen.extend(
+            writes
+                .iter()
+                .filter(|w| w.pc < 0x4000 && !(w.addr >= sp.wrapping_sub(512) && w.addr < sp))
+                .map(|w| w.addr),
+        );
+        if let Some(scan) = held {
+            list.run.release(scan);
+            list.run.run(1_000_000);
+        }
+    }
+    seen
 }
 
 fn print(what: &str, w: &Wrote) {
@@ -550,6 +597,27 @@ fn check(site: &Site) {
         );
     }
     assert_eq!(found.len(), EXPECTED.len(), "every routine is watched");
+    let handler = idle_os_writes(site);
+    println!(
+        "{}: the handler writes {} addresses while idle",
+        site.name,
+        handler.len()
+    );
+    assert!(
+        !handler.is_empty(),
+        "the idle run saw the interrupt handler write"
+    );
+    for (name, w) in &found {
+        let extra: Vec<String> =
+            w.os.difference(&handler)
+                .map(|a| format!("{a:04X}"))
+                .collect();
+        assert!(
+            extra.is_empty(),
+            "{} {name}: code below 4000h wrote {extra:?}, which the idle handler does not",
+            site.name
+        );
+    }
     for (name, w) in &found {
         let e = EXPECTED
             .iter()
@@ -583,4 +651,81 @@ fn what_the_sections_screen_writes_is_what_its_header_names_on_the_stub() {
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn on_the_reference_os_what_the_sections_screen_writes_is_what_its_header_names() {
     check(&ROM);
+}
+
+/// Keys that stay, on the sections screen at its first title, at its last, and on a screen with none of the
+/// moves: the routine returns SCR_STAY and writes nothing but the stack it uses.
+fn stays(site: &Site) -> usize {
+    let mut n = 0;
+    for (place, keys) in [
+        ("first title", vec![("up", UP), ("left", LEFT)]),
+        ("last title", vec![("down", DOWN), ("right", RIGHT)]),
+        (
+            "any title",
+            vec![
+                ("f2", F2),
+                ("f3", F3),
+                ("f4", F4),
+                ("f5", F5),
+                ("letter", LETTER),
+            ],
+        ),
+    ] {
+        for (name, scan) in keys {
+            let mut list = opened(site, Kind::All, Table::None);
+            let len = list.sections_len();
+            match place {
+                "first title" => list.put_sections(0, 0),
+                "last title" => list.put_sections(len - 1, len - 6),
+                _ => list.put_sections(len / 2, len / 2 - 2),
+            }
+            list.run.press(scan);
+            let w = watched(&mut list, "sections_key", &SX_NAMES);
+            list.run.release(scan);
+            print(&format!("{} {name} at the {place}", site.name), &w);
+            let at = format!("{} {name} at the {place}", site.name);
+            assert_eq!(w.action, SCR_STAY, "{at}: the key stays");
+            assert!(w.regions.is_empty() && w.vars.is_empty(), "{at}: {w:?}");
+            assert!(w.frames.is_empty() && w.other.is_empty(), "{at}: {w:?}");
+            n += 1;
+        }
+    }
+    n
+}
+
+#[test]
+fn every_key_that_stays_writes_nothing_but_the_stack_on_the_stub() {
+    assert_eq!(stays(&STUB), 9);
+    let mut list = Lister::open(crate::sections_rig::rich(), None, 0);
+    list.settle();
+    list.run.run(600_000);
+    list.run.shell.at_rest();
+    assert_eq!(list.var("LV_SECT"), 0, "no title starts in stage 0");
+    list.run.press(F5);
+    let w = watched(&mut list, "list_key", &LV_NAMES);
+    list.run.release(F5);
+    assert_eq!(w.action, SCR_STAY, "F5 on a stage with no title stays");
+    assert!(w.regions.is_empty() && w.vars.is_empty(), "{w:?}");
+    assert!(w.frames.is_empty() && w.other.is_empty(), "{w:?}");
+}
+
+#[test]
+#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn on_the_reference_os_every_key_that_stays_writes_nothing_but_the_stack() {
+    assert_eq!(stays(&ROM), 9);
+}
+
+#[test]
+fn the_region_sizes_the_labels_give_are_the_ones_the_map_states() {
+    let list = opened(&STUB, Kind::All, Table::None);
+    let app = &list.run.shell.app;
+    for (region, stated) in [
+        ("OP1", 55),
+        ("APP_FRAME", 16),
+        ("APP_LIST", 13),
+        ("APP_CRC", 4),
+        ("APP_COUNTS", 48),
+    ] {
+        assert_eq!(region_size(app, region), stated, "{region}");
+    }
 }

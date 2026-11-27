@@ -53,11 +53,13 @@ fn walk(list: &mut Lister, stage: usize) -> usize {
     moves
 }
 
-fn owner_session(stage: usize) -> (usize, usize) {
+/// The session's keys of one stage: the moves that drew and the jumps, and the moves the model's positions
+/// give, which are the walk's rows down from where F5 opened and up, and its pages both ways.
+fn owner_session(stage: usize) -> (usize, usize, usize) {
     let mut list = Lister::on_rom(stage);
     list.open_on_rom();
     let at = format!("stage {stage}");
-    let (mut moves, mut jumps) = (0, 0);
+    let (mut moves, mut jumps, mut want) = (0, 0, 0);
     let items = list.pos().len;
     for place in ["top", "middle", "end"] {
         match place {
@@ -75,6 +77,9 @@ fn owner_session(stage: usize) -> (usize, usize) {
             "{at}, F5 from the {place} (assertion {assertion}): title {}, first title {}",
             section.cursor, section.top
         );
+        want += (section.len - 1 - section.cursor)
+            + (section.len - 1)
+            + 2 * (section.len - 1).div_ceil(6);
         moves += walk(&mut list, stage);
         list.leave(CLEAR, Key::Clear);
         assert_eq!(list.list_frame(), before, "{at}: CLEAR gives the list back");
@@ -103,7 +108,7 @@ fn owner_session(stage: usize) -> (usize, usize) {
             jumps += 1;
         }
     }
-    (moves, jumps)
+    (moves, jumps, want)
 }
 
 #[test]
@@ -111,15 +116,26 @@ fn owner_session(stage: usize) -> (usize, usize) {
 fn on_the_reference_os_the_owners_session_has_the_models_frame_at_every_key() {
     let mut total = (0, 0);
     for stage in 0..3 {
-        let (moves, jumps) = owner_session(stage);
+        let (moves, jumps, want) = owner_session(stage);
         println!("stage {stage}: {moves} moves on the sections screen, {jumps} jumps");
-        assert!(moves > 3 * 2 * 6, "stage {stage}");
-        assert!(jumps >= 2 * 6, "stage {stage}");
+        assert_eq!(
+            moves, want,
+            "stage {stage}: the moves the model's positions give"
+        );
+        assert_eq!(
+            jumps, JUMPS_A_STAGE,
+            "stage {stage}: nine titles under two kinds, two of the nine left by CLEAR"
+        );
         total.0 += moves;
         total.1 += jumps;
     }
     println!("owner session: {} moves, {} jumps", total.0, total.1);
+    assert_eq!(total.1, 3 * JUMPS_A_STAGE);
 }
+
+/// The jumps of one stage's session: nine titles under each of All and Axioms, of which the fourth and
+/// the eighth are left by CLEAR.
+const JUMPS_A_STAGE: usize = 2 * (9 - 2);
 
 /// The titles of `stage` a jump is tried from: every `stride`th, the first and the last, and the first
 /// title of each landing the model gives that the stride missed.

@@ -279,3 +279,45 @@ fn the_enter_counts_a_stages_titles_and_refuses_a_stage_with_none_without_writin
         }
     }
 }
+
+#[test]
+fn a_stage_name_that_fills_the_room_exactly_fits_and_one_pixel_more_is_cut() {
+    let font = mcglyph::Font::builtin();
+    let stage = 5;
+    let len = title_counts(rich())[stage];
+    let right = |title: usize| format!("{}/{len}", title + 1);
+    let widths: Vec<usize> = (0..len).map(|t| font.text_width(&right(t))).collect();
+    // A name of 12 letters is at most 71 pixels wide, so the right side must be at least 17 for the name
+    // to fill the room of 91. One right side of w, one of w - 1 and one of w + 1 are among the 49 counts.
+    let w = widths
+        .iter()
+        .copied()
+        .find(|&w| w >= 17 && widths.contains(&(w - 1)) && widths.contains(&(w + 1)))
+        .expect("three neighbouring widths");
+    let name = name_of_width(91 - 3 - w);
+    assert!(name.len() <= 12, "{name}");
+    let mut names = vec!["edge".to_string(); 6];
+    names[stage] = name.clone();
+    let built = rich_with_names("pages-sections-edge", &names);
+    let mut walker = Walker::on_list(built, None, stage);
+    let list = &mut walker.list;
+    let (mut whole, mut cut) = (0, 0);
+    list.open_sections();
+    for (side, over) in [(w, false), (w - 1, false), (w + 1, true)] {
+        let title = widths.iter().position(|&x| x == side).unwrap();
+        assert_eq!(
+            font.text_width(&name) + font.text_width(&right(title)) + 3,
+            91 + usize::from(over) - usize::from(side < w),
+            "{}: the name, the right side {:?} and the gap",
+            name,
+            right(title)
+        );
+        list.goto_title(title);
+        if over {
+            cut += 1;
+        } else {
+            whole += 1;
+        }
+    }
+    assert_eq!((whole, cut), (2, 1), "frames with the name whole and cut");
+}

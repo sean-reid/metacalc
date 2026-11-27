@@ -280,7 +280,7 @@ const WORST_MOVE_FIRST_TITLE: usize = 123;
 
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_a_move_with_its_frame_costs_this_at_the_first_middle_and_last_title_of_each_stage()
+fn on_the_reference_os_21_of_the_24_moves_with_their_frame_cost_more_than_50_ms_and_cost_this_at_the_first_middle_and_last_title_of_each_stage()
  {
     let mut measured = Vec::new();
     for stage in 0..3 {
@@ -316,7 +316,25 @@ fn on_the_reference_os_a_move_with_its_frame_costs_this_at_the_first_middle_and_
         }
     }
     pinned(MOVE_PINS, &measured);
+    for (name, got) in &measured {
+        println!(
+            "ROM {name}: {got} against {MOVE_BUDGET}: {}",
+            if *got > MOVE_BUDGET { "over" } else { "within" }
+        );
+    }
+    let over = measured
+        .iter()
+        .filter(|(_, got)| *got > MOVE_BUDGET)
+        .count();
+    assert_eq!(
+        (measured.len(), over),
+        (24, MOVES_OVER_THE_BUDGET),
+        "moves measured, and moves over {MOVE_BUDGET} T-states, which is 50 ms at 6 MHz"
+    );
 }
+
+/// How many of the 24 moves cost more than MOVE_BUDGET, 50 ms at 6 MHz.
+const MOVES_OVER_THE_BUDGET: usize = 21;
 
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
@@ -410,6 +428,12 @@ fn on_the_reference_os_opening_the_screen_from_the_last_assertion_of_each_stage_
         );
         assert_eq!(push.status(), 0);
         let n = usize::from(push.regs.hl) + 1;
+        assert_eq!(
+            n,
+            crate::sections_rig::title_counts(list.built)[stage],
+            "stage {stage}: the model's count"
+        );
+        assert_eq!(n, [18, 39, 167][stage], "stage {stage}: the titles it has");
         let key = app.label("scr_key");
         let opened = app.timed(
             BASE,
@@ -494,4 +518,87 @@ fn on_the_reference_os_the_jump_with_the_lists_frame_fits_its_budget_under_each_
         }
     }
     pinned(JUMP_PINS, &measured);
+}
+
+/// The push and the jump where the kind shows nothing, with their frames, on ring's stage: scr_key, the draw
+/// and the blit.
+const NOTHING_PUSH: u32 = 404_048;
+const NOTHING_JUMP: u32 = 745_388;
+
+#[test]
+#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn on_the_reference_os_where_the_kind_shows_nothing_the_push_and_the_jump_cost_this() {
+    use crate::sections_depth::{ROM, Table};
+    use crate::ui_support::same_frame;
+    let mut list = (ROM.list)(mcui::Kind::Unchecked, Table::AllChecked);
+    assert!(
+        list.items().is_empty(),
+        "every assertion is checked, so the list shows none"
+    );
+    list.run.shell.at_rest();
+    let before = list.list_frame();
+    assert_eq!(before[2..6], [0; 4], "the list has no cursor");
+    let app = &mut list.run.shell.app;
+    let key = app.label("scr_key");
+    let pushed = app.timed(
+        BASE,
+        key,
+        In {
+            a: 11,
+            ..In::default()
+        },
+    );
+    assert_eq!(pushed.status(), 1, "F5 pushes the screen");
+    assert_eq!(list.run.depth(), 3);
+    assert_eq!(list.run.top_kind(), KIND_SECTIONS);
+    assert_eq!(
+        list.list_frame()[2..6],
+        [0; 4],
+        "the push lands on title 0 with the first title 0"
+    );
+    list.ui.press(mcui::Key::F5);
+    list.log.push(mcui::Key::F5);
+    let mut p = Probe {
+        list,
+        frame: 0,
+        len: 0,
+    };
+    let blits = p.list.run.blits();
+    let (draw, blit) = p.frame_cost();
+    assert_eq!(p.list.run.blits(), blits + 1, "one frame blitted");
+    same_frame("the push", &p.list.run.frame(), &p.list.shown());
+    let push = pushed.tstates + draw + blit;
+    println!(
+        "ROM F5 where the kind shows nothing: scr_key {}, draw {draw}, blit {blit}: {push}",
+        pushed.tstates
+    );
+    let app = &mut p.list.run.shell.app;
+    let jumped = app.timed(
+        BASE,
+        key,
+        In {
+            a: 5,
+            ..In::default()
+        },
+    );
+    assert_eq!(jumped.status(), 1, "ENTER pops to the list");
+    assert_eq!(p.list.run.depth(), 2);
+    assert_eq!(p.list.run.top_kind(), KIND_LIST);
+    assert_eq!(
+        p.list.list_frame(),
+        before,
+        "the jump left the list as it was"
+    );
+    p.list.ui.press(mcui::Key::Enter);
+    p.list.log.push(mcui::Key::Enter);
+    let blits = p.list.run.blits();
+    let (draw, blit) = p.frame_cost();
+    assert_eq!(p.list.run.blits(), blits + 1, "one frame blitted");
+    let jump = jumped.tstates + draw + blit;
+    println!(
+        "ROM the jump where the kind shows nothing: scr_key {}, draw {draw}, blit {blit}: {jump}",
+        jumped.tstates
+    );
+    within("the push", push, NOTHING_PUSH);
+    within("the jump", jump, NOTHING_JUMP);
 }
