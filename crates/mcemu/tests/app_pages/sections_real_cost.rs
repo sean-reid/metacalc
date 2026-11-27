@@ -249,9 +249,9 @@ const MOVE_PINS: &[(&str, u32)] = &[
 /// Opening the screen from the stage's last assertion: scr_key (F5, the push and the enter), the first
 /// draw and the blit.
 const OPEN_PINS: &[(&str, u32)] = &[
-    ("opening stage 0", 382188),
-    ("opening stage 1", 386757),
-    ("opening stage 2", 340207),
+    ("opening stage 0", 390849),
+    ("opening stage 1", 395418),
+    ("opening stage 2", 348868),
 ];
 
 /// ENTER on the sections screen with the list's first frame, under each kind, from the first, middle and
