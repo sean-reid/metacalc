@@ -196,7 +196,13 @@ fn a_closure_after_a_release_does_not_send_the_shell_to_app_key(real: bool) {
         us_between(b.before.clock, b.at.clock),
         us_between(b.at.clock, b.after[0].clock),
     );
-    let key_down = 8_400..=8_650;
+    println!(
+        "{} OS: us from the point with Down held to the closure's {}, from the closure's to the next {}",
+        os_name(real),
+        gaps.0,
+        gaps.1
+    );
+    let key_down = if real { 8_430..=8_580 } else { 8_420..=8_570 };
     assert!(
         key_down.contains(&gaps.0),
         "{} us from the point with Down held to the closure's",
