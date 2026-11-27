@@ -227,8 +227,12 @@
 ;                          are read 16 at a time into lr_win. Under kind 0 or 1 a candidate that is
 ;                          inside start..bound and below the best so far costs one read of its
 ;                          byte of the kinds bitmap, 1 byte, inside the call, and no other
-;                          candidate does: a range in falling number order tests each candidate and
-;                          one in rising order tests one.
+;                          candidate does. The best so far moves down only for a candidate that shows
+;                          the kind, so when the first candidate shows it a range in falling number
+;                          order tests each candidate and one in rising order tests one; when it does
+;                          not, every candidate is tested until one does. An entry at or above the
+;                          assertion count is above any bound and is skipped with no status, where
+;                          lib_find_range answers 3 for it and lib_find_copy returns it as stored.
 ;   lib_find_copy     in:  HL = a first index in the section, BC = a count of entries from there,
 ;                          DE = a buffer in bank B, clear of the state block, which must hold twice
 ;                          the entries copied
