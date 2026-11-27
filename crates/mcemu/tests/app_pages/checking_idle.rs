@@ -297,8 +297,11 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
     );
 }
 
-/// The greatest depth of each class seen with interrupts on: an interrupt adds up to four bytes
-/// to a step and two to a chunk in this run, which the handler's pushes make.
+/// The greatest depth of each class seen with interrupts on, over every phase the sweep lands an
+/// interrupt at. The stub's handler holds 4 bytes (the interrupt's return address and its call
+/// into the scan, pinned in timer_spacing), so a call's depth is where the interrupt lands plus 4:
+/// StepStays reaches 32 from its deepest point at 28; Finishing has one call, and its interrupt lands
+/// higher up.
 const STUB_LIVE: [(Class, u16); 11] = [
     (Class::StepStays, 32),
     (Class::StepRedraws, 28),
