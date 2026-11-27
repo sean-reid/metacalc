@@ -22,10 +22,9 @@ fn an_on_edge_between_a_release_and_a_press_is_not_counted_as_a_scan() {
     run.m().press_key(Machine::KEY_ON);
     run.run(60_000);
     run.m().release_key(Machine::KEY_ON);
-    let keys = run.scr_keys();
     run.tap(DOWN);
     run.run(30_000);
-    assert_eq!(run.scr_keys(), keys + 1, "the second Down reached scr_key");
+    assert_eq!(run.scr_keys(), 2, "both Downs reached scr_key");
 }
 
 #[test]
