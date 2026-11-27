@@ -37,6 +37,20 @@ PORT_STATUS       .equ $02
 HAS_SPEED         .equ $80
 PORT_SPEED        .equ $20
 SETTLE_COUNT      .equ $1016
+ON_PRESS_RATE     .equ $06
+ACK_CLEAR         .equ $08
+ACK_TIMER         .equ $09
+ACK_ON            .equ $0A
+PAD_FIRST_6       .equ 13
+PAD_FIRST_15      .equ 13
+PAD_IDLE_6        .equ 8
+PAD_IDLE_15       .equ 8
+PAD_COUNT_6       .equ 6
+PAD_COUNT_15      .equ 6
+PAD_CLEAR_6       .equ 11
+PAD_CLEAR_15      .equ 11
+PAD_KEY_6         .equ 55
+PAD_KEY_15        .equ 63
 PORT_INT_STATUS   .equ $04
 ON_LATCH          .equ $01
 ON_LEVEL          .equ $08
@@ -83,16 +97,25 @@ JUNK_HL2          .equ $A127
 ; interrupts off, until the ON level on port 4 has read the same SETTLE_COUNT times in a row, a
 ; wait of about 46.7 ms that the reference OS makes at either edge and that holds up the timer and
 ; the key scan meanwhile. It sets the OS break flag when ON then reads down and IY holds the
-; flags pointer, so a press that ends before the wait does sets nothing. Acknowledges the timer and
-; keypad sources the way the hardware needs: the mask on port 3 written as zero and then again.
-; Scans the keys, so a key is only seen while interrupts are on. Keeps the main registers and IX
-; and IY, and the speed; the shadow set is left changed.
+; flags pointer, so a press that ends before the wait does sets nothing. A press also writes
+; port 4 as the reference OS does, and an ON interrupt scans no keys.
+; Every interrupt acknowledges the timer and ON sources by the writes the reference OS makes to
+; port 3: 08h, then 09h (0Ah for ON), then the mask as it was read. Without ON it makes the
+; reference OS's one check of the whole keypad (port 1 at 00h, read, port 1 at FFh) and scans the
+; eight groups only if a key is down, writing FFh to port 1 after each. Keeps the main registers
+; and IX and IY, and the speed; the shadow set is left changed.
+; The handler takes as long with interrupts off as the reference OS's, within 2 percent, as
+; timer_spacing.rs measures in T-states from the vector to EI. The reference OS's figures, at 6 MHz
+; and at 15: 1155 and 1178 with no key down, 5866 and 6117 with a key down, 1115 and 1138 for each of
+; the four scans after a release and 1282 and 1305 for the fifth, which clears the scan code. An ON
+; edge is the wait alone, 280875 in the reference OS and 280614 here. What the stub has no work for
+; is a delay of PAD_* passes of 26 T-states, a count for each speed.
 isr:
 	ex af,af'
 	exx
 	in a,(PORT_INT_STATUS)
 	and ON_LATCH
-	jr z,isr_no_on
+	jr z,isr_ack
 	in a,(PORT_STATUS)
 	and HAS_SPEED
 	jr z,isr_settle
@@ -122,39 +145,94 @@ isr_wait:
 isr_settled:
 	ld a,b
 	or a
-	jr nz,isr_no_on
+	jr nz,isr_on_ack
+	ld a,ON_PRESS_RATE
+	out (PORT_INT_STATUS),a
 	push iy
 	pop hl
 	ld de,flags
 	or a
 	sbc hl,de
-	jr nz,isr_no_on
+	jr nz,isr_on_ack
 	set onInterrupt,(iy+onFlags)
-isr_no_on:
-	in a,(PORT_MASK)
-	push af
-	xor a
-	out (PORT_MASK),a
-	pop af
-	out (PORT_MASK),a
+isr_on_ack:
+	ld a,ACK_ON
+	jr isr_ack_with
+isr_ack:
+	ld hl,pad_first
+	call pad
 	call scan_keys
+	ld a,ACK_TIMER
+isr_ack_with:
+	ld c,a
+	in a,(PORT_MASK)
+	ld b,a
+	ld a,ACK_CLEAR
+	out (PORT_MASK),a
+	ld a,c
+	out (PORT_MASK),a
+	ld a,b
+	out (PORT_MASK),a
+isr_done:
 	exx
 	ex af,af'
 	ei
 	reti
 
-; Sets kbdScanCode to the one key that is down if it is not the one taken last, tracked in
+; Delays by the count at HL, a word for 6 MHz and then one for 15, of passes of 26 T-states.
+pad:
+	in a,(PORT_SPEED)
+	and 3
+	jr z,pad_6
+	inc hl
+	inc hl
+pad_6:
+	ld c,(hl)
+	inc hl
+	ld b,(hl)
+pad_wait:
+	dec bc
+	ld a,b
+	or c
+	jr nz,pad_wait
+	ret
+
+pad_first:     .dw PAD_FIRST_6, PAD_FIRST_15
+pad_idle:      .dw PAD_IDLE_6, PAD_IDLE_15
+pad_count:     .dw PAD_COUNT_6, PAD_COUNT_15
+pad_clear:     .dw PAD_CLEAR_6, PAD_CLEAR_15
+pad_key:       .dw PAD_KEY_6, PAD_KEY_15
+
+; Looks at the whole keypad as the reference OS does, and if a key is down scans the eight groups
+; and sets kbdScanCode to the one key that is down if it is not the one taken last, tracked in
 ; kbdKey. Two or more keys down change nothing until one is up; no key down forgets the last, and
 ; clears kbdScanCode when RELEASE_SCANS scans have passed with no key down, as the OS does about 40
-; ms after a release (a scan is 9.2 ms).
+; ms after a release (a scan is 9.2 ms). Ends in a delay by the class of the scan.
 scan_keys:
+	xor a
+	out (PORT_KEYS),a
+	ex (sp),hl
+	ex (sp),hl
+	in a,(PORT_KEYS)
+	ld b,a
+	ld a,$FF
+	out (PORT_KEYS),a
+	ld a,b
+	cp $FF
+	jr z,scan_none
 	ld de,0
 	ld l,0
 	ld c,$FE
 scan_group:
 	ld a,c
 	out (PORT_KEYS),a
+	ex (sp),hl
+	ex (sp),hl
 	in a,(PORT_KEYS)
+	ld b,a
+	ld a,$FF
+	out (PORT_KEYS),a
+	ld a,b
 	cpl
 	ld b,8
 scan_bit:
@@ -169,32 +247,45 @@ scan_up:
 	ld a,e
 	cp 56
 	jr nz,scan_group
+	ld a,$7F
+	out (PORT_KEYS),a
+	ex (sp),hl
+	ex (sp),hl
+	in a,(PORT_KEYS)
 	ld a,$FF
 	out (PORT_KEYS),a
 	ld a,d
-	or a
-	jr z,scan_idle
 	dec a
-	ret nz
+	jr nz,scan_pad_key
 	ld a,RELEASE_SCANS
 	ld (kbdRelease),a
 	ld a,(kbdKey)
 	cp l
-	ret z
+	jr z,scan_pad_key
 	ld a,l
 	ld (kbdKey),a
 	ld (kbdScanCode),a
-	ret
-scan_idle:
+scan_pad_key:
+	ld hl,pad_key
+	jp pad
+scan_none:
+	xor a
 	ld (kbdKey),a
 	ld a,(kbdRelease)
 	or a
-	ret z
+	jr z,scan_pad_idle
 	dec a
 	ld (kbdRelease),a
-	ret nz
+	jr nz,scan_pad_count
 	ld (kbdScanCode),a
-	ret
+	ld hl,pad_clear
+	jp pad
+scan_pad_count:
+	ld hl,pad_count
+	jp pad
+scan_pad_idle:
+	ld hl,pad_idle
+	jp pad
 
 ; rst 28h: the two bytes after the call site name the entry point. Registers survive except
 ; the ones the service returns.

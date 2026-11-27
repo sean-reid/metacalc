@@ -82,7 +82,7 @@ pub struct Write {
     pub value: u8,
 }
 
-const PORT_LOG: usize = 4096;
+const PORT_LOG: usize = 16384;
 
 /// A write to port 1, 3 or 4 and the CPU clock in T-states when it ran.
 #[repr(C)]

@@ -107,7 +107,7 @@ typedef struct {
 	uint8_t value;
 } McPortWrite;
 
-#define PORT_LOG 4096
+#define PORT_LOG 16384
 
 /* What the harness keeps for each machine: the set of values written to ports 5, 6 and 7 since its
    last run began, whether the LCD busy bit is forced on, and the emulated time the clock ports

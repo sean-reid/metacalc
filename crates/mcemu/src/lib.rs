@@ -319,7 +319,7 @@ impl Machine {
     }
 
     /// Every write to ports 1, 3 and 4 since the last call, in order, with the CPU clock when each
-    /// ran. The record holds 4096 writes; more panics.
+    /// ran. The record holds 16384 writes; more panics.
     pub fn take_port_writes(&mut self) -> Vec<PortWrite> {
         let (writes, full) = self.calc.take_port_writes();
         assert!(
