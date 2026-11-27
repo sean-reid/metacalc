@@ -569,6 +569,7 @@ fn main() {
     }
     for f in [
         "../../probe/storecheck.z80",
+        "../../probe/storelists.inc",
         "../../probe/storescript.inc",
         "../../probe/storedraw.inc",
         "../../app/src/store.inc",
