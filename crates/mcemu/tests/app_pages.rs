@@ -121,6 +121,8 @@ mod list_find_keys;
 mod list_find_lost;
 #[path = "app_pages/list_find_real.rs"]
 mod list_find_real;
+#[path = "app_pages/list_find_runs.rs"]
+mod list_find_runs;
 #[path = "app_pages/list_find_rig.rs"]
 mod list_find_rig;
 #[path = "app_pages/list_frames.rs"]
