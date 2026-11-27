@@ -6,12 +6,16 @@ use crate::idlerig::*;
 use crate::shellrig::*;
 use crate::timer_spacing::{entries, rig_in, tick_loop};
 
+/// Writes to port 1 in a scan with a key down: the keypad check and each of the eight groups, with
+/// FFh after each.
+const GROUP_WRITES: usize = 18;
+
 /// Microseconds from an interrupt's entry to the release.
 const RELEASE_AT: u32 = 6_500;
 
 /// Releases `LETTER`, which the OS took, `RELEASE_AT` after an interrupt, waits `after_us` more,
 /// zeroes the scan code and presses `key`. Returns the scan code after the first interrupt that
-/// follows the press.
+/// follows the press, which has scanned the key.
 fn press_after(real: bool, after_us: u32, key: u8) -> u8 {
     let mut rig = rig_in(real, &tick_loop());
     entries(&mut rig, 3);
@@ -25,7 +29,9 @@ fn press_after(real: bool, after_us: u32, key: u8) -> u8 {
     rig.step(after_us);
     rig.m().load_ram(KBD_SCAN, &[0]);
     rig.m().press_key(key);
-    entries(&mut rig, 1);
+    let scan = &entries(&mut rig, 1)[0];
+    let groups = scan.ports.iter().filter(|w| w.port == 1).count();
+    assert_eq!(groups, GROUP_WRITES, "the interrupt scanned the key");
     rig.scan_code()
 }
 
