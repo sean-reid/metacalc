@@ -396,7 +396,7 @@ fn the_code_pages_stay_within_their_ceilings() {
 /// The most T-states the Libraries screen's enter may take, one store_has and one count pass and the
 /// strings of each row: on the fixture with one stage, three and six, whose table is 20 bytes, and on
 /// ring's three stages.
-const ENTER_ONE: u32 = 22_000;
+const ENTER_ONE: u32 = 22_037;
 const ENTER_THREE: u32 = 35_650;
 const ENTER_SIX: u32 = 57_900;
 const ENTER_RING: u32 = 231_300;

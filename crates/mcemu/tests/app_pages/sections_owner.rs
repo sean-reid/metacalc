@@ -127,10 +127,9 @@ fn spread(landings: &[Landing], stride: usize) -> Vec<usize> {
     let mut seen: Vec<usize> = (0..landings.len()).step_by(stride).collect();
     seen.push(landings.len() - 1);
     for name in ["direct", "next", "last", "empty"] {
-        if let Some(t) = landings.iter().position(|l| l.name() == name) {
-            if !seen.iter().any(|&s| landings[s].name() == name) {
-                seen.push(t);
-            }
+        let first = landings.iter().position(|l| l.name() == name);
+        if let Some(t) = first.filter(|_| !seen.iter().any(|&s| landings[s].name() == name)) {
+            seen.push(t);
         }
     }
     seen.sort_unstable();

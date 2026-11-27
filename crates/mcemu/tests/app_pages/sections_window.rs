@@ -225,12 +225,7 @@ fn passes_written(list: &mut Lister, run: impl FnOnce(&mut Lister)) -> Vec<(u8, 
 
 /// What a frame whose first title is `top` writes to SX_USED by the rule, with `rows` rows.
 fn expected(cases: &[Case], top: usize) -> Vec<usize> {
-    cases
-        .iter()
-        .skip(top)
-        .take(6)
-        .flat_map(|c| passes(c))
-        .collect()
+    cases.iter().skip(top).take(6).flat_map(passes).collect()
 }
 
 fn check_frame(list: &mut Lister, cases: &[Case], got: &[(u8, u32)], step: &str) {

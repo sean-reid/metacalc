@@ -55,7 +55,7 @@ const ROM_LIVE: [(Class, u16); 8] = [
     (Class::EndsCrcRun, 48),
     (Class::Finishing, 42),
     (Class::AfterFinish, 10),
-    (Class::StopOn, 46),
+    (Class::StopOn, 42),
     (Class::PausedRead, 40),
 ];
 
