@@ -62,7 +62,9 @@ impl Lister {
         self.run.m().load_ram(sp - 256, &fill);
         let before = (self.run.m().regs().iff1, self.run.m().in_port(0x20) & 1);
         let back = match label {
-            "list_key" => self.run.shell.app.label("scr_key") + 5,
+            "list_key" | "sections_key" | "sections_push" => {
+                self.run.shell.app.label("scr_key") + 5
+            }
             "list_idle" => self.run.shell.app.label("scr_idle") + 5,
             _ => ret,
         };
