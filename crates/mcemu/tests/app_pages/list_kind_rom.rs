@@ -345,7 +345,7 @@ fn rom_want(kind: Kind) -> KindFigures {
             ("f4", 6),
             ("f5", 6),
             ("left", left),
-            ("letter", 20),
+            ("letter", if kind == Kind::Unchecked { 40 } else { 20 }),
             ("right", right),
             ("up", up),
         ],
