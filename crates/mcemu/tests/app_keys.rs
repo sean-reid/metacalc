@@ -116,7 +116,7 @@ impl Rig {
         m.install_app(app, STUB_BASE).unwrap();
         m.launch(STUB_BASE).unwrap();
         let mut rig = Rig::Stub(m);
-        rig.run_ms(20);
+        rig.run_ms(24);
         rig
     }
 

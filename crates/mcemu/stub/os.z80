@@ -209,6 +209,7 @@ pad_key:       .dw PAD_KEY_6, PAD_KEY_15
 ; clears kbdScanCode when RELEASE_SCANS scans have passed with no key down, as the OS does about 40
 ; ms after a release (a scan is 9.2 ms). Ends in a delay by the class of the scan.
 scan_keys:
+	ld de,0
 	xor a
 	out (PORT_KEYS),a
 	ex (sp),hl
@@ -220,7 +221,6 @@ scan_keys:
 	ld a,b
 	cp $FF
 	jr z,scan_none
-	ld de,0
 	ld l,0
 	ld c,$FE
 scan_group:
