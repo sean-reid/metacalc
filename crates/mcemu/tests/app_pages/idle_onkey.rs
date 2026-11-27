@@ -28,10 +28,18 @@ const ON_AND_KEY: Answer = Answer {
 /// its code, and the key is acted on once all the same.
 ///
 /// The stub codes more of the twelve phases than the ROM (6 coded answers and 6 not, against 3 and
-/// 9). Their interrupts are spaced alike here, 9.6 ms apart. From the fifth press the ROM
-/// acknowledges the ON interrupt (port 3 at 0Ah) 2.8 ms after the press, where the stub does so
-/// 46.7 ms after it, and what makes the ROM do that is not established.
+/// 9). Their interrupts are spaced alike here, 9.6 ms apart. At each of the first four presses both
+/// OSes write port 4 = 06h and port 3 = 0Ah together 46.7 to 49.5 ms after the press. From the
+/// fifth press the ROM writes port 4 = 06h twice and port 3 = 0Dh 2.8 ms after the press, port 4 =
+/// 06h again 9.4 ms after it and no 0Ah for the press, and the stub still acts as at the first
+/// four; the cause is ROM state the port record does not show.
 fn a_key_with_on_down_and_the_byte_clear_goes_to_app_key(real: bool) {
+    presses(real, 12, false);
+}
+
+/// The first `n` presses of the test above; with `trace` each press prints the writes to ports 1,
+/// 3 and 4 the OS made from the ON press until ON is let go, and then until the byte clears.
+fn presses(real: bool, n: usize, trace: bool) {
     let mut sc = script(&[KIND_LIBRARIES], &[Slice::ms(3).off().more()]);
     sc.forever = true;
     let mut rig = with_the_byte_clear(real, &sc);
@@ -40,10 +48,12 @@ fn a_key_with_on_down_and_the_byte_clear_goes_to_app_key(real: bool) {
     for (i, key) in [LEFT, RIGHT, F4, LETTER]
         .into_iter()
         .cycle()
-        .take(12)
+        .take(n)
         .enumerate()
     {
+        rig.m().clear_port_writes();
         rig.m().press_key(Machine::KEY_ON);
+        let on_at = rig.m().clock();
         rig.step(100_000 + 700 * i as u32);
         assert_eq!(rig.held(), 0, "press {i}: the byte is clear");
         assert!(
@@ -74,8 +84,33 @@ fn a_key_with_on_down_and_the_byte_clear_goes_to_app_key(real: bool) {
             coded += 1;
         }
         seen.push(answer.a);
+        let down = rig.m().take_port_writes();
         rig.m().release_key(Machine::KEY_ON);
+        let off_at = rig.m().clock();
         rig.until("the byte clears", 2_000_000, |r| r.held() == 0);
+        if trace {
+            let show = |ws: &[mcemu::PortWrite], from: u32| {
+                let v: Vec<String> = ws
+                    .iter()
+                    .filter(|w| w.port != 1)
+                    .map(|w| {
+                        let ms = f64::from(w.clock.wrapping_sub(from)) / 6000.0;
+                        format!("{}={:02X}@{ms:.1}", w.port, w.value)
+                    })
+                    .collect();
+                v.join(" ")
+            };
+            let up = rig.m().take_port_writes();
+            println!(
+                "{} OS press {i}: ms from the press: {} | ms from the release: {}",
+                os_name(real),
+                show(&down, on_at),
+                show(&up, off_at)
+            );
+        }
+    }
+    if trace {
+        return;
     }
     println!(
         "{} OS: idle points with ON and a key down and no code {both}, with a code or ON alone \
@@ -84,6 +119,15 @@ fn a_key_with_on_down_and_the_byte_clear_goes_to_app_key(real: bool) {
     );
     let expected = if real { (9, 3) } else { (6, 6) };
     assert_eq!((both, coded), expected, "of twelve phases");
+}
+
+/// The record of what each OS writes to ports 3 and 4 for the first six ON presses of the test above.
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn print_the_on_acknowledge_of_six_presses_on_both_oses() {
+    for real in [false, true] {
+        presses(real, 6, true);
+    }
 }
 
 twin!(

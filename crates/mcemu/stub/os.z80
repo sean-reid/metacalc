@@ -97,8 +97,9 @@ JUNK_HL2          .equ $A127
 ; interrupts off, until the ON level on port 4 has read the same SETTLE_COUNT times in a row, a
 ; wait of about 46.7 ms that the reference OS makes at either edge and that holds up the timer and
 ; the key scan meanwhile. It sets the OS break flag when ON then reads down and IY holds the
-; flags pointer, so a press that ends before the wait does sets nothing. A press also writes
-; port 4 as the reference OS does, and an ON interrupt scans no keys.
+; flags pointer, so a press that ends before the wait does sets nothing. A press writes port 4 =
+; 06h at the end of the wait, as the reference OS does for its first four presses and not for the
+; fifth on, which it answers 2.8 ms in. An ON interrupt scans no keys.
 ; Every interrupt acknowledges the timer and ON sources by the writes the reference OS makes to
 ; port 3: 08h, then 09h (0Ah for ON), then the mask as it was read. Without ON it makes the
 ; reference OS's one check of the whole keypad (port 1 at 00h, read, port 1 at FFh) and scans the
