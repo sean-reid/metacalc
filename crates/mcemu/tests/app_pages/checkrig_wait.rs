@@ -9,7 +9,6 @@ use mcemu::Machine;
 fn run_after_a_tap() -> Run {
     let mut run = Run::boot(proofs(), None);
     run.tap(DOWN);
-    run.run(30_000);
     run
 }
 
