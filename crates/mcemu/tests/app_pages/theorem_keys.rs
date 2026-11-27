@@ -267,7 +267,7 @@ fn a_scroll_key_that_keeps_the_cursor_in_view_leaves_following_on_through_a_fold
         let (scan, key) = keys.next().expect("a fold is made");
         walker.press(scan, key);
     }
-    walker.excursion(F2, Key::F2);
+    walker.excursion(F3, Key::F3);
 }
 
 /// Takes the cursor through the nodes in preorder, unfolding as it goes, to the `skip`th one a refit would
@@ -293,7 +293,7 @@ pub fn onto_a_hidden_node(walker: &mut Walker, skip: usize) {
             );
         }
     }
-    walker.excursion(F2, Key::F2);
+    walker.excursion(F3, Key::F3);
     let (s, node) = cursor(walker);
     assert!(
         walker.mirror().hides(s, node),
@@ -491,7 +491,7 @@ fn a_refit_that_takes_the_rows_under_six_clamps_a_scrolled_view_to_the_top() {
         scroll(&walker) > 0 && walker.var16("TV_TOTAL") >= 8,
         "the precondition"
     );
-    walker.excursion(F2, Key::F2);
+    walker.excursion(F3, Key::F3);
     assert_eq!(
         walker.var16("TV_TOTAL"),
         f.rows,

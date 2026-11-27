@@ -51,6 +51,25 @@ mod cost_stages;
 mod counts;
 #[path = "app_pages/data.rs"]
 mod data;
+#[path = "app_pages/dist_boundary.rs"]
+mod dist_boundary;
+#[path = "app_pages/dist_depth.rs"]
+mod dist_depth;
+#[path = "app_pages/dist_errors.rs"]
+mod dist_errors;
+#[path = "app_pages/dist_frames.rs"]
+mod dist_frames;
+#[allow(dead_code)]
+#[path = "app_pages/dist_lib.rs"]
+mod dist_lib;
+#[path = "app_pages/dist_power.rs"]
+mod dist_power;
+#[path = "app_pages/dist_rig.rs"]
+mod dist_rig;
+#[path = "app_pages/dist_screens.rs"]
+mod dist_screens;
+#[path = "app_pages/dist_watch.rs"]
+mod dist_watch;
 #[path = "app_pages/draw.rs"]
 mod draw;
 #[path = "common/exit_kit.rs"]

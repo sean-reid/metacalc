@@ -4,6 +4,7 @@
 
 use crate::app::*;
 use crate::builds::*;
+use crate::dist_rig::KIND_DIST;
 use crate::idlerig::IDLE;
 use crate::realos::{BASE, RealOs};
 use crate::shellrig::*;
@@ -100,6 +101,7 @@ fn every_screen_of_the_app_idles_to_nothing_and_changes_no_byte() {
     idle_after(staged, &[F3], KIND_STAGE, "a stage");
     idle_after(staged, &[F1, F2], KIND_NOTICE, "a notice");
     idle_after(staged, &[F1, F1], KIND_THEOREM, "a theorem");
+    idle_after(staged, &[F1, F1, F2], KIND_DIST, "a Dist screen");
 }
 
 /// The screen `keys` open on the reference OS is the one the stub shows for the same keys, and it
@@ -128,6 +130,7 @@ fn on_the_reference_os_every_screen_of_the_app_idles_to_nothing() {
     idle_on_the_reference_os(three_stages(), &[F3], KIND_STAGE, "a stage");
     idle_on_the_reference_os(three_stages(), &[F1, F2], KIND_NOTICE, "a notice");
     idle_on_the_reference_os(three_stages(), &[F1, F1], KIND_THEOREM, "a theorem");
+    idle_on_the_reference_os(three_stages(), &[F1, F1, F2], KIND_DIST, "a Dist screen");
 }
 
 /// An idle routine that writes one byte of the kernel's RAM page, at `at`, and answers SCR_STAY

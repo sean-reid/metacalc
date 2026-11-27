@@ -56,7 +56,7 @@ pub fn trace_here(run: &mut Run, label: &str, mask: bool, speed: u8) -> Trace {
     run.m().load_ram(sp - 256, &fill);
     let before = (run.m().regs().iff1, run.m().in_port(0x20) & 1);
     let back = match label {
-        "list_key" | "theorem_key" => run.shell.app.label("scr_key") + 5,
+        "list_key" | "theorem_key" | "dist_key" => run.shell.app.label("scr_key") + 5,
         _ => ret,
     };
     run.run_to_addr(&format!("the return of {label}"), back, WAIT);
@@ -153,7 +153,6 @@ pub fn figures_of(
     walker.list.run.run(1_000_000);
     put("draw", &[draw]);
     for (name, scan) in [
-        ("f2", F2),
         ("f3", F3),
         ("f4", F4),
         ("f5", F5),
@@ -171,7 +170,7 @@ pub fn figures_of(
         put(&format!("key {name}"), &[t]);
     }
     let mut walker = at(n);
-    walker.tap(F2);
+    walker.tap(F3);
     walker.list.run.run(300_000);
     walker.list.run.m().press_key(CLEAR);
     let t = walker.trace("theorem_enter", mask, speed);
@@ -190,7 +189,7 @@ pub fn figures_of(
         }
     }
     assert_ne!(walker.frame()[5], 0, "the cursor is inside a statement");
-    walker.tap(F2);
+    walker.tap(F3);
     walker.list.run.run(300_000);
     walker.list.run.m().press_key(CLEAR);
     walker.trace("theorem_enter", mask, speed);
@@ -215,7 +214,6 @@ pub fn depths(enter: u16, draw: u16) -> BTreeMap<String, u16> {
         ("enter on an uncovering", enter),
         ("key at the root of a short statement", 14),
         ("key clear", 2),
-        ("key f2", 6),
         ("key f3", 6),
         ("key f4", 6),
         ("key f5", 4),

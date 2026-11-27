@@ -61,6 +61,11 @@ fn on_kind(rig: &mut Rig, kind: u8) {
             tap(rig, F1);
             tap(rig, F1);
         }
+        crate::dist_rig::KIND_DIST => {
+            tap(rig, F1);
+            tap(rig, F1);
+            tap(rig, F2);
+        }
         KIND_ABOUT => {
             for _ in 0..4 {
                 tap(rig, DOWN);
@@ -85,6 +90,7 @@ fn on_the_reference_os_holding_down_repeats_at_the_plain_wait_times_on_every_shi
         ("about", KIND_ABOUT),
         ("stage", KIND_STAGE),
         ("theorem", crate::theorem_rig::KIND_THEOREM),
+        ("dist", crate::dist_rig::KIND_DIST),
     ] {
         let mut rig = Rig::real(three_stages(), Enter::Real, &script(&[], &[]));
         rig.step(600_000);

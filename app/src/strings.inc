@@ -207,6 +207,24 @@ THEOREM_BLOCK_SIZE	.equ theorem_block_end - theorem_block
  .error "the theorem screen's strings are longer than APP_STAGE_DATA_SIZE"
 #endif
 
+dist_block:
+dz_dv:
+	.db UI_FONT_CH_64, UI_FONT_CH_76, UI_FONT_CH_20, 0
+dz_none:
+	.db UI_FONT_CH_6E, UI_FONT_CH_6F, UI_FONT_CH_6E, UI_FONT_CH_65, 0
+dz_blank:
+	.db 0
+dz_keys:
+	.dw STG_DV_BLANK, STG_DV_BLANK, STG_DV_BLANK, STG_DV_BLANK, STG_DV_BLANK
+dist_block_end:
+STG_DV_NONE	.equ APP_STAGE_DATA + (dz_none - dist_block)
+STG_DV_BLANK	.equ APP_STAGE_DATA + (dz_blank - dist_block)
+STG_DV_KEYS	.equ APP_STAGE_DATA + (dz_keys - dist_block)
+DIST_BLOCK_SIZE	.equ dist_block_end - dist_block
+#if DIST_BLOCK_SIZE > APP_STAGE_DATA_SIZE
+ .error "the Dist screen's strings are longer than APP_STAGE_DATA_SIZE"
+#endif
+
 checking_block:
 kx_checking:
 	.db UI_FONT_CH_43, UI_FONT_CH_68, UI_FONT_CH_65, UI_FONT_CH_63, UI_FONT_CH_6B, UI_FONT_CH_69, UI_FONT_CH_6E, UI_FONT_CH_67, 0

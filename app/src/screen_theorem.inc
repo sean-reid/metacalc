@@ -1,9 +1,9 @@
 ; Kind 7, the theorem screen as Theorem in crates/mcui/src/screens/theorem.rs draws it: the label with the
 ; mark and "thm" or "ax" in the title bar, the hypotheses numbered and the conclusion laid out in six
 ; rows, folded by subexpression until they fit, a cursor that moves by subexpression, and the keys Fold,
-; Dist, Why, Try and a blank. Dist, Why and Try push the stage's "Not available yet" notice. An
-; assertion past the caps is the model's too large screen: the sentence and the keys Dist and Try.
-; screen_theorem_draw.inc has the draw.
+; Dist, Why, Try and a blank. Dist pushes the Dist screen of the assertion (screen_dist.inc), Why and Try
+; the stage's "Not available yet" notice. An assertion past the caps is the model's too large screen: the
+; sentence and the keys Dist and Try. screen_theorem_draw.inc has the draw.
 ;
 ; Frame: byte 1 the stage, bytes 2 and 3 the assertion, as the list's cursor holds it, byte 4 the
 ; cursor's statement as the model counts them (the hypotheses from 0, the conclusion last), byte 5 its
@@ -63,8 +63,8 @@
 ;                and the view where follow puts it. Later ones keep the cursor, clamped to the statements
 ;                and to the nodes of its statement, and follow it when the frame says the view was
 ;                following, else clamp the scroll. Then they write byte 8.
-; theorem_key    UP, DOWN, LEFT, RIGHT, ENTER and F1 as the model's press; F2, F3 and F4 push the notice
-;                NOTICE_LIST; CLEAR pops. F5, the letters and KEY_NONE are the model's no-op press: the frame is
+; theorem_key    UP, DOWN, LEFT, RIGHT, ENTER and F1 as the model's press; F2 pushes the Dist screen, F3 and F4
+;                the notice NOTICE_LIST; CLEAR pops. F5, the letters and KEY_NONE are the model's no-op press: the frame is
 ;                left as it is when the view is following, else the view follows the cursor. On the too
 ;                large screen only F2, F4 and CLEAR act. Answers SCR_REDRAW exactly when the picture changes:
 ;                the statement, the scroll, a fold of a node that is not hidden, or the node drawn as the
@@ -90,7 +90,7 @@
 ; interrupts masked, the same on both OSes unless said: list_key 8 for ENTER and F1; theorem_enter 24 on the
 ; stub OS and 34 on the reference OS, whose lookup of the table is deeper, for a push and for an uncovering,
 ; with a status table installed and without; theorem_draw 18, with the marker and with the cursor's
-; rectangles, whether a statement is skipped or not. theorem_key by path: CLEAR 2; F2 to F4 6; F5, a letter
+; rectangles, whether a statement is skipped or not. theorem_key by path: CLEAR 2; F2 8; F3 and F4 6; F5, a letter
 ; and KEY_NONE 4 while byte 8 is 1 and 12 while it is 0; Left and Right 14 to a sibling, 12 across
 ; statements, 10 where there is no statement to go to; Up 12 to node 0 and 14 to a parent that is not node
 ; 0, 10 at the root of a statement of several nodes; Down 14 to a first child and 10 at a leaf or at a
@@ -273,11 +273,14 @@ te_large:
 
 ; In: HL = the frame. Out: A = SCR_PUSH after filling scr_new.
 theorem_push:
+	ld a, KIND_THEOREM
+; In: A = a kind, HL = a frame with the stage in byte 1 and the assertion in bytes 2 and 3. Out: A = SCR_PUSH
+; after filling scr_new with that kind's frame, the stage and the assertion set. Destroys AF BC DE HL IX.
+theorem_push_kind:
 	push hl
 	pop ix
 	ld b, (ix + 1)
 	ld c, (ix + 2)
-	ld a, KIND_THEOREM
 	call screen_push_param
 	ld a, (ix + 3)
 	ld (scr_new + 3), a

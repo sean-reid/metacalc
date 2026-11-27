@@ -95,6 +95,25 @@ fn an_intact_sentinel_runs_no_refresh_and_no_blit_for_f5_and_a_letter_on_a_theor
     ignores(&mut shell, &[LETTER, F5, ONE], "on a theorem");
 }
 
+#[test]
+fn an_intact_sentinel_runs_no_refresh_and_no_blit_for_the_keys_the_dist_screen_ignores() {
+    let mut shell = booted(with_library(), Enter::Real);
+    shell.tap(F1);
+    shell.app.m.run_app(3_000_000);
+    shell.tap(ENTER);
+    shell.tap(F2);
+    assert_eq!(
+        shell.top_kind(),
+        crate::dist_rig::KIND_DIST,
+        "the Dist screen"
+    );
+    ignores(
+        &mut shell,
+        &[LETTER, F1, F3, F4, F5, ONE, ENTER, LEFT, RIGHT],
+        "on the Dist screen",
+    );
+}
+
 /// After the power down the next key, which the screen ignores, makes the top screen's enter run
 /// once, and its frame is drawn and blitted once.
 fn refreshed(built: &'static Built, enter: Enter, open: &[u8], kind: u8, want: &[u8]) {
