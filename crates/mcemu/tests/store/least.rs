@@ -7,13 +7,13 @@ use super::rig::*;
 /// The OS's operand registers OP3 to OP6, of which the routine destroys none past OP2.
 const OP3: u16 = 0x848E;
 
-fn leak(list: &[u16]) -> &'static [u16] {
+pub fn leak(list: &[u16]) -> &'static [u16] {
     Box::leak(list.to_vec().into_boxed_slice())
 }
 
 /// The rule: the least number of the list with start <= n < limit whose value is not 1, else the
 /// limit; ST_RANGE for a limit above the count or a start above the limit.
-fn least(values: &[u8], list: &[u16], start: u16, limit: u16) -> Result<u16, u8> {
+pub fn least(values: &[u8], list: &[u16], start: u16, limit: u16) -> Result<u16, u8> {
     if usize::from(limit) > values.len() || start > limit {
         return Err(ST_RANGE);
     }
@@ -25,7 +25,7 @@ fn least(values: &[u8], list: &[u16], start: u16, limit: u16) -> Result<u16, u8>
         .unwrap_or(limit))
 }
 
-fn table(values: &[u8], padding: u8) -> Rig {
+pub fn table(values: &[u8], padding: u8) -> Rig {
     let mut rig = Rig::new();
     let mut t = Table::new(CRC, values.len() as u16);
     t.values = values.to_vec();
@@ -139,9 +139,9 @@ fn every_value_at_every_position_of_a_byte_is_found_for_every_list_start_and_lim
         }
     }
     println!("{counts:?}");
-    assert!(counts.hit > 1000, "{counts:?}");
-    assert!(counts.limit > 3000, "{counts:?}");
-    assert!(counts.range > 3000, "{counts:?}");
+    assert!(counts.hit >= 7300, "{counts:?}");
+    assert!(counts.limit >= 21_700, "{counts:?}");
+    assert!(counts.range >= 33_500, "{counts:?}");
 }
 
 #[test]
@@ -171,7 +171,7 @@ fn a_table_of_mixed_values_and_a_count_that_is_not_a_multiple_of_four_agree_with
     }
     println!("{counts:?}");
     assert!(
-        counts.hit > 800 && counts.limit > 1000 && counts.range > 1000,
+        counts.hit >= 2400 && counts.limit >= 5500 && counts.range >= 8800,
         "{counts:?}"
     );
 }
@@ -211,7 +211,7 @@ fn a_list_of_one_and_a_list_of_127_over_the_ring_table_are_the_rules_answer() {
     }
     run_cases(&mut rig, &values, &cases, &mut counts);
     println!("{counts:?}");
-    assert!(counts.hit > 15 && counts.limit > 8, "{counts:?}");
+    assert!(counts.hit >= 19 && counts.limit >= 27, "{counts:?}");
     let ones = vec![1u8; count];
     let mut rig = table(&ones, 0);
     let mut counts = Counts::default();
@@ -381,26 +381,31 @@ fn what_the_call_costs_over_the_runs_of_s_on_ring_is_printed_and_pinned() {
         [127, 127, 121]
     );
     let count = usize::from(COUNT);
-    let mut total_ones = 0;
-    let mut total_none = 0;
-    for (name, values) in [
-        ("every assertion 1", vec![1u8; count]),
-        ("no assertion 1", vec![0u8; count]),
+    let (mut total_ones, mut total_none, mut total_empty) = (0, 0, 0);
+    for (name, values, limit_of) in [
+        ("every assertion 1", vec![1u8; count], COUNT),
+        ("no assertion 1", vec![0u8; count], COUNT),
+        ("a table of no assertions", Vec::new(), 0),
     ] {
         let mut rig = table(&values, 0);
-        let mut limit = COUNT;
+        let mut limit = limit_of;
         for run in &runs {
-            let took = rig.window(
-                &[Cmd::LeastNotOne(0, limit, run)],
-                label("STORE_LEAST_NOT_ONE"),
-                0,
-            );
+            let cmd = [Cmd::LeastNotOne(0, limit, run)];
             let want = least(&values, run, 0, limit).unwrap();
+            let log = rig.run(&cmd);
+            assert_eq!(
+                (log[0].a, log[0].word(0)),
+                (ST_OK, want),
+                "{name}: the answer is the rule's"
+            );
+            let took = rig.window(&cmd, label("STORE_LEAST_NOT_ONE"), 0);
             println!(
                 "{name}: a run of {} with limit {limit}: {took} T-states, answer {want}",
                 run.len()
             );
-            if values[0] == 1 {
+            if values.is_empty() {
+                total_empty += took;
+            } else if values[0] == 1 {
                 total_ones += took;
             } else {
                 total_none += took;
@@ -408,10 +413,14 @@ fn what_the_call_costs_over_the_runs_of_s_on_ring_is_printed_and_pinned() {
             limit = want;
         }
     }
-    println!("375 tests, no hit: {total_ones} T-states; none is 1: {total_none}");
+    println!(
+        "375 tests, no hit: {total_ones} T-states; none is 1: {total_none}; a table of no \
+         assertions: {total_empty}"
+    );
     for (what, got, measured) in [
         ("every assertion 1, three runs", total_ones, 259_854u32),
         ("no assertion 1, three runs", total_none, 107_015),
+        ("a table of no assertions, three runs", total_empty, 103_365),
     ] {
         let (low, high) = (measured - measured / 50, measured + measured / 100);
         assert!(

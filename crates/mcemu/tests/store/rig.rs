@@ -22,12 +22,10 @@ pub fn label(name: &str) -> u16 {
         .unwrap_or_else(|| panic!("no label {name}"))
 }
 
-/// T-states from the first instruction of the routine at `entry` on flash page `page` to the
-/// instruction it returns to, at its `skip + 1`th call from where the machine is. The window
-/// holds the routine and the OS calls it makes, and nothing of the probe: not the dispatch, the
-/// argument fetch, the CALL or the log. No interrupt is taken in it: the run stops at 0038h if
+/// Runs to the first instruction of the routine at `entry` on flash page `page`, at its `skip + 1`th
+/// call from where the machine is. No interrupt is taken from there on: the run stops at 0038h if
 /// one is, and that fails here.
-pub fn call_window(m: &mut Machine, page: u8, entry: u16, skip: usize) -> u32 {
+fn reach_call(m: &mut Machine, page: u8, entry: u16, skip: usize) {
     for _ in 0..=skip {
         // Before the window the OS's interrupt runs freely, while its menu starts the app.
         let began = m.clock();
@@ -42,6 +40,15 @@ pub fn call_window(m: &mut Machine, page: u8, entry: u16, skip: usize) -> u32 {
             }
         }
     }
+}
+
+/// T-states from the first instruction of the routine at `entry` on flash page `page` to the
+/// instruction it returns to, at its `skip + 1`th call from where the machine is. The window
+/// holds the routine and the OS calls it makes, and nothing of the probe: not the dispatch, the
+/// argument fetch, the CALL or the log. No interrupt is taken in it: the run stops at 0038h if
+/// one is, and that fails here.
+pub fn call_window(m: &mut Machine, page: u8, entry: u16, skip: usize) -> u32 {
+    reach_call(m, page, entry, skip);
     let back = m.read_ram(m.regs().sp, 2);
     let start = m.clock();
     assert_eq!(
@@ -50,6 +57,33 @@ pub fn call_window(m: &mut Machine, page: u8, entry: u16, skip: usize) -> u32 {
         "the routine returns with no interrupt taken"
     );
     m.clock().wrapping_sub(start)
+}
+
+/// How many times the instruction `target` (a flash page and where it is mapped in bank A) runs
+/// in the `window` T-states from the first instruction of the routine at `entry`, at its
+/// `skip + 1`th call. `window` is what `call_window` measured for the same call.
+pub fn call_hits(
+    m: &mut Machine,
+    page: u8,
+    entry: u16,
+    skip: usize,
+    target: (u8, u16),
+    window: u32,
+) -> usize {
+    reach_call(m, page, entry, skip);
+    let start = m.clock();
+    let mut hits = 0;
+    loop {
+        let spent = m.clock().wrapping_sub(start);
+        if spent >= window {
+            return hits;
+        }
+        match m.run_to(target.0, target.1, window - spent) {
+            Reached::Target => hits += 1,
+            Reached::Limit => return hits,
+            Reached::Vector38 => panic!("an interrupt in the window"),
+        }
+    }
 }
 
 pub fn xorshift(seed: &mut u32) -> u32 {
@@ -322,6 +356,17 @@ impl Rig {
             took = call_window(m, BASE, entry, skip)
         });
         took
+    }
+
+    /// How many times `target` runs in the call of the routine at `entry` that `cmds` makes first,
+    /// and the T-states of that call.
+    pub fn hits(&mut self, cmds: &[Cmd], entry: u16, target: (u8, u16)) -> (usize, u32) {
+        let window = self.window(cmds, entry, 0);
+        let mut hits = 0;
+        self.run_script_with(Some(cmds), None, |m| {
+            hits = call_hits(m, BASE, entry, 0, target, window)
+        });
+        (hits, window)
     }
 
     fn run_script(&mut self, cmds: Option<&[Cmd]>, free: Option<usize>) -> (Vec<Rec>, u32) {
