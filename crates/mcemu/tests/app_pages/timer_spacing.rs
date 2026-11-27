@@ -108,7 +108,7 @@ fn name(real: bool) -> &'static str {
     if real { "reference" } else { "stub" }
 }
 
-fn rig_in(real: bool, script: &Script) -> Rig {
+pub fn rig_in(real: bool, script: &Script) -> Rig {
     let mut rig = Rig::new(real, three_stages(), Enter::Real, script);
     rig.until("the idle point", 2_000_000, |r| r.state().in_slice);
     rig.step(100_000);

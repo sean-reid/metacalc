@@ -205,9 +205,10 @@ pad_key:       .dw PAD_KEY_6, PAD_KEY_15
 
 ; Looks at the whole keypad as the reference OS does, and if a key is down scans the eight groups
 ; and sets kbdScanCode to the one key that is down if it is not the one taken last, tracked in
-; kbdKey. Two or more keys down change nothing until one is up; no key down forgets the last, and
-; clears kbdScanCode when RELEASE_SCANS scans have passed with no key down, as the OS does about 40
-; ms after a release (a scan is 9.2 ms). Ends in a delay by the class of the scan.
+; kbdKey. Two or more keys down change nothing until one is up. The last key is kept, and so is
+; kbdScanCode, until RELEASE_SCANS scans in a row have found no key down (about 40 ms after a
+; release, a scan being 9.2 ms); that scan clears both. The same key pressed again before then is
+; not taken, and a different key is taken at once. Ends in a delay by the class of the scan.
 scan_keys:
 	ld de,0
 	xor a
@@ -269,8 +270,6 @@ scan_pad_key:
 	ld hl,pad_key
 	jp pad
 scan_none:
-	xor a
-	ld (kbdKey),a
 	ld a,(kbdRelease)
 	or a
 	jr z,scan_pad_idle
@@ -278,6 +277,7 @@ scan_none:
 	ld (kbdRelease),a
 	jr nz,scan_pad_count
 	ld (kbdScanCode),a
+	ld (kbdKey),a
 	ld hl,pad_clear
 	jp pad
 scan_pad_count:

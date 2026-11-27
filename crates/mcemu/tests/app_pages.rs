@@ -91,6 +91,8 @@ mod idlerig;
 mod idlerig_script;
 #[path = "app_pages/idlerig_watch.rs"]
 mod idlerig_watch;
+#[path = "app_pages/key_memory.rs"]
+mod key_memory;
 #[path = "app_pages/keys.rs"]
 mod keys;
 #[path = "app_pages/keys_walk.rs"]
