@@ -25,8 +25,8 @@
 ;   Unchecked     36   38  34  34  36     -      38     42     40    36    36
 ; A dash is a place the 40 keys do not reach. ENTER and F1 write what DOWN does, the greatest of the walk,
 ; since they ask lf_next whether the kind shows the cursor before they open its theorem. Under each kind
-; the idle call settled takes 2, CLEAR and a letter 2, F2 and F4 6, F5 2 on the stub and 6 on the reference
-; OS, a tick 8 on the stub and 14 on the reference OS. An interrupt that lands in a call can only add to these: the figures with the app's
+; the idle call settled takes 2, CLEAR and F2 4, a letter 20 (Unchecked: 26 on the stub with a table, 40 on the
+; reference OS), F4 6, F5 2 on the stub and 6 on the reference OS, a tick 8 on the stub and 14 on the reference OS. An interrupt that lands in a call can only add to these: the figures with the app's
 ; interrupts on are never below the masked ones.
 
 LISTK_ALL	.equ 0

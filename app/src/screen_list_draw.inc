@@ -2,6 +2,10 @@
 ; the room checked/total leaves, the rows from the top, the preview and the keys. Strings built here are
 ; in APP_TEXT and the constants are staged from list_block. Every routine here destroys AF BC DE HL
 ; and IX, since far_ui_text_width leaves AF BC DE and HL as its result and every far call destroys IX.
+; With a find typed (LV_FIND, a copy of frame bytes 7 to 15) the title's right side is the prefix from
+; list_find_right in place of the counts: the characters whole when they fit LIST_FIND_ROOM pixels, else an
+; ellipsis and the longest end of them that fits, and after a miss LIST_FIND_ROOM_MISS pixels, a space and
+; the cross, as the model's tail does.
 
 #ifdef LIBRARY
 ; In: HL = the frame.

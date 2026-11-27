@@ -1,6 +1,7 @@
 ; Kind 6, the theorem list as List in crates/mcui/src/screens/list.rs draws it with the assertions
-; its kind shows (Kind::All, Theorems, Axioms or Unchecked, no find): the stage's name, then ":thm", ":ax"
-; or ":?" for the last three, and checked/total in the title bar, five
+; its kind shows (Kind::All, Theorems, Axioms or Unchecked) and the find by typed prefix: the stage's name,
+; then ":thm", ":ax" or ":?" for the last three, and checked/total in the title bar, or the typed prefix
+; in its place (screen_list_find.inc), five
 ; rows of labels with their marks, the cursor's row inverted, a one line preview of the cursor's
 ; conclusion on row 6, and the keys Open, Find, Kind, Try and Sect. The rows are the assertions 0 up
 ; to the stage's end that the kind shows, and the screen keeps their numbers and no item table, so the model's
@@ -18,8 +19,20 @@
 ; four shown assertions below the first row gets the first row four shown assertions above it. The first
 ; push and an uncovering run the same enter.
 ;
+; The find: byte 7 holds the prefix's length in bits 0 to 3 (at most LIST_FIND_MAX, 8) and 80h when the last
+; jump found no label (the model's `missed`), bits 4 to 6 are 0, and bytes 8 to 15 hold its characters,
+; lowercase, as typed. screen_make clears bytes 3 to 15 of a new frame, so a push from Libraries starts with
+; no prefix; the enter after a notice or a theorem screen pops and the refresh after an auto power down read
+; the frame and write nothing to it, so bytes 7 to 15 are kept. Characters past the length are not cleared:
+; a new prefix overwrites from the first and nothing reads past the length. Without the label order section
+; (LV_HASO 0) a letter stays, F2 pushes the notice and byte 7 stays 0.
+;
 ; Derived state, in APP_TEXT:
 ;   LV_HASK     1 when the library has the kinds section, which F3 needs: with 0 there is only All
+;   LV_HASO     1 when the library has the label order section (lib_sections bit 6), which the find needs,
+;               set by list_enter_kinds and cleared by list_enter; it is the last byte of APP_TEXT, which
+;               the variables now fill exactly (LV_VARS_END is APP_TEXT + 173) and the #if below refuses
+;               to outgrow
 ;   LV_KIND     the frame's kind byte, copied by each routine
 ;   LV_TABLE    1 when the status table is this library's (store_has), else 0; with 0 every row is
 ;               unchecked and the screen never creates a table. A table lost after the enter leaves it
@@ -37,7 +50,9 @@
 ;   LV_NOFM     1 once fm_open has answered anything but 0 since list_enter, else 0: every preview
 ;               then settles as LVP_NONE without a call to fm
 ; The rest of APP_TEXT is scratch that no call reads before it writes: list_enter writes LV_STAGE,
-; list_draw writes LV_STAGE, LV_CUR, LV_TOP, LV_END, LV_ROW, LV_AT, LV_MARK and the strings it builds,
+; list_draw writes LV_STAGE, LV_CUR, LV_TOP, LV_END, LV_ROW, LV_AT, LV_MARK, LV_FIND (a copy of bytes 7 to 15
+; of the frame, which shares LV_TEXT) and the strings it builds, and lk_letter writes the find's scratch
+; LF_ in LV_NAME and LV_CUT and the copy buffer FM_SCRATCH,
 ; and list_idle writes LV_CUR. list_enter, list_key and list_idle also write LV_KIND and LV_END, and the
 ; LK_ scratch of screen_list_kind.inc at the start of LV_RIGHT, which list_draw builds again before it reads;
 ; LK_AGAIN holds the number lf_next and lf_prev were given while the store is asked.
@@ -87,7 +102,7 @@
 ;              The count is in timer interrupts and the first halt ends at the next one, so the fit
 ;              starts between 10 and 11 periods after the first call that follows a key's frame:
 ;              578,942 T-states (96.5 ms) measured on the reference OS.
-; list_draw    in: HL = the frame. Clears the canvas, stages list_block, draws the title, the rows, the
+; list_draw    in: HL = the frame. Copies bytes 7 to 15 into LV_FIND, clears the canvas, stages list_block, draws the title (the prefix in place of the counts when byte 7 has a length), the rows, the
 ;              preview when LV_PREVIEW is LVP_ROW, by one fm_draw and no fit, and the keys. It reads the
 ;              label of each row with one lib_label and, when LV_TABLE is 1, its mark with one
 ;              store_get, five of each at most for a frame. Under a kind it also asks lf_next once
@@ -99,10 +114,10 @@
 ; give the caller's state back; the screen writes no port 20h and executes no DI.
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
 ; greatest over a call of each routine with interrupts masked, at both speeds (list_depth.rs; the figures
-; under a kind are in screen_list_kind.inc). Stub OS under All: list_key 4 for a move and for a key at an
-; end, 6 for F2 and F4, which push the notice, 8 for ENTER and F1 on a stage with an assertion, which
+; under a kind are in screen_list_kind.inc, the find's in screen_list_key.inc). Stub OS under All: list_key
+; 4 for a move and for a key at an end, 4 for F2 and CLEAR, 6 for F4, which pushes the notice, 8 for ENTER and F1 on a stage with an assertion, which
 ; push the theorem screen (under a kind they ask lf_next first and write 16, 16 and 22 under Theorems,
-; Axioms and Unchecked on the stub and 16, 16 and 36 on the reference OS), 2 for CLEAR, a letter and F5 with no sections, F3 from All 20 on
+; Axioms and Unchecked on the stub and 16, 16 and 36 on the reference OS), 2 for F5 with no sections, 20 for a letter, F3 from All 20 on
 ; the fixture of list_depth.rs and 24 on the proofs library of list_kind_depth.rs, from the first
 ; assertion and from ten rows down alike; list_enter 22; list_idle 8 for the fit and for a tick, which holds
 ; app_tick's return address and the interrupt handler's pushes, and 2 settled; list_draw 26. Reference

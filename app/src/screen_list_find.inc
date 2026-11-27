@@ -1,4 +1,16 @@
-; The list's find by typed prefix (screen_list.inc has the kind's header).
+; The list's find by typed prefix (screen_list.inc has the screen's header, screen_list_key.inc the keys').
+; lk_letter, lk_f2, lk_clear and list_find_again answer as list_key does. list_find looks the prefix up in the
+; label order and, under the kind in force, takes the first shown assertion at or after the start whose label
+; starts with it: far_lib_find_range once, then one far_lib_find_walk (All, Theorems, Axioms, and Unchecked with
+; no table), or under Unchecked with a table one far_lib_find_copy and one store_least_not_one for each run of
+; at most 127 entries of the range, the best so far as the limit. After a hit the first row takes at most four
+; lf_next calls and, when fewer than four shown assertions follow, one lf_prev and the four of lf_back4: nine at
+; most, and none of them reads anything under All.
+; Statuses: a status other than 0 from far_lib_find_range, far_lib_find_walk or far_lib_find_copy is a miss; one
+; from store_least_not_one shows every assertion, as lf_next does. A miss sets bit 7 of byte 7 and moves nothing.
+; Writes: the frame's bytes 2 to 5 and 7 to 15, LV_PREVIEW and LV_COUNT, LV_KIND, LV_END, LK_FR, LK_CUR, LK_T,
+; LK_N, LF_ in LV_NAME and LV_CUT, FM_SCRATCH and the reader's and the store's state. A refused character, a
+; ninth character and a letter with LV_HASO 0 write nothing. Interrupts and speed are as at the call.
 
 #ifdef LIBRARY
 ; In: A = KEY_LETTER, B = the character, HL = the frame. A letter A to Z is lowercased; a to z, 0 to 9, '-',
