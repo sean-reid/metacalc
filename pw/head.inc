@@ -1,5 +1,5 @@
 ; Reading the records of the assertions a proof names, straight from the flash page that holds
-; each, with the walk's own bounds checks. All of it runs inside the session of pw_walk: on the
+; each, with the walk's own bounds checks. All of it runs inside the session of the walk: on the
 ; private stack, with the spare page in bank C and a library page in bank B.
 
 ; in: A:HL = a library offset. out: Z, port 7 on the page that holds it, HL = its address in bank B

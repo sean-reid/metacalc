@@ -110,4 +110,6 @@
 #include "pw/ram.inc"
 #include "pw/head.inc"
 #include "pw/steps.inc"
-#include "pw/walk.inc"
+#include "pw/enter.inc"
+#include "pw/tables.inc"
+#include "pw/find.inc"

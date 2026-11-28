@@ -8,7 +8,7 @@ use crate::support::*;
 /// Bytes of the caller's stack the header says pw_shape uses below its return address, and bytes
 /// of the walk's own stack below FM_STACK_TOP.
 pub const CALLER_DEPTH: usize = 10;
-pub const PRIVATE_DEPTH: usize = 8;
+pub const PRIVATE_DEPTH: usize = 6;
 
 pub struct Exit {
     pub name: &'static str,
@@ -264,7 +264,7 @@ fn depths(e: &Exit) -> (usize, usize) {
         caller = caller.max(page.len() - lowest);
         let spare = rig.m.ram_page(SPARE_PAGE).to_vec();
         let top = usize::from(rig.label("PW_STACK_TOP") - 0xC000);
-        let floor = usize::from(rig.label("PW_VARS") - 0xC000 + rig.label("PW_USED"));
+        let floor = top - usize::from(rig.label("PW_STACK_ROOM"));
         let lowest = (floor..top)
             .find(|&at| spare[at] != pattern(SPARE_PAGE, at) ^ flip)
             .unwrap_or(top);
@@ -328,7 +328,8 @@ fn the_walk_writes_only_the_bytes_its_header_names() {
         let top = rig.label("PW_STACK_TOP");
         let tokens = rig.label("FM_TOKENS");
         let tokens_used = rig.label("PW_TOKENS_USED");
-        allowed.extra.push((SPARE_PAGE, vars, usize::from(used)));
+        let low_end = top - rig.label("PW_STACK_ROOM");
+        allowed.extra.push((SPARE_PAGE, vars, usize::from(low_end - vars)));
         allowed
             .extra
             .push((SPARE_PAGE, top - PRIVATE_DEPTH as u16, PRIVATE_DEPTH));
@@ -350,10 +351,17 @@ fn the_walk_writes_only_the_bytes_its_header_names() {
         for (what, at, len) in [
             ("variables", vars, usize::from(used)),
             ("entries", rig.label("PW_ENTRIES"), 8),
+            ("starts", rig.label("PW_STARTS"), 2),
             ("saved", rig.label("PW_SAVED"), 1),
             ("sizes", rig.label("PW_SIZES"), 3),
-            ("hypothesis kinds", rig.label("PW_HYPK"), 1),
+            ("hypothesis ranks", rig.label("PW_HYPK"), 1),
             ("references", rig.label("PW_MEMO"), 2),
+            ("steps", rig.label("PW_STEP"), 2),
+            ("begins", rig.label("PW_BEGIN"), 2),
+            ("applied", rig.label("PW_BY"), 2),
+            ("link starts", rig.label("PW_LSTART"), 2),
+            ("variable bitmap", rig.label("PW_PROVBITS"), 32),
+            ("links", rig.label("PW_LINKS"), 1),
         ] {
             let from = usize::from(at - 0xC000);
             if (from..from + len).any(|i| spare[i] != pattern(SPARE_PAGE, i)) {
@@ -364,11 +372,18 @@ fn the_walk_writes_only_the_bytes_its_header_names() {
     assert_eq!(
         touched.into_iter().collect::<Vec<_>>(),
         [
+            "applied",
+            "begins",
             "entries",
-            "hypothesis kinds",
+            "hypothesis ranks",
+            "link starts",
+            "links",
             "references",
             "saved",
             "sizes",
+            "starts",
+            "steps",
+            "variable bitmap",
             "variables"
         ]
     );
@@ -386,7 +401,10 @@ fn the_two_windows_with_the_stack_out_of_reach_hold_no_stack_instruction() {
     assert!(first.is_empty(), "{first:x?}");
     let second = stackfree::breaks(PW.code, at("PWL_WINDOW"), at("PWL_WINDOW_END"), &[]);
     assert!(second.is_empty(), "{second:x?}");
-    assert!(at("PWS_WINDOW_END") - at("PWS_WINDOW") > 40);
+    let peek = stackfree::breaks(PW.code, at("PWK_WINDOW"), at("PWK_WINDOW_END"), &[]);
+    assert!(peek.is_empty(), "{peek:x?}");
+    assert!(at("PWS_WINDOW_END") - at("PWS_WINDOW") > 15);
+    assert!(at("PWK_WINDOW_END") - at("PWK_WINDOW") > 30);
     assert!(at("PWL_WINDOW_END") - at("PWL_WINDOW") >= 3);
 }
 

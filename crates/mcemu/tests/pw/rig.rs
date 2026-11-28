@@ -28,7 +28,16 @@ pub const CUT: u8 = 41;
 pub const SYNTAX: u8 = 42;
 pub const TOTAL: u8 = 43;
 pub const REFS: u8 = 44;
+pub const MORE: u8 = 45;
+pub const NO_WALK: u8 = 46;
+pub const PLACE: u8 = 47;
+pub const NO_TABLE: u8 = 48;
+pub const LINKS: u8 = 49;
+pub const SUBGOALS: u8 = 50;
 pub const NONE: u8 = 9;
+
+pub const MORE_ENTRY: &str = "PW_MORE";
+pub const FIND: &str = "PW_FIND";
 
 /// What the walk writes to the caller's block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,15 +59,20 @@ impl Counts {
     }
 }
 
-pub fn regs(n: u16, typecode: u8) -> Regs {
+/// The registers of a start: the number in HL, the typecode in A, the budget in BC (0 for no cut).
+pub fn regs_with(n: u16, typecode: u8, budget: u16) -> Regs {
     Regs {
         hl: n,
-        bc: u16::from(typecode) << 8 | 0x77,
+        bc: budget,
         de: BLOCK,
         ix: 0x1357,
         iy: 0x2468,
-        a: 0x5A,
+        a: typecode,
     }
+}
+
+pub fn regs(n: u16, typecode: u8) -> Regs {
+    regs_with(n, typecode, 0)
 }
 
 /// The id of the provable typecode, `|-`, read from the symbol table the format lays out: after
