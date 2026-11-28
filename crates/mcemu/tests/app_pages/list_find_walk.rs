@@ -1,0 +1,411 @@
+//! The walk that places the first row after a hit (lfd_follow, lfd_short): a read refused at each of its
+//! lf_next, lf_prev and lf_back4 calls, under the kinds that read something. Theorems and Axioms read the
+//! library's bitmap, Unchecked over a table reads the table; All and Unchecked with no table read nothing.
+//! The calls the walk made are counted from where it starts to where it ends, so a refusal is known to be
+//! reached inside it.
+
+use crate::built::staged_with;
+use crate::list_find_rig::*;
+use crate::list_kind_rig::*;
+use crate::list_rig::*;
+use crate::{app::Built, table};
+use mcui::{Kind, Status};
+
+const LIMIT_WALK: u32 = 3_000_000;
+const NONE: usize = usize::MAX;
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Op {
+    Next,
+    Prev,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Refuse {
+    Nothing,
+    /// The library read of the `usize`th call of that op (1 based) is refused.
+    Library(Op, usize),
+    /// The table is lost before the walk's `usize`th call (1 based) and stays lost.
+    Lost(usize),
+}
+
+/// The walk as screen_list_find.inc's header states it: up to four lf_next calls from the hit, and when
+/// one answers the end, one lf_prev from the end and the four of lf_back4 from its answer. A refused
+/// reader read answers the end (lf_next) or none (lf_prev); a lost table shows every assertion.
+struct Mirror<'a> {
+    shown: &'a [bool],
+    refuse: Refuse,
+    ops: Vec<Op>,
+}
+
+impl Mirror<'_> {
+    fn refused(&mut self, op: Op) -> bool {
+        self.ops.push(op);
+        let nth = self.ops.iter().filter(|&&o| o == op).count();
+        match self.refuse {
+            Refuse::Nothing => false,
+            Refuse::Library(o, k) => o == op && nth == k,
+            Refuse::Lost(n) => self.ops.len() >= n,
+        }
+    }
+
+    fn next(&mut self, from: usize) -> usize {
+        let end = self.shown.len();
+        if self.refused(Op::Next) {
+            return match self.refuse {
+                Refuse::Lost(_) => from,
+                _ => end,
+            };
+        }
+        (from..end).find(|&i| self.shown[i]).unwrap_or(end)
+    }
+
+    fn prev(&mut self, from: usize) -> usize {
+        if self.refused(Op::Prev) {
+            return match self.refuse {
+                Refuse::Lost(_) if from > 0 => from - 1,
+                _ => NONE,
+            };
+        }
+        (0..from).rev().find(|&i| self.shown[i]).unwrap_or(NONE)
+    }
+}
+
+/// The first row the walk leaves for a hit at `hit`, and the calls it made in order.
+fn mirror(shown: &[bool], hit: usize, refuse: Refuse) -> (usize, Vec<Op>) {
+    let mut m = Mirror {
+        shown,
+        refuse,
+        ops: Vec::new(),
+    };
+    let end = shown.len();
+    let mut at = hit;
+    let mut short = false;
+    for _ in 0..4 {
+        let next = m.next(at + 1);
+        if next == end {
+            short = true;
+            break;
+        }
+        at = next;
+    }
+    if !short {
+        return (hit, m.ops);
+    }
+    let last = m.prev(end);
+    if last == NONE {
+        return (hit, m.ops);
+    }
+    let mut back = last;
+    for _ in 0..4 {
+        let before = m.prev(back);
+        if before == NONE {
+            break;
+        }
+        back = before;
+    }
+    (if hit >= back { back } else { hit }, m.ops)
+}
+
+/// A library of axioms and theorems in the order `pattern` gives, labelled `ax` or `th` and a letter.
+fn lettered(name: &str, pattern: &str) -> &'static Built {
+    let mut src = String::from("$c wff |- $.\n$v p $.\nwp $f wff p $.\n");
+    for (n, c) in pattern.chars().enumerate() {
+        let l = char::from(b'a' + u8::try_from(n).unwrap());
+        match c {
+            'A' => src += &format!("ax{l} $a |- p $.\n"),
+            'T' => src += &format!("${{ h{l} $e |- p $. th{l} $p |- p $= h{l} $. $}}\n"),
+            other => panic!("{other}"),
+        }
+    }
+    let library = crate::support::pack_all(&crate::support::parse(&src));
+    let end = table::header_of(&library).1 as usize;
+    let stage = mcui::Stage {
+        name: "Walk".into(),
+        title: "Walk".into(),
+        end,
+    };
+    staged_with(name, &library, &[stage])
+}
+
+/// One list the walk is measured on: a hit with exactly three shown assertions after it, typed as
+/// `head` and then the one letter `last`.
+struct Case {
+    built: &'static Built,
+    kind: Kind,
+    shown: Vec<bool>,
+    marks: Option<Vec<Status>>,
+    hit: usize,
+    head: String,
+    last: char,
+}
+
+impl Case {
+    fn new(
+        built: &'static Built,
+        kind: Kind,
+        shown: Vec<bool>,
+        marks: Option<Vec<Status>>,
+    ) -> Case {
+        let at: Vec<usize> = (0..shown.len()).filter(|&i| shown[i]).collect();
+        assert!(at.len() >= 7, "{} shown assertions", at.len());
+        let hit = at[at.len() - 4];
+        let label = labels_of(built)[hit].clone();
+        let (head, last) = label.split_at(label.len() - 1);
+        Case {
+            built,
+            kind,
+            shown,
+            marks,
+            hit,
+            head: head.to_string(),
+            last: last.chars().next().unwrap(),
+        }
+    }
+
+    /// The list under the kind with `head` typed and settled.
+    fn open(&self) -> Lister {
+        let table = self
+            .marks
+            .as_ref()
+            .map(|m| (table_of(self.built, m), m.clone()));
+        let mut list = list_under(self.built, 0, self.kind, table.as_ref());
+        list.type_settled(&self.head);
+        let frame = list.frame_now();
+        assert_ne!(
+            usize::from(u16::from_le_bytes([frame[2], frame[3]])),
+            self.hit,
+            "the cursor is not on the hit before the last letter"
+        );
+        list
+    }
+
+    fn scan(&self) -> u8 {
+        let scans = scans_for(self.last);
+        assert_eq!(scans.len(), 1, "{:?} takes one press", self.last);
+        scans[0]
+    }
+
+    /// The frame after the last letter, the model's: the press is compared with it.
+    fn control(&self) -> Vec<u8> {
+        let mut list = self.open();
+        assert!(list.press_char(self.last));
+        list.frame_now()
+    }
+
+    /// Whether the app's frame and the mirror's first row are the model's, and the frame.
+    fn check(&self, at: &str, frame: &[u8], control: &[u8], refuse: Refuse) -> bool {
+        let (top, _) = mirror(&self.shown, self.hit, refuse);
+        let (model_top, _) = mirror(&self.shown, self.hit, Refuse::Nothing);
+        assert_eq!(
+            usize::from(u16::from_le_bytes([frame[2], frame[3]])),
+            self.hit,
+            "{at}: the cursor stays on the hit"
+        );
+        assert_eq!(frame[..4], control[..4], "{at}: kind, stage and cursor");
+        assert_eq!(
+            frame[6..],
+            control[6..],
+            "{at}: the kind and the find, no miss"
+        );
+        assert_eq!(
+            frame[7] & 0x80,
+            0,
+            "{at}: a refused read in the walk is no miss"
+        );
+        let absorbed = top == model_top;
+        if absorbed {
+            assert_eq!(frame, control, "{at}: the refusal leaves the model's frame");
+        } else {
+            println!(
+                "{at}: first row {} where the model has {}, mirror {top}; frame {frame:02X?}, model {control:02X?}",
+                u16::from_le_bytes([frame[4], frame[5]]),
+                u16::from_le_bytes([control[4], control[5]]),
+            );
+        }
+        absorbed
+    }
+}
+
+fn library_case(kind: Kind) -> Case {
+    let pattern = "TATATATATATATATATA";
+    let keep = if kind == Kind::Theorems { 'T' } else { 'A' };
+    let shown = pattern.chars().map(|c| c == keep).collect();
+    Case::new(
+        lettered(&format!("pages-find-walk-{kind:?}"), pattern),
+        kind,
+        shown,
+        None,
+    )
+}
+
+fn table_case() -> Case {
+    let marks: Vec<Status> = "UHUHUHUHUHUHU"
+        .chars()
+        .map(|c| {
+            if c == 'H' {
+                Status::Checked
+            } else {
+                Status::Unchecked
+            }
+        })
+        .collect();
+    let shown = marks.iter().map(|&m| m != Status::Checked).collect();
+    let built = lettered("pages-find-walk-table", &"A".repeat(marks.len()));
+    Case::new(built, Kind::Unchecked, shown, Some(marks))
+}
+
+impl Lister {
+    /// The calls the hooks of `fail_at` in `slot` have counted, read where the machine stands.
+    fn fail_calls_here(&mut self, slot: u16) -> usize {
+        let b = self.run.m().read_ram(FAIL_COUNTERS + 2 * slot, 2);
+        usize::from(u16::from_le_bytes([b[0], b[1]]))
+    }
+}
+
+/// The open list refused the library read of `refuse`, then the last letter pressed: the frame and the
+/// calls of each op the walk made.
+fn library_run(case: &Case, refuse: Refuse) -> (Vec<u8>, [usize; 2]) {
+    let mut list = case.open();
+    let (next, prev) = match refuse {
+        Refuse::Library(Op::Next, k) => (k, 99),
+        Refuse::Library(Op::Prev, k) => (99, k),
+        other => panic!("{other:?}"),
+    };
+    list.fail_at(0, "far_lib_kind_next", u8::try_from(next).unwrap(), 3);
+    list.fail_at(1, "far_lib_kind_prev", u8::try_from(prev).unwrap(), 3);
+    list.tap(case.scan());
+    list.run.run_to("lfd_hit", LIMIT_WALK);
+    list.run.run_to("lfd_top", LIMIT_WALK);
+    let calls = [list.fail_calls_here(0), list.fail_calls_here(1)];
+    list.run.next_blit();
+    list.run.run(300_000);
+    (list.frame_now(), calls)
+}
+
+fn count(ops: &[Op], op: Op) -> usize {
+    ops.iter().filter(|&&o| o == op).count()
+}
+
+#[test]
+fn a_read_refused_in_the_walk_after_a_hit_is_met_at_each_call_under_theorems_and_axioms() {
+    let mut absorbed = 0;
+    let mut moved = 0;
+    for kind in [Kind::Theorems, Kind::Axioms] {
+        let case = library_case(kind);
+        let control = case.control();
+        let (top, ops) = mirror(&case.shown, case.hit, Refuse::Nothing);
+        assert_eq!(
+            usize::from(u16::from_le_bytes([control[4], control[5]])),
+            top,
+            "{kind:?}: the mirror's first row is the model's"
+        );
+        assert_eq!(
+            (count(&ops, Op::Next), count(&ops, Op::Prev)),
+            (4, 5),
+            "{kind:?}: the hit is the worst, nine calls"
+        );
+        let refusals = (1..=4)
+            .map(|k| Refuse::Library(Op::Next, k))
+            .chain((1..=5).map(|k| Refuse::Library(Op::Prev, k)));
+        for refuse in refusals {
+            let at = format!("{kind:?}, {refuse:?}");
+            let (frame, calls) = library_run(&case, refuse);
+            let (_, ops) = mirror(&case.shown, case.hit, refuse);
+            let Refuse::Library(op, k) = refuse else {
+                unreachable!()
+            };
+            assert!(
+                count(&ops, op) >= k,
+                "{at}: the refusal falls inside the walk"
+            );
+            assert_eq!(
+                calls,
+                [count(&ops, Op::Next), count(&ops, Op::Prev)],
+                "{at}: calls of lf_next and lf_prev"
+            );
+            if case.check(&at, &frame, &control, refuse) {
+                absorbed += 1;
+            } else {
+                moved += 1;
+            }
+        }
+    }
+    assert_eq!((absorbed, moved), (8, 10));
+}
+
+/// The walk over the table with it lost before call `n`: the frame and the ops, by where the writes of
+/// LK_AGAIN came from.
+fn table_run(case: &Case, n: usize) -> (Vec<u8>, Vec<Op>) {
+    let mut list = case.open();
+    list.tap(case.scan());
+    list.run.run_to("lfd_hit", LIMIT_WALK);
+    let at = list.run.shell.app.label("LK_AGAIN");
+    list.run.m().watch_writes(at, 1);
+    for call in 1..=n {
+        list.run.run_to("store_data", LIMIT_WALK);
+        if call < n {
+            list.run.m().resume(1);
+        }
+    }
+    list.run.m().delete_var("MCSTAT");
+    list.run.run_to("lfd_top", LIMIT_WALK);
+    let writes = list.run.m().take_writes();
+    list.run.m().unwatch_writes();
+    let (next, prev, first) = {
+        let app = &list.run.shell.app;
+        (
+            app.label("lf_next"),
+            app.label("lf_prev"),
+            app.label("lf_first_ge"),
+        )
+    };
+    let ops = writes
+        .iter()
+        .map(|w| match w.pc {
+            pc if (next..prev).contains(&pc) => Op::Next,
+            pc if (prev..first).contains(&pc) => Op::Prev,
+            pc => panic!("LK_AGAIN written from {pc:04X}"),
+        })
+        .collect();
+    list.run.next_blit();
+    list.run.run(300_000);
+    (list.frame_now(), ops)
+}
+
+#[test]
+fn a_table_lost_in_the_walk_after_a_hit_is_met_before_each_call_under_unchecked() {
+    let case = table_case();
+    let control = case.control();
+    let (top, ops) = mirror(&case.shown, case.hit, Refuse::Nothing);
+    assert_eq!(
+        usize::from(u16::from_le_bytes([control[4], control[5]])),
+        top,
+        "the mirror's first row is the model's"
+    );
+    assert_eq!(
+        (count(&ops, Op::Next), count(&ops, Op::Prev)),
+        (4, 5),
+        "the hit is the worst, nine calls"
+    );
+    let (mut absorbed, mut moved) = (0, 0);
+    for n in 1..=ops.len() {
+        let at = format!("table lost before call {n}");
+        let refuse = Refuse::Lost(n);
+        let (frame, made) = table_run(&case, n);
+        let (_, want) = mirror(&case.shown, case.hit, refuse);
+        assert!(want.len() >= n, "{at}: the loss falls inside the walk");
+        assert_eq!(
+            made[..n],
+            ops[..n],
+            "{at}: the calls before it are the walk's"
+        );
+        assert_eq!(made, want, "{at}: the calls the walk made");
+        if case.check(&at, &frame, &control, refuse) {
+            absorbed += 1;
+        } else {
+            moved += 1;
+        }
+    }
+    assert_eq!((absorbed, moved), (0, 9));
+}
