@@ -287,7 +287,8 @@ impl Shell {
         rest
     }
 
-    /// `len` bytes of RAM at `at`, read once the CPU is out of every call.
+    /// `len` bytes of RAM at `at`, read once the CPU is outside any reader, fm or kernel call that maps
+    /// another bank (`at_rest`).
     pub fn peek(&mut self, at: u16, len: usize) -> Vec<u8> {
         self.at_rest();
         self.app.m.read_ram(at, len)
@@ -298,7 +299,8 @@ impl Shell {
         u16::from_le_bytes([b[0], b[1]])
     }
 
-    /// The frame on the canvas, read once the CPU is out of every call.
+    /// The frame on the canvas, read once the CPU is outside any reader, fm or kernel call that maps
+    /// another bank (`at_rest`).
     pub fn frame(&mut self) -> Vec<u8> {
         self.at_rest();
         self.app.frame()
