@@ -219,10 +219,6 @@ pw_start:
 	ld (pv_ri),hl
 	ld a,(lp_page)
 	ld (pv_rpage),a
-	ld a,(lr_consts)
-	ld (pv_nconst),a
-	ld a,(lr_nsyms)
-	ld (pv_nsyms),a
 	PW_ADDR(lr_dhyps, pv_hyps)
 	PW_ADDR(lp_refs, pv_refs)
 	PW_ADDR(lp_proof, pv_proof)
@@ -237,21 +233,12 @@ pw_start:
 	ld (pv_mp),hl
 	ld hl,PW_HYPK
 	ld (pv_hk),hl
-	ld hl,$8000 + 20
-	ld (pv_sym),hl
 	xor a
 	ld (pv_stage),a
-	ld (pv_sid),a
 	ld (pv_rank),a
-	ld (pv_nfl),a
 	ld hl,pv_steps
 	ld de,pv_steps+1
 	ld bc,PW_CLEAR_SIZE-1
-	ld (hl),a
-	ldir
-	ld hl,PW_PROVBITS
-	ld de,PW_PROVBITS+1
-	ld bc,PW_PROVBITS_SIZE-1
 	ld (hl),a
 	ldir
 	jr pw_run
@@ -262,8 +249,6 @@ pw_resume:
 pw_run:
 	ld a,(pv_stage)
 	or a
-	jp z,pw_symbols
-	dec a
 	jp z,pw_hyps
 	dec a
 	jp z,pw_refs
@@ -300,34 +285,6 @@ pwx_next:
 	jr nz,pwx_loop
 	ld l,a
 	ld h,d
-	ret
-
-; in: A = a variable's id. out: HL = its byte of PW_PROVBITS, A = its mask. Keeps BC and DE.
-pw_bit:
-	push bc
-	push de
-	ld c,a
-	rrca
-	rrca
-	rrca
-	and $1F
-	ld l,a
-	ld h,0
-	ld de,PW_PROVBITS
-	add hl,de
-	ld a,c
-	and 7
-	ld b,a
-	ld a,1
-	inc b
-pwx_shift:
-	dec b
-	jr z,pwx_done
-	add a,a
-	jr pwx_shift
-pwx_done:
-	pop de
-	pop bc
 	ret
 
 ; in: A = a status. Seals a walk that goes on or is done, puts the caller's ports, stack and

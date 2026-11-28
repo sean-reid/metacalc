@@ -194,38 +194,21 @@ fn the_fixture_table_equals_the_model_and_the_hosts_reading() {
 }
 
 #[test]
-fn a_float_and_a_dummy_variable_of_the_provable_typecode_are_goals() {
+fn a_float_and_a_dummy_variable_of_the_provable_typecode_are_no_goal() {
     let bytes = packed(&floats_source());
     let library = decode(&bytes).unwrap();
     let tc = provable(&bytes).unwrap();
     let mut rig = opened(&bytes);
-    let z = walked_alone(
-        &mut rig,
-        &library,
-        &bytes,
-        tc,
-        usize::from(number_of(&bytes, "tz")),
-    );
-    assert_eq!(z.rows.len(), 2);
-    assert_eq!(
-        z.rows[0].by, 0x8000,
-        "a float of the provable typecode is hypothesis 0"
-    );
-    let z = walked_alone(
-        &mut rig,
-        &library,
-        &bytes,
-        tc,
-        usize::from(number_of(&bytes, "tdd")),
-    );
-    assert_eq!(z.rows.len(), 3);
-    assert_eq!(
-        z.rows[0].by, 0x8000,
-        "a dummy of the provable typecode is hypothesis 0"
-    );
-    assert_eq!(
-        z.rows[2].subgoals,
-        vec![0, 1],
-        "the dummy goal is used twice"
-    );
+    let mut walk = |name: &str| {
+        let n = usize::from(number_of(&bytes, name));
+        walked_alone(&mut rig, &library, &bytes, tc, n)
+    };
+    let z = walk("tz");
+    assert_eq!(z.rows.len(), 1, "the float of `|-` z is a syntax entry");
+    assert!(z.rows[0].subgoals.is_empty());
+    assert_eq!(z.links, 0);
+    let z = walk("tdd");
+    assert_eq!(z.rows.len(), 2, "the dummy of `|-` z is a syntax entry");
+    assert_eq!(z.rows[1].subgoals, vec![0], "only the goal the proof saved");
+    assert!(z.rows.iter().all(|r| r.by & 0x8000 == 0));
 }

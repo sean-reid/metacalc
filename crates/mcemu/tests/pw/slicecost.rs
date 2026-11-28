@@ -51,9 +51,9 @@ fn what_a_unit_a_slice_and_a_find_cost_on_ring() {
     let rows = measure(&bytes);
     let (median, worst) = report("ring", &rows);
     println!("uncut walk: median {median}, worst {worst}");
-    near("uncut median", median, 102_792);
-    near("uncut worst", worst, 1_209_877);
-    for (budget, start_at, more_at) in [(1, 52_041, 18_608), (RECOMMENDED, 96_604, 103_268)] {
+    near("uncut median", median, 69_951);
+    near("uncut worst", worst, 1_175_175);
+    for (budget, start_at, more_at) in [(1, 48_596, 18_124), (RECOMMENDED, 107_321, 103_968)] {
         let (start, more, calls) = worst_slices(&bytes, budget);
         println!("budget {budget}: worst start {start}, worst continue {more}, {calls} continues");
         near(&format!("worst start at {budget}"), start, start_at);
@@ -107,9 +107,9 @@ fn what_a_unit_a_slice_and_a_find_cost_on_ring() {
             what,
             worst.1,
             if what == "the deepest" {
-                46_055
+                45_821
             } else {
-                26_733
+                26_499
             },
         );
         println!(

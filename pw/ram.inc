@@ -22,8 +22,8 @@ PW_TOKENS_USED      .equ PW_MEMO + PW_MEMO_SIZE - FM_TOKENS
 #endif
 
 ; In FM_LOW from +$100 for $D00 bytes: the variables, the goal table with one column for each
-; field, two bytes a goal in the first four, the hypothesis ranks, the bitmap of the variables of
-; the provable typecode, the subgoal links, and the stack at the top.
+; field, two bytes a goal in the first four, the hypothesis ranks, the subgoal links, and the stack
+; at the top.
 PW_LOW              .equ FM_LOW + $100
 PW_LOW_SIZE         .equ $D00
 #if PW_LOW & $FF
@@ -39,12 +39,13 @@ PW_BY               .equ PW_BEGIN + PW_COLUMN
 PW_LSTART           .equ PW_BY + PW_COLUMN
 PW_HYPK             .equ PW_LSTART + PW_COLUMN
 PW_HYPK_SIZE        .equ 255
-PW_PROVBITS         .equ PW_HYPK + PW_HYPK_SIZE
-PW_PROVBITS_SIZE    .equ 32
-PW_LINKS            .equ PW_PROVBITS + PW_PROVBITS_SIZE
+PW_LINKS            .equ PW_HYPK + PW_HYPK_SIZE
+PW_MAX_LINKS        .equ 857
 PW_STACK_TOP        .equ PW_LOW + PW_LOW_SIZE
 PW_STACK_ROOM       .equ $10
-PW_MAX_LINKS        .equ PW_STACK_TOP - PW_STACK_ROOM - PW_LINKS
+#if (PW_LINKS + PW_MAX_LINKS) > (PW_STACK_TOP - PW_STACK_ROOM)
+ .error "the links table runs into the stack's room"
+#endif
 PW_MAX_SUBGOALS     .equ 31
 #if PW_MAX_LINKS < 3 * 255
  .error "the links table must hold at least 765 links"
@@ -76,24 +77,19 @@ PW_VAR(pv_refs, $12, 2)
 PW_VAR(pv_proof, $14, 2)
 PW_VAR(pv_pend, $16, 2)
 PW_VAR(pv_pp, $18, 2)
-PW_VAR(pv_nconst, $1A, 1)
-PW_VAR(pv_nsyms, $1B, 1)
-PW_VAR(pv_sid, $1C, 1)
-PW_VAR(pv_sym, $1D, 2)
-PW_VAR(pv_hrem, $1F, 1)
-PW_VAR(pv_hk, $20, 2)
-PW_VAR(pv_rank, $22, 1)
-PW_VAR(pv_nfl, $23, 1)
-PW_VAR(pv_ri, $24, 2)
-PW_VAR(pv_rp, $26, 2)
-PW_VAR(pv_mp, $28, 2)
-PW_VAR(pv_steps, $2A, 2)
-PW_VAR(pv_goals, $2C, 1)
-PW_VAR(pv_links, $2D, 2)
-PW_VAR(pv_total, $2F, 3)
-PW_VAR(pv_nstack, $32, 2)
-PW_VAR(pv_nsaved, $34, 2)
-PW_VAR(pv_sum, $36, 2)
+PW_VAR(pv_hrem, $1A, 1)
+PW_VAR(pv_hk, $1B, 2)
+PW_VAR(pv_rank, $1D, 1)
+PW_VAR(pv_ri, $1E, 2)
+PW_VAR(pv_rp, $20, 2)
+PW_VAR(pv_mp, $22, 2)
+PW_VAR(pv_steps, $24, 2)
+PW_VAR(pv_goals, $26, 1)
+PW_VAR(pv_links, $27, 2)
+PW_VAR(pv_total, $29, 3)
+PW_VAR(pv_nstack, $2C, 2)
+PW_VAR(pv_nsaved, $2E, 2)
+PW_VAR(pv_sum, $30, 2)
 PW_PERSIST          .equ pv_stage
 PW_PERSIST_END      .equ pv_sum
 #if (PW_PERSIST_END - PW_PERSIST) > $FF
@@ -104,44 +100,42 @@ PW_RESULT_SIZE      .equ 8
 PW_CLEAR_SIZE       .equ PW_PERSIST_END - pv_steps
 
 ; Variables of one call.
-PW_VAR(pv_sp, $38, 2)
-PW_VAR(pv_p5, $3A, 1)
-PW_VAR(pv_p7, $3B, 1)
-PW_VAR(pv_iff, $3C, 1)
-PW_VAR(pv_mode, $3D, 1)
-PW_VAR(pv_cut, $3E, 1)
-PW_VAR(pv_left, $3F, 2)
-PW_VAR(pv_blk, $41, 2)
-PW_VAR(pv_status, $43, 1)
-PW_VAR(pv_cnt, $44, 1)
-PW_VAR(pv_t1, $45, 2)
-PW_VAR(pv_t2, $47, 2)
-PW_VAR(pv_acc, $49, 3)
-PW_VAR(pv_step, $4C, 2)
-PW_VAR(pv_begin, $4E, 2)
-PW_VAR(pv_by, $50, 2)
-PW_VAR(pv_ls, $52, 2)
-PW_VAR(pv_nc, $54, 1)
-PW_VAR(pv_nh, $55, 1)
-PW_VAR(pv_lim, $56, 2)
-PW_VAR(pf_cur, $58, 1)
-PW_VAR(pf_depth, $59, 1)
-PW_VAR(pf_idx, $5A, 1)
-PW_VAR(pf_c, $5B, 1)
-PW_VAR(pf_n, $5C, 1)
-PW_VAR(pf_g, $5D, 1)
-PW_VAR(pf_ls, $5E, 2)
-PW_VAR(pf_place, $60, 3)
-PW_VAR(pf_cp, $63, 3)
-PW_VAR(pf_cs, $66, 3)
-PW_VAR(pf_ce, $69, 3)
-PW_VAR(pf_parent, $6C, 3)
-PW_USED             .equ $6F
+PW_VAR(pv_sp, $32, 2)
+PW_VAR(pv_p5, $34, 1)
+PW_VAR(pv_p7, $35, 1)
+PW_VAR(pv_iff, $36, 1)
+PW_VAR(pv_mode, $37, 1)
+PW_VAR(pv_cut, $38, 1)
+PW_VAR(pv_left, $39, 2)
+PW_VAR(pv_blk, $3B, 2)
+PW_VAR(pv_status, $3D, 1)
+PW_VAR(pv_cnt, $3E, 1)
+PW_VAR(pv_t1, $3F, 2)
+PW_VAR(pv_t2, $41, 2)
+PW_VAR(pv_acc, $43, 3)
+PW_VAR(pv_step, $46, 2)
+PW_VAR(pv_begin, $48, 2)
+PW_VAR(pv_by, $4A, 2)
+PW_VAR(pv_ls, $4C, 2)
+PW_VAR(pv_nc, $4E, 1)
+PW_VAR(pv_nh, $4F, 1)
+PW_VAR(pv_lim, $50, 2)
+PW_VAR(pf_cur, $52, 1)
+PW_VAR(pf_depth, $53, 1)
+PW_VAR(pf_idx, $54, 1)
+PW_VAR(pf_c, $55, 1)
+PW_VAR(pf_n, $56, 1)
+PW_VAR(pf_g, $57, 1)
+PW_VAR(pf_ls, $58, 2)
+PW_VAR(pf_place, $5A, 3)
+PW_VAR(pf_cp, $5D, 3)
+PW_VAR(pf_cs, $60, 3)
+PW_VAR(pf_ce, $63, 3)
+PW_VAR(pf_parent, $66, 3)
+PW_USED             .equ $69
 
 ; What a find writes in the caller's block.
 PW_FIND_SIZE        .equ 16 + PW_MAX_SUBGOALS
-
-PW_SYMBOLS_PER_UNIT .equ 16
 
 ; The entry goes in a stack entry's byte for a syntax statement.
 PW_SYNTAX           .equ $FF

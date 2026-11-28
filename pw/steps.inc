@@ -222,12 +222,6 @@ pwp_hyp:
 	or a
 	jr z,pwp_syntax
 	ld c,a
-	ld a,e
-	ld hl,pv_nfl
-	cp (hl)
-	jr nc,pwp_essential
-	ld c,0
-pwp_essential:
 	ld b,$80
 	ld (pv_by),bc
 	ld hl,(pv_step)

@@ -2,8 +2,8 @@
 ; and rebuilds the shape of the goal tree the host model builds from it (crates/mcui,
 ; crates/mcpack/src/mm/outline.rs): a table with a row for each distinct goal, in the order the walk
 ; makes them, the root last. It does not judge the proof: it compares no statement, substitution or
-; disjoint pair, only the first symbol of the theorem's conclusion, of each hypothesis, of each
-; referenced conclusion and of each variable's typecode with the provable typecode. The walk is cut
+; disjoint pair, only the first symbol of the theorem's conclusion, of each essential hypothesis and
+; of each referenced conclusion with the provable typecode. The walk is cut
 ; into slices; pw_find reads a place of the finished table.
 ;
 ; Code runs from flash in bank A and is position dependent. Assembling this file places nothing: an
@@ -32,9 +32,8 @@
 ;                      clear of the reader's state. Called after a walk returned 0. On status 0:
 ;                        +0   1  the goal's number
 ;                        +1   2  what it applies: 8000h + the number of the theorem's own essential
-;                                hypothesis among the essential ones, counted from 1 (0 for a float
-;                                or a dummy variable of the provable typecode), or an assertion's
-;                                number
+;                                hypothesis among the essential ones, counted from 1, or an
+;                                assertion's number
 ;                        +3   3  its subtree size, a shared goal once for each use
 ;                        +6   1  its depth, the root 0
 ;                        +7   3  the place of its parent, 0 for the root
@@ -51,21 +50,18 @@
 ; the record of each assertion the references name from the page that holds it, with bounds checks
 ; of its own; it does not go through lib_read. A stack of entries holds, for each, a goal's number,
 ; 0 to 254, or FFh for a syntax statement, and the address of the first step that made it. A step
-; number below the theorem's hypothesis count is a hypothesis: a goal when its first symbol, for an
-; essential one, or its variable's typecode, for a float, is the provable typecode. The numbers
-; after those, up to the reference count, name the reference list: an entry of 8000h or more is a
-; dummy variable, which takes nothing and is a goal when its typecode is the provable one; any other
-; is an assertion, which takes as many entries as it has hypotheses and is a goal when its
+; number below the theorem's hypothesis count is a hypothesis: an essential one is a goal when its first symbol is the
+; provable typecode, and a float is a syntax statement. The numbers after those, up to the
+; reference count, name the reference list: an entry of 8000h or more is a dummy variable, which
+; takes nothing and is a syntax statement; any other is an assertion, which takes as many entries as it has hypotheses and is a goal when its
 ; conclusion's first symbol is the provable typecode. The numbers after the references name the
 ; saved steps, each a copy of an entry, whose address is that of the step that reuses it; FFh saves
 ; the top entry. A goal's subgoals are the goal entries among those its step takes, in order, and
 ; its size is one more than their sizes. A number of F0h to FEh takes the next byte, as the kernel
 ; decodes it. A conclusion that starts with another typecode, and a proof whose one entry is a
-; syntax statement, give PW_ERR_SYNTAX, the host model's "it proves a syntax statement". A float or
-; dummy variable of the provable typecode is a goal, a child of every goal that takes it.
+; syntax statement, give PW_ERR_SYNTAX, the host model's "it proves a syntax statement". A variable step is never a goal.
 ;
-; Units and slices. The work is counted in units: 16 entries of the symbol table, one hypothesis of
-; the theorem, one entry of its reference list (a record head read the first time, once for each
+; Units and slices. The work is counted in units: one hypothesis of the theorem, one entry of its reference list (a record head read the first time, once for each
 ; entry), and one number or save marker of the proof. A call does at most its budget in units and
 ; ends with PW_ST_MORE when it has more; the ending of the proof, the checks after its last unit and
 ; the writing of the block are not units, so a walk of U units ends in the slice of its last unit,
@@ -83,20 +79,18 @@
 ;   PW_SAVED   $F400 512  the saved entries' goal numbers
 ;   PW_SIZES   $F600 768  the subtree size of each goal, 3 bytes, 765 used
 ;   PW_MEMO    $F900 1024 for each reference, the hypothesis count of the assertion it names and 1
-;                         when its conclusion starts with the provable typecode; a dummy gives 0 and
-;                         1 when its typecode is the provable one
+;                         when its conclusion starts with the provable typecode; a dummy gives 0 and 0
 ; and in FM_LOW from +$100 for $D00 bytes, $C700 to $D3FF:
-;   PW_VARS    $C700 $80  the variables; the mark at +0, the persistent ones from +1 to +$35, their
-;                         sum at +$36, then the ones of one call
+;   PW_VARS    $C700 $80  the variables; the mark at +0, the persistent ones from +1 to +$2F, their
+;                         sum at +$30, then the ones of one call
 ;   PW_STEP    $C780 510  the goal table, a column for each field and two bytes a goal: the address
 ;   PW_BEGIN   $C97E 510  of the step that proves it, of the first step it takes, what it applies as
 ;   PW_BY      $CB7C 510  pw_find gives it (bit 15 set for a hypothesis), and where its subgoals begin
 ;   PW_LSTART  $CD7A 510  in the links; a goal's subgoal count is the next goal's start, the last
 ;                         one's the links, less its own
 ;   PW_HYPK    $CF78 255  for each hypothesis of the theorem, 0 for a syntax statement, else its rank
-;                         among the essential ones, and 1 for a float
-;   PW_PROVBITS $D077 32  a bit for each variable whose typecode is the provable one
-;   PW_LINKS   $D097 857  the subgoals of the goals one after the other, a goal's number a byte
+;                         among the essential ones
+;   PW_LINKS   $D077 857  the subgoals of the goals one after the other, a goal's number a byte
 ;   the stack   down from PW_STACK_TOP $D400: 6 bytes at most, with $10 bytes reserved under the links
 ; The walk writes nothing else on the spare page but the reader's bounce buffer, and in bank B only
 ; the reader's state: what lib_proof and the record reads write, and lr_bufp, lr_scratch, lr_tr,
@@ -111,7 +105,7 @@
 ; 5, 3 or 9 from the reader's lookup, 3 for a conclusion it cannot read, 42 for a conclusion of
 ; another typecode and 44 for more than 512 references; they leave a table and a walk as they
 ; were. A continue that returns 46 and a find that returns 48 write nothing on the spare page and
-; nothing in the block. Any other find writes only the variables of one call, from +$38 of PW_VARS,
+; nothing in the block. Any other find writes only the variables of one call, from +$32 of PW_VARS,
 ; and a find that returns 0 also the block.
 ;
 ; What stays valid. The table and the walk's saved state stay valid from the first write of a start
@@ -138,7 +132,7 @@
 ; chunk and inside the library, and the walk reads them from the one page that shows it. The head of
 ; another assertion's record is read with each pointer checked against the end of the page it lies
 ; in and the end of the library: a directory entry or a record the format forbids, or that leaves
-; its chunk, gives 3, and so does a symbol table that leaves the first chunk.
+; its chunk, gives 3.
 ;
 ; Stack. On the caller's stack a start goes at most 10 bytes below the return address, 2 for the
 ; call of lib_proof and its 8; a continue and a find 2, for the call that reads the interrupt state.
@@ -150,8 +144,7 @@
 ; one that cannot be read. The walk's own are 32 and up, so that none is a reader's 1 to 10:
 ;   PW_ERR_SYNTAX         42  the conclusion starts with another typecode than A
 ;   PW_ERR_REFS           44  more than 512 references
-; then, in the units' order, 3 for a symbol table that leaves its chunk, and as the reference list
-; is read in order, before the first step, 3 for a referenced assertion's directory entry or record
+; then, as the reference list is read in order, before the first step, 3 for a referenced assertion's directory entry or record
 ; the format forbids or that leaves the library, and
 ;   PW_ERR_FORWARD        34  a reference to an assertion at or after the theorem, used or not
 ; then, in the order the proof meets them:

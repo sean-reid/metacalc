@@ -8,17 +8,11 @@ use mcpack::library::{Library, decode};
 /// The budget the header recommends for the idle hook.
 pub const RECOMMENDED: u16 = 26;
 
-/// Symbol table entries to a unit of work.
-pub const SYMBOLS_PER_UNIT: usize = 16;
-
-/// Units of work the header counts for theorem `n`: 16 symbols, a hypothesis, a reference and each
-/// number or save marker of the proof.
+/// Units of work the header counts for theorem `n`: a hypothesis, a reference and each number or
+/// save marker of the proof.
 pub fn units(library: &Library, n: usize) -> usize {
     let a = &library.assertions[n];
-    (library.constants.len() + library.variables.len()).div_ceil(SYMBOLS_PER_UNIT)
-        + a.hypotheses.len()
-        + a.references.len()
-        + a.proof.len()
+    a.hypotheses.len() + a.references.len() + a.proof.len()
 }
 
 /// The bytes a finished walk defines: the mark and the persistent variables, the table, the
@@ -29,7 +23,7 @@ pub fn defined(rig: &mut Rig) -> Vec<(&'static str, Vec<u8>)> {
     let take = |from: u16, len: u16| s.0[s.at(from)..s.at(from) + usize::from(len)].to_vec();
     let low_end = l("PW_STACK_TOP") - l("PW_STACK_ROOM");
     vec![
-        ("variables", take(l("PW_VARS"), 0x38)),
+        ("variables", take(l("PW_VARS"), l("PV_SP") - l("PW_VARS"))),
         ("table", take(l("PW_STEP"), low_end - l("PW_STEP"))),
         ("tokens", take(l("FM_TOKENS"), l("PW_TOKENS_USED"))),
     ]

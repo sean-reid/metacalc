@@ -11,8 +11,7 @@ pub struct Row {
     pub step: u16,
     /// The address of the first step of the first entry that step takes, else its own.
     pub begin: u16,
-    /// 8000h + the hypothesis's number among the essential ones (0 for a float), or the
-    /// assertion's number.
+    /// 8000h + the hypothesis's number among the essential ones, or the assertion's number.
     pub by: u16,
     pub subgoals: Vec<u8>,
     pub size: u32,
@@ -46,7 +45,7 @@ pub fn mirror(library: &Library, bytes: &[u8], n: usize) -> Option<Table> {
     let mut essentials = 0u16;
     for h in &a.hypotheses {
         match h {
-            Hypothesis::Float { typecode, .. } => ranks.push((provable(typecode), 0)),
+            Hypothesis::Float { .. } => ranks.push((false, 0)),
             Hypothesis::Essential(syms) => {
                 essentials += 1;
                 ranks.push((provable(&syms[0]), essentials));
@@ -92,7 +91,7 @@ pub fn mirror(library: &Library, bytes: &[u8], n: usize) -> Option<Table> {
                             let r = &library.assertions[*i];
                             (r.hypotheses.len(), provable(&r.conclusion[0]), *i as u16)
                         }
-                        Reference::Dummy(v) => (0, provable(&v.typecode), 0x8000),
+                        Reference::Dummy(_) => (0, false, 0x8000),
                         Reference::Invalid(_) => panic!("an invalid dummy entry"),
                     };
                     let from = stack.len() - take;

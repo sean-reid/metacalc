@@ -362,7 +362,6 @@ fn the_walk_writes_only_the_bytes_its_header_names() {
             ("begins", rig.label("PW_BEGIN"), 2),
             ("applied", rig.label("PW_BY"), 2),
             ("link starts", rig.label("PW_LSTART"), 2),
-            ("variable bitmap", rig.label("PW_PROVBITS"), 32),
             ("links", rig.label("PW_LINKS"), 1),
         ] {
             let from = usize::from(at - 0xC000);
@@ -385,7 +384,6 @@ fn the_walk_writes_only_the_bytes_its_header_names() {
             "sizes",
             "starts",
             "steps",
-            "variable bitmap",
             "variables"
         ]
     );

@@ -1,71 +1,10 @@
-; The three passes before the first step, each a unit of work for every entry it reads: the symbol
-; table, the hypotheses of the theorem and the references it lists. They run inside the session, on
-; the private stack, with a library page in bank B and the tables on the spare page.
+; The two passes before the first step, each a unit of work for every entry it reads: the hypotheses
+; of the theorem and the references it lists. They run inside the session, on the private stack,
+; with a library page in bank B and the tables on the spare page.
 
-; The symbol table, PW_SYMBOLS_PER_UNIT entries to a unit of work: sets the bit of each variable
-; whose typecode is the provable one.
-pw_symbols:
-	ld a,(pv_lpage)
-	out (7),a
-pwy_unit:
-	ld a,(pv_nsyms)
-	ld hl,pv_sid
-	cp (hl)
-	jr z,pwy_done
-	call pw_unit
-	ld a,(pv_nconst)
-	ld c,a
-	ld a,(pv_sid)
-	ld e,a
-	ld d,PW_SYMBOLS_PER_UNIT
-	ld hl,(pv_sym)
-pwy_sym:
-	ld a,h
-	cp $C0
-	jr nc,pwy_bad_range
-	ld b,(hl)
-	inc hl
-	ld a,(hl)
-	inc hl
-	add a,l
-	ld l,a
-	jr nc,pwy_scan
-	inc h
-pwy_scan:
-	ld a,e
-	cp c
-	jr c,pwy_next
-	ld a,(pv_tc)
-	cp b
-	jr nz,pwy_next
-	ld (pv_t1),hl
-	ld a,e
-	call pw_bit
-	or (hl)
-	ld (hl),a
-	ld hl,(pv_t1)
-pwy_next:
-	inc e
-	ld a,(pv_nsyms)
-	cp e
-	jr z,pwy_end
-	dec d
-	jr nz,pwy_sym
-pwy_end:
-	ld a,e
-	ld (pv_sid),a
-	ld (pv_sym),hl
-	jr pwy_unit
-pwy_done:
-	ld a,1
-	ld (pv_stage),a
-	jp pw_run
-pwy_bad_range:
-	ld a,LIB_ERR_BAD
-	jp pw_leave
-
-; The hypotheses: for each, in the table of ranks, 0 for a statement that is not a goal, else the
-; rank of an essential one among the essential ones (from 1), or 1 for a float.
+; The hypotheses: for each, in the table of ranks, 0 for a statement that is not a goal (a float
+; hypothesis, or an essential one that starts with another typecode), else the rank of an essential
+; one among the essential ones, from 1.
 pw_hyps:
 	ld a,(pv_rpage)
 	out (7),a
@@ -79,15 +18,9 @@ pwg_loop:
 	inc hl
 	or a
 	jr nz,pwg_ess
-	ld a,(hl)
 	inc hl
 	ld (pv_hyps),hl
-	ld hl,pv_nfl
-	inc (hl)
-	call pw_bit
-	and (hl)
-	jr z,pwg_store
-	ld a,1
+	xor a
 	jr pwg_store
 pwg_ess:
 	ld c,(hl)
@@ -118,13 +51,12 @@ pwg_store:
 	dec (hl)
 	jr pwg_loop
 pwg_done:
-	ld a,2
+	ld a,1
 	ld (pv_stage),a
 	jp pw_run
 
 ; The references: for each, in the memo, the hypothesis count of the assertion it names and 1 when
-; its conclusion starts with the provable typecode; a dummy variable gives 0 and 1 when its own
-; typecode is the provable one.
+; its conclusion starts with the provable typecode; a dummy variable gives 0 and 0.
 pw_refs:
 	ld a,(pv_rpage)
 	out (7),a
@@ -159,14 +91,6 @@ pwr_earlier:
 	jr pwr_memo
 pwr_dummy:
 	ld bc,0
-	ld a,d
-	cp $80
-	jr nz,pwr_memo
-	ld a,e
-	call pw_bit
-	and (hl)
-	jr z,pwr_memo
-	inc c
 pwr_memo:
 	ld hl,(pv_mp)
 	ld (hl),b
@@ -178,6 +102,6 @@ pwr_memo:
 	out (7),a
 	jr pwr_loop
 pwr_done:
-	ld a,3
+	ld a,2
 	ld (pv_stage),a
 	jp pw_run
