@@ -168,22 +168,26 @@ pub fn nothing_below_ram(list: &mut Lister, at: &str, walk: bool, open: impl FnO
         quiet(list, "an arrow and the idle calls");
     }
     for scan in [F4, F5, IGNORED] {
-        let notice = scan == F4 || (scan == F5 && list.var("LV_SECT") == 1);
+        let above = match scan {
+            F4 => Some(KIND_NOTICE),
+            F5 if list.var("LV_SECT") == 1 => Some(crate::sections_rig::KIND_SECTIONS),
+            _ => None,
+        };
         if scan == IGNORED {
             list.tap_ignored();
         } else {
             list.tap(scan);
         }
         list.run.run(600_000);
-        if notice {
-            assert_eq!(list.run.top_kind(), KIND_NOTICE, "{at}: {scan:02X}");
+        if let Some(kind) = above {
+            assert_eq!(list.run.top_kind(), kind, "{at}: {scan:02X}");
             list.tap(CLEAR);
             list.run.run(600_000);
             list.ui = list.replayed();
             list.skip_the_wait();
             list.settle();
         }
-        quiet(list, "a notice and list_enter");
+        quiet(list, "a notice, the sections screen and list_enter");
     }
     for _ in 0..4 {
         list.key(F3, Key::F3);

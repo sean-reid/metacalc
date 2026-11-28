@@ -328,11 +328,11 @@ fn on_the_reference_os_the_depths_under_unchecked_with_a_table_are() {
 }
 
 fn rom_want(kind: Kind) -> KindFigures {
-    // (down, up, left, right, f3, enter plain, enter landing, enter below the view, ends, draw, idle fit)
-    let (down, up, left, right, f3, plain, land, below, ends, draw, fit) = match kind {
-        Kind::Theorems => (16, 16, 16, 20, 24, 36, 36, 36, 0, 34, 16),
-        Kind::Axioms => (16, 16, 16, 20, 42, 36, 36, 36, 16, 34, 16),
-        _ => (36, 34, 34, 38, 36, 38, 42, 40, 0, 36, 36),
+    // (down, up, left, right, f3, enter plain, enter landing, enter below the view, ends, draw, idle fit, f5)
+    let (down, up, left, right, f3, plain, land, below, ends, draw, fit, f5) = match kind {
+        Kind::Theorems => (16, 16, 16, 20, 24, 36, 36, 36, 0, 34, 16, 18),
+        Kind::Axioms => (16, 16, 16, 20, 42, 36, 36, 36, 16, 34, 16, 18),
+        _ => (36, 34, 34, 38, 36, 38, 42, 40, 0, 36, 36, 36),
     };
     crate::list_kind_depth::fig(
         [
@@ -343,7 +343,7 @@ fn rom_want(kind: Kind) -> KindFigures {
             ("f2", 4),
             ("f3", f3),
             ("f4", 6),
-            ("f5", 6),
+            ("f5", f5),
             ("left", left),
             ("letter", if kind == Kind::Unchecked { 40 } else { 20 }),
             ("right", right),

@@ -22,8 +22,9 @@
 ;              whenever lf_next does not answer the cursor's assertion, as with a filter with no match or
 ;              a refused read, and otherwise KIND_THEOREM for the cursor's assertion (theorem_push), with
 ;              the find left in the frame. Under a kind they write LV_KIND, LV_END and LK_FR before the
-;              lf_next call. F4, F3 when LV_HASK is 0, F5 when LV_SECT is 1, and F2 when LV_HASO is 0,
-;              push the notice. With LV_HASO 1, F2 clears byte 7 and answers SCR_REDRAW with the preview
+;              lf_next call. F4, F3 when LV_HASK is 0 and F2 when LV_HASO is 0 push
+;              the notice. F5 when LV_SECT is 1 pushes the sections screen for the cursor's section
+;              (sections_push, screen_sections.inc) and stays when it is 0. With LV_HASO 1, F2 clears byte 7 and answers SCR_REDRAW with the preview
 ;              kept when a find was typed, else SCR_STAY with nothing written. CLEAR with a find typed
 ;              clears byte 7 and answers SCR_REDRAW with the preview kept, else it pops. A letter
 ;              (KEY_LETTER, B the character) is the find's: see lk_letter in screen_list_find.inc. Every
@@ -69,6 +70,7 @@ lk_dispatch:
 	ld a, (LV_SECT)
 	or a
 	jr z, lk_stay
+	jp sections_push
 lk_notice:
 	inc hl
 	ld c, (hl)

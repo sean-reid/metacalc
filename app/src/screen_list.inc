@@ -110,6 +110,10 @@
 ;              store_get, five of each at most for a frame. Under a kind it also asks lf_next once
 ;              whether the first row is shown (when it is not the screen says none, as for an empty
 ;              stage) and once after each row drawn, six calls at most, and writes LV_KIND and LV_END.
+; list_land   the land routine of the kind table, in screen_list_land.inc: after the sections screen's jump has
+;              popped and this screen's enter has run, it clears the find in byte 7 of the frame and moves the cursor
+;              and the first row to the section's first assertion that the kind shows. The preview stays pending
+;              for the wait that list_enter set, also when the cursor did not move.
 ; Interrupts and speed: list_enter, list_key and list_draw return with both as at the call, and so does
 ; list_idle but for the tick path, which returns with interrupts on, as the shell calls it, because
 ; app_tick ends in ei. fm's sessions and the reader's reads turn interrupts off for their own length and
@@ -119,11 +123,11 @@
 ; under a kind are in screen_list_kind.inc, the find's in screen_list_key.inc). Stub OS under All: list_key
 ; 4 for a move and for a key at an end, 4 for F2 and CLEAR, 6 for F4, which pushes the notice, 8 for ENTER and F1 on a stage with an assertion, which
 ; push the theorem screen (under a kind they ask lf_next first and write 16, 16 and 22 under Theorems,
-; Axioms and Unchecked on the stub and 16, 16 and 36 on the reference OS), 2 for F5 with no sections, 20 for a letter, F3 from All 20 on
+; Axioms and Unchecked on the stub and 16, 16 and 36 on the reference OS), 4 for CLEAR and F2, 20 for a letter, 2 for F5 with no sections (with sections it is sections_push's: 18 under All, Theorems and Axioms, and under Unchecked with a table 22 on the stub and 36 on the reference OS), F3 from All 20 on
 ; the fixture of list_depth.rs and 24 on the proofs library of list_kind_depth.rs, from the first
 ; assertion and from ten rows down alike; list_enter 22; list_idle 8 for the fit and for a tick, which holds
 ; app_tick's return address and the interrupt handler's pushes, and 2 settled; list_draw 26. Reference
-; OS, prop with a table: the same but F3 from All 24, F5 6, a tick 14, list_enter 36, list_draw 34. An interrupt
+; OS, prop with a table: the same but F3 from All 24, a tick 14, list_enter 36, list_draw 34. An interrupt
 ; that lands in a call can only add to these: the figures with the app's interrupts on are never below
 ; the masked ones.
 ; Cost, in T-states at 6 MHz on the reference OS, over ring (list_kind_real.rs, list_real_cost.rs). Under a

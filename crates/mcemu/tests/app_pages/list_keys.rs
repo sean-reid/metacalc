@@ -76,7 +76,21 @@ fn the_function_keys_open_the_stages_notice_and_f5_only_where_there_are_sections
                 let blits = list.run.blits();
                 list.tap(scan);
                 let opens = scan != F5 || has_sections(built, stage);
-                if opens {
+                if opens && scan == F5 {
+                    list.ui.press(Key::F5);
+                    let frame = list.run.next_blit();
+                    list.run.run(2_000);
+                    crate::ui_support::same_frame(&at, &frame, &list.shown());
+                    assert_eq!(list.run.depth(), 3, "{at}");
+                    let frames = list.run.frames();
+                    assert_eq!(
+                        frames[2][..2],
+                        [crate::sections_rig::KIND_SECTIONS, stage as u8],
+                        "{at}: the sections screen's frame"
+                    );
+                    assert_eq!(frames[1][..6], before, "{at}: the list is as it was");
+                    assert_eq!(list.run.blits(), blits + 1, "{at}");
+                } else if opens {
                     let frame = list.run.next_blit();
                     list.run.run(2_000);
                     crate::ui_support::same_frame(
