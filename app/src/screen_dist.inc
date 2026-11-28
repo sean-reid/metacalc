@@ -28,6 +28,9 @@
 ; places each pair as it is read. dist_enter walks every pair once with nothing drawn to count the rows, DV_ROWS, which the key
 ; needs to know the last first row, the rows less 6 and 0 for fewer. dist_draw walks again, skips the pairs of the rows above
 ; the first shown, draws the six rows and stops at the first pair of the row after them, whose widths it has read.
+; The pointer to the next pair is 24 bits, and dist_next carries into its high byte. A packed library never crosses there:
+; mcpack keeps every record, at most CHUNK, 16,384 bytes, inside one multiple of 4000h, and 10000h is one, so no pair list
+; straddles it; dist_straddle.rs moves a record by hand to test the carry.
 ;
 ; Derived state, in APP_TEXT from DV_ASSERT to DV_VARS_END, rebuilt by every enter and every draw: DV_ASSERT the assertion,
 ; DV_NPAIRS its pair count, DV_ROWS the rows (dist_enter only), DV_TOP the first row shown (dist_draw), DV_MODE 0 to count or 1
