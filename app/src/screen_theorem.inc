@@ -102,10 +102,10 @@
 ; take a median of 328,174 and at most 765,442 over prop's 779 assertions, and 297,537 and at most 1,785,376
 ; (297.6 ms, rglcom4d) over ring's 3,326, 6 of them over 200 ms and none over 300 ms, rglcom4d being the key
 ; 926, the enter 1,517,074 and the first frame 267,376; a cursor move with its frame, over every node of ring's
-; 50 largest assertions and of every 97th of the rest, takes 270,187 at the median and 341,044 at most
-; (df-rng, Down to node 63), 267 of 4,872 over 300,000, the worst being the key 56,666, the draw 209,824 and
-; the blit 74,554; a fold with its frame 297,204 at the median and 394,290 at most (df-rng, Enter at node 68),
-; 138 of 322 over, the worst being the key 109,835, the draw 209,901 and the blit 74,554.
+; 50 largest assertions and of every 97th of the rest, takes 270,149 at the median and 341,006 at most
+; (df-rng, Down to node 63), 265 of 4,872 over 300,000, the worst being the key 56,666, the draw 209,786 and
+; the blit 74,554; a fold with its frame 297,166 at the median and 394,252 at most (df-rng, Enter at node 68),
+; 137 of 322 over, the worst being the key 109,835, the draw 209,863 and the blit 74,554.
 
 THM_ROWS	.equ 6
 THM_LARGE_ROW	.equ 2

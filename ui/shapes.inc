@@ -31,24 +31,18 @@ iv_w:
 	ld e,a
 iv_h:
 	ld a,c
+	and 7
 	add a,e
-	dec a
+	cp 9
+	jr nc,iv_rows
+	ld a,c
 	rrca
 	and $1C
 	or (ut_rows+2)&$FF
 	ld l,a
 	ld h,ut_rows>>8
 	ld a,(hl)
-	add a,a
-	ld h,a
-	ld a,c
-	rrca
-	and $1C
-	or (ut_rows+2)&$FF
-	ld l,a
-	ld a,h
-	ld h,ut_rows>>8
-	sub (hl)
+iv_mark:
 	ld hl,ui_dirty
 	or (hl)
 	ld (hl),a
@@ -90,6 +84,27 @@ iv_h:
 	cp 8
 	jp z,iv_rows8
 	jp iv_flip_row
+iv_rows:
+	ld a,c
+	add a,e
+	dec a
+	rrca
+	and $1C
+	or (ut_rows+2)&$FF
+	ld l,a
+	ld h,ut_rows>>8
+	ld a,(hl)
+	add a,a
+	ld h,a
+	ld a,c
+	rrca
+	and $1C
+	or (ut_rows+2)&$FF
+	ld l,a
+	ld a,h
+	ld h,ut_rows>>8
+	sub (hl)
+	jr iv_mark
 iv_gen:
 	ld a,d
 	and 7

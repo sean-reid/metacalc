@@ -522,10 +522,10 @@ fn on_the_reference_os_a_cursor_move_and_a_fold_with_their_frames_cost_what_the_
         "ROM, the worst move split into key, draw and blit: {:?}; the worst fold: {:?}",
         stats.move_splits[worst_move], stats.fold_splits[worst_fold]
     );
-    assert_eq!((got.runs, got.over_budget), (4872, 267));
+    assert_eq!((got.runs, got.over_budget), (4872, 265));
     within("the median move", got.median, 273_933);
     within("the worst move", got.worst, 344_790);
-    assert_eq!((fold.runs, fold.over_budget), (322, 138));
+    assert_eq!((fold.runs, fold.over_budget), (322, 137));
     within("the median fold", fold.median, 300_950);
     within("the worst fold", fold.worst, 398_036);
 }

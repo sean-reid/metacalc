@@ -684,6 +684,7 @@ ui_tblk:
 	PAGE(SHIFTS(ui_vblk>>8))
 ui_tblk_tail:
 #include "clear.inc"
+#include "range.inc"
 #if ($-ui_tblk_tail) > 160
  .error "the code in the tail of the ui_tblk page outgrew its 160 bytes"
 #endif

@@ -19,9 +19,9 @@ const BUDGET: u32 = 50 * 6000;
 const FIXTURE_FRAME: u32 = 278_674;
 const RING_FRAME: u32 = 271_762;
 /// The same frames with the cursor on the node that makes fm_draw dearest. The fixture's is over the
-/// budget: 297,599 before the canvas marked its rows, 303,155 with the blit's list (902), the marks
-/// of the draws (3,772) and the cursor's six ui_invert marks (882). It is pinned at that figure.
-const FIXTURE_CURSOR_FRAME_OVER_THE_BUDGET: u32 = 303_155;
+/// budget: 297,599 before the canvas marked its rows, 302,927 with the blit's list (902), the marks
+/// of the draws (3,772) and the cursor's six ui_invert marks (654). It is pinned at that figure.
+const FIXTURE_CURSOR_FRAME_OVER_THE_BUDGET: u32 = 302_927;
 const RING_CURSOR_FRAME: u32 = 297_724;
 
 /// What the frame with the cursor may cost: under a ceiling that is under the budget, or exactly the

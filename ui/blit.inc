@@ -10,8 +10,8 @@
 ;           but each blit then takes about 7.1 million T-states, 1.2 s at 6 MHz. The controller is left
 ;           in 8 bit mode with increment mode 5. Interrupts are off for the whole call and come back as
 ;           the caller had them, on every exit: a handler that wrote the LCD mid-column would put the
-;           rest of the column elsewhere, and a handler must not call the canvas, since the call
-;           overwrites the scratch bytes. ui_dirty and ui_sent hold nothing across an auto power down.
+;           rest of the column elsewhere, and one running inside the blit would push into the list; a
+;           handler must not call the canvas, since the call overwrites the scratch bytes. ui_dirty and ui_sent hold nothing across an auto power down.
 ;           Once per call it builds the list of the mask's runs, at most four, in the scratch bytes
 ;           at UI_VARS offsets 00h to 0Fh (the text and soft key scratch, which hold nothing between
 ;           calls): four bytes a run, the block count as -8 times the blocks, the row command, and the
