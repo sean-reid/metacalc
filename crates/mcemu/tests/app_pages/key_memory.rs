@@ -1,6 +1,12 @@
 //! The OS's memory of the last key: the same key pressed again soon after a release is not taken,
 //! and a different key is. The memory lasts until the scan code clears, on the fifth scan in a row
 //! with no key down. A release 6.5 ms after an interrupt puts that scan 39.9 ms after the release.
+//!
+//! The figures hold in the state `rig_in` sets up: the app at its idle point in the tick loop, which
+//! never reads the key, so the scan code stays set until that fifth scan clears it, and every
+//! interrupt, one in 9.28 ms, is a scan. They do not describe the reference OS in its key wait, where
+//! the shell sits between keys and two of every three interrupts scan nothing: key_scans.rs measures
+//! that state, and Run::press counts scans.
 
 use crate::idlerig::*;
 use crate::shellrig::*;

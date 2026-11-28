@@ -24,6 +24,8 @@ pub const WAIT: u32 = 600_000_000;
 /// The scans with no key down after which the OS takes the key it took last again, the most T-states
 /// those take (46 ms at 15 MHz is 700,000), and the steps the wait for them runs in.
 const RELEASE_SCANS: usize = 5;
+/// The writes to port 1 of a scan that finds no key down: 00h and FFh.
+const EMPTY_SCAN_WRITES: usize = 2;
 const RELEASE_LIMIT: u32 = 1_200_000;
 const RELEASE_STEP: u32 = 3_000;
 /// The steps between two frames of the screen, CKS_EVERY in screen_checking.inc.
@@ -37,10 +39,14 @@ pub struct Run {
     /// The key last let go with `release` and the keypad scans since, until another key is pressed.
     released: Option<(u8, usize)>,
     pub released_at: u32,
-    /// Whether a write of 00h to port 1 has come since the last other port's write, and whether the
-    /// 08h acknowledge that followed one has not yet been followed by a 09h.
+    /// Whether a write of 00h to port 1 has come since the last other port's write, the port 1 writes
+    /// of that scan so far, and the writes of the scan an 08h acknowledge closed that no 09h has
+    /// followed yet.
     scan_open: bool,
-    scan_pending: bool,
+    scan_writes: usize,
+    scan_pending: Option<usize>,
+    /// The interrupts acknowledged with 09h since the release, for the message of a wait that fails.
+    acks: usize,
     /// Whether the test presses the key it just let go raw, to test the gap.
     raw_press_allowed: bool,
 }
@@ -82,7 +88,9 @@ impl Run {
             released: None,
             released_at: 0,
             scan_open: false,
-            scan_pending: false,
+            scan_writes: 0,
+            scan_pending: None,
+            acks: 0,
             raw_press_allowed: false,
         }
     }
@@ -97,7 +105,9 @@ impl Run {
             released: None,
             released_at: 0,
             scan_open: false,
-            scan_pending: false,
+            scan_writes: 0,
+            scan_pending: None,
+            acks: 0,
             raw_press_allowed: false,
         }
     }
@@ -160,11 +170,19 @@ impl Run {
         self.released.map_or(0, |(_, seen)| seen)
     }
 
-    /// Adds the keypad scans since the last count to the release's. A scan is a write of 00h and then
-    /// FFh to port 1 in an interrupt handler that goes on to acknowledge the interrupt: 08h and 09h to
-    /// port 3 with nothing but port 1 between the scan and the 08h. The reference OS scans on one
-    /// timer interrupt in three and forgets the key on the fifth scan with no key down, so counting
-    /// interrupts is wrong there; an ON edge raises an interrupt that acknowledges with 08h alone.
+    /// Adds the scans with no key down since the last count to the release's. The OS takes the key it
+    /// took last again only after its fifth such scan, and scans only in an interrupt, so the count is
+    /// of scans, not of time or of acknowledges. A scan is a write of 00h to port 1 and then FFh, 2
+    /// writes with no key down and 18 with one, in an interrupt that goes on to acknowledge with 08h
+    /// and 09h to port 3, with nothing but port 1 between the scan and the 08h. On the stub OS and at
+    /// the app's idle point on the reference OS every timer interrupt scans, one in 9.28 ms. In the
+    /// reference OS's key wait, pc 03A1 on page 06, where the shell sits between keys, three
+    /// interrupts come in 9.28 ms and one scans: the other two have port 4 status 0Ch or 0Eh and
+    /// acknowledge 08h, 09h without a write to port 1. The scan code byte cannot stand for the event:
+    /// the shell's key read has zeroed it before the release, and the last-key byte the stub clears at
+    /// the fifth scan the reference OS never clears. A stretch with interrupts off, as in the theorem's
+    /// enter, has no scan, and a key pressed in it is held down through the first scans after it and
+    /// ignored for good. An ON edge acknowledges with 08h alone and is not a scan.
     fn count_scans(&mut self) {
         let Some((scan, seen)) = &mut self.released else {
             return;
@@ -173,22 +191,28 @@ impl Run {
         let (writes, full) = m.take_port_writes_or_full();
         for w in &writes {
             match (w.port, w.value) {
-                (1, 0) => self.scan_open = true,
+                (1, 0) => {
+                    self.scan_open = true;
+                    self.scan_writes = 1;
+                }
+                (1, _) if self.scan_open => self.scan_writes += 1,
+                (1, _) => {}
                 (3, 8) => {
-                    self.scan_pending = self.scan_open;
+                    self.scan_pending = self.scan_open.then_some(self.scan_writes);
                     self.scan_open = false;
                 }
                 (3, 9) => {
-                    *seen += usize::from(self.scan_pending);
-                    self.scan_pending = false;
+                    self.acks += 1;
+                    *seen += usize::from(self.scan_pending.take() == Some(EMPTY_SCAN_WRITES));
                 }
-                (1, _) => {}
                 _ => self.scan_open = false,
             }
         }
         assert!(
             !full || *seen >= RELEASE_SCANS,
-            "the port record filled with {seen} scans counted after the release of {scan:02X}"
+            "the port record filled with {seen} scans and {} interrupts counted after the release of \
+             {scan:02X}",
+            self.acks
         );
         assert!(
             self.raw_press_allowed || *seen >= RELEASE_SCANS || !m.key_is_down(*scan),
@@ -284,6 +308,7 @@ impl Run {
         self.m().clear_port_writes();
         self.released = Some((scan, 0));
         self.released_at = self.shell.app.m.clock();
+        (self.scan_open, self.scan_pending, self.acks) = (false, None, 0);
         self.raw_press_allowed = false;
     }
 
@@ -297,10 +322,12 @@ impl Run {
                 Some((key, seen)) if key == scan && seen < RELEASE_SCANS => seen,
                 _ => break,
             };
+            let (acks, bytes) = (self.acks, self.os_bytes());
             assert!(
                 waited < RELEASE_LIMIT,
-                "{seen} scans in {waited} T-states after the release, expected \
-                 {RELEASE_SCANS}; interrupts may have been masked for the rest"
+                "{seen} scans and {acks} interrupts in {waited} T-states after the release of \
+                 {scan:02X}, expected {RELEASE_SCANS} scans; interrupts may have been masked for the \
+                 rest; scan code, byte 8443h and last key: {bytes:02X?}"
             );
             self.run(RELEASE_STEP);
             waited += RELEASE_STEP;
@@ -308,6 +335,13 @@ impl Run {
         self.released = None;
         self.raw_press_allowed = false;
         self.shell.app.m.press_key(scan);
+    }
+
+    /// The OS's scan code, its count of scans with no key down (5 after a scan with a key down, 1 or 0
+    /// after four or five without) and its last key.
+    fn os_bytes(&mut self) -> [u8; 3] {
+        let ram = self.shell.app.m.ram_page(1);
+        [ram[0x43F], ram[0x443], ram[0x445]]
     }
 
     /// Runs `t` T-states.
