@@ -74,7 +74,7 @@ fn on_the_reference_os_the_blit_costs_what_the_rows_it_sends_say() {
     pinned("blit of two adjacent rows", two, TWO);
     pinned("blit of no row", none, NONE);
     assert!(
-        one > 20_000 && two > one + 7_000,
+        one > 12_000 && two > one + 7_000,
         "a blit that sends nothing fails"
     );
     assert!(full > two && none < 1_000);
@@ -132,10 +132,10 @@ fn on_the_reference_os_clearing_and_shifting_rows_cost_what_they_are_pinned_at()
     }
 }
 
-const FULL: u32 = 78216;
-const ONE: u32 = 23460;
-const TWO: u32 = 31260;
-const NONE: u32 = 615;
+const FULL: u32 = 74481;
+const ONE: u32 = 13265;
+const TWO: u32 = 22032;
+const NONE: u32 = 646;
 const TEXT: u32 = 6331;
 const CLEAR_ONE: u32 = 1629;
 const CLEAR_SIX: u32 = 5319;

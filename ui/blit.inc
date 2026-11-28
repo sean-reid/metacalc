@@ -10,9 +10,21 @@
 ;           but each blit then takes about 7.1 million T-states, 1.2 s at 6 MHz. The controller is left
 ;           in 8 bit mode with increment mode 5. Interrupts are off for the whole call and come back as
 ;           the caller had them, on every exit: a handler that wrote the LCD mid-column would put the
-;           rest of the column elsewhere. ui_dirty and ui_sent hold nothing across an auto power down.
-;           Uses ui_cnt, ui_col and ui_blk as scratch. Stack: the return address only.
+;           rest of the column elsewhere, and a handler must not call the canvas, since the call
+;           overwrites the scratch bytes. ui_dirty and ui_sent hold nothing across an auto power down.
+;           Once per call it builds the list of the mask's runs, at most four, in the scratch bytes
+;           at UI_VARS offsets 00h to 0Fh (the text and soft key scratch, which hold nothing between
+;           calls): four bytes a run, the block count as -8 times the blocks, the row command, and the
+;           16 bit step to add to the frame pointer after the run, 96 a skipped row, or for the last
+;           run back to the first run's start in the next byte column, which is the only step that
+;           sets carry. It also uses ui_kb+1 and ui_kn (10h, 11h), ui_blk, ui_sp and ui_iff. SP points
+;           into the list while the columns are sent and is restored from ui_sp on every exit, so the
+;           stack needed is the return address only: 2 bytes.
 ;           destroys AF BC DE HL
+
+#if ((UI_VARS + 16) > (ui_kb + 1)) || ((ui_kb + 3) > ui_dirty) || ((ui_kn + 1) > ui_dirty)
+ .error "the blit's list and its scratch must lie in UI_VARS below ui_dirty"
+#endif
 
 #macro WAIT
 	ld b,UI_BUSY_LIMIT
@@ -44,6 +56,7 @@ bl_go:
 	ld (ui_iff),a
 bl_mask:
 	di
+	ld (ui_sp),sp
 	ld c,LCD_CMD
 	WAIT
 	ld a,$01
@@ -55,61 +68,104 @@ bl_mask:
 	ld a,(hl)
 	ld (hl),0
 	ld (ui_sent),a
-	ld (ui_col),a
 	or a
 	jp z,bl_done
+	ld c,a
 	ld hl,UI_FRAME
-	ld de,UI_STRIDE
+	ld de,UI_ROW*UI_STRIDE
+	ld a,$80
+bl_head:
+	srl c
+	jr c,bl_first
+	add a,8
+	add hl,de
+	jr bl_head
+bl_first:
+	ld (ui_kb+1),hl
+	ld de,UI_VARS+1
+bl_new:
+	ld (de),a
+	dec de
+	ld b,a
+bl_len:
+	add a,8
+	srl c
+	jr c,bl_len
+	ld l,a
+	ld a,b
+	sub l
+	ld (de),a
+	inc c
+	dec c
+	jr z,bl_last
+	inc de
+	inc de
+	ld a,l
+bl_gap:
+	add a,8
+	srl c
+	jr nc,bl_gap
+	ld b,a
+	sub l
+	ld l,a
+	add a,a
+	add a,l
+	ld l,a
+	ld h,0
+	add hl,hl
+	add hl,hl
+	ld a,l
+	ld (de),a
+	inc de
+	ld a,h
+	ld (de),a
+	inc de
+	inc de
+	ld a,b
+	jr bl_new
+bl_last:
+	inc de
+	inc de
+	ld a,l
+	ld hl,UI_VARS+1
+	sub (hl)
+	ld l,a
+	add a,a
+	add a,l
+	ld l,a
+	ld h,0
+	add hl,hl
+	add hl,hl
+	xor a
+	sub l
+	ld l,a
+	ld a,0
+	sbc a,h
+	ld h,a
+	inc hl
+	ld a,l
+	ld (de),a
+	inc de
+	ld a,h
+	ld (de),a
+	ld hl,(ui_kb+1)
 	ld a,$20
-	ld (ui_cnt),a
+	ld (ui_kn),a
+	ld de,UI_STRIDE
+	ld c,LCD_CMD
 bl_col:
 	WAIT
-	ld a,(ui_cnt)
+	ld a,(ui_kn)
 	out (LCD_CMD),a
-	ld a,$C0
+	ld sp,UI_VARS
+bl_run:
+	pop bc
+	ld a,c
 	ld (ui_blk),a
-bl_stale:
-	ld a,(ui_col)
-	rrca
-	ld (ui_col),a
-	jr c,bl_row
-bl_skip:
-	ld a,l
-	add a,UI_ROW*UI_STRIDE
-	ld l,a
-	jr nc,bl_step
-	inc h
-bl_step:
-	ld a,(ui_blk)
-	add a,8
-	ld (ui_blk),a
-	jr nz,bl_stale
-bl_end:
-	ld bc,1-UI_FRAME_SIZE
-	add hl,bc
+	ld a,b
 	ld c,LCD_CMD
-	ld a,(ui_cnt)
-	inc a
-	ld (ui_cnt),a
-	cp $20+UI_STRIDE
-	jp nz,bl_col
-bl_done:
-	ld a,(ui_iff)
-	or a
-	ret z
-	ei
-	ret
-bl_row:
 	WAIT
-	ld a,(ui_blk)
-	sub $40
 	out (LCD_CMD),a
-	jr bl_send
-bl_fresh:
-	ld a,(ui_col)
-	rrca
-	ld (ui_col),a
-	jp nc,bl_skip
 bl_send:
 	BYTE
 	BYTE
@@ -122,6 +178,21 @@ bl_send:
 	ld a,(ui_blk)
 	add a,8
 	ld (ui_blk),a
-	jp nz,bl_fresh
-	jp bl_end
+	jp nz,bl_send
+	pop de
+	add hl,de
+	ld de,UI_STRIDE
+	jp nc,bl_run
+	ld a,(ui_kn)
+	inc a
+	ld (ui_kn),a
+	cp $20+UI_STRIDE
+	jp nz,bl_col
+bl_done:
+	ld sp,(ui_sp)
+	ld a,(ui_iff)
+	or a
+	ret z
+	ei
+	ret
 ui_blit_end:
