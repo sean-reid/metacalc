@@ -286,7 +286,7 @@ impl Shell {
     /// another bank (`at_rest`).
     pub fn peek(&mut self, at: u16, len: usize) -> Vec<u8> {
         self.at_rest();
-        self.app.m.read_ram(at, len)
+        self.app.peek(at, len)
     }
 
     fn word(&mut self, at: u16) -> u16 {
@@ -328,13 +328,13 @@ impl Shell {
 
     pub fn flag(&mut self, on: bool) {
         self.at_rest();
-        self.app.m.load_ram(FLAG, &[u8::from(on)]);
+        self.app.poke(FLAG, &[u8::from(on)]);
     }
 
     pub fn depth(&mut self) -> usize {
         self.at_rest();
         let at = self.app.label("scr_count");
-        usize::from(self.app.m.read_ram(at, 1)[0])
+        usize::from(self.app.peek(at, 1)[0])
     }
 
     /// The open frames, bottom first.
@@ -360,8 +360,8 @@ impl Shell {
             usize::from(self.app.label("SCR_VARS_SIZE")),
             usize::from(self.app.label("SCR_STACK_SIZE")),
         );
-        self.app.m.load_ram(vars + 1, &varied(2, 0xC3));
-        self.app.m.load_ram(vars + 5, &varied(vars_size - 5, 0xC4));
+        self.app.poke(vars + 1, &varied(2, 0xC3));
+        self.app.poke(vars + 5, &varied(vars_size - 5, 0xC4));
         let live = 16 * depth;
         self.app
             .m
@@ -419,11 +419,8 @@ impl Shell {
             usize::from(self.app.label("SCR_STACK_SIZE")),
             usize::from(self.app.label("SCR_VARS_SIZE")),
         );
-        assert_eq!(
-            self.app.m.read_ram(stack, stack_size),
-            vec![0x20; stack_size]
-        );
-        assert_eq!(self.app.m.read_ram(vars, vars_size), vec![0; vars_size]);
+        assert_eq!(self.app.peek(stack, stack_size), vec![0x20; stack_size]);
+        assert_eq!(self.app.peek(vars, vars_size), vec![0; vars_size]);
     }
 
     /// Presses `scan` and runs until the app leaves.
@@ -456,7 +453,7 @@ impl Shell {
     pub fn power_down(&mut self) {
         let pixels = self.lcd_bytes();
         self.at_rest();
-        self.app.m.load_ram(SAVE_SCREEN, &pixels);
+        self.app.poke(SAVE_SCREEN, &pixels);
     }
 
     pub fn sentinel(&mut self) -> (u16, u16) {

@@ -255,8 +255,8 @@ fn the_enter_counts_a_stages_titles_and_refuses_a_stage_with_none_without_writin
         let mut frame = [0u8; 16];
         frame[0] = KIND_SECTIONS;
         frame[1] = stage as u8;
-        app.m.load_ram(crate::app::SCRATCH, &frame);
-        app.m.load_ram(count, &[0xAB, 0xCD]);
+        app.poke(crate::app::SCRATCH, &frame);
+        app.poke(count, &[0xAB, 0xCD]);
         let done = app.call(
             crate::realos::BASE,
             label,
