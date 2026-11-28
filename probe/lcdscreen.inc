@@ -259,3 +259,6 @@ txt_n1:
 	.db "2nd", 0
 txt_n2:
 	.db "alpha", 0
+
+; test-check-8xk.sh edits the signature field in one hex record, so it must not start across two
+	.db 0, 0
