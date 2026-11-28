@@ -42,8 +42,8 @@
 ; 14, 30, 28, 10; reference OS 42, 42, 14, 44, 42, 10. The deepest, 30 and 44, includes the ON and
 ; CK_PAUSED stops, and on the stub OS a table lost, a reader failure and the damaged notice; the reference
 ; OS ran prop and two ON stops. An interrupt adds the handler's bytes: the greatest seen is 32 stub, 52 reference.
-; Cost of scr_draw and ui_blit for a frame, cold, in T-states. Stub OS: 130,171 reading, 149,463 steps with
-; a label, 125,129 finished, 128,488 damaged notice. Reference OS: 131,341, 155,820, 129,141.
+; Cost of scr_draw and ui_blit for a frame, cold, in T-states. Stub OS: 131,355 reading, 150,761 steps with
+; a label, 126,313 finished, 129,628 damaged notice. Reference OS: 132,525, 157,118, 130,325.
 ; checking_draw   clears the canvas, stages checking_block, builds the strings in APP_TEXT and draws. done
 ;                 is N less the first count of the job and failed the third. The label is the library's
 ;                 label of the first assertion with value 0 from the job's cursor ck_i, found by

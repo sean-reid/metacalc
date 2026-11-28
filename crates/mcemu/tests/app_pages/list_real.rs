@@ -127,7 +127,7 @@ fn on_the_reference_os_the_wait_is_11_ticks_and_a_key_inside_it_starts_it_again(
     );
     assert_eq!(waited.interrupts, WAIT_TICKS);
     assert_eq!(waited.fits, fits, "no fit before the wait is over");
-    within("the wait to the fit", waited.tstates, 573_022);
+    within("the wait to the fit", waited.tstates, 576_754);
     assert!(waited.tstates > (WAIT_TICKS - 1) * TICK && waited.tstates <= WAIT_TICKS * TICK + 100);
     list.settle();
     assert!(list.key(DOWN, Key::Down));

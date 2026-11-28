@@ -16,11 +16,20 @@ use mcui::canvas::{GUTTER, STATEMENT_WIDTH};
 const BUDGET: u32 = 50 * 6000;
 /// Ceilings a little above the dearest frame on the fixture and on ring, the far calls from the
 /// entry page included.
-const FIXTURE_FRAME: u32 = 282_409;
-const RING_FRAME: u32 = 275_497;
-/// The same frames with the cursor on the node that makes fm_draw dearest.
-const FIXTURE_CURSOR_FRAME: u32 = 308_417;
-const RING_CURSOR_FRAME: u32 = 301_525;
+const FIXTURE_FRAME: u32 = 278_674;
+const RING_FRAME: u32 = 271_762;
+/// The same frames with the cursor on the node that makes fm_draw dearest. The fixture's is over the
+/// budget: 297,599 before the canvas marked its rows, 303,155 with the blit's list (902), the marks
+/// of the draws (3,772) and the cursor's six ui_invert marks (882). It is pinned at that figure.
+const FIXTURE_CURSOR_FRAME_OVER_THE_BUDGET: u32 = 303_155;
+const RING_CURSOR_FRAME: u32 = 297_724;
+
+/// What the frame with the cursor may cost: under a ceiling that is under the budget, or exactly the
+/// figure of a frame over it.
+enum Cursor {
+    Within(u32),
+    Over(u32),
+}
 
 /// The T-states a routine takes beyond the driver's own call and halt, which a call of a RAM
 /// `ret` measures.
@@ -204,7 +213,7 @@ fn worst_node(bytes: &[u8]) -> (u16, u8, u8) {
         .expect("a statement of six lines")
 }
 
-fn frame(name: &str, built: &'static Built, bytes: &[u8], ceilings: (u32, u32)) {
+fn frame(name: &str, built: &'static Built, bytes: &[u8], ceilings: (u32, Cursor)) {
     let (n, k, _) = heaviest(bytes);
     let mut app = opened_on(built);
     let driver = driver_cost(&mut app);
@@ -335,25 +344,28 @@ fn frame(name: &str, built: &'static Built, bytes: &[u8], ceilings: (u32, u32)) 
         f64::from(marked) / 6000.0,
         BUDGET.saturating_sub(marked)
     );
-    // the worst cursor frames passed 50 ms before the blit sent the rows marked and ui_text marked them
-    assert!(
-        marked < BUDGET.max(ceilings.1),
-        "the frame with the cursor fits its ceiling"
-    );
-    assert!(
-        marked <= ceilings.1,
-        "{marked} is over the ceiling {}",
-        ceilings.1
-    );
+    match ceilings.1 {
+        Cursor::Within(ceiling) => {
+            assert!(marked < BUDGET, "the frame with the cursor fits 50 ms");
+            assert!(marked <= ceiling, "{marked} is over the ceiling {ceiling}");
+        }
+        Cursor::Over(exact) => {
+            assert_eq!(marked, exact, "the frame with the cursor, over {BUDGET}");
+        }
+    }
 }
 
 #[test]
-fn a_frame_of_six_rows_drawn_from_the_entry_page_by_a_ram_driver_fits_the_budget() {
+fn a_frame_of_six_rows_drawn_from_the_entry_page_by_a_ram_driver_fits_the_budget_and_with_the_worst_cursor_does_not()
+ {
     frame(
         "fixture",
         with_library(),
         &fixture::library(),
-        (FIXTURE_FRAME, FIXTURE_CURSOR_FRAME),
+        (
+            FIXTURE_FRAME,
+            Cursor::Over(FIXTURE_CURSOR_FRAME_OVER_THE_BUDGET),
+        ),
     );
 }
 
@@ -365,6 +377,6 @@ fn the_heaviest_ring_frame_drawn_from_the_entry_page_by_a_ram_driver_fits_the_bu
         "ring",
         built,
         built.library.as_ref().unwrap(),
-        (RING_FRAME, RING_CURSOR_FRAME),
+        (RING_FRAME, Cursor::Within(RING_CURSOR_FRAME)),
     );
 }

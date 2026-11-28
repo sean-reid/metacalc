@@ -413,8 +413,8 @@ fn on_the_reference_os_opening_every_assertion_of_prop_and_ring_costs_what_the_h
             PROP,
             Summary {
                 runs: 779,
-                median: 331_909,
-                worst: 769_177,
+                median: 328_174,
+                worst: 765_442,
                 over_200_ms: 0,
                 over_budget: 0,
             },
@@ -431,8 +431,8 @@ fn on_the_reference_os_opening_every_assertion_of_prop_and_ring_costs_what_the_h
             RING,
             Summary {
                 runs: 3326,
-                median: 301_272,
-                worst: 1_789_111,
+                median: 297_537,
+                worst: 1_785_376,
                 over_200_ms: 6,
                 over_budget: 0,
             },
@@ -522,10 +522,10 @@ fn on_the_reference_os_a_cursor_move_and_a_fold_with_their_frames_cost_what_the_
         "ROM, the worst move split into key, draw and blit: {:?}; the worst fold: {:?}",
         stats.move_splits[worst_move], stats.fold_splits[worst_fold]
     );
-    assert_eq!((got.runs, got.over_budget), (4872, 328));
+    assert_eq!((got.runs, got.over_budget), (4872, 267));
     within("the median move", got.median, 273_933);
     within("the worst move", got.worst, 344_790);
-    assert_eq!((fold.runs, fold.over_budget), (322, 171));
+    assert_eq!((fold.runs, fold.over_budget), (322, 138));
     within("the median fold", fold.median, 300_950);
     within("the worst fold", fold.worst, 398_036);
 }
@@ -560,8 +560,8 @@ fn on_the_reference_os_the_longest_stretch_with_interrupts_off_in_an_open_and_in
     let moves = stats.moves.iter().max().unwrap();
     let folds = stats.folds.iter().max().unwrap();
     within("the longest stretch in an open", most_open, 1_282_260);
-    within("the longest stretch in a move", moves.0, 79_939);
-    within("the longest stretch in a fold", folds.0, 77_886);
+    within("the longest stretch in a move", moves.0, 79_906);
+    within("the longest stretch in a fold", folds.0, 74_151);
     println!(
         "ROM, over the three largest assertions: the longest stretch in a move is {moves:?}, in a fold {folds:?}; in an open {most_open}"
     );

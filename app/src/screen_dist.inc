@@ -101,12 +101,12 @@
 ; and the parts of a total
 ; printed there: a token, far_lib_glyph
 ; and far_ui_text_width, takes 6,311, so placing a pair takes 12,622 and drawing one 17,725 more. Opening frrlem1 of ring, 33
-; pairs over 6 rows, takes 1,577,717 (263.0 ms) against 1,800,000: the key 733, dist_enter 448,365, dist_draw 1,054,967 and
-; the blit 73,652. DOWN and UP there stay, in 218 and 146. A scroll with its frame takes 1,237,982 to 2,024,739 (206 to 338
+; pairs over 6 rows, takes 1,584,386 (264.1 ms) against 1,800,000: the key 733, dist_enter 448,365, dist_draw 1,060,734 and
+; the blit 74,554. DOWN and UP there stay, in 218 and 146. A scroll with its frame takes 1,245,164 to 2,031,921 (207 to 339
 ; ms) on a library of 16 rows of 6 pairs, over the budget of 300,000: dist_draw reads the glyphs of every pair above the first
-; row shown, 12,622 each, and then draws the rows, and dist_open takes 1,249, the title 24,938 and the blit 73,652. No shipped
+; row shown, 12,622 each, and then draws the rows, and dist_open takes 1,249, the title 25,039 and the blit 74,554. No shipped
 ; assertion has more than six rows, so no shipped screen scrolls. The way back to the theorem screen from rglcom4d, ring's
-; costliest open with pairs, is the key 50, the theorem's enter 1,492,152 and its frame 263,399: 1,755,601.
+; costliest open with pairs, is the key 50, the theorem's enter 1,492,152 and its frame 267,376: 1,759,578.
 
 DIST_ROWS	.equ 6
 DIST_WIDTH	.equ 94

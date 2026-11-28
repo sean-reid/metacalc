@@ -143,24 +143,24 @@ fn typed(list: &mut Lister, mirror: &mut Mirror, text: &str, at: &str, pins: &[u
 /// What the presses of `text` cost under `name`, measured on ring at 6 MHz with their frames.
 fn first_pins(name: &str, text: &str) -> &'static [u32] {
     match (name, text) {
-        ("All", "s") => &[467_888],
-        ("All", "k") => &[247_667],
-        ("All", "sg") => &[467_888, 313_093],
-        ("Theorems", "s") => &[520_696],
-        ("Theorems", "k") => &[280_294],
-        ("Theorems", "sg") => &[520_696, 358_551],
-        ("Axioms", "s") => &[1_020_283],
-        ("Axioms", "k") => &[285_453],
-        ("Axioms", "sg") => &[1_020_283, 228_645],
-        ("Unchecked, ones", "s") => &[598_578],
-        ("Unchecked, ones", "k") => &[346_423],
-        ("Unchecked, ones", "sg") => &[598_578, 440_849],
-        ("Unchecked, none checked", "s") => &[575_304],
-        ("Unchecked, none checked", "k") => &[338_144],
-        ("Unchecked, none checked", "sg") => &[575_304, 433_660],
-        ("Unchecked, no table", "s") => &[471_325],
-        ("Unchecked, no table", "k") => &[250_862],
-        ("Unchecked, no table", "sg") => &[471_325, 316_489],
+        ("All", "s") => &[464_153],
+        ("All", "k") => &[243_932],
+        ("All", "sg") => &[464_153, 309_358],
+        ("Theorems", "s") => &[516_961],
+        ("Theorems", "k") => &[276_559],
+        ("Theorems", "sg") => &[516_961, 354_816],
+        ("Axioms", "s") => &[1_016_548],
+        ("Axioms", "k") => &[281_718],
+        ("Axioms", "sg") => &[1_016_548, 224_910],
+        ("Unchecked, ones", "s") => &[594_843],
+        ("Unchecked, ones", "k") => &[342_688],
+        ("Unchecked, ones", "sg") => &[594_843, 437_114],
+        ("Unchecked, none checked", "s") => &[571_569],
+        ("Unchecked, none checked", "k") => &[334_409],
+        ("Unchecked, none checked", "sg") => &[571_569, 429_925],
+        ("Unchecked, no table", "s") => &[467_590],
+        ("Unchecked, no table", "k") => &[247_127],
+        ("Unchecked, no table", "sg") => &[467_590, 312_754],
         other => panic!("no pin for {other:?}"),
     }
 }
@@ -235,7 +235,7 @@ fn on_ring_the_worst_prefixes_and_the_walk_back_fit_the_budget() {
         "eleqtrrd",
         "All, eleqtrrd",
         &[
-            458_846, 359_934, 331_397, 332_815, 342_555, 345_196, 347_449, 357_105,
+            455_111, 356_199, 327_662, 329_080, 338_820, 341_461, 343_714, 353_370,
         ],
     );
     println!("PIN All, eleqtrrd: {:?}", costs);
@@ -247,7 +247,7 @@ fn on_ring_the_worst_prefixes_and_the_walk_back_fit_the_budget() {
         "sylan9er",
         "All, sylan9er",
         &[
-            467_888, 335_140, 337_986, 329_886, 332_636, 327_255, 335_471, 291_626,
+            464_153, 331_405, 334_251, 326_151, 328_901, 323_520, 331_736, 287_891,
         ],
     );
     println!("PIN All, sylan9er: {:?}", costs);
@@ -255,12 +255,12 @@ fn on_ring_the_worst_prefixes_and_the_walk_back_fit_the_budget() {
         (
             Kind::Axioms,
             None,
-            &[506_434, 468_185, 433_940, 370_533, 373_992, 378_465][..],
+            &[502_699, 464_450, 430_205, 366_798, 370_257, 374_730][..],
         ),
         (
             Kind::Unchecked,
             Some(ones()),
-            &[547_640, 449_877, 462_355, 465_716, 460_406][..],
+            &[543_905, 446_142, 458_620, 461_981, 456_671][..],
         ),
     ] {
         let mut list = ring(table.as_deref());
@@ -292,11 +292,11 @@ fn on_ring_the_worst_prefixes_and_the_walk_back_fit_the_budget() {
 
 fn ending(name: &str) -> u32 {
     match name {
-        "f2" => 248_335,
-        "clear" => 248_230,
-        "down" => 248_853,
-        "right" => 250_350,
-        "up" => 240_167,
+        "f2" => 244_600,
+        "clear" => 244_495,
+        "down" => 245_118,
+        "right" => 246_615,
+        "up" => 236_432,
         other => panic!("{other}"),
     }
 }
@@ -304,10 +304,10 @@ fn ending(name: &str) -> u32 {
 /// The cost of the first "s" and of the three F3 presses after it, from `kind`, on ring with a table of ones.
 fn f3_pins(kind: Kind) -> (u32, [u32; 3]) {
     match kind {
-        Kind::All => (501_647, [570_501, 1_073_255, 638_469]),
-        Kind::Theorems => (554_455, [1_073_255, 638_469, 502_578]),
-        Kind::Axioms => (1_053_991, [613_281, 502_578, 570_501]),
-        Kind::Unchecked => (598_578, [502_578, 570_501, 1_073_255]),
+        Kind::All => (497_912, [566_766, 1_069_520, 634_734]),
+        Kind::Theorems => (550_720, [1_069_520, 634_734, 498_843]),
+        Kind::Axioms => (1_050_256, [609_546, 498_843, 566_766]),
+        Kind::Unchecked => (594_843, [498_843, 566_766, 1_069_520]),
     }
 }
 
@@ -326,7 +326,7 @@ fn on_ring_the_keys_that_end_a_find_and_f3_with_a_prefix_fit_the_budget() {
     ] {
         place(&mut list, first);
         let mut mirror = Mirror::new(&labels, items.clone());
-        typed(&mut list, &mut mirror, "d", name, &[468_754]);
+        typed(&mut list, &mut mirror, "d", name, &[465_019]);
         let (cost, answer) = press(&mut list, key, 0);
         within(name, cost, ending(name));
         assert_eq!(answer, 1, "{name}");
@@ -385,5 +385,5 @@ fn on_ring_a_letter_that_misses_over_a_table_of_ones_costs_the_whole_range_of_st
     assert_eq!(list.frame_now()[7], 0x81, "the app says miss");
     println!("Unchecked, every assertion 1, s: {cost}");
     assert!(cost < BUDGET, "{cost} against {BUDGET}");
-    within("Unchecked, every assertion 1, s", cost, 485_962);
+    within("Unchecked, every assertion 1, s", cost, 482_227);
 }

@@ -98,4 +98,4 @@ fn a_library_fm_cannot_open_is_tried_once_for_each_enter_and_a_rest_after_it_cos
 }
 
 /// What a rest costs once fm_open has failed, in T-states, measured on the stub OS.
-const REST: u32 = 145;
+const REST: u32 = 143;

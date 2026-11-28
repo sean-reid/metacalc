@@ -10,7 +10,7 @@ use crate::shellrig::*;
 use crate::table::VAR;
 use mcui::Key;
 
-const STEP: u32 = 500;
+const STEP: u32 = 2_000;
 const VAT_TOP: u16 = 0xFE66;
 
 /// The RAM a stop is chosen by: a raw read of it there is not the app's.

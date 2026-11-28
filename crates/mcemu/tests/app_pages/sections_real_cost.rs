@@ -220,67 +220,67 @@ impl Probe {
 
 /// A move with its frame at the first, middle and last title of each stage, in T-states, as measured.
 const MOVE_PINS: &[(&str, u32)] = &[
-    ("stage 0 first row on", 316167),
-    ("stage 0 first page on", 313443),
-    ("stage 0 middle row back", 314217),
-    ("stage 0 middle page back", 303689),
-    ("stage 0 middle row on", 315289),
-    ("stage 0 middle page on", 319382),
-    ("stage 0 last row back", 325956),
-    ("stage 0 last page back", 319988),
-    ("stage 1 first row on", 315893),
-    ("stage 1 first page on", 313169),
-    ("stage 1 middle row back", 335358),
-    ("stage 1 middle page back", 328346),
-    ("stage 1 middle row on", 335440),
-    ("stage 1 middle page on", 327216),
-    ("stage 1 last row back", 330521),
-    ("stage 1 last page back", 332276),
-    ("stage 2 first row on", 316644),
-    ("stage 2 first page on", 313920),
-    ("stage 2 middle row back", 329361),
-    ("stage 2 middle page back", 317415),
-    ("stage 2 middle row on", 329438),
-    ("stage 2 middle page on", 327941),
-    ("stage 2 last row back", 283959),
-    ("stage 2 last page back", 297230),
+    ("stage 0 first row on", 312432),
+    ("stage 0 first page on", 309708),
+    ("stage 0 middle row back", 310482),
+    ("stage 0 middle page back", 299954),
+    ("stage 0 middle row on", 311554),
+    ("stage 0 middle page on", 315647),
+    ("stage 0 last row back", 322221),
+    ("stage 0 last page back", 316253),
+    ("stage 1 first row on", 312158),
+    ("stage 1 first page on", 309434),
+    ("stage 1 middle row back", 331623),
+    ("stage 1 middle page back", 324611),
+    ("stage 1 middle row on", 331705),
+    ("stage 1 middle page on", 323481),
+    ("stage 1 last row back", 326786),
+    ("stage 1 last page back", 328541),
+    ("stage 2 first row on", 312909),
+    ("stage 2 first page on", 310185),
+    ("stage 2 middle row back", 325626),
+    ("stage 2 middle page back", 313680),
+    ("stage 2 middle row on", 325703),
+    ("stage 2 middle page on", 324206),
+    ("stage 2 last row back", 280224),
+    ("stage 2 last page back", 293495),
 ];
 
 /// Opening the screen from the stage's last assertion: scr_key (F5, the push and the enter), the first
 /// draw and the blit.
 const OPEN_PINS: &[(&str, u32)] = &[
-    ("opening stage 0", 387595),
-    ("opening stage 1", 392164),
-    ("opening stage 2", 345614),
+    ("opening stage 0", 383860),
+    ("opening stage 1", 388429),
+    ("opening stage 2", 341879),
 ];
 
 /// ENTER on the sections screen with the list's first frame, under each kind, from the first, middle and
 /// last title of ring's stage.
 const JUMP_PINS: &[(&str, u32)] = &[
-    ("jump all first", 233615),
-    ("jump all middle", 252617),
-    ("jump all last", 257083),
-    ("jump theorems first", 291192),
-    ("jump theorems middle", 328739),
-    ("jump theorems last", 336468),
-    ("jump axioms first", 293656),
-    ("jump axioms middle", 346052),
-    ("jump axioms last", 337369),
-    ("jump unchecked first", 589082),
-    ("jump unchecked middle", 663627),
-    ("jump unchecked last", 675483),
+    ("jump all first", 229880),
+    ("jump all middle", 248882),
+    ("jump all last", 253348),
+    ("jump theorems first", 287457),
+    ("jump theorems middle", 325004),
+    ("jump theorems last", 332733),
+    ("jump axioms first", 289921),
+    ("jump axioms middle", 342317),
+    ("jump axioms last", 333634),
+    ("jump unchecked first", 585347),
+    ("jump unchecked middle", 659892),
+    ("jump unchecked last", 671748),
 ];
 
 /// The slowest move of ring's stage: Down from the cursor four rows into a view whose first title is
-/// the one that makes the six rows costliest, 337,773 T-states for the frame and 457 for the key. It is
+/// the one that makes the six rows costliest, 339,185 T-states for the frame and 457 for the key. It is
 /// over MOVE_BUDGET, which a move should fit, so it is pinned at what it measures.
-const WORST_MOVE_OVER_THE_BUDGET: u32 = 343_377;
+const WORST_MOVE_OVER_THE_BUDGET: u32 = 339_642;
 /// The first title of that view.
 const WORST_MOVE_FIRST_TITLE: usize = 123;
 
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_22_of_the_24_moves_with_their_frame_cost_more_than_50_ms_and_cost_this_at_the_first_middle_and_last_title_of_each_stage()
+fn on_the_reference_os_21_of_the_24_moves_with_their_frame_cost_more_than_50_ms_and_cost_this_at_the_first_middle_and_last_title_of_each_stage()
  {
     let mut measured = Vec::new();
     for stage in 0..3 {
@@ -334,7 +334,7 @@ fn on_the_reference_os_22_of_the_24_moves_with_their_frame_cost_more_than_50_ms_
 }
 
 /// How many of the 24 moves cost more than MOVE_BUDGET, 50 ms at 6 MHz.
-const MOVES_OVER_THE_BUDGET: usize = 22;
+const MOVES_OVER_THE_BUDGET: usize = 21;
 
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
@@ -522,8 +522,8 @@ fn on_the_reference_os_the_jump_with_the_lists_frame_fits_its_budget_under_each_
 
 /// The push and the jump where the kind shows nothing, with their frames, on ring's stage: scr_key, the draw
 /// and the blit.
-const NOTHING_PUSH: u32 = 409_187;
-const NOTHING_JUMP: u32 = 750_825;
+const NOTHING_PUSH: u32 = 405_452;
+const NOTHING_JUMP: u32 = 747_090;
 
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]

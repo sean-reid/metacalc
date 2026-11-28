@@ -20,9 +20,9 @@ const EMPTY_SCANS: usize = 5;
 /// Writes to port 1 in a scan that finds no key down: 00h and FFh.
 const EMPTY_WRITES: usize = 2;
 /// The gaps, in ms after the first CLEAR's release, at which the second CLEAR is pressed. On the stub
-/// the theorem's enter and draw run with interrupts off for the first 190 ms, so 210 and 220 are the
+/// the theorem's enter and draw run with interrupts off for the first 190 ms, so 200 and 210 are the
 /// gaps that put four and five scans before the press.
-const GAPS: [u32; 8] = [15, 30, 40, 46, 60, 220, 230, 300];
+const GAPS: [u32; 8] = [15, 30, 40, 46, 60, 200, 210, 300];
 
 struct Irq {
     at: u32,
@@ -223,20 +223,20 @@ fn the_same_key_is_taken_after_five_empty_scans_and_not_before(real: bool) {
             (40, 3, false),
             (46, 4, false),
             (60, 5, true),
-            (220, 22, true),
-            (230, 23, true),
+            (200, 20, true),
+            (210, 21, true),
             (300, 31, true),
         ]
     } else {
         [
-            (15, 0, false),
-            (30, 0, false),
-            (40, 1, false),
-            (46, 1, false),
-            (60, 1, false),
-            (220, 4, false),
-            (230, 5, true),
-            (300, 13, true),
+            (15, 1, false),
+            (30, 1, false),
+            (40, 2, false),
+            (46, 2, false),
+            (60, 2, false),
+            (200, 4, false),
+            (210, 5, true),
+            (300, 14, true),
         ]
     };
     assert_eq!(seen, want, "{} OS: (gap ms, empty scans, taken)", os(real));

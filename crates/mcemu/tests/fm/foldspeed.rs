@@ -11,9 +11,10 @@ const BUDGET: u32 = 50 * 6000;
 pub struct Ceilings {
     pub set: u32,
     pub frame_worst: u32,
-    /// The frame's limit: the 50 ms, but for the fixture's worst frame, 296,171 before the blit
-    /// sent the rows marked and ui_text marked them, and 305,528 after.
-    pub budget: u32,
+    /// The worst frame's exact cost when it is over the 50 ms. The fixture's is 301,727 where it was
+    /// 296,171 before the canvas marked its rows: the blit's list costs 902, the marks of ui_text,
+    /// ui_title and ui_soft_keys 3,772 and the cursor's six ui_invert marks 882.
+    pub over_budget: Option<u32>,
     pub apply_one: u32,
     pub apply_all: u32,
     pub apply_depth: u32,
@@ -22,8 +23,8 @@ pub struct Ceilings {
 
 pub const FIXTURE: Ceilings = Ceilings {
     set: 730,
-    frame_worst: 306_000,
-    budget: 306_000,
+    frame_worst: 303_196,
+    over_budget: Some(301_727),
     apply_one: 128_500,
     apply_all: 81_500,
     apply_depth: 128_500,
@@ -31,8 +32,8 @@ pub const FIXTURE: Ceilings = Ceilings {
 };
 pub const RING: Ceilings = Ceilings {
     set: 730,
-    frame_worst: 299_000,
-    budget: BUDGET,
+    frame_worst: 296_284,
+    over_budget: None,
     apply_one: 51_000,
     apply_all: 32_500,
     apply_depth: 50_500,
@@ -82,10 +83,16 @@ pub fn cursor_costs(
          T-states against {BUDGET}"
     );
     assert!(set <= ceilings.set, "fm_cursor took {set}");
-    assert!(
-        total < ceilings.budget,
-        "the frame with the cursor on node {node}: {total}"
-    );
+    match ceilings.over_budget {
+        Some(over) => assert_eq!(
+            total, over,
+            "the frame with the cursor on node {node} is over {BUDGET}"
+        ),
+        None => assert!(
+            total < BUDGET,
+            "the frame with the cursor on node {node}: {total}"
+        ),
+    }
     assert!(
         total <= ceilings.frame_worst,
         "the frame with the cursor on node {node} took {total}, over {}",

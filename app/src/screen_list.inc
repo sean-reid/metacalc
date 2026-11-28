@@ -131,17 +131,17 @@
 ; that lands in a call can only add to these: the figures with the app's interrupts on are never below
 ; the masked ones.
 ; Cost, in T-states at 6 MHz on the reference OS, over ring (list_kind_real.rs, list_real_cost.rs). Under a
-; kind a move is list_key then scr_draw and ui_blit: under Axioms a row from 298 to 567 takes 267,170 and a
-; page from assertion 5 takes 296,075, or 289,499 with the first row on the cursor, the five matches
-; crossing the 268 assertions after 298; under Theorems a row across the run at 2,988 takes 259,683 and a
-; page 242,678. Under Unchecked on a table of ones with only the first and the last assertion not 1 the row
-; move from 0 to the last takes 306,465 and back 304,707, both over the 300,000 of a move. F3 with its frame takes 259,343 from Theorems to
-; Axioms with the cursor just after an axiom and 314,654 into Unchecked from assertion 1 on that table.
-; Ring's list opens in 461,598 (libs_key, list_enter and a cold frame) and, under All, a cursor move takes
-; 223,339 by a row and 227,921 by a page with its frame; the idle call that lays out a preview takes a
+; kind a move is list_key then scr_draw and ui_blit: under Axioms a row from 298 to 567 takes 269,352 and a
+; page from assertion 5 takes 298,225, or 291,649 with the first row on the cursor, the five matches
+; crossing the 268 assertions after 298; under Theorems a row across the run at 2,988 takes 261,865 and a
+; page 244,844. Under Unchecked on a table of ones with only the first and the last assertion not 1 the row
+; move from 0 to the last takes 308,647 and back 306,905, both over the 300,000 of a move. F3 with its frame takes 261,607 from Theorems to
+; Axioms with the cursor just after an axiom and 316,918 into Unchecked from assertion 1 on that table.
+; Ring's list opens in 463,842 (libs_key, list_enter and a cold frame) and, under All, a cursor move takes
+; 225,524 by a row and 230,074 by a page with its frame; the idle call that lays out a preview takes a
 ; median of 77,198 and at most 1,125,910 over ring, and 68,891 and 331,490 over prop.
 ; Its fm calls run with interrupts off and no key is scanned until it returns, so a statement inside the
-; caps holds the keypad for at most 37,707,349 T-states (6.28 s at 6 MHz), the 253 nested operators of
+; caps holds the keypad for at most 37,707,410 T-states (6.28 s at 6 MHz), the 253 nested operators of
 ; fm's nodes fixture, measured on the stub OS.
 
 LIST_ROWS	.equ 5

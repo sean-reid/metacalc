@@ -84,7 +84,7 @@
 ; Interrupts and speed: every routine returns with both as at the call, and the screen writes no port 20h and
 ; executes no DI. fm's sessions and the reader's reads turn interrupts off for their own length and give the
 ; caller's state back, so the longest stretch with interrupts off is one session: 1,282,260 T-states in an
-; open, the fit of ring's rglcom4d, and 78,040 in a key, a blit. The fit runs in the enter, so a tap
+; open, the fit of ring's rglcom4d, and 79,906 in a move. The fit runs in the enter, so a tap
 ; inside it is lost.
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, with
 ; interrupts masked, the same on both OSes unless said: list_key 8 for ENTER and F1; theorem_enter 24 on the
@@ -99,13 +99,13 @@
 ; the scroll case of a statement of one node Down and Up 12 with a row to scroll to, and with none 10 while
 ; byte 8 is 1 and 12 while it is 0. An interrupt that lands in a call adds the handler's bytes.
 ; Cost, in T-states at 6 MHz on the reference OS: the key that opens an assertion, the enter and the first frame
-; take a median of 326,046 and at most 762,288 over prop's 779 assertions, and 295,435 and at most 1,781,367
-; (296.9 ms, rglcom4d) over ring's 3,326, 5 of them over 200 ms and none over 300 ms, rglcom4d being the key
-; 894, the enter 1,517,074 and the first frame 263,399; a cursor move with its frame, over every node of ring's
-; 50 largest assertions and of every 97th of the rest, takes 266,260 at the median and 337,249 at most
-; (df-rng, Down to node 63), 228 of 4,872 over 300,000, the worst being the key 56,666, the draw 206,931 and
-; the blit 73,652; a fold with its frame 293,496 at the median and 390,381 at most (df-rng, Enter at node 68),
-; 113 of 322 over, the worst being the key 109,835, the draw 206,894 and the blit 73,652.
+; take a median of 328,174 and at most 765,442 over prop's 779 assertions, and 297,537 and at most 1,785,376
+; (297.6 ms, rglcom4d) over ring's 3,326, 6 of them over 200 ms and none over 300 ms, rglcom4d being the key
+; 926, the enter 1,517,074 and the first frame 267,376; a cursor move with its frame, over every node of ring's
+; 50 largest assertions and of every 97th of the rest, takes 270,187 at the median and 341,044 at most
+; (df-rng, Down to node 63), 267 of 4,872 over 300,000, the worst being the key 56,666, the draw 209,824 and
+; the blit 74,554; a fold with its frame 297,204 at the median and 394,290 at most (df-rng, Enter at node 68),
+; 138 of 322 over, the worst being the key 109,835, the draw 209,901 and the blit 74,554.
 
 THM_ROWS	.equ 6
 THM_LARGE_ROW	.equ 2

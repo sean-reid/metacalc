@@ -283,6 +283,7 @@ fn the_second_pass_runs_for_the_rows_whose_first_24_characters_fit_and_for_no_ot
 /// row of 29 narrow characters that is converted twice and for a row of exactly 24 that is converted once, and
 /// the part of the first up to the second SX_USED write.
 const SECOND_PASS_ROW: u32 = 44_820;
+/// The stub's timer interrupt, 1,146 T-states, lies in the span of a run-up that is not 0, which makes it 28,117.
 const ONE_PASS_ROW: u32 = 26_971;
 const UP_TO_THE_SECOND_PASS: u32 = 11_568;
 

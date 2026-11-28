@@ -267,8 +267,8 @@ fn on_the_reference_os_the_frames_of_a_check_stay_within_their_share_of_the_job(
     for row in 0..3 {
         let (overhead, timing) = measure(built, row, CHOSEN_EVERY);
         // Prop's 29 frames of the CRC run alone cost 5 percent of its check, so it is held to the
-        // 10.8 percent measured and the other two to 10.
-        let most = if row == 0 { 11.0 } else { 10.0 };
+        // 10.5 percent measured and the other two to 10.
+        let most = if row == 0 { 10.7 } else { 10.0 };
         assert!(
             overhead <= most,
             "stage {row}: the frames cost {overhead:.1} percent"
