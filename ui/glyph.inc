@@ -54,7 +54,7 @@ tw_done:
 
 ; ui_text_right     in:  HL = string, B = row
 ;                   out: DE = x after the string
-;                   draws it ending at column 94, from 0 when it is wider
+;                   draws it ending at column 94, from 0 when it is wider, marking row B as ui_text does
 ;                   destroys AF BC HL
 ui_text_right:
 	push hl
@@ -74,7 +74,7 @@ tr_x:
 
 ; ui_text_centered  in:  HL = string, B = row
 ;                   out: DE = x after the string
-;                   starts at (96 - width) / 2, or 0 when it is wider
+;                   starts at (96 - width) / 2, or 0 when it is wider, marking row B as ui_text does
 ;                   destroys AF BC HL
 ui_text_centered:
 	push hl
@@ -97,7 +97,9 @@ tc_x:
 ;           nothing
 ;           out: DE = x after the last glyph, DE = x for an empty string
 ;           ORs the glyphs into the frame, one blank column between them, and drops pixels
-;           right of column 95. Destroys AF BC HL.
+;           right of column 95. Marks row B in ui_dirty for a non-empty string and a row below 8,
+;           also when every pixel falls right of column 95; marks nothing for an empty string or a
+;           row of 8 or more. Destroys AF BC HL.
 ui_text:
 	ld a,(hl)
 	or a

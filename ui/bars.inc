@@ -3,7 +3,8 @@
 ; ui_soft_keys   in:  HL = five little endian pointers to label strings encoded for the key font
 ;                     table ui_key_font, not the main one; an empty string leaves its key blank
 ;                a label is centred in its key's box on row 7, rounding the left margin up,
-;                and the box is inverted below the row's top scanline; a label wider than its box is not handled
+;                and the box is inverted below the row's top scanline; a label wider than its box is not handled;
+;                marks row 7 when any label is not empty, else nothing
 ;                destroys AF BC DE HL
 ui_soft_keys:
 	ld de,(ui_fontp)

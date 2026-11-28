@@ -1,12 +1,17 @@
-; ui_blit   copies the frame to the LCD through ports 10h and 11h, one column of bytes at a time
-;           in 8 bit mode with the row counter incrementing; before each write it waits for the
-;           busy flag, bit 7 of port 10h, to clear, so it holds at 6 and 15 MHz. Each wait gives
-;           up after UI_BUSY_LIMIT polls, 8,925 T-states against a busy window of 50 clocks in the
-;           emulator, and writes anyway, so a flag stuck busy costs pixels, not a hang, but each
-;           blit then takes about 7.1 million T-states, 1.2 s at 6 MHz. The controller is left
-;           in 8 bit mode with increment mode 5. Interrupts are off for the whole call and come
-;           back as the caller had them: a handler that wrote the LCD mid-column would put
-;           the rest of the column elsewhere.
+; ui_blit   copies the text rows of the frame whose bits are set in ui_dirty to the LCD through ports
+;           10h and 11h, one column of bytes at a time in 8 bit mode with the row counter incrementing,
+;           then stores that mask in ui_sent and 0 in ui_dirty; a row not in it is not sent and the LCD
+;           keeps what it has. Per column it sends the command 20h + column, then for each run of
+;           adjacent rows the row command 80h + 8r once and the eight bytes of each row; a mask of $FF
+;           is one run, and a mask of 0 sends the two mode commands and nothing else. Before each
+;           write it waits for the busy flag, bit 7 of port 10h, to clear, so it holds at 6 and 15 MHz.
+;           Each wait gives up after UI_BUSY_LIMIT polls, 8,925 T-states against a busy window of 50
+;           clocks in the emulator, and writes anyway, so a flag stuck busy costs pixels, not a hang,
+;           but each blit then takes about 7.1 million T-states, 1.2 s at 6 MHz. The controller is left
+;           in 8 bit mode with increment mode 5. Interrupts are off for the whole call and come back as
+;           the caller had them, on every exit: a handler that wrote the LCD mid-column would put the
+;           rest of the column elsewhere. ui_dirty and ui_sent hold nothing across an auto power down.
+;           Uses ui_cnt, ui_col and ui_blk as scratch. Stack: the return address only.
 ;           destroys AF BC DE HL
 
 #macro WAIT

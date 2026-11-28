@@ -13,7 +13,7 @@ UB_SIDES                .equ 5
 ;               both 0 to 65535
 ;          ORs the outline of Canvas::bar into the row from column 1 to 94 and a fill of
 ;          floor(90 * min(done, total) / total) columns from column 3 on three scanlines; the
-;          fill is the full 90 when total is 0
+;          fill is the full 90 when total is 0; marks row A, nothing for a larger one
 ;          destroys AF BC DE HL
 ui_bar:
 	cp UI_TEXT_ROWS

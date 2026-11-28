@@ -11,12 +11,15 @@
 ; frame, 768 bytes at UI_FRAME, default $9340 (plotSScreen), row-major, 12 bytes a row, the most
 ; significant bit leftmost; and UI_VARS_SIZE ($1A, 26) bytes of variables at UI_VARS, default
 ; $86EC (saveSScreen), laid out in ram.inc. The blocks must not overlap another region of the
-; map. Only ui_fontp holds anything between calls, and the OS copies the screen's pixels into
-; saveSScreen when auto power down fires in _GetKey, so call ui_set_font again after any key
-; wait that can power the calculator down. Call ui_set_font and ui_clear before the first draw.
+; map. Only ui_fontp, ui_dirty and ui_sent hold anything between calls. ui_dirty has bit r set
+; when text row r has been written since the last blit, and ui_sent the mask that blit sent; the
+; OS copies the screen's pixels into saveSScreen when auto power down fires in _GetKey, so after
+; any key wait that can power the calculator down call ui_set_font again and redraw in full,
+; ui_clear storing $FF in ui_dirty. Call ui_set_font and ui_clear before the first draw.
 ; Registers not listed as destroyed are preserved, and IX, IY and the shadow registers are never
 ; touched. Counting the caller's return address, the stack needs 14 bytes for ui_list_row,
-; 12 for ui_title and ui_soft_keys, 10 for the text-right and centred routines, 8 for ui_bar,
+; 12 for ui_title and ui_soft_keys, 10 for the text-right and centred routines and for
+; ui_shift_rows, 8 for ui_bar, 6 for ui_clear_rows, 2 for ui_blit,
 ; 18 for ui_truncate, 12 for ui_tail and 30 for ui_wrap (FIT_STACK_* in fit.inc); an interrupt
 ; adds the handler's pushes.
 ;
@@ -34,9 +37,13 @@
 ; GLYPH_ADV, a macro in glyph.inc, is the advance of one glyph code in A; ui_text_width and the
 ; fitting routines expand it.
 ;
-; Routines (details at each): ui_set_font, ui_clear, ui_text, ui_text_width, ui_text_right,
+; Every routine that writes the frame ORs the bits of the rows it writes into ui_dirty, and ui_blit
+; sends only the rows in it; each routine says which rows it marks. A call that returns before it
+; writes marks nothing, but ui_text marks its row for a string that starts right of the screen.
+;
+; Routines (details at each): ui_set_font, ui_clear, ui_clear_rows, ui_shift_rows, ui_text, ui_text_width, ui_text_right,
 ; ui_text_centered, ui_truncate, ui_tail, ui_wrap, ui_invert, ui_invert_row, ui_marker,
-; ui_title, ui_list_row, ui_soft_keys, ui_bar, ui_blit. ui_blit waits on the busy flag, bit 7 of
+; ui_title, ui_list_row, ui_soft_keys, ui_bar, ui_blit. ui_blit sends the rows in ui_dirty, waits on the busy flag, bit 7 of
 ; port 10h, before every LCD write, runs with interrupts off and restores the caller's state,
 ; and leaves the controller in 8 bit mode with increment mode 5, as TI-OS expects it.
 

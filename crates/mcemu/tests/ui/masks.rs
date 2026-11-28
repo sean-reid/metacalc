@@ -237,3 +237,144 @@ fn the_empty_mask_writes_the_two_modes_and_nothing_else() {
         assert_eq!(writes(&got), [(CMD, 0x01), (CMD, 0x05)], "{settings:?}");
     }
 }
+
+/// The stub with an interrupt handler that sends the LCD command putting the row counter at the
+/// top, rewrites ui_dirty and a frame byte with the values they hold and counts itself in
+/// `ui_dst`. Its one effect on a blit is the LCD command, which tears a column it lands in.
+fn writing_rom() -> Vec<u8> {
+    let mut rom = mcemu::STUB_ROM.to_vec();
+    assert_eq!(rom[0x38], 0xC3, "jp isr");
+    let at = (0x100..0x3F00)
+        .find(|&a| rom[a..a + 48].iter().all(|&b| b == 0xFF))
+        .expect("room for a handler");
+    let word = |a: u16| a.to_le_bytes();
+    let (dirty, count) = (REAL.vars + u16::from(dirty_at()), REAL.vars + 2);
+    let probe = REAL.frame + 0x2FF;
+    let mut isr = vec![0xF5, 0xDB, 0x03, 0xF5, 0xAF, 0xD3, 0x03, 0xF1, 0xD3, 0x03];
+    isr.extend([
+        0x3E,
+        0x80,
+        0xD3,
+        0x10,
+        0x3A,
+        word(dirty)[0],
+        word(dirty)[1],
+        0x32,
+        word(dirty)[0],
+        word(dirty)[1],
+    ]);
+    isr.extend([
+        0x3A,
+        word(probe)[0],
+        word(probe)[1],
+        0x32,
+        word(probe)[0],
+        word(probe)[1],
+    ]);
+    isr.extend([
+        0x3A,
+        word(count)[0],
+        word(count)[1],
+        0x3C,
+        0x32,
+        word(count)[0],
+        word(count)[1],
+    ]);
+    isr.extend([0xF1, 0xFB, 0xED, 0x4D]);
+    assert!(isr.len() <= 48);
+    rom[at..at + isr.len()].copy_from_slice(&isr);
+    rom[0x39..0x3B].copy_from_slice(&word(at as u16));
+    rom
+}
+
+fn handled(rom: &[u8], code: &[u8], mask: u8) -> Outcome {
+    let (a, b) = frames();
+    let script = [
+        Op::Interrupts(true),
+        Op::Iff,
+        Op::Iff,
+        Op::Interrupts(false),
+        Op::SetFrame(a),
+        Op::SetVar(dirty_at(), 0xFF),
+        Op::Blit,
+        Op::SetFrame(b),
+        Op::SetVar(dirty_at(), mask),
+        Op::SetVar(sent_at(), mask ^ 0xA5),
+        Op::SetVar(2, 0),
+        Op::Interrupts(true),
+        Op::Blit,
+        Op::Interrupts(false),
+    ];
+    run_code_on(rom, true, REAL, code, (Speed::Mhz6, true), &script, true)
+}
+
+#[test]
+fn a_handler_cannot_reach_a_partial_blit_and_does_when_the_blit_does_not_mask_interrupts() {
+    let rom = writing_rom();
+    let (a, b) = frames();
+    for mask in [0x7E, 0x18, 0x81, 0xFF] {
+        let got = handled(&rom, REAL.code, mask);
+        assert!(
+            got.lcd_ram == mirror(&a, &b, mask),
+            "mask {mask:02X}: the LCD"
+        );
+        assert_eq!(got.frame, b, "mask {mask:02X}: the frame");
+        assert_eq!(
+            got.vars[usize::from(sent_at())],
+            mask,
+            "mask {mask:02X}: ui_sent"
+        );
+        assert!(got.vars[2] >= 1, "mask {mask:02X}: the handler ran");
+        assert_eq!(
+            got.vars[usize::from(dirty_at())],
+            0,
+            "mask {mask:02X}: ui_dirty"
+        );
+    }
+    let mut code = REAL.code.to_vec();
+    let di = usize::from(label(REAL, "bl_mask")) - 0x4000;
+    assert_eq!(code[di], 0xF3, "the di");
+    code[di] = 0x00;
+    let got = handled(&rom, &code, 0x7E);
+    assert!(
+        got.lcd_ram != mirror(&a, &b, 0x7E),
+        "the handler never reached the blit"
+    );
+}
+
+#[test]
+fn a_blit_gives_back_the_interrupt_state_it_was_called_with_for_every_kind_of_mask() {
+    for mask in [0xFF, 0x18, 0x00] {
+        for on in [true, false] {
+            let script = [
+                Op::SetVar(dirty_at(), mask),
+                Op::Interrupts(on),
+                Op::Blit,
+                Op::Iff,
+                Op::Interrupts(false),
+            ];
+            let got = run(REAL, &script);
+            assert_eq!(got.results.len(), 1);
+            assert_eq!(got.results[0] & 0x04 != 0, on, "mask {mask:02X}, on {on}");
+        }
+    }
+}
+
+#[test]
+fn the_blit_and_the_row_routines_need_exactly_the_stack_their_headers_give() {
+    let depth = |op: Op| stack_depth(REAL, &[Op::SetVar(dirty_at(), 0x18), op]);
+    assert_eq!(depth(Op::Blit), 2, "ui_blit");
+    assert_eq!(
+        depth(Op::ClearRows { first: 1, count: 4 }),
+        6,
+        "ui_clear_rows"
+    );
+    for dir in [0, 1] {
+        let shift = Op::ShiftRows {
+            first: 1,
+            count: 4,
+            dir,
+        };
+        assert_eq!(depth(shift), 10, "ui_shift_rows, dir {dir}");
+    }
+}
