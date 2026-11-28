@@ -77,13 +77,19 @@
 ; dist_key 2 on every path; dist_enter 22, which holds whether the reader's descriptor already describes the assertion, as the
 ; theorem's enter leaves it, or is cold, lr_dn at FFFFh as after a failed far_lib_record, and 12 for an assertion with no
 ; pair; dist_draw 26, warm or cold; the F2 that pushes the screen 8 in theorem_key, on the theorem screen and on the too large
-; screen. A refusal the reader makes is 12 for far_lib_record given an assertion number past the count (status 5, measured on
-; both OSes). The rig's refusals, a hook that answers at the far entry, are not a reader's: in the enter far_lib_record 10,
-; far_lib_read 14 and far_lib_glyph 22, in the draw far_lib_label 24 and the rest 26; no packed library makes the reader
-; refuse a read or a glyph the descriptor accepts, so those are not measured for the reader. With interrupts on at the call a
-; key and the F2 measure as deep as masked in the
-; runs traced, where no handler lands in them; for the enter and the draw the tests accept the masked figure plus a handler's
-; bytes, up to 4 on the stub OS and 10 on the reference OS, and force no interrupt at the deepest point.
+; screen. The reader's own refusals, on libraries whose bytes dist_corrupt.rs changes in the flash with no hook, are in the
+; enter 12 for far_lib_record given an assertion number past the count (status 5), 18 for far_lib_record given a pair list
+; that ends past the library (status 3) and 22 for far_lib_glyph given a pair id at the symbol count or above (status 5),
+; and in the draw 26 for each. The rig's refusals, a hook that answers at the far entry, are not a reader's: in the enter
+; far_lib_record 10, far_lib_read 14 and far_lib_glyph 22, in the draw far_lib_label 24 and the rest 26. Only far_lib_read is
+; not measured for the reader, and cannot be: lib_record refuses a list with no byte after it in the library, so every read of
+; the list is inside it and no library makes far_lib_read refuse what the record accepted. With interrupts on at the call a
+; key and the F2 measure as deep as masked in the runs traced, where no handler lands in them. An interrupt taken after the
+; deepest instruction adds all its bytes, which dist_forced.rs measures by taking it after each. On its assertion the enter is
+; deepest in the seven instructions of lr_cmp24 from its push hl to its ld b,(hl), the draw in the eleven of ui_text_width from
+; its push hl to the end of GLYPH_ADV, and none of them runs with interrupts off. The enter then takes 32 and the draw 36 on the reference OS, where the keypad
+; scan at pc 047D writes 10, and 26 and 30 on the stub OS, whose handler writes 4. The tests accept the masked figure up to
+; that for the enter and the draw, and a run that takes no interrupt there falls between.
 ; Calls: far_lib_record, far_lib_read, far_lib_glyph and far_lib_label through list_label_text, far_ui_text_width, far_ui_text,
 ; far_ui_clear, far_ui_truncate, far_ui_title, far_ui_text_centered, far_ui_soft_keys, and app_stage_block, app_strcpy,
 ; app_dec16 and list_room on this page.
