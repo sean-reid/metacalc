@@ -60,8 +60,6 @@ struct Mirror<'a> {
     top: usize,
     find: String,
     missed: bool,
-    /// Set where the press must be a miss, so that its cost is the walk's and not a hit's.
-    must_miss: bool,
 }
 
 impl<'a> Mirror<'a> {
@@ -73,7 +71,6 @@ impl<'a> Mirror<'a> {
             top: 0,
             find: String::new(),
             missed: false,
-            must_miss: false,
         }
     }
 
@@ -129,10 +126,6 @@ fn typed(list: &mut Lister, mirror: &mut Mirror, text: &str, at: &str, pins: &[u
     for (n, c) in text.chars().enumerate() {
         let (cost, answer) = press(list, 12, c.to_ascii_uppercase() as u8);
         mirror.type_char(c);
-        assert!(
-            !mirror.must_miss || mirror.missed,
-            "{at}, press {n}: a miss is what is pinned"
-        );
         check(list, mirror, &format!("{at}, {n}"));
         let shown = list.frame_now();
         assert_eq!(answer, if shown[7] & 0x0F == n as u8 + 1 { 1 } else { 0 });
@@ -208,14 +201,12 @@ fn on_ring_a_letter_press_with_its_frame_fits_the_budget_under_every_kind() {
         for text in ["s", "k"] {
             place(&mut list, first);
             let mut mirror = Mirror::new(&labels, items.clone());
-            mirror.must_miss = name == "Unchecked, ones";
             let at = format!("{name}, {text}");
             let costs = typed(&mut list, &mut mirror, text, &at, first_pins(name, text));
             pins.push((at, costs[0], mirror.missed));
         }
         place(&mut list, first);
         let mut mirror = Mirror::new(&labels, items.clone());
-        mirror.must_miss = name == "Unchecked, ones";
         let costs = typed(
             &mut list,
             &mut mirror,
@@ -371,4 +362,28 @@ fn on_ring_the_keys_that_end_a_find_and_f3_with_a_prefix_fit_the_budget() {
         }
     }
     let _ = Key::F3;
+}
+
+/// Under a table where every assertion is 1 the list shows nothing, so "s", whose range is 375 labels,
+/// is a miss after the store has tested all of them in three runs: the press is a miss, by the model's
+/// own rule, before its cost is pinned.
+#[test]
+#[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
+fn on_ring_a_letter_that_misses_over_a_table_of_ones_costs_the_whole_range_of_store_tests() {
+    let mut list = ring(Some(&vec![Status::Checked; 3326]));
+    list.go_to_kind(Kind::Unchecked);
+    assert_eq!(
+        list.pos().len,
+        0,
+        "every assertion is 1: nothing is unchecked"
+    );
+    let (cost, answer) = press(&mut list, 12, b'S');
+    list.ui.press(Key::Letter('s'));
+    let (find, missed) = list.model_find();
+    assert_eq!((find.as_str(), missed), ("s", true), "the model says miss");
+    assert_eq!(answer, 1);
+    assert_eq!(list.frame_now()[7], 0x81, "the app says miss");
+    println!("Unchecked, every assertion 1, s: {cost}");
+    assert!(cost < BUDGET, "{cost} against {BUDGET}");
+    within("Unchecked, every assertion 1, s", cost, 480_859);
 }

@@ -50,10 +50,16 @@ fn every_label_typed_to_the_cap_lands_where_the_model_lands_it_under_each_kind()
             list.settle();
         }
         println!("{kind:?} table {table}: {hits} hits, {misses} misses");
-        let floor = if kind == Kind::Axioms { 15 } else { 20 };
+        let (hit_floor, miss_floor) = match (kind, table) {
+            (Kind::All, _) => (140, 70),
+            (Kind::Theorems, _) => (75, 64),
+            (Kind::Axioms, _) => (16, 122),
+            (Kind::Unchecked, true) => (80, 59),
+            (Kind::Unchecked, false) => (92, 47),
+        };
         assert!(
-            hits >= floor && misses >= 20,
-            "{kind:?}: {hits} hits, {misses} misses"
+            hits >= hit_floor && misses >= miss_floor,
+            "{kind:?} table {table}: {hits} hits, {misses} misses"
         );
     }
 }

@@ -38,7 +38,7 @@ fn every_key_a_calculator_can_type_adds_its_character_as_the_model_does() {
         chars.len()
     );
     assert_eq!(hits + misses, 38);
-    assert!(hits >= 5 && misses >= 20, "{hits} hits, {misses} misses");
+    assert!(hits >= 8 && misses >= 27, "{hits} hits, {misses} misses");
 }
 
 #[test]

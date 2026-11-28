@@ -6,7 +6,6 @@ use crate::built::staged_with;
 use crate::list_find_arms::*;
 use crate::list_kind_real::ring;
 use crate::list_real::PROP;
-use crate::list_rig::*;
 use mcui::{Kind, Status};
 use std::collections::BTreeMap;
 
@@ -46,7 +45,8 @@ fn stripped_prop() -> &'static crate::app::Built {
 
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_every_arm_keeps_interrupts_and_speed_and_writes_these_depths_under_each_kind() {
+fn on_the_reference_os_every_arm_keeps_interrupts_and_speed_and_writes_these_depths_under_each_kind()
+ {
     let status = marks();
     let mut wrong = Vec::new();
     for (kind, table) in CASES {
@@ -69,7 +69,10 @@ fn on_the_reference_os_every_arm_keeps_interrupts_and_speed_and_writes_these_dep
             }
         }
     }
-    assert!(wrong.is_empty(), "the depths differ from the table in {wrong:?}");
+    assert!(
+        wrong.is_empty(),
+        "the depths differ from the table in {wrong:?}"
+    );
 }
 
 #[test]
@@ -91,16 +94,16 @@ fn on_the_reference_os_a_letter_on_a_library_without_the_section_writes_this_dep
 }
 
 /// What a letter writes with LV_HASO 0 on the reference OS, the caller's return address counted.
-const NO_SECTION: u16 = 0;
+const NO_SECTION: u16 = 2;
 
 /// The stack each arm writes on the reference OS, the caller's return address counted.
 fn expected(kind: Kind, table: bool) -> BTreeMap<&'static str, u16> {
     let row: [u16; 12] = match (kind, table) {
-        (Kind::All, _) => [0; 12],
-        (Kind::Theorems, _) => [0; 12],
-        (Kind::Axioms, _) => [0; 12],
-        (Kind::Unchecked, true) => [0; 12],
-        (Kind::Unchecked, false) => [0; 12],
+        (Kind::All, _) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 6, 6, 24],
+        (Kind::Theorems, _) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 22, 22, 24],
+        (Kind::Axioms, _) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 22, 22, 20],
+        (Kind::Unchecked, true) => [40, 40, 36, 4, 4, 2, 4, 4, 4, 40, 40, 36],
+        (Kind::Unchecked, false) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 10, 10, 20],
     };
     NAMES.iter().copied().zip(row).collect()
 }

@@ -111,6 +111,8 @@ mod list_fail;
 mod list_find_arms;
 #[path = "app_pages/list_find_cost.rs"]
 mod list_find_cost;
+#[path = "app_pages/list_find_depth.rs"]
+mod list_find_depth;
 #[path = "app_pages/list_find_double.rs"]
 mod list_find_double;
 #[path = "app_pages/list_find_every.rs"]

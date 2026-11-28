@@ -98,7 +98,7 @@ fn a_hit_on_the_cursors_own_row_keeps_a_settled_preview() {
             }
         }
     }
-    assert!(kept >= 20, "{kept} cases of a hit on the cursor's row");
+    assert!(kept >= 170, "{kept} cases of a hit on the cursor's row");
     println!("a hit on the cursor's own row: {kept} cases");
 }
 
@@ -116,7 +116,8 @@ fn hits_below_above_and_among_the_last_four_land_as_the_model_lands_them() {
     prefixes.sort();
     prefixes.dedup();
     for (kind, table) in cases() {
-        let (mut below, mut above, mut last_four, mut own, mut misses) = (0, 0, 0, 0, 0);
+        let (mut below, mut above, mut last_four, mut own, mut misses, mut short) =
+            (0, 0, 0, 0, 0, 0);
         for stage in 0..3 {
             let mut list = open_under(stage, kind, table);
             let items = list.items();
@@ -140,6 +141,10 @@ fn hits_below_above_and_among_the_last_four_land_as_the_model_lands_them() {
                 below += usize::from(pos.cursor >= old_top + 5);
                 above += usize::from(pos.cursor < old_top);
                 own += usize::from(pos.cursor == old_cursor);
+                if pos.len < 5 {
+                    short += 1;
+                    assert_eq!(pos.top, 0, "{kind:?} {p}: fewer than five shown");
+                }
                 if pos.len >= 5 && pos.cursor + 4 >= pos.len {
                     last_four += 1;
                     assert_eq!(
@@ -151,13 +156,24 @@ fn hits_below_above_and_among_the_last_four_land_as_the_model_lands_them() {
             }
         }
         println!(
-            "{kind:?} table {table}: below {below}, above {above}, last four {last_four}, own row {own}, misses {misses}"
+            "{kind:?} table {table}: below {below}, above {above}, last four {last_four}, own row {own}, misses {misses}, a list of fewer than five {short}"
         );
+        let floors = match (kind, table) {
+            (Kind::All, _) => (28, 36, 7, 47, 53),
+            (Kind::Theorems, _) => (24, 27, 7, 44, 71),
+            (Kind::Axioms, _) => (2, 7, 7, 8, 160),
+            (Kind::Unchecked, true) => (24, 30, 8, 50, 60),
+            (Kind::Unchecked, false) => (28, 37, 7, 47, 53),
+        };
+        let counts = (below, above, last_four, own, misses);
         assert!(
-            below >= 1 && above >= 1 && own >= 1 && misses >= 1,
-            "{kind:?}"
+            counts.0 >= floors.0
+                && counts.1 >= floors.1
+                && counts.2 >= floors.2
+                && counts.3 >= floors.3
+                && counts.4 >= floors.4,
+            "{kind:?} table {table}: {counts:?} against floors {floors:?}"
         );
-        assert!(last_four >= 1, "{kind:?}: {last_four}");
     }
 }
 
@@ -381,4 +397,31 @@ fn an_auto_power_down_with_a_prefix_keeps_it_through_the_refresh() {
         list.same_find("after the power down");
         assert!(list.settle() || list.pos().len == 0);
     }
+}
+
+/// A list that shows fewer than five assertions: Theorems and Axioms over "ATATA". Every press of a prefix
+/// that hits leaves the first row on the first shown assertion, as the model does, and the frames are the
+/// model's.
+#[test]
+fn a_hit_on_a_list_of_fewer_than_five_shown_leaves_the_first_row_at_the_top() {
+    let built = pattern_built("pages-find-short", "ATATA");
+    let mut short = 0;
+    for kind in [Kind::Theorems, Kind::Axioms] {
+        for text in ["th-3", "ax-4"] {
+            let mut list = Lister::open(built, None, 0);
+            list.settle();
+            list.go_to_kind(kind);
+            assert!(list.pos().len < 5, "{kind:?} shows {}", list.pos().len);
+            for c in text.chars() {
+                list.press_char(c);
+                list.same_find(&format!("{kind:?} {text}"));
+                if !list.find().missed {
+                    short += 1;
+                    assert_eq!(list.pos().top, 0, "{kind:?} {text}: the first row");
+                }
+            }
+        }
+    }
+    println!("hits on a list of fewer than five: {short}");
+    assert!(short >= 8, "{short} hits");
 }

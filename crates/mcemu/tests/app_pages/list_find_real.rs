@@ -52,7 +52,7 @@ fn on_the_reference_os_ring_prop_and_pred_labels_typed_on_the_keypad_land_as_the
             "stage {stage}: {} labels typed, {hits} hits, {misses} misses tried",
             sample.len()
         );
-        assert!(sample.len() >= if stage == RING { 35 } else { 2 });
+        assert!(sample.len() >= if stage == RING { 36 } else { 2 });
     }
 }
 
@@ -83,7 +83,10 @@ fn on_the_reference_os_a_sample_of_ring_typed_under_each_kind_lands_as_the_model
             }
         }
         println!("{kind:?}: {hits} hits, {misses} misses");
-        assert!(hits >= 8, "{kind:?}: {hits} hits");
+        assert!(
+            hits >= 9 && misses >= 1,
+            "{kind:?}: {hits} hits, {misses} misses"
+        );
     }
     let _ = Key::F3;
 }

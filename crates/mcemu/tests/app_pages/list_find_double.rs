@@ -58,9 +58,10 @@ const fn ms(n: u32) -> u32 {
 
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_the_same_letter_pressed_again_after_30_and_50_ms_is_dropped_and_taken() {
+fn on_the_reference_os_the_same_letter_pressed_again_is_dropped_at_30_and_50_ms_and_taken_from_70()
+{
     let mut taken = Vec::new();
-    for gap in [30, 50] {
+    for gap in [30, 50, 70, 100, 150, 250] {
         let mut list = Lister::on_rom(PROP);
         list.open_on_rom();
         let label = labels_of(list.built)[list.items()[0]].clone();
@@ -76,19 +77,21 @@ fn on_the_reference_os_the_same_letter_pressed_again_after_30_and_50_ms_is_dropp
         list.run.run(ms(400));
         let frame = list.run.frames().last().cloned().unwrap();
         let len = usize::from(frame[7] & 0x0F);
+        let more = list.run.scr_keys() - keys;
         println!(
-            "{gap} ms after the release: byte 7 {:02X}, characters {:?}, the app took {} more key(s)",
+            "{gap} ms after the release: byte 7 {:02X}, characters {:?}, the app took {more} more key(s)",
             frame[7],
             String::from_utf8_lossy(&frame[8..8 + len.min(8)]),
-            list.run.scr_keys() - keys
         );
         assert!(len >= 1, "the first press was taken");
         assert_eq!(frame[8], c as u8);
-        taken.push((gap, len, list.run.scr_keys() - keys));
+        taken.push((gap, len, more));
     }
+    let lens: Vec<usize> = taken.iter().map(|t| t.1).collect();
     assert_eq!(
-        taken,
-        [(30, 1, 0), (50, 2, 1)],
-        "dropped at 30 ms, taken at 50 ms"
+        lens,
+        [1, 1, 2, 2, 2, 2],
+        "dropped at 30 and 50 ms, taken from 70 ms on"
     );
+    assert!(taken.iter().all(|t| t.2 == usize::from(t.1 == 2) as u16));
 }
