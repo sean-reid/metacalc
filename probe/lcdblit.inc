@@ -3,19 +3,23 @@
 ; the same instructions as in ui_blit. Built with REF_BLIT the probe calls ui_blit itself instead,
 ; which is how a test compares the two.
 ; Contract: as ui_blit (ui/blit.inc): interrupts off for the call, back as the caller had them,
-; AF BC DE HL destroyed, the controller left in 8 bit mode with increment mode 5. It also uses the
-; shadow registers, and adds to the counters below.
+; AF BC DE HL destroyed, the controller left in 8 bit mode with increment mode 5. The shadow
+; registers are not touched, and the stack takes 10 bytes with the return address. It adds to
+; the counters below.
 ; Counters, 16 bit little endian words: LCD_HIST_DATA holds four, the writes to the data port that
 ; read busy 0, 1, 2 and 3 or more times before the controller was ready; LCD_HIST_CMD the same for
 ; the writes to the command port; LCD_TOTAL_DATA and LCD_TOTAL_CMD the busy reads of each, which stop
 ; at 65535. A wait that reads busy UI_BUSY_LIMIT times and gives up counts that many.
 
 ; The busy reads of the wait just made: UI_BUSY_LIMIT less B, which counts down once per busy read.
+; Registers and flags are as before; the stack takes 8 bytes.
 #macro PCOUNT(hist, total)
-	ex af,af'
+	push af
 	ld a,UI_BUSY_LIMIT
 	sub b
-	exx
+	push bc
+	push de
+	push hl
 	ld c,a
 	cp 3
 	jr c,$+4
@@ -35,8 +39,10 @@
 	jr nc,$+5
 	ld hl,0FFFFh
 	ld (total),hl
-	exx
-	ex af,af'
+	pop hl
+	pop de
+	pop bc
+	pop af
 #endmacro
 
 #macro PWAIT(hist, total)
