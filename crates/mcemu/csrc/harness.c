@@ -85,16 +85,6 @@ static dword lcd_busy_expiry(TilemCalc *calc)
 	return calc->z80.clock + tilem_z80_get_timer_clocks(calc, TILEM_TIMER_LCD_DELAY);
 }
 
-static void scale_lcd_busy(TilemCalc *calc, dword before)
-{
-	dword after = lcd_busy_expiry(calc);
-
-	if (after == before || calc->z80.clockspeed == LCD_BUSY_BASE_KHZ)
-		return;
-	tilem_z80_set_timer(calc, TILEM_TIMER_LCD_DELAY,
-			    (after - calc->z80.clock) * calc->z80.clockspeed / LCD_BUSY_BASE_KHZ, 0, 0);
-}
-
 static int is_lcd_port(dword port)
 {
 	return (port & 0xff & 0xfc) == 0x10;
@@ -109,6 +99,17 @@ typedef struct {
 
 #define PORT_LOG 16384
 
+/* One access to the LCD ports, 10h to 13h, with the CPU clock when it ran; the record is kept only while tracing. */
+typedef struct {
+	uint32_t clock;
+	uint8_t port;
+	uint8_t value;
+	uint8_t write;
+	uint8_t pad;
+} McLcdAccess;
+
+#define LCD_LOG 65536
+
 /* What the harness keeps for each machine: the set of values written to ports 5, 6 and 7 since its
    last run began, whether the LCD busy bit is forced on, and the emulated time the clock ports
    report. Found by the core's pointer. */
@@ -121,6 +122,9 @@ typedef struct {
 	McWatch *watch;
 	McPortWrite ports[PORT_LOG];
 	size_t nports;
+	dword busy_window;
+	McLcdAccess *lcd_log;
+	size_t nlcd;
 } McState;
 
 #define MAX_MACHINES 512
@@ -144,6 +148,18 @@ static McState *state_of(TilemCalc *calc)
 	return i < MAX_MACHINES ? &states[i] : NULL;
 }
 
+/* A window set with mcemu_set_lcd_busy_window replaces the core's 50 clocks, then scales like it. */
+static void scale_lcd_busy(TilemCalc *calc, dword before)
+{
+	dword after = lcd_busy_expiry(calc);
+	McState *st = state_of(calc);
+	dword window = st && st->busy_window ? st->busy_window : after - calc->z80.clock;
+
+	if (after == before || (calc->z80.clockspeed == LCD_BUSY_BASE_KHZ && window == after - calc->z80.clock))
+		return;
+	tilem_z80_set_timer(calc, TILEM_TIMER_LCD_DELAY, window * calc->z80.clockspeed / LCD_BUSY_BASE_KHZ, 0, 0);
+}
+
 static void claim_state(TilemCalc *calc)
 {
 	int i;
@@ -164,6 +180,7 @@ static void release_state(TilemCalc *calc)
 	McState *st = state_of(calc);
 
 	if (st) {
+		free(st->lcd_log);
 		mc_watch_free(calc, st->watch);
 		pthread_mutex_lock(&states_lock);
 		st->calc = NULL;
@@ -222,6 +239,20 @@ static void note_port_write(TilemCalc *calc, dword port, byte value)
 	}
 }
 
+static void note_lcd_access(TilemCalc *calc, dword port, byte value, int write)
+{
+	McState *st = state_of(calc);
+
+	if (st && st->lcd_log && st->nlcd < LCD_LOG) {
+		McLcdAccess *a = &st->lcd_log[st->nlcd++];
+
+		a->clock = calc->z80.clock;
+		a->port = port;
+		a->value = value;
+		a->write = write;
+	}
+}
+
 static void out_aliased(TilemCalc *calc, dword port, byte value)
 {
 	dword before = lcd_busy_expiry(calc);
@@ -231,6 +262,8 @@ static void out_aliased(TilemCalc *calc, dword port, byte value)
 	note_bank_write(calc, port, value);
 	note_port_write(calc, port, value);
 
+	if (is_lcd_port(port))
+		note_lcd_access(calc, port, value, 1);
 	xz_z80_out(calc, port, value);
 	alias_spare_pages(calc);
 	if (is_lcd_port(port))
@@ -247,6 +280,8 @@ static byte in_scaled(TilemCalc *calc, dword port)
 		scale_lcd_busy(calc, before);
 	if ((port & 0xfd) == 0x10 && (st = state_of(calc)) && st->stuck)
 		value |= 0x80;
+	if (is_lcd_port(port))
+		note_lcd_access(calc, port, value, 0);
 	return value;
 }
 
@@ -475,6 +510,34 @@ size_t mcemu_port_take(TilemCalc *calc, McPortWrite *out, size_t cap)
 
 	memcpy(out, st->ports, (n < cap ? n : cap) * sizeof *out);
 	st->nports = 0;
+	return n;
+}
+
+/* Replaces the core's 50 clock LCD busy window, taken at 6 MHz, with `clocks`, or restores it with 0. */
+void mcemu_set_lcd_busy_window(TilemCalc *calc, uint32_t clocks) { state_of(calc)->busy_window = clocks; }
+
+/* Starts or stops recording the accesses to ports 10h to 13h; either clears the record. */
+void mcemu_lcd_trace(TilemCalc *calc, int on)
+{
+	McState *st = state_of(calc);
+
+	free(st->lcd_log);
+	st->lcd_log = on ? calloc(LCD_LOG, sizeof *st->lcd_log) : NULL;
+	st->nlcd = 0;
+}
+
+size_t mcemu_lcd_trace_len(TilemCalc *calc) { return state_of(calc)->nlcd; }
+size_t mcemu_lcd_trace_cap(void) { return LCD_LOG; }
+
+/* Copies out the recorded accesses and clears the record; a record that reaches LCD_LOG stopped recording. */
+size_t mcemu_lcd_trace_take(TilemCalc *calc, McLcdAccess *out, size_t cap)
+{
+	McState *st = state_of(calc);
+	size_t n = st->nlcd;
+
+	if (st->lcd_log)
+		memcpy(out, st->lcd_log, (n < cap ? n : cap) * sizeof *out);
+	st->nlcd = 0;
 	return n;
 }
 
