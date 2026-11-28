@@ -3,9 +3,8 @@
 ; idle, for each kind. Kind 1 is in screen_libraries.inc, kind 2 in screen_notice.inc, kind 3 in
 ; screen_about.inc, kind 4 in screen_stage.inc, kind 5, checking, in screen_checking.inc, kind 6, the
 ; theorem list, in screen_list.inc, kind 7, the theorem, in screen_theorem.inc and kind 9, the theorem's
-; distinct-variable conditions, in screen_dist.inc. Kind 8 is the sections of a stage, which another
-; change adds; its row here is a filler with no screen, since nothing pushes it, and that change
-; replaces it. No kind has a land: every row's land is screen_ret. Kinds 5 and 6 have an idle routine,
+; distinct-variable conditions, in screen_dist.inc. Kind 8 has no screen; its row is a filler. No kind
+; has a land: every row's land is screen_ret. Kinds 5 and 6 have an idle routine,
 ; checking_idle and list_idle; the idle of the others is screen_idle.
 ;
 ; Frames, 16 bytes: byte 0 the kind, the rest 0 but what the kind keeps there.

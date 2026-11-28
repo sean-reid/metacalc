@@ -33,15 +33,18 @@
 ; DV_NPAIRS its pair count, DV_ROWS the rows (dist_enter only), DV_TOP the first row shown (dist_draw), DV_MODE 0 to count or 1
 ; to draw, DV_ST the status of dist_open in the draw, DV_ROW the row the walk is on, FFFFh before the first pair, DV_LW the
 ; width of that row, DV_LEFT the pairs not yet read, DV_PTR the library offset of the next, DV_BUFN the pairs in DV_BUF not yet
-; taken and DV_BUFP the next of them, DV_WC the comma's width, DV_WA the first token's width, DV_X the x of the pair being
-; placed and, while dist_ink draws it, of the token drawn next, DV_IDA and DV_IDB its symbols, DV_TR its text row, DV_COMMA the
+; taken and DV_BUFP the next of them, DV_WC the comma's width, DV_WA the first token's width, DV_X the pair's x without
+; MARGIN until dist_ink has drawn its first token and the comma, then the pixel column, MARGIN included, the second token is
+; drawn at, DV_IDA and DV_IDB its symbols, DV_TR its text row, DV_COMMA the
 ; comma's glyph code and a 0, DV_RIGHT the title's right text and DV_CUT its left text cut to the room, DV_BUF the run of pairs.
 ; DV_LABEL, the label before it is cut, is in FM_SCRATCH + 64, and every glyph read and its terminating 0 are in FM_SCRATCH from
-; its start, which holds nothing between calls. What else writes APP_TEXT while the screen is open or covered: the OS's
-; overwrite of saveSScreen at an auto power down, which takes APP_TEXT, and a notice above the screen, which only the error
-; notice can be, pushed when an enter of this screen fails after a power down or a pop, and which writes its own title; every
-; one of them ends in the enter of this screen, which derives DV_ROWS again, so the key never reads a lost count. The first row
-; lives in the frame and survives both. The key writes bytes 4 and 5 of the frame and nothing else, and writes nothing when it
+; its start, as are the label's characters while list_label_text reads them; dist_watch.rs asserts that nothing else of
+; FM_SCRATCH and no byte of APP_TEXT outside DV_ASSERT to DV_VARS_END is written. FM_SCRATCH holds nothing between calls.
+; What else writes APP_TEXT while the screen is open or covered: the OS's overwrite of saveSScreen at an auto power
+; down, which takes APP_TEXT, and a notice above the screen, which only the error notice can be, pushed when an enter of
+; this screen fails after a power down or a pop, and which writes its own title; every one of them ends in the enter of
+; this screen, which derives DV_ROWS again, so the key never reads a lost count. The first row lives in the frame and
+; survives both. The key writes bytes 4 and 5 of the frame and nothing else, and writes nothing when it
 ; answers SCR_STAY. Bank B regions written, asserted by dist_watch.rs from the label file: dist_enter writes DV_ASSERT to
 ; DV_VARS_END, FM_SCRATCH, and through its calls LIB_STATE and FAR_VARS; dist_draw writes the same and APP_STAGE (the block and
 ; its tag), UI_FRAME and UI_VARS through the canvas; dist_key writes the frame's bytes 4 and 5 and nothing else.
@@ -53,32 +56,40 @@
 ; dist_key     in: A = the key, HL = the frame. out: A = SCR_POP for CLEAR; SCR_REDRAW for DOWN when the first row is under
 ;              DV_ROWS less 6, which is 0 for six rows or fewer, and for UP when it is not 0, with the new first row written to
 ;              the frame; else SCR_STAY with nothing written.
-; dist_draw    in: HL = the frame. Draws the title, the rows or "none", and the keys. The draw has no way to answer: a refusal
-;              of far_lib_record leaves the right of the title empty and draws no row and no "none", a refusal of far_lib_label
-;              an empty label, a refusal of far_lib_read or far_lib_glyph stops the walk with the rows before that pair drawn
-;              and, for a refused second token, the first token and the comma of that pair drawn too. The next key or enter that
-;              is refused pushes the notice.
+; dist_draw    in: HL = the frame. Draws the title, the rows or "none", and the keys. The draw has no way to answer and nothing
+;              reports its refusals: a refusal of far_lib_record leaves the right of the title empty and draws no row and no
+;              "none", a refusal of far_lib_label an empty label, a refusal of far_lib_read or far_lib_glyph stops the walk
+;              with the pairs before the pair it was reading, placing or drawing drawn and that pair not, but for a refused
+;              second token while that pair is drawn, which leaves its first token and the comma drawn. Only a refusal in the
+;              enter pushes the error notice; dist_key calls nothing, so it is never refused.
 ; Flags: undefined on return but for dist_enter's Z, which is the status in A. After CLEAR the theorem screen's enter finds in
 ; FM_SCRATCH the codes of the last token this screen read, or its label, and reads none of them: FM_SCRATCH holds nothing
 ; between calls, and the enter writes TV_LABEL and every buffer it reads before it reads them.
 ; Interrupts and speed: every routine returns with both as at the call, and the screen writes no port 20h and executes no DI.
-; The reader's calls and the blit turn interrupts off for their own length and give the caller's state back.
+; The reader's calls and far_ui_clear turn interrupts off for their own length and give the caller's state back; the blit
+; is the shell's call, not this screen's.
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, with interrupts masked,
-; measured and asserted exactly in dist_depth.rs on the stub OS and in dist_real.rs on the reference OS: dist_key 2 on every
-; path; dist_enter 22, 14 when far_lib_read is refused, 10 when far_lib_record is, 12 for an assertion with no pair and 22 when
-; far_lib_glyph is; dist_draw 26, and 24 when far_lib_label is refused; the F2 that pushes the screen 8 in theorem_key. An
-; interrupt that lands in a call adds the handler's bytes.
+; measured and asserted exactly in dist_depth.rs on the stub OS and in dist_real.rs on the reference OS, at both speeds:
+; dist_key 2 on every path; dist_enter 22, which holds whether the reader's descriptor already describes the assertion, as
+; the theorem's enter leaves it, or is cold, lr_dn at FFFFh as after a failed far_lib_record, and 12 for an assertion with no
+; pair; dist_draw 26, warm or cold; the F2 that pushes the screen 8 in theorem_key, on the theorem screen and on the too large
+; screen. A refusal the reader makes is 12 for far_lib_record given an assertion number past the count (status 5, measured
+; on both OSes). The rig's refusals of the other calls, a hook that answers at the far entry, are not a reader's: far_lib_read
+; 14, far_lib_glyph 22 and, in the draw, far_lib_label 24 and the rest 26; no packed library makes the reader refuse a read or
+; a glyph the descriptor accepts, so those are unmeasured for the reader, which leaves earlier than a call that succeeds, so
+; no deeper than the 22 and 26 above. With interrupts on at the call a handler that lands where the stack is deepest adds
+; its bytes: dist_depth.rs and dist_real.rs assert those figures too.
 ; Calls: far_lib_record, far_lib_read, far_lib_glyph and far_lib_label through list_label_text, far_ui_text_width, far_ui_text,
 ; far_ui_clear, far_ui_truncate, far_ui_title, far_ui_text_centered, far_ui_soft_keys, and app_stage_block, app_strcpy,
 ; app_dec16 and list_room on this page.
-; Cost, in T-states at 6 MHz on the reference OS, pinned in dist_real.rs: a token, far_lib_glyph and far_ui_text_width, takes
-; 6,311, so placing a pair takes 12,622 and drawing one 17,725 more. Opening frrlem1 of ring, 33 pairs over 6 rows, takes
-; 1,577,717 (263.0 ms) against 1,800,000: the key 733, dist_enter 448,365, dist_draw 1,054,967 and the blit 73,652. DOWN and UP
-; there stay, in 218 and 146. A scroll with its frame takes 1,237,982 to 2,024,739 (206 to 338 ms) on a library of 16 rows of 6
-; pairs, over the budget of 300,000: dist_draw reads the glyphs of every pair above the first row shown, 12,622 each, and then
-; draws the rows, and dist_open takes 1,249, the title 24,938 and the blit 73,652. No shipped assertion has more than six rows,
-; so no shipped screen scrolls. The way back to the theorem screen from rglcom4d, ring's costliest open with pairs, is the key
-; 50, the theorem's enter 1,492,152 and its frame 263,399: 1,755,601.
+; Cost, in T-states at 6 MHz on the reference OS, measurements pinned within 2 percent in dist_real.rs: a token, far_lib_glyph
+; and far_ui_text_width, takes 6,311, so placing a pair takes 12,622 and drawing one 17,725 more. Opening frrlem1 of ring, 33
+; pairs over 6 rows, takes 1,577,717 (263.0 ms) against 1,800,000: the key 733, dist_enter 448,365, dist_draw 1,054,967 and
+; the blit 73,652. DOWN and UP there stay, in 218 and 146. A scroll with its frame takes 1,237,982 to 2,024,739 (206 to 338
+; ms) on a library of 16 rows of 6 pairs, over the budget of 300,000: dist_draw reads the glyphs of every pair above the first
+; row shown, 12,622 each, and then draws the rows, and dist_open takes 1,249, the title 24,938 and the blit 73,652. No shipped
+; assertion has more than six rows, so no shipped screen scrolls. The way back to the theorem screen from rglcom4d, ring's
+; costliest open with pairs, is the key 50, the theorem's enter 1,492,152 and its frame 263,399: 1,755,601.
 
 DIST_ROWS	.equ 6
 DIST_WIDTH	.equ 94
