@@ -1,6 +1,8 @@
 //! What the sections screen and the list's land write: a watch over RAM from 8000h armed from the entry
 //! of each routine to its return, the writes sorted into the build's regions, the variables inside
-//! APP_TEXT and the bytes of the frames, and compared with what the routine's header names.
+//! APP_TEXT and the bytes of the frames, and compared with what the routine's header names. Writes by code
+//! below 4000h are covered by the exact count each routine shows (os_writes) and the exact count of the
+//! idle handler's addresses.
 
 use crate::checkrig::WAIT;
 use crate::list_rig::*;
@@ -195,8 +197,7 @@ fn opened(site: &Site, kind: Kind, table: Table) -> Lister {
 }
 
 /// The addresses code below 4000h writes while the screen sits open: the interrupt handler's, with no key
-/// down and with a key held that the screen ignores. What a routine's call to the OS would add shows
-/// as an address outside them.
+/// down and with a key held that the screen ignores.
 fn idle_os_writes(site: &Site) -> BTreeSet<u16> {
     let mut list = opened(site, Kind::All, Table::None);
     let sp = list.run.m().regs().sp;
@@ -226,7 +227,7 @@ fn idle_os_writes(site: &Site) -> BTreeSet<u16> {
 
 fn print(what: &str, w: &Wrote) {
     println!(
-        "{what}: regions {:?}, variables {:?}, frame bytes {:?}, other {:04X?}, OS writes {}",
+        "{what}: regions {:?}, variables {:?}, frame bytes {:?}, other {:04X?}, OS writes {:04X?}",
         w.regions,
         w.vars,
         w.frames,
@@ -234,7 +235,7 @@ fn print(what: &str, w: &Wrote) {
             .iter()
             .map(|(a, pc)| format!("{a:04X}@{pc:04X}"))
             .collect::<Vec<_>>(),
-        w.os.len()
+        w.os
     );
 }
 
@@ -506,6 +507,27 @@ const EXPECTED: &[Expect] = &[
     },
 ];
 
+/// How many addresses code below 4000h wrote during each routine's watch, stub then reference, as
+/// measured: the interrupt handler's tick writes the addresses of its own set, so the count is how many
+/// of them a tick inside the routine reached, and the emulator replays the same T-states on every run.
+/// A routine with no tick inside it, and every key routine, wrote none. A name not listed panics.
+fn os_writes(rom: bool, name: &str) -> usize {
+    let (stub, reference) = match name {
+        "f5 all" | "f5 axioms" | "f5 unchecked" => (0, 0),
+        "enter all" | "enter axioms" | "enter unchecked" => (1, 3),
+        "first draw all" | "first draw axioms" | "first draw unchecked" => (1, 2),
+        "key down" | "key up" | "key left" | "key right" | "key letter" => (0, 0),
+        "draw after down" | "draw after up" | "draw after left" | "draw after right" => (1, 4),
+        "land all" | "land theorems" => (0, 0),
+        "land axioms" | "land nothing" => (0, 2),
+        "land unchecked" => (1, 2),
+        "key enter" | "key f1" | "key clear" => (0, 0),
+        "land after enter" | "land after f1" => (0, 0),
+        other => panic!("{other}: no count of OS writes is stated"),
+    };
+    if rom { reference } else { stub }
+}
+
 /// The word of a header that names a region of the map.
 fn word(region: &str) -> &str {
     match region {
@@ -603,19 +625,20 @@ fn check(site: &Site) {
         site.name,
         handler.len()
     );
-    assert!(
-        !handler.is_empty(),
-        "the idle run saw the interrupt handler write"
+    let rom = site.name == "reference";
+    assert_eq!(
+        handler.len(),
+        if rom { 21 } else { 6 },
+        "{}: the addresses the idle handler writes",
+        site.name
     );
     for (name, w) in &found {
-        let extra: Vec<String> =
-            w.os.difference(&handler)
-                .map(|a| format!("{a:04X}"))
-                .collect();
-        assert!(
-            extra.is_empty(),
-            "{} {name}: code below 4000h wrote {extra:?}, which the idle handler does not",
-            site.name
+        assert_eq!(
+            w.os.len(),
+            os_writes(rom, name),
+            "{} {name}: addresses code below 4000h wrote: {:04X?}",
+            site.name,
+            w.os
         );
     }
     for (name, w) in &found {
