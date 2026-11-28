@@ -182,6 +182,8 @@ mod list_find_start;
 mod list_find_title;
 #[path = "app_pages/list_find_wait.rs"]
 mod list_find_wait;
+#[path = "app_pages/list_find_walk.rs"]
+mod list_find_walk;
 #[path = "app_pages/list_frames.rs"]
 mod list_frames;
 #[path = "app_pages/list_keys.rs"]

@@ -298,7 +298,7 @@ impl Lister {
 }
 
 /// Counters and hooks of `fail_at`, in RAM no other hook of the rig uses.
-const FAIL_COUNTERS: u16 = 0xBD00;
+pub const FAIL_COUNTERS: u16 = 0xBD00;
 const FAIL_HOOKS: u16 = 0xBD20;
 
 impl Lister {
