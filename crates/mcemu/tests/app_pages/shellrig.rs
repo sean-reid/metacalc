@@ -452,6 +452,14 @@ impl Shell {
 
     /// ui_sent is FFh, ui_dirty is 0 and the controller's memory equals the frame.
     pub fn assert_lcd_holds_the_frame(&mut self, what: &str) {
+        let (start, end) = (self.app.label("ui_blit"), self.app.label("ui_blit_end"));
+        for _ in 0..2_000 {
+            let m = &mut self.app.m;
+            if !(m.in_port(6) == DRAW_PAGE && (start..end).contains(&m.pc())) {
+                break;
+            }
+            m.run_app(200);
+        }
         let (sent, dirty) = (self.app.label("ui_sent"), self.app.label("ui_dirty"));
         let (sent, dirty) = (self.peek(sent, 1)[0], self.peek(dirty, 1)[0]);
         assert_eq!((sent, dirty), (0xFF, 0), "{what}: ui_sent and ui_dirty");

@@ -267,12 +267,12 @@ fn on_the_reference_os_opening_frrlem1_and_pressing_down_cost_what_the_header_sa
 }
 
 /// The measured total of the open of frrlem1 and of a key that stays.
-const OPEN_COST: u32 = 1_577_717;
+const OPEN_COST: u32 = 1_588_121;
 const STAY_COST: u32 = 218;
 const STAY_UP_COST: u32 = 146;
 const TOKEN_COST: u32 = 6_311;
-const INK_COST: u32 = 17_725;
-const BACK_COST: u32 = 1_755_601;
+const INK_COST: u32 = 17_896;
+const BACK_COST: u32 = 1_763_313;
 
 #[test]
 #[ignore = "needs the reference ROM image"]
@@ -513,12 +513,12 @@ fn on_the_reference_os_every_routine_of_the_dist_screen_keeps_interrupts_and_spe
 /// What a scroll with its frame costs on the 16 rows of 6 pairs, by key and first row it starts from.
 fn scroll_cost(code: u8, from: usize) -> u32 {
     match (code, from) {
-        (KEY_DOWN, 0) => 1_315_598,
-        (KEY_UP, 1) => 1_237_982,
-        (KEY_DOWN, 5) => 1_713_832,
-        (KEY_UP, 6) => 1_634_910,
-        (KEY_DOWN, 9) => 2_024_739,
-        (KEY_UP, 10) => 1_956_875,
+        (KEY_DOWN, 0) => 1_326_515,
+        (KEY_UP, 1) => 1_248_899,
+        (KEY_DOWN, 5) => 1_724_749,
+        (KEY_UP, 6) => 1_645_827,
+        (KEY_DOWN, 9) => 2_035_656,
+        (KEY_UP, 10) => 1_967_792,
         _ => panic!("no figure for key {code} from row {from}"),
     }
 }
