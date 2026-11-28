@@ -12,6 +12,14 @@ pub const MAX_NODES: usize = 384;
 pub const MAX_STATEMENT_TOKENS: usize = 255;
 /// Subexpressions of one statement.
 pub const MAX_STATEMENT_NODES: usize = 255;
+/// Distinct goals of one theorem's proof tree, a goal a proof reuses counting once.
+pub const MAX_GOALS: usize = 255;
+/// Subgoals of one goal.
+pub const MAX_SUBGOALS: usize = 31;
+/// Subgoals of all the distinct goals together.
+pub const MAX_LINKS: usize = 857;
+/// Nodes of a proof tree, a goal counting once for each use.
+pub const MAX_PROOF_NODES: u64 = 16_777_215;
 
 /// Whether one statement is inside the per-statement caps.
 pub fn statement_within(expr: &Expr) -> bool {
