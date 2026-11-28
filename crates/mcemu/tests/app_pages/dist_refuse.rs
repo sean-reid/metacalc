@@ -38,7 +38,7 @@ fn pair_ink(a: &str, b: &str, part: Drawn) -> Bitmap {
 }
 
 /// The rows of assertion `n` as (row, pair) for every pair, by the model's place.
-fn placed(lib: &Lib, n: usize) -> Vec<(usize, usize, usize)> {
+pub fn placed(lib: &Lib, n: usize) -> Vec<(usize, usize, usize)> {
     let pairs = lib.dist(n);
     let items: Vec<Item> = pairs
         .iter()
@@ -92,7 +92,7 @@ fn glyph_calls_before(lib: &Lib, n: usize, top: usize, q: usize) -> usize {
 }
 
 /// The pair `q`'s number in its row and the row's pairs.
-fn row_position(lib: &Lib, n: usize, q: usize) -> (usize, usize) {
+pub fn row_position(lib: &Lib, n: usize, q: usize) -> (usize, usize) {
     let all = placed(lib, n);
     let (row, _, _) = all.iter().find(|(_, p, _)| *p == q).copied().unwrap();
     let first = all.iter().position(|(r, _, _)| *r == row).unwrap();

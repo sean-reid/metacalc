@@ -53,6 +53,8 @@ mod counts;
 mod data;
 #[path = "app_pages/dist_boundary.rs"]
 mod dist_boundary;
+#[path = "app_pages/dist_corrupt.rs"]
+mod dist_corrupt;
 #[path = "app_pages/dist_depth.rs"]
 mod dist_depth;
 #[path = "app_pages/dist_errors.rs"]

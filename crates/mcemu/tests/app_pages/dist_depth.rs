@@ -3,6 +3,7 @@
 //! stack comes back balanced. Each call is traced with interrupts masked for its length, so that no
 //! handler's pushes are in the figure.
 
+use crate::dist_corrupt::{BAD, INDEX, MakePatch, count_limit, pair_count, pair_id, symbols};
 use crate::dist_lib::{self, EMPTY, SEVEN};
 use crate::dist_rig::*;
 use crate::shellrig::*;
@@ -182,6 +183,42 @@ pub fn figures_on(
     put("enter refused at a record the reader refuses", t);
     walker.list.run.release(F2);
     walker.list.run.run(3_000_000);
+    let (library, n) = {
+        let built = on_theorem(label).built;
+        let library = built.library.clone().expect("a library");
+        (library, index_of(&lib_of(built), label))
+    };
+    let symbols = symbols(&library);
+    let id = |lib: &[u8], n: usize| pair_id(lib, n, 3, false, symbols);
+    let count = |lib: &[u8], n: usize| pair_count(lib, n, count_limit(lib, n) + 1);
+    let patches: [(&str, MakePatch, u8); 2] = [
+        ("a pair id the reader refuses", &id, INDEX),
+        ("a pair count the reader refuses", &count, BAD),
+    ];
+    for (what, patch, status) in patches {
+        let mut walker = on_theorem(label);
+        walker.list.run.press(F2);
+        walker.trace("theorem_key", mask, speed);
+        let patch = patch(&library, n);
+        let t = walker.trace_after("dist_enter", mask, speed, |run| patch.apply(run, &library));
+        assert_eq!(
+            t.action, status,
+            "enter refused at {what}: the reader's status"
+        );
+        put(&format!("enter refused at {what}"), t);
+        walker.list.run.release(F2);
+        walker.list.run.run(3_000_000);
+        let mut walker = on_theorem(label);
+        walker.list.run.press(F2);
+        walker.trace("theorem_key", mask, speed);
+        walker.trace("dist_enter", mask, speed);
+        put(
+            &format!("draw refused at {what}"),
+            walker.trace_after("dist_draw", mask, speed, |run| patch.apply(run, &library)),
+        );
+        walker.list.run.release(F2);
+        walker.list.run.run(3_000_000);
+    }
     found
 }
 
@@ -195,6 +232,10 @@ pub fn expected() -> BTreeMap<String, (u16, u8)> {
         ("enter with a cold descriptor", (22, 0)),
         ("draw with a cold descriptor", (26, 0)),
         ("enter refused at a record the reader refuses", (12, 5)),
+        ("enter refused at a pair id the reader refuses", (22, 5)),
+        ("draw refused at a pair id the reader refuses", (26, 0)),
+        ("enter refused at a pair count the reader refuses", (18, 3)),
+        ("draw refused at a pair count the reader refuses", (26, 0)),
         ("key down, a move", (2, SCR_REDRAW)),
         ("key down, at the end", (2, SCR_STAY)),
         ("key up, a move", (2, SCR_REDRAW)),
@@ -217,15 +258,20 @@ pub fn expected() -> BTreeMap<String, (u16, u8)> {
 }
 
 /// The most bytes an interrupt handler adds to a call it lands in: 4 on the stub OS, 10 on the reference OS,
-/// whose keypad scan (pc 047D) writes 10 counting the interrupt's own return address.
+/// whose keypad scan (pc 047D) writes 10 counting the interrupt's own return address. dist_forced.rs takes
+/// that interrupt after each deepest instruction of the enter and of the draw and measures the figure plus
+/// exactly this.
 pub const fn handler(real: bool) -> u16 {
     if real { 10 } else { 4 }
 }
 
 /// `got` against the header's figures. Masked, every depth is exact. With interrupts on at the call a key
-/// and the F2 that pushes a screen are as short as masked, which is exact, and a handler that lands in the
-/// enter or the draw adds its bytes where the stack is deepest, so those lie from the masked figure to it
-/// plus the handler's most; the answers and the interrupt state are exact either way.
+/// and the F2 that pushes a screen are as short as masked, which is exact. The enter and the draw lie from
+/// the masked figure to it plus the handler's most: a handler that lands at a stack lower than the deepest
+/// adds its bytes below that, so the runs sampled here fall anywhere in the range, and the top of it is not
+/// sampled but forced, in dist_forced.rs, where an interrupt is taken after each deepest instruction and the
+/// depth is the masked figure plus the handler's bytes. The answers and the interrupt state are exact either
+/// way.
 pub fn same_figures(got: &BTreeMap<String, (u16, u8)>, mask: bool, real: bool, what: &str) {
     let want = expected();
     assert_eq!(
