@@ -182,7 +182,8 @@ impl Run {
     /// the shell's key read has zeroed it before the release, and the last-key byte the stub clears at
     /// the fifth scan the reference OS never clears. A stretch with interrupts off, as in the theorem's
     /// enter, has no scan, and a key pressed in it is held down through the first scans after it and
-    /// ignored for good. An ON edge acknowledges with 08h alone and is not a scan.
+    /// ignored while it is held. An ON edge acknowledges with 08h alone and is not a scan. The figures
+    /// are measured at 6 MHz.
     fn count_scans(&mut self) {
         let Some((scan, seen)) = &mut self.released else {
             return;

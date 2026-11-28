@@ -29,7 +29,8 @@
 ; needs to know the last first row, the rows less 6 and 0 for fewer. dist_draw walks again, skips the pairs of the rows above
 ; the first shown, draws the six rows and stops at the first pair of the row after them, whose widths it has read.
 ; The pointer to the next pair is 24 bits, and dist_next carries into its high byte. A packed library never crosses there:
-; mcpack keeps every record, at most CHUNK, 16,384 bytes, inside one multiple of 4000h, and 10000h is one, so no pair list
+; mcpack keeps every record, at most CHUNK, 16,384 bytes, between two consecutive multiples of 4000h, and 10000h is one, so no
+; pair list
 ; straddles it; dist_straddle.rs moves a record by hand to test the carry.
 ;
 ; Derived state, in APP_TEXT from DV_ASSERT to DV_VARS_END, rebuilt by every enter and every draw: DV_ASSERT the assertion,
@@ -79,14 +80,16 @@
 ; screen. A refusal the reader makes is 12 for far_lib_record given an assertion number past the count (status 5, measured on
 ; both OSes). The rig's refusals, a hook that answers at the far entry, are not a reader's: in the enter far_lib_record 10,
 ; far_lib_read 14 and far_lib_glyph 22, in the draw far_lib_label 24 and the rest 26; no packed library makes the reader
-; refuse a read or a glyph the descriptor accepts, so those are unmeasured for the reader, which leaves earlier than a call
-; that succeeds, so no deeper than the 22 and 26 above. With interrupts on at the call a key and the F2 are as deep as masked;
-; in the enter and the draw a handler that lands where the stack is deepest adds its bytes, at most 4 on the stub OS and 6 on
-; the reference OS, which dist_depth.rs and dist_real.rs assert.
+; refuse a read or a glyph the descriptor accepts, so those are not measured for the reader. With interrupts on at the call a
+; key and the F2 measure as deep as masked in the
+; runs traced, where no handler lands in them; for the enter and the draw the tests accept the masked figure plus a handler's
+; bytes, up to 4 on the stub OS and 6 on the reference OS, and force no interrupt at the deepest point.
 ; Calls: far_lib_record, far_lib_read, far_lib_glyph and far_lib_label through list_label_text, far_ui_text_width, far_ui_text,
 ; far_ui_clear, far_ui_truncate, far_ui_title, far_ui_text_centered, far_ui_soft_keys, and app_stage_block, app_strcpy,
 ; app_dec16 and list_room on this page.
-; Cost, in T-states at 6 MHz on the reference OS, measurements pinned within 2 percent in dist_real.rs: a token, far_lib_glyph
+; Cost, in T-states at 6 MHz on the reference OS, each total, the token and the pair pinned within 2 percent in dist_real.rs
+; and the parts of a total
+; printed there: a token, far_lib_glyph
 ; and far_ui_text_width, takes 6,311, so placing a pair takes 12,622 and drawing one 17,725 more. Opening frrlem1 of ring, 33
 ; pairs over 6 rows, takes 1,577,717 (263.0 ms) against 1,800,000: the key 733, dist_enter 448,365, dist_draw 1,054,967 and
 ; the blit 73,652. DOWN and UP there stay, in 218 and 146. A scroll with its frame takes 1,237,982 to 2,024,739 (206 to 338
