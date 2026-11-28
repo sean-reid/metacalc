@@ -192,7 +192,60 @@ pub fn nothing_below_ram(list: &mut Lister, at: &str, walk: bool, open: impl FnO
         list.run.run(600_000);
         quiet(list, "F3");
     }
+    let (hit, miss) = find_chars(list);
+    let after = |list: &mut Lister, what: &str| {
+        list.skip_the_wait();
+        list.settle();
+        list.run.run(300_000);
+        quiet(list, what);
+    };
+    list.f2();
+    after(list, "F2 with no find");
+    list.press_char(hit);
+    assert!(!list.find().missed, "{at}: the letter hits");
+    after(list, "a letter that hits");
+    list.key(UP, Key::Up);
+    after(list, "an arrow at the start with a find");
+    assert_eq!(list.find().len, 0, "{at}: the arrow ended the find");
+    list.press_char(hit);
+    list.press_char(miss);
+    assert!(list.find().missed, "{at}: the second letter misses");
+    after(list, "a letter that misses");
+    list.press_char(hit);
+    after(list, "a letter after a miss");
+    list.f2();
+    assert_eq!(list.find().len, 0, "{at}: F2 ended the find");
+    after(list, "F2 with a find");
+    list.press_char(hit);
+    list.key(CLEAR, Key::Clear);
+    assert_eq!(list.find().len, 0, "{at}: CLEAR ended the find");
+    after(list, "CLEAR with a find");
+    list.press_char(hit);
+    for _ in 0..4 {
+        list.key(F3, Key::F3);
+        after(list, "F3 with a find");
+    }
+    assert_eq!(list.find().len, 1, "{at}: F3 keeps the find");
+    list.f2();
+    after(list, "F2 at the end");
     list.run.m().unwatch_writes();
+}
+
+/// A character that hits the first assertion the open list shows, and one that, typed after it, misses.
+pub fn find_chars(list: &Lister) -> (char, char) {
+    let labels = crate::list_find_rig::labels_of(list.built);
+    let shown: Vec<&str> = list.items().iter().map(|&i| labels[i].as_str()).collect();
+    let hit = shown[0].chars().next().unwrap();
+    let seconds: BTreeSet<char> = shown
+        .iter()
+        .filter(|l| l.starts_with(hit))
+        .filter_map(|l| l.chars().nth(1))
+        .collect();
+    let miss = ('a'..='z')
+        .chain('0'..='9')
+        .find(|c| !seconds.contains(c))
+        .unwrap();
+    (hit, miss)
 }
 
 #[test]
@@ -202,6 +255,7 @@ fn nothing_is_written_below_ram_under_any_kind() {
         (Kind::Theorems, false),
         (Kind::Axioms, false),
         (Kind::Unchecked, true),
+        (Kind::Unchecked, false),
     ] {
         let built = proofs_three();
         let (data, status) = every_mark(built);
