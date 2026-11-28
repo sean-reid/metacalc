@@ -6,6 +6,10 @@
 //! enabled (port 3 at 0), which shows where the code itself runs with them off: none of the deepest runs
 //! with them off. The forced run is masked from the entry, so that the timer's interrupt stays pending, and
 //! takes it after one of those instructions by turning interrupts on for that one instruction.
+//!
+//! On the reference OS at speed 0 the shell's timer is not pending at the draw's deepest instructions, so
+//! the draw's 36 there is a bound the shell does not produce, reached only by running the clock on at a
+//! HALT; at speed 1 it is produced, and the enter's 32 needs no wait at either speed.
 
 use crate::checkrig::{Run, WAIT};
 use crate::dist_depth::{expected, handler};
@@ -92,6 +96,8 @@ pub struct Forced {
     pub phase: u32,
     pub candidates: usize,
     pub answer: u8,
+    /// Whether the clock had to run on at a HALT for the timer's interrupt to be pending there.
+    pub waited: bool,
 }
 
 /// The call of `label` from its entry, masked, with the timer's interrupt taken after the first time the
@@ -185,6 +191,7 @@ fn take(
         phase: 0,
         candidates: d.reachable.len(),
         answer: (regs.af >> 8) as u8,
+        waited: idle.is_some(),
     })
 }
 
@@ -257,9 +264,10 @@ pub fn forced(
     );
     let mut found = Vec::new();
     for &target in &d.reachable {
+        let before = found.len();
         for phase in 0..24 {
             let mut walker = ready(phase);
-            let got = take(&mut walker.list.run, &label, speed, &d, target, idle);
+            let got = take(&mut walker.list.run, &label, speed, &d, target, None);
             if let Some(mut f) = got {
                 f.phase = phase;
                 f.candidates = d.reachable.len();
@@ -273,6 +281,18 @@ pub fn forced(
             walker.list.run.release(F2);
             walker.list.run.run(3_000_000);
         }
+        if found.len() > before || idle.is_none() {
+            continue;
+        }
+        let mut walker = ready(0);
+        let mut f = take(&mut walker.list.run, &label, speed, &d, target, idle)
+            .expect("the timer is pending after the clock runs on");
+        f.candidates = d.reachable.len();
+        frame_after(
+            &mut walker,
+            &format!("{routine} after the forced interrupt, the clock run on"),
+        );
+        found.push(f);
     }
     (found, d.reachable.len())
 }
@@ -294,6 +314,13 @@ fn deepest_count(routine: &str) -> usize {
     }
 }
 
+/// Whether the timer's interrupt is pending at the deepest instructions only after the clock runs on: the
+/// reference OS's draw at speed 0, whose deepest instructions come 16,324 to 17,533 T-states after its entry
+/// and the timer fires 34,128 after it.
+fn needs_wait(real: bool, routine: &str, speed: u8) -> bool {
+    real && routine == "draw" && speed == 0
+}
+
 fn check(os: &str, speed: u8, routine: &str, (found, total): (Vec<Forced>, usize), real: bool) {
     println!(
         "{os}, speed {speed}, {routine}: {} of {total} deepest instructions taken",
@@ -307,8 +334,13 @@ fn check(os: &str, speed: u8, routine: &str, (found, total): (Vec<Forced>, usize
     assert_eq!(found.len(), total, "{routine}: an interrupt after each");
     for f in &found {
         println!(
-            "   after {:06X} with sp {:04X}: depth {}, handler {} bytes lowest at {:04X}, run-up {}",
-            f.at.0, f.at.1, f.depth, f.handler, f.handler_at, f.phase
+            "   after {:06X} with sp {:04X}: depth {}, handler {} bytes lowest at {:04X}, run-up {}, clock run on {}",
+            f.at.0, f.at.1, f.depth, f.handler, f.handler_at, f.phase, f.waited
+        );
+        assert_eq!(
+            f.waited,
+            needs_wait(real, routine, speed),
+            "{routine} at speed {speed}: the timer pending without running the clock on"
         );
         assert_eq!(f.answer, 0, "{routine}: the status");
         assert_eq!(f.handler, handler(real), "{routine}: the handler's bytes");

@@ -265,13 +265,14 @@ pub const fn handler(real: bool) -> u16 {
     if real { 10 } else { 4 }
 }
 
-/// `got` against the header's figures. Masked, every depth is exact. With interrupts on at the call a key
-/// and the F2 that pushes a screen are as short as masked, which is exact. The enter and the draw lie from
-/// the masked figure to it plus the handler's most: a handler that lands at a stack lower than the deepest
-/// adds its bytes below that, so the runs sampled here fall anywhere in the range, and the top of it is not
-/// sampled but forced, in dist_forced.rs, where an interrupt is taken after each deepest instruction and the
-/// depth is the masked figure plus the handler's bytes. The answers and the interrupt state are exact either
-/// way.
+/// `got` against the header's figures. Masked, every depth is exact. With interrupts on at the call the
+/// keys and the F2 that pushes a screen are as short as masked, which is exact. Every other path lies from
+/// its masked figure to it plus the handler's most: a handler that lands at a point shallower than the
+/// deepest adds its bytes below that point, so the runs sampled here fall anywhere in the range. The upper
+/// end is forced, in dist_forced.rs, for SEVEN's plain enter and draw, where an interrupt after each
+/// deepest instruction makes the depth the masked figure plus the handler's bytes; for every other path,
+/// the refusals, the empty assertion and the cold descriptors, it is a bound that no test reaches. The
+/// answers and the interrupt state are exact either way.
 pub fn same_figures(got: &BTreeMap<String, (u16, u8)>, mask: bool, real: bool, what: &str) {
     let want = expected();
     assert_eq!(
