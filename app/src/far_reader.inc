@@ -1,4 +1,4 @@
-; The reader's public routines as the draw page calls them: the draw page includes this file for
+; The reader's public routines, and the proof walk's, as the draw page calls them: the draw page includes this file for
 ; the stubs and again, with FAR_ALIASES defined, around the code that calls the reader, so that
 ; its `call lib_glyphs` reaches far_lib_glyphs, and with FAR_UNALIASES after it. The entry page
 ; includes it for the stubs. A name here is listed three times, once in each section.
@@ -30,6 +30,10 @@ FAR_DATA_ENTRY(lib_kind_prev, far_lib_kind_prev)
 FAR_DATA_ENTRY(lib_find_range, far_lib_find_range)
 FAR_DATA_ENTRY(lib_find_walk, far_lib_find_walk)
 FAR_DATA_ENTRY(lib_find_copy, far_lib_find_copy)
+FAR_DATA_ENTRY(lib_proof, far_lib_proof)
+FAR_DATA_ENTRY(pw_shape, far_pw_shape)
+FAR_DATA_ENTRY(pw_more, far_pw_more)
+FAR_DATA_ENTRY(pw_find, far_pw_find)
 #endif
 #ifdef FAR_ALIASES
 #define lib_read far_lib_read
@@ -59,6 +63,10 @@ FAR_DATA_ENTRY(lib_find_copy, far_lib_find_copy)
 #define lib_find_range far_lib_find_range
 #define lib_find_walk far_lib_find_walk
 #define lib_find_copy far_lib_find_copy
+#define lib_proof far_lib_proof
+#define pw_shape far_pw_shape
+#define pw_more far_pw_more
+#define pw_find far_pw_find
 #endif
 #ifdef FAR_UNALIASES
 #undef lib_read
@@ -88,4 +96,8 @@ FAR_DATA_ENTRY(lib_find_copy, far_lib_find_copy)
 #undef lib_find_range
 #undef lib_find_walk
 #undef lib_find_copy
+#undef lib_proof
+#undef pw_shape
+#undef pw_more
+#undef pw_find
 #endif

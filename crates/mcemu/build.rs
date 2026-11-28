@@ -1345,6 +1345,9 @@ fn assemble_reader(out: &Path) {
     for entry in fs::read_dir(dir).unwrap().flatten() {
         println!("cargo:rerun-if-changed={}", entry.path().display());
     }
+    for entry in fs::read_dir("../../pw").unwrap().flatten() {
+        println!("cargo:rerun-if-changed={}", entry.path().display());
+    }
     println!("cargo:rerun-if-changed=tests/routines/reader_test.z80");
     println!("cargo:rerun-if-changed=tests/routines/ramplan.z80");
     let src = Path::new("tests/routines/reader_test.z80");
@@ -1381,6 +1384,7 @@ fn assemble_reader(out: &Path) {
             "reader_straddle",
             &["LIB_BOUNCE=$FE80", "LIB_BOUNCE_ANYWHERE"][..],
         ),
+        ("pw_test", &["WITH_PW"][..]),
     ] {
         spasm(src, &out.join(format!("{name}.bin")), defines, &args);
     }

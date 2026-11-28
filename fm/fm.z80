@@ -110,6 +110,12 @@
 ; offset and length are the same, or it has no shapes now and had none. A kernel_reset at the start
 ; of an app closes fm.
 ;
+; The proof walk (pw/pw.z80) borrows FM_TOKENS whole and FM_LOW from +$100 to +$E00, its variables
+; and its stack included, until fm loads a statement or the kernel runs: a start of the walk
+; destroys the statements fm has loaded, which fm does not notice, and a caller that draws next loads
+; them again with fm_assertion or fm_statement. It leaves fm's variables, the open mark, FM_STACK and
+; the kernel's ready mark as they were.
+;
 ; The test image (crates/mcemu/tests/routines/reader_test.z80) starts at $1400, in page 0, because
 ; the kernel, the reader, the canvas and fm together are longer than one 16 KB page. The app
 ; (app/src/pages.inc) puts fm on the canvas's page and the reader on another, so fm's calls to the

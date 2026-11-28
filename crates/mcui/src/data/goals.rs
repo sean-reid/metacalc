@@ -1,6 +1,7 @@
+use crate::caps;
 use crate::expr::{Expr, Shape};
 use mcpack::mm::{Database, Kind, Node, StmtId, Sym, Tree};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 pub(super) fn shape(db: &Database, tree: &Tree) -> Shape {
@@ -39,6 +40,28 @@ pub(super) fn measure(node: &Rc<Node>, sizes: &mut HashMap<*const Node, u64>) ->
         .fold(1u64, |sum, c| sum.saturating_add(measure(c, sizes)));
     sizes.insert(Rc::as_ptr(node), size);
     size
+}
+
+/// Whether a proof tree is inside the caps of the walk the calculator reads a stored proof with:
+/// distinct goals, subgoals of a goal, links and nodes.
+pub(super) fn within_caps(root: &Rc<Node>, sizes: &HashMap<*const Node, u64>) -> bool {
+    let mut seen: HashSet<*const Node> = HashSet::new();
+    let mut todo = vec![root];
+    let mut links = 0;
+    while let Some(node) = todo.pop() {
+        if !seen.insert(Rc::as_ptr(node)) {
+            continue;
+        }
+        if seen.len() > caps::MAX_GOALS || node.children.len() > caps::MAX_SUBGOALS {
+            return false;
+        }
+        links += node.children.len();
+        if links > caps::MAX_LINKS {
+            return false;
+        }
+        todo.extend(&node.children);
+    }
+    sizes[&Rc::as_ptr(root)] <= caps::MAX_PROOF_NODES
 }
 
 /// How a goal was proved.
@@ -113,5 +136,78 @@ mod tests {
         }
         let mut sizes = HashMap::new();
         assert_eq!(measure(&node, &mut sizes), u64::MAX);
+    }
+
+    fn node(children: Vec<Rc<Node>>) -> Rc<Node> {
+        Rc::new(Node {
+            label: 0,
+            expr: Vec::new(),
+            children,
+        })
+    }
+
+    fn allowed(root: &Rc<Node>) -> bool {
+        let mut sizes = HashMap::new();
+        measure(root, &mut sizes);
+        within_caps(root, &sizes)
+    }
+
+    /// A chain of `n` distinct goals, each taking the next.
+    fn chain(n: usize) -> Rc<Node> {
+        (1..n).fold(node(Vec::new()), |tail, _| node(vec![tail]))
+    }
+
+    #[test]
+    fn a_tree_of_255_distinct_goals_is_inside_the_caps_and_one_of_256_is_not() {
+        assert!(allowed(&chain(255)));
+        assert!(!allowed(&chain(256)));
+    }
+
+    #[test]
+    fn a_goal_with_31_subgoals_is_inside_the_caps_and_one_with_32_is_not() {
+        let leaves = |n: usize| node((0..n).map(|_| node(Vec::new())).collect());
+        assert!(allowed(&leaves(31)));
+        assert!(!allowed(&leaves(32)));
+    }
+
+    /// A chain of goals that share one leaf: 31 links each, the last with `last`.
+    fn links(whole: usize, last: usize) -> Rc<Node> {
+        let leaf = node(Vec::new());
+        let mut tail = node(vec![leaf.clone(); last]);
+        for _ in 0..whole {
+            let mut children = vec![leaf.clone(); 30];
+            children.push(tail);
+            tail = node(children);
+        }
+        tail
+    }
+
+    #[test]
+    fn a_tree_of_857_links_is_inside_the_caps_and_one_of_858_is_not() {
+        assert!(allowed(&links(27, 20)));
+        assert!(!allowed(&links(27, 21)));
+    }
+
+    /// `levels` goals that each take the one below twice, over a leaf, and a root that takes the
+    /// top one twice and `extra` more leaves: `2^(levels + 1) - 1` nodes for the top one.
+    fn doubled(levels: usize, extra: usize) -> Rc<Node> {
+        let leaf = node(Vec::new());
+        let top = (0..levels).fold(leaf.clone(), |below, _| node(vec![below.clone(), below]));
+        let mut children = vec![top.clone(), top];
+        children.extend((0..extra).map(|_| leaf.clone()));
+        node(children)
+    }
+
+    #[test]
+    fn a_tree_of_16777215_nodes_is_inside_the_caps_and_one_of_16777216_is_not() {
+        let at = doubled(22, 0);
+        assert_eq!(at.children.len(), 2);
+        let mut sizes = HashMap::new();
+        assert_eq!(measure(&at, &mut sizes), 16_777_215);
+        assert!(allowed(&at));
+        let past = doubled(22, 1);
+        let mut sizes = HashMap::new();
+        assert_eq!(measure(&past, &mut sizes), 16_777_216);
+        assert!(!allowed(&past));
     }
 }

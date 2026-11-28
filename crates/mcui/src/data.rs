@@ -481,6 +481,9 @@ impl Lib {
         }
         let mut sizes = HashMap::new();
         measure(&root, &mut sizes);
+        if !goals::within_caps(&root, &sizes) {
+            return Err("its proof is too large");
+        }
         Ok(Goals {
             theorem: i,
             root,

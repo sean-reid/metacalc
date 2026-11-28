@@ -236,6 +236,8 @@ mod numbers;
 mod oracle;
 #[path = "app_pages/power.rs"]
 mod power;
+#[path = "app_pages/pw_rom.rs"]
+mod pw_rom;
 #[path = "app_pages/real.rs"]
 mod real;
 #[path = "common/realos.rs"]

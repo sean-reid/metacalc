@@ -54,6 +54,11 @@ mod oracle;
 mod placements;
 #[path = "reader/ports.rs"]
 mod ports;
+#[path = "reader/proof.rs"]
+mod proof;
+#[allow(dead_code)]
+#[path = "common/proofs.rs"]
+mod proofs;
 #[path = "reader/ramplan.rs"]
 mod ramplan;
 #[path = "reader/reads.rs"]

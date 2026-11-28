@@ -1,0 +1,182 @@
+; metacalc proof walk for the TI-84 Plus SE. It reads a theorem's stored proof straight from flash
+; and rebuilds the shape of the goal tree the host model builds from it (crates/mcui,
+; crates/mcpack/src/mm/outline.rs): a table with a row for each distinct goal, in the order the walk
+; makes them, the root last. It does not judge the proof: it compares no statement, substitution or
+; disjoint pair, only the first symbol of the theorem's conclusion, of each essential hypothesis and
+; of each referenced conclusion with the provable typecode. The walk is cut
+; into slices; pw_find reads a place of the finished table.
+;
+; Code runs from flash in bank A and is position dependent. Assembling this file places nothing: an
+; including file places it after the reader (lib/lib.z80), with -I at the repository root and at
+; app/src. It is on the data page of the app (app/src/page_data.inc), where nothing calls it yet,
+; and in the test image (crates/mcemu/tests/routines/reader_test.z80, with WITH_PW).
+;
+; Entries. Every one destroys all registers but IX and IY and leaves A = the status and the zero
+; flag set exactly when it is 0. IX, IY, port 20 (the CPU speed) and, at every return, "more" and
+; each refusal included, ports 5 and 7 and the interrupt state are the caller's.
+;   pw_shape      in:  HL = assertion number; A = the id of the provable typecode, the library's
+;                      `|-`; BC = the budget, in units of work, 0 meaning no cut; DE = a block of 8
+;                      bytes in bank B, clear of the reader's state. Starts a walk of that theorem
+;                      and abandons any other.
+;   pw_more       in:  BC = the budget; DE = a block as above. Goes on with the walk a start left.
+;   Both end in the status 45, PW_ST_MORE, when the budget is spent with work left, and then go on in
+;   the next pw_more; any other status ends the walk. On status 0 the block holds, little endian:
+;                        +0  2  steps: the numbers of the proof, a save marker not counted
+;                        +2  1  distinct goals
+;                        +3  2  links: the subgoals of each distinct goal, added up
+;                        +5  3  the nodes of the root's tree, a shared goal once for each use
+;   and on any other status the block is not written. A start and a continue are two entries because
+;   a continue takes no theorem and is refused, writing nothing, when no walk is there to go on.
+;   pw_find       in:  A:HL = a place in reading order, from 1: the preorder of the tree with shared
+;                      goals unfolded, as Goals::position counts; DE = a block of 47 bytes in bank B,
+;                      clear of the reader's state. Called after a walk returned 0. On status 0:
+;                        +0   1  the goal's number
+;                        +1   2  what it applies: 8000h + the number of the theorem's own essential
+;                                hypothesis among the essential ones, counted from 1, or an
+;                                assertion's number
+;                        +3   3  its subtree size, a shared goal once for each use
+;                        +6   1  its depth, the root 0
+;                        +7   3  the place of its parent, 0 for the root
+;                        +10  1  its index among the parent's subgoals, 0 for the root
+;                        +11  1  its subgoal count, at most 31
+;                        +12  2  the address, in bank B, of the step that proves it
+;                        +14  2  the address of the first step of the first entry that step takes,
+;                                floats included, or its own address when it takes none
+;                        +16  n  its subgoals' numbers in order, a shared goal once for each use
+;                      and on any other status the block is not written.
+;
+; Method. lib_proof says where the theorem's record, reference list and proof lie. The walk maps the
+; flash page that holds them in bank B through port 7 and reads them in place, and reads the head of
+; the record of each assertion the references name from the page that holds it, with bounds checks
+; of its own; it does not go through lib_read. A stack of entries holds, for each, a goal's number,
+; 0 to 254, or FFh for a syntax statement, and the address of the first step that made it. A step
+; number below the theorem's hypothesis count is a hypothesis: an essential one is a goal when its first symbol is the
+; provable typecode, and a float is a syntax statement. The numbers after those, up to the
+; reference count, name the reference list: an entry of 8000h or more is a dummy variable, which
+; takes nothing and is a syntax statement; any other is an assertion, which takes as many entries as it has hypotheses and is a goal when its
+; conclusion's first symbol is the provable typecode. The numbers after the references name the
+; saved steps, each a copy of an entry, whose address is that of the step that reuses it; FFh saves
+; the top entry. A goal's subgoals are the goal entries among those its step takes, in order, and
+; its size is one more than their sizes. A number of F0h to FEh takes the next byte, as the kernel
+; decodes it. A conclusion that starts with another typecode, and a proof whose one entry is a
+; syntax statement, give PW_ERR_SYNTAX, the host model's "it proves a syntax statement". A variable step is never a goal.
+;
+; Units and slices. The work is counted in units: one hypothesis of the theorem, one entry of its reference list (a record head read the first time, once for each
+; entry), and one number or save marker of the proof. A call does at most its budget in units and
+; ends with PW_ST_MORE when it has more; the ending of the proof, the checks after its last unit and
+; the writing of the block are not units, so a walk of U units ends in the slice of its last unit,
+; after ceil(U / budget) - 1 returns of 45. What a slice costs beyond its units is the setup of a
+; start (the reader's lookup of the record and of the conclusion's first symbol, which run on the
+; caller's stack) and the entry and exit of the session, the same for every call; no slice does
+; work outside its units, so a slice costs at most that and its budget times the dearest unit, a
+; record head read or a step that makes a goal.
+;
+; Memory. Everything the session writes on the spare page, KERNEL_RAM_PAGE in bank C through port 5,
+; lies in bytes fm gives up, and the walk's own stack is among them. In FM_TOKENS ($F100, all $C00
+; bytes):
+;   PW_ENTRIES $F100 256  the stack's goal numbers, FFh a syntax statement
+;   PW_STARTS  $F200 512  the address of the first step of each stack entry, 2 bytes
+;   PW_SAVED   $F400 512  the saved entries' goal numbers
+;   PW_SIZES   $F600 768  the subtree size of each goal, 3 bytes, 765 used
+;   PW_MEMO    $F900 1024 for each reference, the hypothesis count of the assertion it names and 1
+;                         when its conclusion starts with the provable typecode; a dummy gives 0 and 0
+; and in FM_LOW from +$100 for $D00 bytes, $C700 to $D3FF:
+;   PW_VARS    $C700 $80  the variables; the mark at +0, the persistent ones from +1 to +$2F, their
+;                         sum at +$30, then the ones of one call
+;   PW_STEP    $C780 510  the goal table, a column for each field and two bytes a goal: the address
+;   PW_BEGIN   $C97E 510  of the step that proves it, of the first step it takes, what it applies as
+;   PW_BY      $CB7C 510  pw_find gives it (bit 15 set for a hypothesis), and where its subgoals begin
+;   PW_LSTART  $CD7A 510  in the links; a goal's subgoal count is the next goal's start, the last
+;                         one's the links, less its own
+;   PW_HYPK    $CF78 255  for each hypothesis of the theorem, 0 for a syntax statement, else its rank
+;                         among the essential ones
+;   PW_LINKS   $D077 857  the subgoals of the goals one after the other, a goal's number a byte
+;   the stack   down from PW_STACK_TOP $D400: 6 bytes at most, with $10 bytes reserved under the links
+; The walk writes nothing else on the spare page but the reader's bounce buffer, and in bank B only
+; the reader's state: what lib_proof and the record reads write, and lr_bufp, lr_scratch, lr_tr,
+; lr_k and lr_cn for the entries' arguments; and the caller's block. It never writes the kernel's
+; first page, fm's variables, the open mark or FM_STACK, the first $100 bytes of FM_LOW or its
+; bytes from +$E00. The bytes of FM_TOKENS and FM_LOW above belong to the walk from the first
+; write of a start until fm loads a statement or the kernel runs.
+;
+; Fm's statements. A start that returns anything but a refusal before its first write destroys the
+; statements fm has loaded, and fm does not notice: the caller loads them again with fm_assertion
+; or fm_statement. The starts that write nothing on the spare page are the ones that return 4, 2,
+; 5, 3 or 9 from the reader's lookup, 3 for a conclusion it cannot read, 42 for a conclusion of
+; another typecode and 44 for more than 512 references; they leave a table and a walk as they
+; were. A continue that returns 46 and a find that returns 48 write nothing on the spare page and
+; nothing in the block. Any other find writes only the variables of one call, from +$32 of PW_VARS,
+; and a find that returns 0 also the block.
+;
+; What stays valid. The table and the walk's saved state stay valid from the first write of a start
+; until fm loads a statement, the kernel runs, or another start begins. A mark and a sum of the
+; persistent variables tell a continue or a find whether the variables are as a walk left them: a
+; continue acts only on a walk that returned 45, a find only on one that returned 0, and the others
+; are refused. They do not check the tables, so between two slices the caller does not call fm or
+; the kernel, does not start another walk unless it means to drop this one, and does not open
+; another library or close this one: the reader's other routines are fine, and pw_find is refused
+; until the walk ends. The block can differ from one slice to the next.
+;
+; Ports and interrupts. Before the session the walk is the reader's. The session reads the interrupt
+; state with ld a,i twice, turns interrupts off, saves ports 7 and 5 in registers, maps the spare
+; page, stores them and SP in it and switches to the private stack. From the port 5 write to that
+; switch, and from the restore of SP to the port 5 write after it, no instruction touches the stack,
+; which lies in the page being swapped; the same holds between the two port 5 writes of the check a
+; continue and a find make first. Interrupts are off for as long as port 5 or 7 differs from the
+; caller's, which is inside one slice. Every exit of the session, whatever the status, puts port 7
+; back, seals the walk when the entry is not a find and the status is 0 or 45, writes the block when
+; the status is 0 and the entry is not a find, restores SP, then port 5, then turns interrupts on if they were on. The
+; shadow registers are touched only by lr_read, after its own di.
+;
+; Bounds. lib_proof checks that the theorem's record, reference list and proof lie in one 16 KB
+; chunk and inside the library, and the walk reads them from the one page that shows it. The head of
+; another assertion's record is read with each pointer checked against the end of the page it lies
+; in and the end of the library: a directory entry or a record the format forbids, or that leaves
+; its chunk, gives 3.
+;
+; Stack. On the caller's stack a start goes at most 10 bytes below the return address, 2 for the
+; call of lib_proof and its 8; a continue and a find 2, for the call that reads the interrupt state.
+; On the private stack a start and a continue go 6 bytes below its top and a find 4.
+;
+; Statuses, in the order a start finds them. The reader's: 4 before lib_open; 2 for a block not
+; wholly in bank B or touching the state block; lib_proof's, 5 for a number at or past the assertion
+; count, 3 for a record or proof it refuses, 9 for an axiom; 3 for a conclusion with no symbol or
+; one that cannot be read. The walk's own are 32 and up, so that none is a reader's 1 to 10:
+;   PW_ERR_SYNTAX         42  the conclusion starts with another typecode than A
+;   PW_ERR_REFS           44  more than 512 references
+; then, as the reference list is read in order, before the first step, 3 for a referenced assertion's directory entry or record
+; the format forbids or that leaves the library, and
+;   PW_ERR_FORWARD        34  a reference to an assertion at or after the theorem, used or not
+; then, in the order the proof meets them:
+;   PW_ERR_CUT            41  a number of F0h to FEh with no byte after it
+;   PW_ERR_BAD_REF        33  a number past the references and the saved steps made so far
+;   PW_ERR_UNDERFLOW      32  a reference takes more entries than the stack holds
+;   PW_ERR_SAVE_EMPTY     35  a save marker with an empty stack
+;   PW_ERR_SAVED          40  a 513th save marker
+; and in a step that makes a goal, after the underflow check and in this order, for each subgoal in
+; order and then for the goal:
+;   PW_ERR_SUBGOALS       50  a 32nd subgoal of one goal
+;   PW_ERR_LINKS          49  a subgoal past the 857th link of the table
+;   PW_ERR_TOTAL          43  a size past 16,777,215, in the sum or in its one more
+;   PW_ERR_GOALS          38  a 256th distinct goal
+;   PW_ERR_STACK          39  a 257th entry, in the push of the entry the step makes
+; then at the end of the proof:
+;   PW_ERR_NO_ENTRY       36  the stack is empty
+;   PW_ERR_MANY_ENTRIES   37  more than one entry is left
+;   PW_ERR_SYNTAX         42  the one entry is a syntax statement
+; and the ones of the other entries:
+;   PW_ERR_NO_WALK        46  pw_more with no walk that returned 45 to go on
+;   PW_ERR_PLACE          47  pw_find at place 0 or past the total
+;   PW_ERR_NO_TABLE       48  pw_find with no walk that returned 0, or one whose table is not one
+;                             the walk makes
+; pw_more and pw_find give 2 for a block that is not wholly in bank B or touches the state block.
+; The caps on the entries and the saved steps are the kernel's CAP_STACK_ENTRIES and
+; CAP_SAVED_ENTRIES (kernel/ram.inc); the other numbers are PW_MAX_GOALS, PW_MAX_SUBGOALS,
+; PW_MAX_LINKS and PW_MAX_REFS in pw/ram.inc.
+
+#include "pw/ram.inc"
+#include "pw/head.inc"
+#include "pw/steps.inc"
+#include "pw/enter.inc"
+#include "pw/tables.inc"
+#include "pw/find.inc"

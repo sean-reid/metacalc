@@ -265,6 +265,39 @@
 ;                          only scratch of the state block (lr_read's, lr_bufp, lr_len, lr_cn,
 ;                          lr_n, lr_sr, lr_q, lr_k, lr_tr, lr_hdr, lr_win and, for the walk, lr_dc),
 ;                          the bounce buffer and the caller's copy buffer.
+;   lib_proof         in:  HL = assertion number
+;                     out: A = status; on 0 the block lp_page of 13 bytes in the state, which is
+;                          lr_dc, the directory cache, so a status other than 0 leaves it undefined:
+;                            lp_page    $84  1  the flash page holding the record from its first
+;                                               byte to the last byte of its proof
+;                            lp_addr    $85  2  the record's first byte in bank B, $8000 to $BFFF
+;                            lp_refs    $87  3  the library offset of the first reference entry
+;                            lp_nrefs   $8A  2  the reference count
+;                            lp_proof   $8C  3  the library offset of the proof's first byte
+;                            lp_plen    $8F  2  the proof's length in bytes
+;                          The entries are two bytes each, 8000h plus a dummy variable's symbol
+;                          number or an assertion number, and lie at lp_refs; the count is the
+;                          two bytes before lp_refs and the proof's length the two bytes before
+;                          lp_proof. The outputs are a block and not registers because 13 bytes do
+;                          not fit them, and the caller on the data page reads the block in place; a
+;                          caller that maps lp_page in bank B reads the record, the entries and
+;                          the proof from lp_addr on with no second lookup.
+;                          It does not read or judge the proof. Statuses in order: 4 before
+;                          lib_open, 5 for a number at or past the assertion count, then what
+;                          lib_record gives for a record it refuses (3), 9 for an axiom,
+;                          which has no proof, and 3 for a theorem whose record, from its first
+;                          byte to the last byte of its proof, ends past the library or crosses a
+;                          16 KB chunk. The descriptor is filled as lib_record fills it and kept;
+;                          the record window is left where the last read put it, which holds
+;                          library bytes at an offset and is always consistent; on status 0 the
+;                          directory cache is dropped (lr_dcbase = FFFFh) because the block lies in
+;                          it. Every library byte comes through lr_read, so the interrupt rules
+;                          above hold and no shadow register or port is touched outside it. The
+;                          stack goes 8 bytes below the return address on every exit that reads the
+;                          library and 4 on a refusal at open or at the count. Writes only scratch of the state
+;                          block (lr_tr, lr_cn, lr_sr, lr_n, lr_hdr, lr_ent, lr_win, the record
+;                          window's lr_off, lr_hoff, lr_want, lr_wbase, lr_wp and lr_q, and the
+;                          descriptor), the block and the bounce buffer.
 ; Statuses (LIB_ERR_*): 1 offset or length past the library, 2 a count or destination that is
 ; not allowed, 3 bytes the format forbids, 4 lib_open has not succeeded, 5 an assertion,
 ; hypothesis, symbol, title or syntax number out of range, 6 and 7 and 8 a damaged trailer, table
@@ -297,3 +330,4 @@
 #include "lib/shapes.inc"
 #include "lib/kinds.inc"
 #include "lib/order.inc"
+#include "lib/proof.inc"
