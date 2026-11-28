@@ -12,19 +12,14 @@ use mcui::Status;
 /// and each stage's cut name and progress text up to their ends.
 fn built(shell: &mut Shell, stages: usize, names: bool) -> Vec<u8> {
     let label = |shell: &Shell, name: &str| shell.app.label(name);
-    let mut out = shell.app.m.read_ram(label(shell, "APP_COUNTS"), 8 * stages);
-    out.extend(
-        shell
-            .app
-            .m
-            .read_ram(label(shell, "APP_LIST"), 1 + 2 * stages),
-    );
-    out.extend(shell.app.m.read_ram(label(shell, "APP_CRC"), 4));
+    let mut out = shell.peek(label(shell, "APP_COUNTS"), 8 * stages);
+    out.extend(shell.peek(label(shell, "APP_LIST"), 1 + 2 * stages));
+    out.extend(shell.peek(label(shell, "APP_CRC"), 4));
     let at = shell.app.label("LIBS_SLOTS");
     let size = usize::from(shell.app.label("LIBS_SLOT_SIZE"));
     let name = usize::from(shell.app.label("LIBS_NAME"));
     for i in (0..stages).filter(|_| names) {
-        let slot = shell.app.m.read_ram(at + (i * size) as u16, size);
+        let slot = shell.peek(at + (i * size) as u16, size);
         for part in [&slot[..name], &slot[name..]] {
             let end = part
                 .iter()
@@ -75,7 +70,7 @@ fn refreshed(shell: &mut Shell, ui: &mcui::Ui, kind: u8, name: &str) {
     let slots = shell.app.label("LIBS_SLOTS");
     let at = usize::from(slots - shell.app.label("saveSScreen"));
     assert_eq!(
-        shell.app.m.read_ram(slots, 26),
+        shell.peek(slots, 26),
         shell.lcd_bytes()[at..at + 26],
         "{name}: and over the strings"
     );

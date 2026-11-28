@@ -256,7 +256,7 @@ fn checking_key_returns_with_interrupts_on_and_the_speed_it_had_for_f1_clear_and
             let built = proofs();
             let steps = |run: &mut Run| {
                 assert_eq!(run.byte("CKS_PHASE"), PHASE_STEP, "stepping");
-                let values = run.values().expect("a table");
+                let values = run.values_here().expect("a table");
                 let done = values.iter().filter(|&&v| v != 0).count();
                 assert!(
                     done > 0 && done < values.len(),
@@ -280,15 +280,15 @@ fn checking_draw_returns_with_interrupts_on_and_the_speed_it_had_in_every_phase(
         let built = proofs();
         let table = empty_table(built);
         let phase = |r: &mut Run| r.byte("CKS_PHASE");
-        let unsettled = |r: &mut Run| r.values().is_some_and(|v| v.contains(&0));
+        let unsettled = |r: &mut Run| r.values_here().is_some_and(|v| v.contains(&0));
         let mut run = opened(padded(), None, speed);
         call_of(&mut run, "checking_draw", |r| phase(r) == PHASE_READ);
-        assert!(run.values().is_none(), "no table yet");
+        assert!(run.values_here().is_none(), "no table yet");
         let regs = through(&mut run, speed, |_| {});
         as_at_the_call(&mut run, &regs, speed, "reading");
         let mut run = opened(built, Some(&table), speed);
         call_of(&mut run, "checking_draw", |r| {
-            phase(r) == PHASE_STEP && r.settled() > 0 && unsettled(r)
+            phase(r) == PHASE_STEP && r.settled_here() > 0 && unsettled(r)
         });
         let regs = through(&mut run, speed, |_| {});
         as_at_the_call(&mut run, &regs, speed, "steps with a label");

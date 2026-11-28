@@ -42,7 +42,7 @@ const TAP: u32 = 120_000;
 /// it at A95Ch.
 pub const BLITS: u16 = 0xB500;
 const ENTERS: u16 = 0xB510;
-const FLAG: u16 = 0xB520;
+pub const FLAG: u16 = 0xB520;
 pub const SCR_KEYS: u16 = 0xB530;
 const WAITING: u16 = 0xB540;
 const IDLES: u16 = 0xB542;
@@ -53,7 +53,7 @@ const WAITING_HOOK: u16 = 0xB5D8;
 const IDLE_HOOK: u16 = 0xB5E8;
 /// The first and the end of the RAM the rig's counters and hooks use.
 pub const HOOKS: (u16, u16) = (BLIT_HOOK, 0xB600);
-const SAVE_SCREEN: u16 = 0x86EC;
+pub const SAVE_SCREEN: u16 = 0x86EC;
 /// The RAM page the reader puts in bank C for a read window (LIB_SPARE_PAGE in lib/ram.inc).
 const SPARE_PAGE: u8 = 3;
 /// What port 7 reads while bank B shows the RAM the app keeps its variables in.
@@ -287,10 +287,23 @@ impl Shell {
         rest
     }
 
-    fn word(&mut self, at: u16) -> u16 {
+    /// `len` bytes of RAM at `at`, read once the CPU is outside any reader, fm or kernel call that maps
+    /// another bank (`at_rest`).
+    pub fn peek(&mut self, at: u16, len: usize) -> Vec<u8> {
         self.at_rest();
-        let b = self.app.m.read_ram(at, 2);
+        self.app.m.read_ram(at, len)
+    }
+
+    fn word(&mut self, at: u16) -> u16 {
+        let b = self.peek(at, 2);
         u16::from_le_bytes([b[0], b[1]])
+    }
+
+    /// The frame on the canvas, read once the CPU is outside any reader, fm or kernel call that maps
+    /// another bank (`at_rest`).
+    pub fn frame(&mut self) -> Vec<u8> {
+        self.at_rest();
+        self.app.frame()
     }
 
     /// Frames blitted since the boot, the first one included.
@@ -319,6 +332,7 @@ impl Shell {
     }
 
     pub fn flag(&mut self, on: bool) {
+        self.at_rest();
         self.app.m.load_ram(FLAG, &[u8::from(on)]);
     }
 
@@ -428,7 +442,7 @@ impl Shell {
     }
 
     pub fn shows(&mut self, what: &str, want: &[u8]) {
-        same_frame(what, &self.app.frame(), want);
+        same_frame(what, &self.frame(), want);
     }
 
     /// The LCD's pixels packed 8 to a byte, which is what the OS copies over saveSScreen at an
@@ -446,6 +460,7 @@ impl Shell {
     /// What an auto power down does to the app's RAM: the screen's pixels land over saveSScreen.
     pub fn power_down(&mut self) {
         let pixels = self.lcd_bytes();
+        self.at_rest();
         self.app.m.load_ram(SAVE_SCREEN, &pixels);
     }
 
