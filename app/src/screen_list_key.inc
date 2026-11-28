@@ -32,9 +32,10 @@
 ;
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
 ; greatest over a call with interrupts masked, at both speeds, taken over every cursor place of the test
-; lists (list_find_exits.rs on the stub OS, list_find_depth.rs on the reference OS). F2 and CLEAR with or
-; without a find, a letter after a miss and a ninth character write 4; a refused character and a letter
-; with LV_HASO 0 write 2:
+; lists on the stub OS (list_find_exits.rs). The reference OS's figures (list_find_depth.rs) are over ring
+; with 12 moves of an arrow and F3 from items 0, 3 and 40, with no table under All, Theorems and Axioms, so
+; its F3 figure under Axioms is for no table. F2 and CLEAR with or without a find, a letter after a miss
+; and a ninth character write 4; a refused character and a letter with LV_HASO 0 write 2:
 ;                    letter (first, later, miss)   arrow or RIGHT with a find   F3 with a find
 ;                    stub          reference OS     stub    reference OS        stub    reference OS
 ;   All              20            20               6       6                   24      24
