@@ -506,6 +506,20 @@ const EXPECTED: &[Expect] = &[
     },
 ];
 
+/// The addresses below 4000h that a routine's watch must have seen written, which the idle handler's
+/// ticks during a long routine write: the measured count where the routine spans several ticks, else 0.
+fn os_floor(rom: bool, name: &str) -> usize {
+    let (stub, reference) = match name {
+        n if n.starts_with("enter") => (1, 3),
+        n if n.starts_with("first draw") => (1, 2),
+        n if n.starts_with("draw after") => (1, 4),
+        "land unchecked" => (1, 2),
+        "land axioms" | "land nothing" => (0, 2),
+        _ => (0, 0),
+    };
+    if rom { reference } else { stub }
+}
+
 /// The word of a header that names a region of the map.
 fn word(region: &str) -> &str {
     match region {
@@ -603,9 +617,12 @@ fn check(site: &Site) {
         site.name,
         handler.len()
     );
-    assert!(
-        !handler.is_empty(),
-        "the idle run saw the interrupt handler write"
+    let rom = site.name == "reference";
+    assert_eq!(
+        handler.len(),
+        if rom { 21 } else { 6 },
+        "{}: the addresses the idle handler writes",
+        site.name
     );
     for (name, w) in &found {
         let extra: Vec<String> =
@@ -616,6 +633,13 @@ fn check(site: &Site) {
             extra.is_empty(),
             "{} {name}: code below 4000h wrote {extra:?}, which the idle handler does not",
             site.name
+        );
+        assert!(
+            w.os.len() >= os_floor(rom, name),
+            "{} {name}: code below 4000h wrote {} addresses, the handler's at least {}",
+            site.name,
+            w.os.len(),
+            os_floor(rom, name)
         );
     }
     for (name, w) in &found {
