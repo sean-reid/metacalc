@@ -363,6 +363,13 @@ impl Machine {
         self.calc.pc()
     }
 
+    /// The physical address the next instruction is read from, which tells flash pages that map to the same
+    /// logical address apart.
+    pub fn physical_pc(&mut self) -> usize {
+        let pc = self.calc.pc();
+        self.calc.logical_to_physical(pc)
+    }
+
     /// The scancode of the ON key, which `press_key` and `release_key` accept like any other.
     pub const KEY_ON: u8 = 0x29;
 

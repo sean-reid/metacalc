@@ -17,13 +17,14 @@
 ;              has no assertion, and under a kind whenever lf_next does not answer the cursor's
 ;              assertion, as with a filter with no match or a refused read, and otherwise
 ;              KIND_THEOREM for the cursor's assertion (theorem_push). Under a kind they write
-;              LV_KIND, LV_END and LK_FR before the lf_next call. F2 and F4, F3 when LV_HASK is 0, and F5 when
-;              LV_SECT is 1, push the notice. CLEAR pops. Every other key stays.
+;              LV_KIND, LV_END and LK_FR before the lf_next call. F2 and F4, and F3 when LV_HASK is 0, push the
+;              notice. F5 when LV_SECT is 1 pushes the sections screen for the cursor's section (sections_push,
+;              screen_sections.inc) and stays when it is 0. CLEAR pops. Every other key stays.
 
 ; In: A = the key, HL = the frame.
 list_key:
 	cp KEY_UP
-	jr z, lk_move
+	jp z, lk_move
 	cp KEY_DOWN
 	jr z, lk_move
 	cp KEY_LEFT
@@ -45,6 +46,7 @@ list_key:
 	ld a, (LV_SECT)
 	or a
 	jr z, lk_stay
+	jp sections_push
 lk_notice:
 	inc hl
 	ld c, (hl)
