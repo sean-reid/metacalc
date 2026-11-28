@@ -152,7 +152,7 @@ fn each_soft_key_pushes_the_notice_and_the_frame_after_it_is_the_models_refit() 
     let lib = lib_of(built);
     let (n, f) = find(&lib, |f| f.hyps >= 6 && f.rows > 6 && !f.large);
     for how in HOWS {
-        for (scan, key) in [(F2, Key::F2), (F3, Key::F3), (F4, Key::F4)] {
+        for (scan, key) in [(F3, Key::F3), (F4, Key::F4)] {
             let mut walker = prepared(n, how);
             is_in_state(&mut walker, n, f.hyps, how);
             let before = walker.frame();
@@ -288,16 +288,16 @@ fn a_cursor_the_frame_holds_past_the_statements_is_clamped_by_the_enter() {
     let stack = walker.list.run.shell.app.label("SCR_STACK") + 32;
     walker.list.run.m().load_ram(stack + 4, &[99, 250]);
     let depth = walker.list.run.depth();
-    walker.tap(F2);
+    walker.tap(F3);
     walker.list.run.next_blit();
     walker.list.run.run(300_000);
     walker.tap(CLEAR);
     let frame = walker.list.run.next_blit();
     walker.list.run.run(2_000);
     assert_eq!(walker.list.run.depth(), depth);
-    walker.list.ui.press(Key::F2);
+    walker.list.ui.press(Key::F3);
     walker.list.ui.press(Key::Clear);
-    walker.list.log.extend([Key::F2, Key::Clear]);
+    walker.list.log.extend([Key::F3, Key::Clear]);
     same_frame("clamped", &frame, &walker.list.shown());
     assert_eq!(
         walker.frame()[4],
@@ -444,7 +444,7 @@ fn a_theorem_that_fails_to_enter_on_an_uncovering_keeps_its_frame_under_the_erro
         let at = stub.to_string();
         let mut walker = Walker::at(built, None, 0, 4);
         walker.press(DOWN, Key::Down);
-        walker.tap(F2);
+        walker.tap(F3);
         walker.list.run.next_blit();
         walker.list.run.run(300_000);
         let frames = walker.list.run.frames();

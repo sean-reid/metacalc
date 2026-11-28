@@ -85,7 +85,7 @@ fn a_refit_that_takes_the_rows_under_six_clamps_a_scrolled_view_to_the_top() {
         scroll(&walker) > 0 && walker.var16("TV_TOTAL") >= 8,
         "the precondition"
     );
-    walker.excursion(F2, Key::F2);
+    walker.excursion(F3, Key::F3);
     assert_eq!(
         walker.var16("TV_TOTAL"),
         f.rows,

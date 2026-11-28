@@ -57,7 +57,7 @@ fn a_refusal_in_an_uncovering_enter_at_a_later_call_keeps_the_frame_under_the_no
     ] {
         let at = format!("{stub} at call {call}");
         let mut walker = prepared(n, "hypothesis");
-        walker.tap(F2);
+        walker.tap(F3);
         walker.list.run.next_blit();
         walker.list.run.run(300_000);
         let frames = walker.list.run.frames();

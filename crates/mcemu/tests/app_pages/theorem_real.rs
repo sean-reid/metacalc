@@ -37,7 +37,7 @@ thread_local! {
 
 /// A call on the entry page, timed, or with `STRETCH` the longest run of T-states in it with
 /// interrupts off, the call starting with them on. The result is in `tstates`.
-fn measure(app: &mut App, target: u16, input: In) -> Done {
+pub fn measure(app: &mut App, target: u16, input: In) -> Done {
     if !STRETCH.get() {
         return app.timed(BASE, target, input);
     }
@@ -104,7 +104,7 @@ fn measure(app: &mut App, target: u16, input: In) -> Done {
 }
 
 /// scr_draw then ui_blit for the screen on top, timed, and each of the two.
-fn timed_frame_split(app: &mut App) -> (u32, u32, u32) {
+pub fn timed_frame_split(app: &mut App) -> (u32, u32, u32) {
     let draw = app.label("scr_draw");
     let draw = measure(app, draw, In::default()).tstates;
     let blit = app.label("far_ui_blit");
@@ -117,24 +117,29 @@ fn timed_frame_split(app: &mut App) -> (u32, u32, u32) {
     (both, draw, blit)
 }
 
-fn timed_frame(app: &mut App) -> u32 {
+pub fn timed_frame(app: &mut App) -> u32 {
     timed_frame_split(app).0
 }
 
 /// The app on the reference OS with the list of `stage` open, and the labels the cost walks use.
 pub struct Rom {
     pub list: Lister,
-    stack: u16,
-    count: u16,
-    new: u16,
-    tag: u16,
+    pub stack: u16,
+    pub count: u16,
+    pub new: u16,
+    pub tag: u16,
     /// The key, the draw and the blit of the last `press`, in T-states.
     pub last: (u32, u32, u32),
 }
 
 impl Rom {
     pub fn open(stage: usize) -> Rom {
-        let mut list = Lister::on_rom(stage);
+        Rom::open_of(shipped_staged(), stage)
+    }
+
+    /// `open` for the app in `built`.
+    pub fn open_of(built: &'static Built, stage: usize) -> Rom {
+        let mut list = Lister::on_rom_of(built, stage);
         list.open_on_rom();
         let app = &mut list.run.shell.app;
         Rom {

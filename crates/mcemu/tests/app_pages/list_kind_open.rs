@@ -226,7 +226,7 @@ fn a_notice_popped_over_a_theorem_opened_from_a_filtered_list_gives_back_the_the
                 off_the_cursor += usize::from(before[2..4] != before[4..6]);
                 assert!(walker.key(scan, key), "{at}");
                 assert_eq!(walker.list.run.top_kind(), KIND_THEOREM, "{at}");
-                walker.excursion(F2, Key::F2);
+                walker.excursion(F3, Key::F3);
                 walker.back();
                 let after = walker.list.run.frames()[1].clone();
                 assert_eq!(

@@ -57,7 +57,7 @@ fn under_a_folded_root(built: &'static Built, s: usize) -> Walker {
     assert!(walker.press(ENTER, Key::Enter), "the root is unfolded");
     assert!(walker.press(DOWN, Key::Down), "the cursor goes under it");
     assert_eq!(cursor(&walker), (s, 1));
-    walker.excursion(F2, Key::F2);
+    walker.excursion(F3, Key::F3);
     let mirror = walker.mirror();
     assert!(
         mirror.is_folded(s, 0),
