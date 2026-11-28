@@ -148,7 +148,7 @@ fn a_capital_and_its_lowercase_give_the_same_frame_and_the_underscore_is_taken()
 
 /// The library with its label order section's row cut out, the count in the trailer one lower, and the
 /// header's length and CRC fixed.
-fn without_order(bytes: &[u8]) -> Vec<u8> {
+pub fn without_order(bytes: &[u8]) -> Vec<u8> {
     use mcpack::library::{ENTRY_LEN, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION, crc32};
     let count = usize::from(bytes[bytes.len() - TRAILER_LEN]);
     let first = bytes.len() - TRAILER_LEN - count * ENTRY_LEN;
@@ -169,19 +169,27 @@ fn without_order(bytes: &[u8]) -> Vec<u8> {
     out
 }
 
+/// The pattern library of eleven assertions with no label order section, as one stage.
+pub fn stripped_built() -> &'static crate::app::Built {
+    static BUILT: std::sync::OnceLock<&'static crate::app::Built> = std::sync::OnceLock::new();
+    BUILT.get_or_init(|| {
+        let library = without_order(&pattern_library("TATATATATAT"));
+        let end = crate::table::header_of(&library).1 as usize;
+        staged_with(
+            "pages-find-stripped",
+            &library,
+            &[mcui::Stage {
+                name: "Kinds".into(),
+                title: "Kinds".into(),
+                end,
+            }],
+        )
+    })
+}
+
 #[test]
 fn a_library_with_no_label_order_section_keeps_the_notice_on_f2_and_ignores_letters() {
-    let library = without_order(&pattern_library("TATATATATAT"));
-    let end = crate::table::header_of(&library).1 as usize;
-    let built = staged_with(
-        "pages-find-stripped",
-        &library,
-        &[mcui::Stage {
-            name: "Kinds".into(),
-            title: "Kinds".into(),
-            end,
-        }],
-    );
+    let built = stripped_built();
     let mut list = Lister::open(built, None, 0);
     list.settle();
     assert_eq!(list.var("LV_HASO"), 0);

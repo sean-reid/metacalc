@@ -107,6 +107,8 @@ mod list_depth;
 mod list_exits;
 #[path = "app_pages/list_fail.rs"]
 mod list_fail;
+#[path = "app_pages/list_find_arms.rs"]
+mod list_find_arms;
 #[path = "app_pages/list_find_cost.rs"]
 mod list_find_cost;
 #[path = "app_pages/list_find_every.rs"]
@@ -129,6 +131,10 @@ mod list_find_rig;
 mod list_find_rom;
 #[path = "app_pages/list_find_runs.rs"]
 mod list_find_runs;
+#[path = "app_pages/list_find_wait.rs"]
+mod list_find_wait;
+#[path = "app_pages/list_find_start.rs"]
+mod list_find_start;
 #[path = "app_pages/list_frames.rs"]
 mod list_frames;
 #[path = "app_pages/list_keys.rs"]

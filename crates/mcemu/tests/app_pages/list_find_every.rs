@@ -17,6 +17,9 @@ fn every_label_typed_to_the_cap_lands_where_the_model_lands_it_under_each_kind()
         (Kind::Axioms, false),
         (Kind::Unchecked, true),
         (Kind::Unchecked, false),
+        (Kind::All, true),
+        (Kind::Theorems, true),
+        (Kind::Axioms, true),
     ] {
         let stages: &[usize] = if kind == Kind::All {
             &[0, 1, 2]

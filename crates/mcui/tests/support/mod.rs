@@ -101,6 +101,12 @@ ${
 $}
 ";
 
+/// The logic library with two more axioms whose labels are eight of the widest characters.
+pub fn wide_ui() -> Ui {
+    let src = format!("{LOGIC}\nmmmmmmmm $a |- ph $.\nvwvwvwvw $a |- ph $.\n");
+    ui_over(pack_all(&db(&src)).expect("the wide labels pack"), &[], &[])
+}
+
 pub fn extra_bytes() -> Vec<u8> {
     let src = format!("{LOGIC}{EXTRA}");
     let bytes = pack_all(&db(&src)).expect("the extended logic packs");

@@ -21,6 +21,9 @@ fn cases() -> Vec<(Kind, bool)> {
         (Kind::Axioms, false),
         (Kind::Unchecked, true),
         (Kind::Unchecked, false),
+        (Kind::All, true),
+        (Kind::Theorems, true),
+        (Kind::Axioms, true),
     ]
 }
 
