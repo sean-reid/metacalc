@@ -148,7 +148,11 @@ pub struct Machine {
     os: bool,
     /// The scancodes pressed and not yet released, one bit each.
     down: u64,
+    on_press: Option<PressHook>,
 }
+
+/// A call made with the machine and the scancode just before `press_key` presses it.
+pub type PressHook = Box<dyn FnMut(&mut Machine, u8) + Send>;
 
 impl Machine {
     /// Loads `rom`, resets, and runs the boot code up to `ENTRY`.
@@ -159,6 +163,7 @@ impl Machine {
                 apps: Default::default(),
                 os: false,
                 down: 0,
+                on_press: None,
             })
             .ok_or(BootError)
     }
@@ -173,6 +178,7 @@ impl Machine {
                 apps: Default::default(),
                 os: true,
                 down: 0,
+                on_press: None,
             })
             .ok_or(BootError)
     }
@@ -373,7 +379,22 @@ impl Machine {
     /// The scancode of the ON key, which `press_key` and `release_key` accept like any other.
     pub const KEY_ON: u8 = 0x29;
 
+    /// Calls `hook` with the machine and the scancode at the start of every `press_key`, before the
+    /// key goes down, replacing a hook set before; `None` removes it.
+    pub fn set_press_hook(&mut self, hook: Option<PressHook>) {
+        self.on_press = hook;
+    }
+
     pub fn press_key(&mut self, scancode: u8) {
+        if let Some(mut hook) = self.on_press.take() {
+            let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                hook(self, scancode);
+            }));
+            self.on_press.get_or_insert(hook);
+            if let Err(panic) = run {
+                std::panic::resume_unwind(panic);
+            }
+        }
         self.down |= 1u64.checked_shl(scancode.into()).unwrap_or(0);
         self.calc.key(scancode, true);
     }

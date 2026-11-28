@@ -10,6 +10,12 @@ use crate::table;
 use crate::ui_support::same_frame;
 use mcemu::{Machine, Reached};
 use mcui::{Installed, Key, Status};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
+#[path = "checkrig_scans.rs"]
+mod scans_count;
+use scans_count::RELEASE_SCANS;
+pub use scans_count::Scans;
 
 /// The counters of the kernel's verify, crc_begin and crc_chunk entries and their hooks, in RAM the
 /// rig's hooks leave free.
@@ -21,34 +27,25 @@ const HOOKS_AT: u16 = 0xBC10;
 const ON_FLAGS: u16 = 0x89F9;
 /// The most T-states one wait for a frame or a key may take.
 pub const WAIT: u32 = 600_000_000;
-/// The scans with no key down after which the OS takes the key it took last again, the most T-states
-/// those take (46 ms at 15 MHz is 700,000), and the steps the wait for them runs in.
-const RELEASE_SCANS: usize = 5;
-/// The writes to port 1 of a scan that finds no key down: 00h and FFh.
-const EMPTY_SCAN_WRITES: usize = 2;
+/// The most T-states the wait for five scans may take (five scans of 9.28 ms at 15 MHz are 696,000),
+/// and the steps it runs in.
 const RELEASE_LIMIT: u32 = 1_200_000;
 const RELEASE_STEP: u32 = 3_000;
 /// The steps between two frames of the screen, CKS_EVERY in screen_checking.inc.
 pub const EVERY: usize = 32;
+
+fn scans(shared: &Mutex<Scans>) -> MutexGuard<'_, Scans> {
+    shared.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 pub struct Run {
     pub shell: Shell,
     pub built: &'static Built,
     /// Whether the machine runs the reference OS, whose variables are read from its symbol table.
     pub real: bool,
-    /// The key last let go with `release` and the keypad scans since, until another key is pressed.
-    released: Option<(u8, usize)>,
+    /// The keypad scans since the key last let go with `release`, shared with the machine's press hook.
+    scans: Arc<Mutex<Scans>>,
     pub released_at: u32,
-    /// Whether a write of 00h to port 1 has come since the last other port's write, the port 1 writes
-    /// of that scan so far, and the writes of the scan an 08h acknowledge closed that no 09h has
-    /// followed yet.
-    scan_open: bool,
-    scan_writes: usize,
-    scan_pending: Option<usize>,
-    /// The interrupts acknowledged with 09h since the release, for the message of a wait that fails.
-    acks: usize,
-    /// Whether the test presses the key it just let go raw, to test the gap.
-    raw_press_allowed: bool,
 }
 
 /// Puts the counters and hooks of the kernel's entries in a machine the app is installed on.
@@ -85,13 +82,8 @@ impl Run {
             shell,
             built,
             real: false,
-            released: None,
+            scans: Arc::default(),
             released_at: 0,
-            scan_open: false,
-            scan_writes: 0,
-            scan_pending: None,
-            acks: 0,
-            raw_press_allowed: false,
         }
     }
 
@@ -102,13 +94,8 @@ impl Run {
             shell,
             built,
             real: true,
-            released: None,
+            scans: Arc::default(),
             released_at: 0,
-            scan_open: false,
-            scan_writes: 0,
-            scan_pending: None,
-            acks: 0,
-            raw_press_allowed: false,
         }
     }
 
@@ -148,11 +135,9 @@ impl Run {
         self.frames().last().unwrap()[0]
     }
 
-    /// The machine. While the key last let go with `release` is within its gap, a raw press of it
-    /// is ignored by the OS, so it panics here, at the first use after the press; a test about
-    /// that gap calls `allow_raw_press` once for each gap. The guard sees only presses made through
-    /// this `Run`'s `m()`: a press through `shell.app.m`, `Shell::press`, `Shell::leave`,
-    /// `Shell::tap_lost`, or through a `&mut Machine` kept across the window is not covered.
+    /// The machine. While the key last let go with `release` is within its gap, a press of it by
+    /// any path is ignored by the OS, so the machine's `press_key` panics; a test about that gap
+    /// calls `allow_raw_press` once for each gap.
     pub fn m(&mut self) -> &mut Machine {
         self.count_scans();
         &mut self.shell.app.m
@@ -161,65 +146,17 @@ impl Run {
     /// Lets the test press the key it just let go without waiting, which the OS ignores inside the
     /// gap. It covers the gap of the last `release` and ends at the next `release` or `press`.
     pub fn allow_raw_press(&mut self) {
-        self.raw_press_allowed = true;
+        scans(&self.scans).raw_press_allowed = true;
     }
 
     /// The keypad scans counted since the last `release`, 0 when none has been made.
     pub fn scans_since_release(&mut self) -> usize {
         self.count_scans();
-        self.released.map_or(0, |(_, seen)| seen)
+        scans(&self.scans).seen()
     }
 
-    /// Adds the scans with no key down since the last count to the release's. The OS takes the key it
-    /// took last again only after its fifth such scan, and scans only in an interrupt, so the count is
-    /// of scans, not of time or of acknowledges. A scan is a write of 00h to port 1 and then FFh, 2
-    /// writes with no key down and 18 with one, in an interrupt that goes on to acknowledge with 08h
-    /// and 09h to port 3, with nothing but port 1 between the scan and the 08h. On the stub OS and at
-    /// the app's idle point on the reference OS every timer interrupt scans, one in 9.28 ms. In the
-    /// reference OS's key wait, pc 03A1 on page 06, where the shell sits between keys, three
-    /// interrupts come in 9.28 ms and one scans: the other two have port 4 status 0Ch or 0Eh and
-    /// acknowledge 08h, 09h without a write to port 1. The scan code byte cannot stand for the event:
-    /// the shell's key read has zeroed it before the release, and the last-key byte the stub clears at
-    /// the fifth scan the reference OS never clears. A stretch with interrupts off, as in the theorem's
-    /// enter, has no scan, and a key pressed in it is held down through the first scans after it and
-    /// ignored while it is held. An ON edge acknowledges with 08h alone and is not a scan. The figures
-    /// are measured at 6 MHz.
     fn count_scans(&mut self) {
-        let Some((scan, seen)) = &mut self.released else {
-            return;
-        };
-        let m = &mut self.shell.app.m;
-        let (writes, full) = m.take_port_writes_or_full();
-        for w in &writes {
-            match (w.port, w.value) {
-                (1, 0) => {
-                    self.scan_open = true;
-                    self.scan_writes = 1;
-                }
-                (1, _) if self.scan_open => self.scan_writes += 1,
-                (1, _) => {}
-                (3, 8) => {
-                    self.scan_pending = self.scan_open.then_some(self.scan_writes);
-                    self.scan_open = false;
-                }
-                (3, 9) => {
-                    self.acks += 1;
-                    *seen += usize::from(self.scan_pending.take() == Some(EMPTY_SCAN_WRITES));
-                }
-                _ => self.scan_open = false,
-            }
-        }
-        assert!(
-            !full || *seen >= RELEASE_SCANS,
-            "the port record filled with {seen} scans and {} interrupts counted after the release of \
-             {scan:02X}",
-            self.acks
-        );
-        assert!(
-            self.raw_press_allowed || *seen >= RELEASE_SCANS || !m.key_is_down(*scan),
-            "key {scan:02X} was pressed with the machine's press_key {seen} scans after its \
-             release, which the OS ignores before the fifth: use Run::press"
-        );
+        scans(&self.scans).count(&mut self.shell.app.m);
     }
 
     /// How many times the kernel's verify has been called since the boot.
@@ -307,10 +244,17 @@ impl Run {
     pub fn release(&mut self, scan: u8) {
         self.m().release_key(scan);
         self.m().clear_port_writes();
-        self.released = Some((scan, 0));
+        scans(&self.scans).release(scan);
+        let shared = Arc::clone(&self.scans);
+        self.shell
+            .app
+            .m
+            .set_press_hook(Some(Box::new(move |m, key| {
+                let mut counted = scans(&shared);
+                counted.count(m);
+                counted.check_press(key);
+            })));
         self.released_at = self.shell.app.m.clock();
-        (self.scan_open, self.scan_pending, self.acks) = (false, None, 0);
-        self.raw_press_allowed = false;
     }
 
     /// Presses `scan`, after running on until five scans have followed the last `release` if
@@ -319,11 +263,16 @@ impl Run {
         let mut waited = 0;
         loop {
             self.count_scans();
-            let seen = match self.released {
-                Some((key, seen)) if key == scan && seen < RELEASE_SCANS => seen,
-                _ => break,
+            let (seen, acks) = {
+                let counted = scans(&self.scans);
+                match counted.released {
+                    Some((key, seen)) if key == scan && seen < RELEASE_SCANS => {
+                        (seen, counted.acks)
+                    }
+                    _ => break,
+                }
             };
-            let (acks, bytes) = (self.acks, self.os_bytes());
+            let bytes = self.os_bytes();
             assert!(
                 waited < RELEASE_LIMIT,
                 "{seen} scans and {acks} interrupts in {waited} T-states after the release of \
@@ -333,8 +282,12 @@ impl Run {
             self.run(RELEASE_STEP);
             waited += RELEASE_STEP;
         }
-        self.released = None;
-        self.raw_press_allowed = false;
+        {
+            let mut counted = scans(&self.scans);
+            counted.released = None;
+            counted.raw_press_allowed = false;
+        }
+        self.shell.app.m.set_press_hook(None);
         self.shell.app.m.press_key(scan);
     }
 

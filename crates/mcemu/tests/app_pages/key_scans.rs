@@ -19,8 +19,10 @@ const T_PER_MS: u32 = 6_000;
 const EMPTY_SCANS: usize = 5;
 /// Writes to port 1 in a scan that finds no key down: 00h and FFh.
 const EMPTY_WRITES: usize = 2;
-/// The gaps, in ms after the first CLEAR's release, at which the second CLEAR is pressed.
-const GAPS: [u32; 6] = [15, 30, 40, 46, 60, 300];
+/// The gaps, in ms after the first CLEAR's release, at which the second CLEAR is pressed. On the stub
+/// the theorem's enter and draw run with interrupts off for the first 190 ms, so 210 and 220 are the
+/// gaps that put four and five scans before the press.
+const GAPS: [u32; 8] = [15, 30, 40, 46, 60, 210, 220, 300];
 
 struct Irq {
     at: u32,
@@ -159,6 +161,7 @@ struct Outcome {
 /// the release on to `after_ms` after the press, and whether the key reached scr_key.
 fn press_again(w: &mut Walker, real: bool, gap_ms: u32) -> Outcome {
     tap(&mut w.list, CLEAR);
+    w.list.run.allow_raw_press();
     let t0 = w.list.run.released_at;
     let m = &mut w.list.run.shell.app.m;
     let before = scr_keys(m);
@@ -213,11 +216,30 @@ fn the_same_key_is_taken_after_five_empty_scans_and_not_before(real: bool) {
         "{} OS: (gap ms, empty scans before the press, taken) {seen:?}",
         os(real)
     );
-    assert!(
-        seen.iter().any(|s| s.2) && seen.iter().any(|s| !s.2),
-        "{} OS: some gaps are taken and some are lost: {seen:?}",
-        os(real)
-    );
+    let want: [(u32, usize, bool); 8] = if real {
+        [
+            (15, 0, false),
+            (30, 1, false),
+            (40, 3, false),
+            (46, 4, false),
+            (60, 5, true),
+            (210, 21, true),
+            (220, 22, true),
+            (300, 31, true),
+        ]
+    } else {
+        [
+            (15, 0, false),
+            (30, 0, false),
+            (40, 1, false),
+            (46, 1, false),
+            (60, 1, false),
+            (210, 4, false),
+            (220, 5, true),
+            (300, 14, true),
+        ]
+    };
+    assert_eq!(seen, want, "{} OS: (gap ms, empty scans, taken)", os(real));
 }
 
 twin!(
