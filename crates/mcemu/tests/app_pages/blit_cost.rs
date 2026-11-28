@@ -20,7 +20,7 @@ fn timed(app: &mut App, name: &str, input: In) -> u32 {
 /// One call of ui_text, "Metamath" at x 1 on row 3: the cost with whatever the canvas does to mark.
 fn text_cost(app: &mut App) -> u32 {
     let codes = mcglyph::z80::Table::builtin().encode("Metamath");
-    app.m.load_ram(STRING, &codes);
+    app.poke(STRING, &codes);
     timed(
         app,
         "far_ui_text",

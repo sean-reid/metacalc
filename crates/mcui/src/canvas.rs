@@ -201,6 +201,16 @@ impl Canvas {
         }
     }
 
+    /// A canvas that starts with the pixels of `bitmap`, a screen's size.
+    #[doc(hidden)]
+    pub fn with_bitmap(bitmap: Bitmap) -> Self {
+        assert!(bitmap.width() == WIDTH && bitmap.height() == HEIGHT);
+        Canvas {
+            bitmap,
+            ..Canvas::default()
+        }
+    }
+
     pub fn into_bitmap(self) -> Bitmap {
         self.bitmap
     }
@@ -717,13 +727,31 @@ mod tests {
         canvas.clear_rows(2, 3);
         assert_eq!(
             rows_after(&canvas),
-            [Some(0), Some(1), None, None, None, Some(5), Some(6), Some(7)]
+            [
+                Some(0),
+                Some(1),
+                None,
+                None,
+                None,
+                Some(5),
+                Some(6),
+                Some(7)
+            ]
         );
         let mut canvas = striped();
         canvas.clear_rows(6, 5);
         assert_eq!(
             rows_after(&canvas),
-            [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), None, None]
+            [
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                None,
+                None
+            ]
         );
         for (first, count) in [(0, 0), (3, 0), (8, 2), (200, 1), (usize::MAX, usize::MAX)] {
             let mut canvas = striped();
@@ -742,13 +770,31 @@ mod tests {
         canvas.shift_rows(1, 4, true);
         assert_eq!(
             rows_after(&canvas),
-            [Some(0), Some(2), Some(3), Some(4), None, Some(5), Some(6), Some(7)]
+            [
+                Some(0),
+                Some(2),
+                Some(3),
+                Some(4),
+                None,
+                Some(5),
+                Some(6),
+                Some(7)
+            ]
         );
         let mut canvas = striped();
         canvas.shift_rows(0, 8, true);
         assert_eq!(
             rows_after(&canvas),
-            [Some(1), Some(2), Some(3), Some(4), Some(5), Some(6), Some(7), None]
+            [
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(6),
+                Some(7),
+                None
+            ]
         );
     }
 
@@ -758,13 +804,31 @@ mod tests {
         canvas.shift_rows(1, 4, false);
         assert_eq!(
             rows_after(&canvas),
-            [Some(0), None, Some(1), Some(2), Some(3), Some(5), Some(6), Some(7)]
+            [
+                Some(0),
+                None,
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(5),
+                Some(6),
+                Some(7)
+            ]
         );
         let mut canvas = striped();
         canvas.shift_rows(0, 8, false);
         assert_eq!(
             rows_after(&canvas),
-            [None, Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), Some(6)]
+            [
+                None,
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(6)
+            ]
         );
     }
 
@@ -775,20 +839,47 @@ mod tests {
             canvas.shift_rows(4, 1, up);
             assert_eq!(
                 rows_after(&canvas),
-                [Some(0), Some(1), Some(2), Some(3), None, Some(5), Some(6), Some(7)]
+                [
+                    Some(0),
+                    Some(1),
+                    Some(2),
+                    Some(3),
+                    None,
+                    Some(5),
+                    Some(6),
+                    Some(7)
+                ]
             );
         }
         let mut canvas = striped();
         canvas.shift_rows(6, 9, true);
         assert_eq!(
             rows_after(&canvas),
-            [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), Some(7), None]
+            [
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(7),
+                None
+            ]
         );
         let mut canvas = striped();
         canvas.shift_rows(6, 9, false);
         assert_eq!(
             rows_after(&canvas),
-            [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), None, Some(6)]
+            [
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                None,
+                Some(6)
+            ]
         );
         for (first, count, up) in [(0, 0, true), (5, 0, false), (8, 3, true), (9, 3, false)] {
             let mut canvas = striped();

@@ -166,7 +166,10 @@ pub fn expected(frame: &[u8], mask: u8) -> Vec<(u8, u8)> {
 }
 
 pub fn writes(got: &Outcome) -> Vec<(u8, u8)> {
-    got.lcd_writes.iter().map(|w: &PortWrite| (w.port, w.value)).collect()
+    got.lcd_writes
+        .iter()
+        .map(|w: &PortWrite| (w.port, w.value))
+        .collect()
 }
 
 /// The mask FFh's writes written out by hand: 26 commands and 768 data bytes.

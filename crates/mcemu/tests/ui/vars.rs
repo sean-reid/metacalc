@@ -25,6 +25,8 @@ fn twice(calls: &[Call], restore: &[Op]) -> Outcome {
     }
     script.push(Op::ClearVars);
     script.extend_from_slice(restore);
+    // zeroed variables hold no mask, so the blit is told every row
+    script.push(Op::SetVar(crate::masks::dirty_at(), 0xFF));
     script.push(Op::Blit);
     run(REAL, &script)
 }

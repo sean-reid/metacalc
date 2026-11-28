@@ -18,6 +18,8 @@ mod frames;
 mod marks;
 #[path = "ui/masks.rs"]
 mod masks;
+#[path = "ui/rows.rs"]
+mod rows;
 #[path = "ui/shapes.rs"]
 mod shapes;
 #[path = "ui/speed.rs"]
