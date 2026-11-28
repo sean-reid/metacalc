@@ -6,7 +6,13 @@
 ; no table), or under Unchecked with a table one far_lib_find_copy and one store_least_not_one for each run of
 ; at most 127 entries of the range, the best so far as the limit. After a hit the first row takes at most four
 ; lf_next calls and, when fewer than four shown assertions follow, one lf_prev and the four of lf_back4: nine at
-; most, and none of them reads anything under All.
+; most, and none of them reads anything under All. A read refused in that walk is no miss: the cursor and
+; bytes 7 to 15 of the frame stay the hit's. A refused far_lib_kind_next answers LV_END, which ends the lf_next
+; calls as the end of the list does, and the first row is placed as with no refusal. A refused far_lib_kind_prev
+; answers none: at the lf_prev call the first row stays on the hit, and at a call of lf_back4 it is the last
+; assertion that walk reached, or the hit when that one lies after it. A table lost in the walk shows every
+; assertion from that call on, so the first row may be one Unchecked hides, and after a table lost in lf_back4 it
+; can be more than four rows before the cursor.
 ; Statuses: a status other than 0 from far_lib_find_range, far_lib_find_walk or far_lib_find_copy is a miss; one
 ; from store_least_not_one shows every assertion, as lf_next does. A miss sets bit 7 of byte 7 and moves nothing.
 ; Writes: the frame's bytes 2 to 5 and 7 to 15, LV_PREVIEW and LV_COUNT, LV_KIND, LV_END, LK_FR, LK_CUR, LK_T,
@@ -133,7 +139,8 @@ list_find_again:
 ; search starts at. Looks the prefix up in the label order, and on a hit moves the frame's cursor to
 ; the first assertion from HL on that the kind shows and whose label starts with it, and the first row
 ; to that assertion, or to the fifth from the last shown when fewer than four shown assertions follow
-; it. A miss, or a status other than 0 from a reader call, sets the miss bit and moves nothing.
+; it. A miss, or a status other than 0 from far_lib_find_range, far_lib_find_walk or far_lib_find_copy, sets the
+; miss bit and moves nothing.
 list_find:
 	ld (LF_START), hl
 	ld hl, (LV_END)

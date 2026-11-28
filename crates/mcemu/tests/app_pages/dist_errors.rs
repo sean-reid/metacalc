@@ -19,7 +19,7 @@ fn on_theorem() -> Walker {
 }
 
 /// The model's frame with its title bar taken from a title of `left` and `right`.
-fn with_title(frame: &[u8], left: &str, right: &str) -> Vec<u8> {
+pub fn with_title(frame: &[u8], left: &str, right: &str) -> Vec<u8> {
     let mut canvas = Canvas::default();
     canvas.title(left, right);
     let bar = pack(&canvas.into_bitmap());
@@ -29,7 +29,7 @@ fn with_title(frame: &[u8], left: &str, right: &str) -> Vec<u8> {
 }
 
 /// The model's frame with the rows under the title blank.
-fn without_rows(frame: &[u8]) -> Vec<u8> {
+pub fn without_rows(frame: &[u8]) -> Vec<u8> {
     let mut out = frame.to_vec();
     out[8 * 12..56 * 12].fill(0);
     out

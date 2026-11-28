@@ -53,12 +53,16 @@ mod counts;
 mod data;
 #[path = "app_pages/dist_boundary.rs"]
 mod dist_boundary;
+#[path = "app_pages/dist_corrupt.rs"]
+mod dist_corrupt;
 #[path = "app_pages/dist_depth.rs"]
 mod dist_depth;
 #[path = "app_pages/dist_errors.rs"]
 mod dist_errors;
 #[path = "app_pages/dist_far.rs"]
 mod dist_far;
+#[path = "app_pages/dist_forced.rs"]
+mod dist_forced;
 #[path = "app_pages/dist_frames.rs"]
 mod dist_frames;
 #[path = "app_pages/dist_handler.rs"]
@@ -182,6 +186,8 @@ mod list_find_start;
 mod list_find_title;
 #[path = "app_pages/list_find_wait.rs"]
 mod list_find_wait;
+#[path = "app_pages/list_find_walk.rs"]
+mod list_find_walk;
 #[path = "app_pages/list_frames.rs"]
 mod list_frames;
 #[path = "app_pages/list_keys.rs"]

@@ -1,6 +1,6 @@
 //! Every arm of list_key the find adds on the reference OS with the shipped libraries, ignored in the
 //! default run: the stack each writes, interrupts and the speed at the exit, and what it answers, under
-//! each kind and, for Unchecked, with and without a table.
+//! each kind, with and without a table.
 
 use crate::built::staged_with;
 use crate::list_find_arms::*;
@@ -9,10 +9,13 @@ use crate::list_real::PROP;
 use mcui::{Kind, Status};
 use std::collections::BTreeMap;
 
-const CASES: [(Kind, bool); 5] = [
+const CASES: [(Kind, bool); 8] = [
     (Kind::All, false),
+    (Kind::All, true),
     (Kind::Theorems, false),
+    (Kind::Theorems, true),
     (Kind::Axioms, false),
+    (Kind::Axioms, true),
     (Kind::Unchecked, true),
     (Kind::Unchecked, false),
 ];
@@ -53,6 +56,11 @@ fn on_the_reference_os_every_arm_keeps_interrupts_and_speed_and_writes_these_dep
         let open = || {
             let mut list = ring(table.then_some(&status[..]));
             list.go_to_kind(kind);
+            assert_eq!(
+                list.var("LV_TABLE"),
+                u8::from(table),
+                "{kind:?}: the list has the table the case names"
+            );
             list
         };
         for speed in [0, 1] {
@@ -101,7 +109,8 @@ fn expected(kind: Kind, table: bool) -> BTreeMap<&'static str, u16> {
     let row: [u16; 12] = match (kind, table) {
         (Kind::All, _) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 6, 6, 24],
         (Kind::Theorems, _) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 22, 22, 24],
-        (Kind::Axioms, _) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 22, 22, 20],
+        (Kind::Axioms, false) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 22, 22, 20],
+        (Kind::Axioms, true) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 22, 22, 42],
         (Kind::Unchecked, true) => [40, 40, 36, 4, 4, 2, 4, 4, 4, 40, 40, 36],
         (Kind::Unchecked, false) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 10, 10, 20],
     };

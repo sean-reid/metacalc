@@ -33,18 +33,20 @@
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, the
 ; greatest over a call with interrupts masked, at both speeds, taken over every cursor place of the test
 ; lists on the stub OS (list_find_exits.rs). The reference OS's figures (list_find_depth.rs) are over ring
-; with 12 moves of an arrow and F3 from items 0, 3 and 40, with no table under All, Theorems and Axioms, so
-; its F3 figure under Axioms is for no table. F2 and CLEAR with or without a find, a letter after a miss
-; and a ninth character write 4; a refused character and a letter with LV_HASO 0 write 2:
+; with 12 moves of an arrow and F3 from items 0, 3 and 40, with and without a table under every kind. A table
+; changes nothing under All and Theorems, on the stub OS (list_find_exits.rs) as on the reference OS, and under
+; Axioms only F3. F2 and CLEAR with or without a find, a letter after a miss and a ninth character write 4; a
+; refused character and a letter with LV_HASO 0 write 2:
 ;                    letter (first, later, miss)   arrow or RIGHT with a find   F3 with a find
 ;                    stub          reference OS     stub    reference OS        stub    reference OS
 ;   All              20            20               6       6                   24      24
 ;   Theorems         20            20               22      22                  24      24
-;   Axioms           20            20               22      22                  20      20
+;   Axioms, none     20            20               22      22                  20      20
+;   Axioms, table    20            20               22      22                  28      42
 ;   Unchecked, table 26            40 (miss 36)     26      40                  22      36
 ;   Unchecked, none  20            20               10      10                  20      20
-; Over a table, F3 from Axioms into Unchecked writes 28 on the stub, which F3 from Axioms with no table does
-; not.
+; Over a table, F3 from Axioms into Unchecked also calls the store, which F3 from Axioms with no table does
+; not: 8 more bytes on the stub and 22 more on the reference OS.
 
 ; In: A = the key, HL = the frame.
 list_key:
