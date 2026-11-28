@@ -227,14 +227,14 @@ dependencies = [
 
 [[package]]
 name = "mcedit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mcpack",
 ]
 
 [[package]]
 name = "mcemu"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cc",
  "mcglyph",
@@ -244,11 +244,11 @@ dependencies = [
 
 [[package]]
 name = "mcglyph"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "mcpack"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "libc",
@@ -260,7 +260,7 @@ dependencies = [
 
 [[package]]
 name = "mcsend"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "rusb",
@@ -268,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "mcui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mcedit",
  "mcglyph",
