@@ -162,26 +162,29 @@ fn the_links_table_holds_its_cap_and_refuses_one_more() {
     at_the_boundary(&case, LINKS);
 }
 
+/// A theorem whose goals each take the one below twice: 2^24 - 1 nodes, and with `extra` one more
+/// goal on the root, 2^24.
+pub fn doubling(extra: bool) -> Case {
+    let levels = 23;
+    let mut proof = vec![Num(0); levels + usize::from(extra)];
+    proof.extend([Num(1)]);
+    for i in 0..levels {
+        proof.extend([Save, Num(3 + usize::from(extra) + i), Num(2)]);
+    }
+    let mut src = String::from(BASE);
+    src += "${\n  u1 $e |- p $.\n  ax-u $a |- p $.\n$}\n";
+    let names: &[&str] = if extra { &["ax-c", "ax-u"] } else { &["ax-c"] };
+    if extra {
+        proof.push(Num(3));
+    }
+    src += &theorem("tgt", &[("h", "|- p")], "|- p", names, &proof);
+    let bytes = packed(&src);
+    let n = number_of(&bytes, "tgt");
+    Case { bytes, n }
+}
+
 #[test]
 fn a_total_of_16777215_is_read_and_one_of_16777216_is_refused() {
-    let doubling = |extra: bool| {
-        let levels = 23;
-        let mut proof = vec![Num(0); levels + usize::from(extra)];
-        proof.extend([Num(1)]);
-        for i in 0..levels {
-            proof.extend([Save, Num(3 + usize::from(extra) + i), Num(2)]);
-        }
-        let mut src = String::from(BASE);
-        src += "${\n  u1 $e |- p $.\n  ax-u $a |- p $.\n$}\n";
-        let names: &[&str] = if extra { &["ax-c", "ax-u"] } else { &["ax-c"] };
-        if extra {
-            proof.push(Num(3));
-        }
-        src += &theorem("tgt", &[("h", "|- p")], "|- p", names, &proof);
-        let bytes = packed(&src);
-        let n = number_of(&bytes, "tgt");
-        Case { bytes, n }
-    };
     let case = doubling(false);
     let library = decode(&case.bytes).unwrap();
     let want = mirror(&library, &case.bytes, usize::from(case.n)).unwrap();

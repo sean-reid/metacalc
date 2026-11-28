@@ -14,6 +14,8 @@ mod libs;
 mod limits;
 #[path = "pw/model.rs"]
 mod model;
+#[path = "pw/modelcaps.rs"]
+mod modelcaps;
 #[allow(dead_code)]
 #[path = "common/proofs.rs"]
 mod proofs;

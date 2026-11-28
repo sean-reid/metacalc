@@ -232,17 +232,17 @@ pub fn chain(levels: usize, reuse: bool) -> (Vec<u8>, u16) {
 #[test]
 fn the_255th_distinct_goal_is_read_and_the_256th_is_refused() {
     let (bytes, n) = chain(127, false);
-    let model = model_shapes("chain", &bytes)[usize::from(n)].expect("the model has a tree");
+    let model = outline_shape(&bytes, usize::from(n));
     assert_eq!(model.goals, 255, "the precondition");
     accepted(&bytes, n, Counts::of(model), "255 goals");
     let (bytes, n) = chain(128, true);
-    let model = model_shapes("chain", &bytes)[usize::from(n)].expect("the model has a tree");
+    let model = outline_shape(&bytes, usize::from(n));
     assert_eq!(model.goals, 256, "the precondition");
     refused(&bytes, n, GOALS, "256 goals");
     let (bytes, n) = chain(128, false);
     refused(&bytes, n, GOALS, "257 goals");
     let (bytes, n) = chain(126, true);
-    let model = model_shapes("chain", &bytes)[usize::from(n)].expect("the model has a tree");
+    let model = outline_shape(&bytes, usize::from(n));
     assert_eq!(model.goals, 252);
     accepted(&bytes, n, Counts::of(model), "252 goals, a goal used twice");
 }
@@ -310,13 +310,13 @@ pub fn doubling(levels: usize) -> (Vec<u8>, u16) {
 fn a_tree_of_16777215_nodes_is_counted_and_one_of_33554431_is_refused() {
     for (levels, total) in [(22usize, (1u32 << 23) - 1), (23, (1 << 24) - 1)] {
         let (bytes, n) = doubling(levels);
-        let model = model_shapes("doubling", &bytes)[usize::from(n)].expect("the model has a tree");
+        let model = outline_shape(&bytes, usize::from(n));
         assert_eq!(model.total, u64::from(total), "the precondition");
         accepted(&bytes, n, Counts::of(model), &format!("{levels} levels"));
         assert_eq!(walk(&bytes, n).counts.total, total);
     }
     let (bytes, n) = doubling(24);
-    let model = model_shapes("doubling", &bytes)[usize::from(n)].expect("the model has a tree");
+    let model = outline_shape(&bytes, usize::from(n));
     assert_eq!(model.total, (1 << 25) - 1, "the precondition");
     refused(&bytes, n, TOTAL, "24 levels");
 }

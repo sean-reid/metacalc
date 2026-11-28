@@ -6,7 +6,7 @@ use mcpack::library::{Step, crc32, decode, pack, pack_kernel};
 use mcpack::mm::{self, StmtId};
 use mcui::data::Lib;
 use mcui::{Installed, Status};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// Step `n` of a compressed proof written as the letters the mm format uses: A to T for the last
@@ -366,6 +366,62 @@ pub struct Shape {
     pub goals: usize,
     pub links: usize,
     pub total: u64,
+}
+
+/// The model's goal tree of assertion `n`, as the outline builds it, before the calculator's caps
+/// on a tree apply: `None` for an axiom and for a syntax statement.
+pub fn outline_of(bytes: &[u8], n: usize) -> Option<Rc<mm::Node>> {
+    let text = mcpack::library::export(bytes).expect("the library exports");
+    let db = mm::parse(text.into_bytes()).expect("the export parses");
+    let id = (0..db.stmts.len() as StmtId)
+        .filter(|&id| db.stmt(id).kind.is_assertion())
+        .nth(n)
+        .expect("an assertion of that number");
+    mm::outline(&db, id, "|-").ok()
+}
+
+/// The nodes of the tree under `node`, a goal used twice counting twice.
+pub fn nodes_under(node: &Rc<mm::Node>, sizes: &mut HashMap<*const mm::Node, u64>) -> u64 {
+    if let Some(&size) = sizes.get(&Rc::as_ptr(node)) {
+        return size;
+    }
+    let size = node
+        .children
+        .iter()
+        .fold(1u64, |sum, c| sum.saturating_add(nodes_under(c, sizes)));
+    sizes.insert(Rc::as_ptr(node), size);
+    size
+}
+
+/// The distinct goals of a tree by pointer, the links over them, and the most subgoals of one.
+pub fn tree_counts(root: &Rc<mm::Node>) -> (usize, usize, usize) {
+    let mut seen = HashSet::new();
+    let mut pending = vec![root.clone()];
+    let (mut links, mut widest) = (0, 0);
+    while let Some(node) = pending.pop() {
+        if seen.insert(Rc::as_ptr(&node)) {
+            links += node.children.len();
+            widest = widest.max(node.children.len());
+            pending.extend(node.children.iter().cloned());
+        }
+    }
+    (seen.len(), links, widest)
+}
+
+/// What the model's outline says of assertion `n`, whatever the caps on a tree.
+pub fn outline_shape(bytes: &[u8], n: usize) -> Shape {
+    let root = outline_of(bytes, n).expect("the outline has a tree");
+    let (goals, links, _) = tree_counts(&root);
+    Shape {
+        steps: decode(bytes).unwrap().assertions[n]
+            .proof
+            .iter()
+            .filter(|s| matches!(s, Step::Number(_)))
+            .count(),
+        goals,
+        links,
+        total: nodes_under(&root, &mut HashMap::new()),
+    }
 }
 
 /// The model's answer for every assertion: `None` for an axiom and a theorem the model refuses
