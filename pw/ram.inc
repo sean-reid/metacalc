@@ -141,6 +141,8 @@ PW_USED             .equ $6F
 ; What a find writes in the caller's block.
 PW_FIND_SIZE        .equ 16 + PW_MAX_SUBGOALS
 
+PW_SYMBOLS_PER_UNIT .equ 16
+
 ; The entry goes in a stack entry's byte for a syntax statement.
 PW_SYNTAX           .equ $FF
 PW_MARK_RUN         .equ $5A

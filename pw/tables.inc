@@ -2,57 +2,66 @@
 ; table, the hypotheses of the theorem and the references it lists. They run inside the session, on
 ; the private stack, with a library page in bank B and the tables on the spare page.
 
-; The symbol table: sets the bit of each variable whose typecode is the provable one.
+; The symbol table, PW_SYMBOLS_PER_UNIT entries to a unit of work: sets the bit of each variable
+; whose typecode is the provable one.
 pw_symbols:
 	ld a,(pv_lpage)
 	out (7),a
-	ld hl,$C000
-	ld (pv_lim),hl
-pwy_loop:
-	ld a,(pv_sid)
-	ld hl,pv_nsyms
+pwy_unit:
+	ld a,(pv_nsyms)
+	ld hl,pv_sid
 	cp (hl)
-	jr nc,pwy_done
+	jr z,pwy_done
 	call pw_unit
+	ld a,(pv_nconst)
+	ld c,a
+	ld a,(pv_sid)
+	ld e,a
+	ld d,PW_SYMBOLS_PER_UNIT
 	ld hl,(pv_sym)
-	ld bc,2
-	call pw_room
-	jr nz,pwy_bad
+pwy_sym:
+	ld a,h
+	cp $C0
+	jr nc,pwy_bad_range
+	ld b,(hl)
+	inc hl
 	ld a,(hl)
-	ld (pv_cnt),a
 	inc hl
-	ld c,(hl)
-	inc hl
-	ld b,0
-	add hl,bc
-	jr c,pwy_bad_range
-	ld bc,0
-	call pw_room
-	jr nz,pwy_bad
-	ld (pv_sym),hl
-	ld a,(pv_sid)
-	ld hl,pv_nconst
-	cp (hl)
+	add a,l
+	ld l,a
+	jr nc,pwy_scan
+	inc h
+pwy_scan:
+	ld a,e
+	cp c
 	jr c,pwy_next
-	ld a,(pv_cnt)
-	ld hl,pv_tc
-	cp (hl)
+	ld a,(pv_tc)
+	cp b
 	jr nz,pwy_next
-	ld a,(pv_sid)
+	ld (pv_t1),hl
+	ld a,e
 	call pw_bit
 	or (hl)
 	ld (hl),a
+	ld hl,(pv_t1)
 pwy_next:
-	ld hl,pv_sid
-	inc (hl)
-	jr pwy_loop
+	inc e
+	ld a,(pv_nsyms)
+	cp e
+	jr z,pwy_end
+	dec d
+	jr nz,pwy_sym
+pwy_end:
+	ld a,e
+	ld (pv_sid),a
+	ld (pv_sym),hl
+	jr pwy_unit
 pwy_done:
 	ld a,1
 	ld (pv_stage),a
 	jp pw_run
 pwy_bad_range:
 	ld a,LIB_ERR_BAD
-pwy_bad:
 	jp pw_leave
 
 ; The hypotheses: for each, in the table of ranks, 0 for a statement that is not a goal, else the

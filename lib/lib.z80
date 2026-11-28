@@ -295,7 +295,8 @@
 ;                          above hold and no shadow register or port is touched outside it. The
 ;                          stack goes 8 bytes below the return address on every exit that reads the
 ;                          library and 4 on a refusal at open or at the count. Writes only scratch of the state
-;                          block (lr_tr, lr_cn, lr_sr, lr_n, lr_hdr, lr_ent, lr_win and the
+;                          block (lr_tr, lr_cn, lr_sr, lr_n, lr_hdr, lr_ent, lr_win, the record
+;                          window's lr_off, lr_hoff, lr_want, lr_wbase, lr_wp and lr_q, and the
 ;                          descriptor), the block and the bounce buffer.
 ; Statuses (LIB_ERR_*): 1 offset or length past the library, 2 a count or destination that is
 ; not allowed, 3 bytes the format forbids, 4 lib_open has not succeeded, 5 an assertion,
