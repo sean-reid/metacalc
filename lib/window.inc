@@ -76,7 +76,10 @@ lw_ptr:
 	ret
 
 ; in: A = bytes wanted from the cursor, at most LIB_WINDOW. Refills the window at the cursor if it
-; holds fewer. out: Z, or NZ and A = LIB_ERR_BAD when the library ends first.
+; holds fewer. out: Z, or NZ and A = LIB_ERR_BAD when the library ends first. On Z the window holds at
+; least that many from the cursor: kept as it was if it did, else refilled from the cursor, as far as
+; LIB_WINDOW and the library allow, with lr_wp 0. On NZ the window is empty at the cursor (lr_wlen 0,
+; lr_wp 0) and no read starts.
 lw_need:
 	ld c,a
 	ld a,(lr_wlen)

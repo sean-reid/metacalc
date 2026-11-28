@@ -15,11 +15,12 @@ struct Window {
 
 fn window(rig: &mut Rig) -> Window {
     let base = rig.named("LR_WBASE", 3);
+    let len = rig.state_byte("LR_WLEN");
     Window {
         base: u32::from_le_bytes([base[0], base[1], base[2], 0]),
-        len: rig.state_byte("LR_WLEN"),
+        len,
         wp: rig.state_byte("LR_WP"),
-        win: rig.named("LR_WIN", WINDOW),
+        win: rig.named("LR_WIN", usize::from(len)),
     }
 }
 
@@ -101,10 +102,11 @@ fn case(
         rig.poke(rig.label("LR_WIN"), &[MARK; WINDOW]);
     }
     let seeded = window(rig);
-    rig.poke(rig.label("LR_CNT"), &[MARK]);
+    rig.poke(rig.label("LR_DEST"), &[MARK; 2]);
+    rig.poke(rig.label("LR_OFF"), &[MARK; 3]);
     let out = need(rig, n);
     let after = window(rig);
-    let cnt = rig.state_byte("LR_CNT");
+    let read = [rig.named("LR_DEST", 2), rig.named("LR_OFF", 3)].concat();
     let accepted = u64::from(at) + u64::from(n) <= u64::from(length);
     let zero = out.af & ZERO != 0;
     assert_eq!(zero, accepted, "{what}: flags {:02x}", out.af & 0xFF);
@@ -113,13 +115,12 @@ fn case(
         t.hit += 1;
         assert!(accepted, "{what}: the window holds bytes past the end");
         assert_eq!(after, seeded, "{what}: a window that holds enough is kept");
-        assert_eq!(cnt, MARK, "{what}: nothing was read");
+        assert_eq!(read, [MARK; 5], "{what}: nothing was read");
     } else if accepted {
         t.filled += 1;
         let take = WINDOW.min((length - at) as usize);
         let from = at as usize;
-        let mut want = vec![MARK; WINDOW];
-        want[..take].copy_from_slice(&bytes[from..from + take]);
+        let want = bytes[from..from + take].to_vec();
         let held = Window {
             base: at,
             len: take as u8,
@@ -127,17 +128,16 @@ fn case(
             win: want,
         };
         assert_eq!(after, held, "{what}: the refilled window");
-        assert_eq!(usize::from(cnt), take, "{what}: the count read");
     } else {
         t.refused += 1;
         let held = Window {
             base: at,
             len: 0,
             wp: 0,
-            win: vec![MARK; WINDOW],
+            win: Vec::new(),
         };
         assert_eq!(after, held, "{what}: the window after a refusal");
-        assert_eq!(cnt, MARK, "{what}: a refused need starts no read");
+        assert_eq!(read, [MARK; 5], "{what}: a refused need starts no read");
     }
     assert!(after.len >= n || !accepted, "{what}: fewer than wanted");
     assert_eq!(cursor(rig), at, "{what}: the cursor after");
