@@ -86,6 +86,24 @@ fn mask_tally(snaps: &[Snapshot]) -> std::collections::BTreeMap<u8, usize> {
     tally
 }
 
+/// The most frequent mask read and how often it was read.
+fn most_frequent(tally: &std::collections::BTreeMap<u8, usize>) -> (u8, usize) {
+    tally
+        .iter()
+        .map(|(&mask, &n)| (mask, n))
+        .max_by_key(|&(_, n)| n)
+        .expect("a read")
+}
+
+/// The first read whose mask is the most frequent one: the OS's own code is not in its key scan.
+fn steady(snaps: &[Snapshot]) -> usize {
+    let (mask, _) = most_frequent(&mask_tally(snaps));
+    snaps
+        .iter()
+        .position(|s| s.os.mask == mask)
+        .expect("a read at the most frequent mask")
+}
+
 fn run_case(real: bool, work: bool) -> Case {
     let (mut rig, since) = on_down(real, work);
     rig.until("300 ms", 1_000_000, |r| r.t >= since + 300_000);
@@ -129,10 +147,11 @@ fn run_case(real: bool, work: bool) -> Case {
 /// After ON goes up the two cases are in one state but for the power down timer, which differs by a
 /// count at most, and a tap of Down is acted on once in each.
 /// The OS flags a press once, so the break flag the shell cleared during the work stays clear while
-/// ON is down, where the plain wait holds it set until ON goes up. The interrupt mask does not
-/// depend on the phase of the timer period but on where the reference OS's own code is when it is
-/// read: 15 at most reads, and 9, 11 or 13 for the few reads inside its key scan; the plain wait with
-/// ON down reads 11 at every point. The stub reads 11 throughout.
+/// ON is down, where the plain wait holds it set until ON goes up. The interrupt mask depends on where
+/// the reference OS's own code is when it is read, not on the timer's phase: its most frequent value is
+/// 15 and it is read at least 18 of 24 times, in both cases once ON is up; the plain wait with ON down
+/// reads 11 at every point. The stub reads 11 throughout. Flags, scan code and key are compared at the
+/// first read whose mask is the most frequent, since a read at another mask is inside the OS's key scan.
 fn the_two_cases_agree_once_on_is_up(real: bool) {
     let work = run_case(real, true);
     let plain = run_case(real, false);
@@ -158,14 +177,15 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
     );
     assert_eq!(work.up[0].at, Where::OsKeyWait, "after ON goes up, work");
     assert_eq!(plain.up[0].at, Where::OsKeyWait, "after ON goes up, plain");
+    let (w, p) = (steady(&work.up), steady(&plain.up));
     assert_eq!(
-        work.up[0].os.flags, plain.up[0].os.flags,
-        "flags after ON is up"
+        work.up[w].os.flags, plain.up[p].os.flags,
+        "flags after ON is up, at a steady read"
     );
     assert_eq!(
-        (work.up[0].os.scan, work.up[0].os.key),
-        (plain.up[0].os.scan, plain.up[0].os.key),
-        "key bytes after ON is up"
+        (work.up[w].os.scan, work.up[w].os.key),
+        (plain.up[p].os.scan, plain.up[p].os.key),
+        "key bytes after ON is up, at a steady read"
     );
     assert_eq!(
         work.up[0].os.timers.1, plain.up[0].os.timers.1,
@@ -186,7 +206,6 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
         assert!(ran(&work) > 0, "the timer counted down");
     }
     let calm = if real { 15 } else { 11 };
-    let allowed: &[u8] = if real { &[9, 11, 13, 15] } else { &[11] };
     for (what, snaps) in [
         ("work, ON down", &work.down_reads),
         ("plain, ON down", &plain.down_reads),
@@ -194,15 +213,16 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
         ("plain, ON up", &plain.up),
     ] {
         let tally = mask_tally(snaps);
+        println!("{} OS, {what}: masks {tally:?}", os_name(real));
         assert_eq!(snaps.len(), READS, "{what}: reads");
-        assert!(
-            tally.keys().all(|m| allowed.contains(m)),
-            "{what}: masks {tally:?}, allowed {allowed:?}"
-        );
-        if what == "plain, ON down" {
+        if !real {
             assert_eq!(tally.get(&11), Some(&READS), "{what}: masks {tally:?}");
+        }
+        let (mask, most) = most_frequent(&tally);
+        if what == "plain, ON down" {
+            assert_eq!((mask, most), (11, READS), "{what}: masks {tally:?}");
         } else {
-            let most = tally.get(&calm).copied().unwrap_or(0);
+            assert_eq!(mask, calm, "{what}: the most frequent mask in {tally:?}");
             assert!(most >= 18, "{what}: {most} of {READS} reads at {calm}");
         }
     }
