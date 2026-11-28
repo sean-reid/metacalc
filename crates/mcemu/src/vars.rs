@@ -6,6 +6,8 @@ use crate::{Machine, Regs, Stop, stub};
 const OP1: u16 = 0x8478;
 const APPVAR: u8 = 0x15;
 const LIMIT: u32 = 5_000_000;
+/// The bytes below the stack pointer that a host call leaves as it found them.
+const STACK_BELOW: u16 = 64;
 const FLASH_BASE: usize = 0x4000;
 const VAT_TOP: u16 = 0xFE66;
 /// Bytes of an archive record before the name: flag, length, type, version, a zero, the pointer,
@@ -31,9 +33,14 @@ pub struct NoRoom;
 impl Machine {
     /// Runs a stub entry with HL and DE set and returns the registers it ended with. The
     /// registers the machine had go back afterwards, and a write watch is suspended for the
-    /// run, so its record is as it was.
+    /// run, so its record is as it was; the bytes below SP are restored too, since the stub pushes
+    /// there and a program stopped with SP in a table it pops from keeps live bytes below it.
     fn call_stub(&mut self, entry: u16, hl: u16, de: u16, bc: u16) -> Regs {
         let saved = self.calc.regs();
+        let below = saved
+            .sp
+            .checked_sub(STACK_BELOW)
+            .map(|at| (at, self.read_ram(at, usize::from(STACK_BELOW))));
         let mut r = saved;
         r.hl = hl;
         r.de = de;
@@ -42,6 +49,9 @@ impl Machine {
         self.calc.set_regs(&r);
         let armed = self.calc.suspend_watch();
         let run = self.run(entry, LIMIT);
+        if let Some((at, bytes)) = below {
+            self.load_ram(at, &bytes);
+        }
         if armed {
             self.calc.resume_watch();
         }

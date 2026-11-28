@@ -61,29 +61,29 @@ const EXPECT: [(u32, [Expect; 2]); 4] = [
     (
         0,
         [
-            ((768, 0, 0, 0, 0), (13, 13, 0, 0, 13)),
-            ((0, 84, 684, 0, 1452), (12, 0, 1, 13, 41)),
+            ((768, 0, 0, 0, 0), (25, 1, 0, 0, 1)),
+            ((0, 84, 684, 0, 1452), (13, 12, 0, 1, 15)),
         ],
     ),
     (
         60,
         [
-            ((96, 672, 0, 0, 672), (13, 13, 0, 0, 13)),
-            ((0, 0, 96, 672, 2208), (12, 0, 1, 13, 41)),
+            ((84, 684, 0, 0, 684), (25, 1, 0, 0, 1)),
+            ((0, 0, 84, 684, 2220), (13, 0, 12, 1, 27)),
         ],
     ),
     (
         95,
         [
-            ((84, 684, 0, 0, 684), (12, 1, 13, 0, 27)),
-            ((0, 0, 0, 768, 2988), (1, 0, 11, 14, 91)),
+            ((84, 684, 0, 0, 684), (13, 12, 1, 0, 14)),
+            ((0, 0, 0, 768, 2988), (2, 0, 11, 13, 75)),
         ],
     ),
     (
         250,
         [
-            ((0, 0, 0, 768, 3744), (1, 0, 0, 25, 116)),
-            ((0, 0, 0, 768, 9132), (1, 0, 0, 25, 291)),
+            ((0, 0, 0, 768, 3756), (2, 0, 11, 13, 76)),
+            ((0, 0, 0, 768, 9132), (2, 0, 0, 24, 267)),
         ],
     ),
 ];
@@ -132,7 +132,7 @@ fn shape(writes: &[Wr]) -> Vec<(u8, u8, Option<u32>)> {
 
 #[test]
 fn the_copy_writes_what_ui_blit_writes_with_the_same_gap_from_a_write_to_its_first_poll() {
-    let gaps = [BTreeSet::from([62, 85, 107]), BTreeSet::from([70, 93, 115])];
+    let gaps = [BTreeSet::from([62, 110]), BTreeSet::from([70, 118])];
     for window in [0, 60, 250] {
         let copy = passes(PROBE, window);
         let real = passes(REF, window);
@@ -200,9 +200,9 @@ fn the_frame_costs_what_the_header_figures_say() {
         real[0].clocks, real[1].clocks, sixty[0].clocks
     );
     for (clocks, ceiling) in [
-        (real[0].clocks, 73_100),
-        (real[1].clocks, 150_700),
-        (sixty[0].clocks, 102_700),
+        (real[0].clocks, 74_000),
+        (real[1].clocks, 151_000),
+        (sixty[0].clocks, 104_400),
     ] {
         assert!(clocks > ceiling * 98 / 100 && clocks < ceiling, "{clocks}");
     }

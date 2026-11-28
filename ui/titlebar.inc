@@ -2,7 +2,7 @@
 
 ; ui_title   in:  HL = left text, DE = right text
 ;            left at column 1, right ending at column 94, all eight scanlines of the row inverted;
-;            neither is cut
+;            neither is cut; marks row 0, whatever the texts
 ;            destroys AF BC DE HL
 ui_title:
 	push de
@@ -26,7 +26,8 @@ ut_top:
 
 ; ui_list_row   in:  HL = left text, DE = right text, B = row 0 to 7, C = 0 unselected
 ;               left at column 1, right ending at column 94, the row inverted below its top
-;               scanline when C is not 0
+;               scanline when C is not 0; marks row B when either text is not empty or C is not 0,
+;               nothing for a row of 8 or more
 ;               destroys AF BC DE HL
 ui_list_row:
 	push bc

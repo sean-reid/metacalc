@@ -90,9 +90,10 @@
 ; deepest instruction adds all its bytes, which dist_forced.rs measures by taking it after each. On its assertion the enter is
 ; deepest in the seven instructions of lr_cmp24 from its push hl to its ld b,(hl), the draw in the eleven of ui_text_width from
 ; its push hl to the end of GLYPH_ADV, and none of them runs with interrupts off. The enter then takes 32 and the draw 36 on
-; the reference OS, where the keypad scan at pc 047D writes 10, and 26 and 30 on the stub OS, whose handler writes 4. At speed 0
-; on the reference OS the shell's timer is not pending at the draw's deepest instructions, so the 36 there is a bound the shell
-; does not produce, while at speed 1 it is produced and the enter's 32 needs no wait at either speed. The tests accept the
+; the reference OS, where the keypad scan at pc 047D writes 10, and 26 and 30 on the stub OS, whose handler writes 4. On the
+; reference OS at both speeds and on the stub at speed 0 the shell's timer is not pending at the draw's deepest instructions, so
+; the 36 and the 30 there are bounds the shell does not produce, while on the stub at speed 1 it is produced and the enter's 32
+; and 26 need no wait at either speed. The tests accept the
 ; masked figure up to the forced one for the enter and the draw, and a run that takes no interrupt there falls between.
 ; Calls: far_lib_record, far_lib_read, far_lib_glyph and far_lib_label through list_label_text, far_ui_text_width, far_ui_text,
 ; far_ui_clear, far_ui_truncate, far_ui_title, far_ui_text_centered, far_ui_soft_keys, and app_stage_block, app_strcpy,
@@ -101,12 +102,12 @@
 ; and the parts of a total
 ; printed there: a token, far_lib_glyph
 ; and far_ui_text_width, takes 6,311, so placing a pair takes 12,622 and drawing one 17,725 more. Opening frrlem1 of ring, 33
-; pairs over 6 rows, takes 1,577,717 (263.0 ms) against 1,800,000: the key 733, dist_enter 448,365, dist_draw 1,054,967 and
-; the blit 73,652. DOWN and UP there stay, in 218 and 146. A scroll with its frame takes 1,237,982 to 2,024,739 (206 to 338
+; pairs over 6 rows, takes 1,584,386 (264.1 ms) against 1,800,000: the key 733, dist_enter 448,365, dist_draw 1,060,734 and
+; the blit 74,554. DOWN and UP there stay, in 218 and 146. A scroll with its frame takes 1,245,164 to 2,031,921 (207 to 339
 ; ms) on a library of 16 rows of 6 pairs, over the budget of 300,000: dist_draw reads the glyphs of every pair above the first
-; row shown, 12,622 each, and then draws the rows, and dist_open takes 1,249, the title 24,938 and the blit 73,652. No shipped
+; row shown, 12,622 each, and then draws the rows, and dist_open takes 1,249, the title 25,039 and the blit 74,554. No shipped
 ; assertion has more than six rows, so no shipped screen scrolls. The way back to the theorem screen from rglcom4d, ring's
-; costliest open with pairs, is the key 50, the theorem's enter 1,492,152 and its frame 263,399: 1,755,601.
+; costliest open with pairs, is the key 50, the theorem's enter 1,492,152 and its frame 267,376: 1,759,578.
 
 DIST_ROWS	.equ 6
 DIST_WIDTH	.equ 94

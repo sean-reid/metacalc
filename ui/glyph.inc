@@ -54,7 +54,7 @@ tw_done:
 
 ; ui_text_right     in:  HL = string, B = row
 ;                   out: DE = x after the string
-;                   draws it ending at column 94, from 0 when it is wider
+;                   draws it ending at column 94, from 0 when it is wider, marking row B as ui_text does
 ;                   destroys AF BC HL
 ui_text_right:
 	push hl
@@ -74,7 +74,7 @@ tr_x:
 
 ; ui_text_centered  in:  HL = string, B = row
 ;                   out: DE = x after the string
-;                   starts at (96 - width) / 2, or 0 when it is wider
+;                   starts at (96 - width) / 2, or 0 when it is wider, marking row B as ui_text does
 ;                   destroys AF BC HL
 ui_text_centered:
 	push hl
@@ -97,7 +97,9 @@ tc_x:
 ;           nothing
 ;           out: DE = x after the last glyph, DE = x for an empty string
 ;           ORs the glyphs into the frame, one blank column between them, and drops pixels
-;           right of column 95. Destroys AF BC HL.
+;           right of column 95. Marks row B in ui_dirty for a non-empty string and a row below 8,
+;           also when every pixel falls right of column 95; marks nothing for an empty string or a
+;           row of 8 or more. Destroys AF BC HL.
 ui_text:
 	ld a,(hl)
 	or a
@@ -106,7 +108,8 @@ ui_text:
 	cp UI_TEXT_ROWS
 	jp nc,ut_off
 	add a,a
-	or ut_rows&$FF ; ut_rows is 16 byte aligned, so the offset only sets low bits
+	add a,a
+	or ut_rows&$FF ; ut_rows is 32 byte aligned, so the offset only sets low bits
 	ld c,a
 	ld b,ut_rows>>8
 	ld a,(bc)
@@ -114,6 +117,12 @@ ui_text:
 	inc c
 	ld a,(bc)
 	ld (ui_rowbase+1),a
+	inc c
+	ld a,(bc)
+	ld b,a
+	ld a,(ui_dirty)
+	or b
+	ld (ui_dirty),a
 	ld a,d
 	or a
 	jp nz,ut_tail
@@ -675,6 +684,7 @@ ui_tblk:
 	PAGE(SHIFTS(ui_vblk>>8))
 ui_tblk_tail:
 #include "clear.inc"
+#include "range.inc"
 #if ($-ui_tblk_tail) > 160
  .error "the code in the tail of the ui_tblk page outgrew its 160 bytes"
 #endif
@@ -692,7 +702,12 @@ ui_tcol:
 	BYTES8(9)
 	BYTES8(10)
 	BYTES8(11)
-	.fill 160,0
+ui_tcol_tail:
+#include "rangeh.inc"
+#if ($-ui_tcol_tail) > 160
+ .error "the code in the tail of the ui_tcol page outgrew its 160 bytes"
+#endif
+	.fill 160-($-ui_tcol_tail),0
 #if ((ui_toff&255) != 0) || (((ui_toff+256)&255) != 0) || ((ui_tfit&255) != 0) || ((ui_tblk&255) != 0) || ((ui_tcol&255) != 0)
  .error "ui_toff, its high half, ui_tfit, ui_tblk and ui_tcol must each start a page"
 #endif
@@ -705,12 +720,20 @@ ui_tcol:
 #if (ui_tcol-ui_tblk) != 256
  .error "the x tables must be consecutive pages"
 #endif
-	.fill (16-($&15))&15,0
+	.fill (32-($&31))&31,0
 ut_rows:
-#if (ut_rows&15) != 0
- .error "ut_rows must be 16 byte aligned"
+#if (ut_rows&31) != 0
+ .error "ut_rows must be 32 byte aligned"
 #endif
-	.dw UI_FRAME+UI_STRIDE+(0*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(1*UI_ROW*UI_STRIDE)
-	.dw UI_FRAME+UI_STRIDE+(2*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(3*UI_ROW*UI_STRIDE)
-	.dw UI_FRAME+UI_STRIDE+(4*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(5*UI_ROW*UI_STRIDE)
-	.dw UI_FRAME+UI_STRIDE+(6*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(7*UI_ROW*UI_STRIDE)
+#macro UT_ROW(r)
+	.dw UI_FRAME+UI_STRIDE+(r*UI_ROW*UI_STRIDE)
+	.db 1<<r,0
+#endmacro
+	UT_ROW(0)
+	UT_ROW(1)
+	UT_ROW(2)
+	UT_ROW(3)
+	UT_ROW(4)
+	UT_ROW(5)
+	UT_ROW(6)
+	UT_ROW(7)

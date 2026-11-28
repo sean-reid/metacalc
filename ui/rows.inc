@@ -2,24 +2,28 @@
 
 ; ui_row_addr   in:  A = text row 0 to 7
 ;               out: HL = frame address of the first byte of the row's first glyph scanline
+;               sets the row's bit in ui_dirty: its callers below and ui_bar write the row
 ;               destroys AF DE
 ui_row_addr:
-	ld l,a
 	add a,a
-	add a,l
+	add a,a
+	or ut_rows&$FF
 	ld l,a
-	ld h,0
-	add hl,hl
-	add hl,hl
-	add hl,hl
-	add hl,hl
-	add hl,hl
-	ld de,UI_FRAME+UI_STRIDE
-	add hl,de
+	ld h,ut_rows>>8
+	ld e,(hl)
+	inc l
+	ld d,(hl)
+	inc l
+	ld a,(hl)
+	ld hl,ui_dirty
+	or (hl)
+	ld (hl),a
+	ex de,hl
 	ret
 
-; ui_marker   in:  A = text row 0 to 7, nothing drawn for a larger one
-;             sets columns 0 and 1 on the seven scanlines below the row's blank one
+; ui_marker   in:  A = text row 0 to 7, nothing drawn or marked for a larger one
+;             sets columns 0 and 1 on the seven scanlines below the row's blank one and marks the
+;             row, whether or not those pixels were set already
 ;             destroys AF BC DE HL
 ui_marker:
 	cp UI_TEXT_ROWS
@@ -35,8 +39,8 @@ mk_loop:
 	jr nz,mk_loop
 	ret
 
-; ui_invert_row   in:  A = text row 0 to 7, nothing drawn for a larger one
-;                 flips the seven scanlines of the row below its top one
+; ui_invert_row   in:  A = text row 0 to 7, nothing drawn or marked for a larger one
+;                 flips the seven scanlines of the row below its top one and marks the row
 ;                 destroys AF BC DE HL
 ui_invert_row:
 	cp UI_TEXT_ROWS

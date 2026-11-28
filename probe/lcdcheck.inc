@@ -204,8 +204,14 @@ key_on:
 #include "lcdscreen.inc"
 
 #ifdef REF_BLIT
-#define BLIT_CALL ui_blit
+#define BLIT_CALL blit_all
 #include "ui/blit.inc"
+
+; ui_blit with every text row marked, which sends the whole frame.
+blit_all:
+	ld a,$FF
+	ld (ui_dirty),a
+	jp ui_blit
 #else
 #define BLIT_CALL probe_blit
 #include "lcdblit.inc"

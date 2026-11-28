@@ -32,7 +32,7 @@ const FIXTURE: [Ceilings; 2] = [
         clip: (1_250, 52_800),
         clip_cut: (7_000, 52_800),
         preview: (23_000, 38_700_000),
-        draw_cut: (24_900, 63_800),
+        draw_cut: (25_242, 63_914),
         cut: 5..=usize::MAX,
     },
     Ceilings {
@@ -41,7 +41,7 @@ const FIXTURE: [Ceilings; 2] = [
         clip: (1_250, 51_100),
         clip_cut: (2_800, 51_100),
         preview: (23_000, 40_900_000),
-        draw_cut: (5_700, 52_100),
+        draw_cut: (5_760, 52_220),
         cut: 30..=usize::MAX,
     },
 ];
@@ -98,7 +98,7 @@ const SHIPPED: [Ceilings; 6] = [
         clip: (1_250, 2_800),
         clip_cut: (2_800, 2_800),
         preview: (86_900, 1_210_000),
-        draw_cut: (8_000, 8_000),
+        draw_cut: (8_114, 8_114),
         cut: 20..=24,
     },
 ];

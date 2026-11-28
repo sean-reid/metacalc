@@ -242,6 +242,7 @@ impl Lister {
         assert_eq!(self.run.top_kind(), KIND_SECTIONS);
         let at = self.sections();
         self.same_sections("opened", &at);
+        self.run.shell.assert_lcd_holds_the_frame("sections opened");
         at
     }
 
@@ -271,6 +272,9 @@ impl Lister {
         assert_eq!(self.run.top_kind(), KIND_SECTIONS, "still on the screen");
         let at = self.sections();
         self.same_sections(&format!("after {scan:02X}"), &at);
+        self.run
+            .shell
+            .assert_lcd_holds_the_frame(&format!("sections after {scan:02X}"));
         drew
     }
 
@@ -315,6 +319,9 @@ impl Lister {
             waited += 2_000;
         }
         assert_eq!(self.run.blits(), blits + 1, "one frame for the way back");
+        self.run
+            .shell
+            .assert_lcd_holds_the_frame(&format!("the list after {scan:02X}"));
         assert_eq!(self.run.depth(), depth - 1);
         assert_eq!(self.run.top_kind(), KIND_LIST);
         let mut spent = 0;
@@ -327,6 +334,9 @@ impl Lister {
         self.run.run(600_000);
         let (got, want) = (self.run.frame(), self.shown());
         same_frame(&format!("settled after {scan:02X}"), &got, &want);
+        self.run
+            .shell
+            .assert_lcd_holds_the_idle_frame(&format!("the list settled after {scan:02X}"));
     }
 
     /// The top frame, which is the list's when the list is open.

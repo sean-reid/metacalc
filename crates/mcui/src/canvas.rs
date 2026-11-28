@@ -154,6 +154,15 @@ pub enum Call {
         selected: bool,
     },
     Marker(usize),
+    ClearRows {
+        first: usize,
+        count: usize,
+    },
+    ShiftRows {
+        first: usize,
+        count: usize,
+        up: bool,
+    },
     /// A progress bar of `done` of `total` on `row`.
     Bar {
         row: usize,
@@ -188,6 +197,16 @@ impl Canvas {
     pub fn recording() -> Self {
         Canvas {
             calls: Some(Vec::new()),
+            ..Canvas::default()
+        }
+    }
+
+    /// A canvas that starts with the pixels of `bitmap`, a screen's size.
+    #[doc(hidden)]
+    pub fn with_bitmap(bitmap: Bitmap) -> Self {
+        assert!(bitmap.width() == WIDTH && bitmap.height() == HEIGHT);
+        Canvas {
+            bitmap,
             ..Canvas::default()
         }
     }
@@ -437,6 +456,54 @@ impl Canvas {
         }
     }
 
+    /// Clears `count` text rows from `first`, all eight scanlines of each. Rows past the last
+    /// are left out and a `first` past it clears nothing.
+    pub fn clear_rows(&mut self, first: usize, count: usize) {
+        self.record(|| Call::ClearRows { first, count });
+        let (from, to) = Self::row_span(first, count);
+        self.blank(from, to);
+    }
+
+    /// Moves the text rows `first` to `first + count - 1` by one row, up or down, and clears the
+    /// row that is left empty: the last of the range going up, the first going down. Rows past
+    /// the last are left out.
+    pub fn shift_rows(&mut self, first: usize, count: usize, up: bool) {
+        self.record(|| Call::ShiftRows { first, count, up });
+        let (from, to) = Self::row_span(first, count);
+        if from == to {
+            return;
+        }
+        let (src, dst, empty) = if up {
+            (from + 1, from, to - 1)
+        } else {
+            (from, from + 1, from)
+        };
+        let kept = to - from - 1;
+        let lines: Vec<Vec<bool>> = (Self::top(src)..Self::top(src + kept))
+            .map(|y| (0..WIDTH).map(|x| self.bitmap.get(x, y)).collect())
+            .collect();
+        for (y, line) in (Self::top(dst)..).zip(&lines) {
+            for (x, &ink) in line.iter().enumerate() {
+                self.bitmap.set(x, y, ink);
+            }
+        }
+        self.blank(empty, empty + 1);
+    }
+
+    /// The text rows `count` from `first` cover as a start and an end, cut at the last row.
+    fn row_span(first: usize, count: usize) -> (usize, usize) {
+        let rows = HEIGHT / ROW;
+        (first.min(rows), first.saturating_add(count).min(rows))
+    }
+
+    fn blank(&mut self, from: usize, to: usize) {
+        for y in Self::top(from)..Self::top(to) {
+            for x in 0..WIDTH {
+                self.bitmap.set(x, y, false);
+            }
+        }
+    }
+
     /// Inverts the runs of a cursor, padded by the blank column on each side of its tokens.
     pub fn cursor(&mut self, rects: &[Rect], x: usize, row: isize, window: std::ops::Range<isize>) {
         for rect in rects {
@@ -617,6 +684,230 @@ mod tests {
         assert_eq!(
             text_width(&joined),
             Canvas::room(text_width(right), right) + 1
+        );
+    }
+
+    /// A canvas whose text row `r` holds the pixel column `r` on all eight of its scanlines and
+    /// one more pixel at x 50 + r, y 8r + 3, so no two rows are alike.
+    fn striped() -> Canvas {
+        let mut canvas = Canvas::default();
+        for r in 0..8 {
+            for y in 8 * r..8 * r + 8 {
+                canvas.bitmap.set(r, y, true);
+            }
+            canvas.bitmap.set(50 + r, 8 * r + 3, true);
+        }
+        canvas
+    }
+
+    /// The text row whose pattern `striped` put at row `r` is at: `Some(source)`, or `None`
+    /// when `r` is blank.
+    fn row_holds(canvas: &Canvas, r: usize) -> Option<usize> {
+        let pattern = |src: usize| {
+            (0..8).all(|y| {
+                (0..WIDTH).all(|x| {
+                    let want = (x == src) || (x == 50 + src && y == 3);
+                    canvas.bitmap.get(x, 8 * r + y) == want
+                })
+            })
+        };
+        let blank = (0..8).all(|y| (0..WIDTH).all(|x| !canvas.bitmap.get(x, 8 * r + y)));
+        let holds: Vec<usize> = (0..8).filter(|&src| pattern(src)).collect();
+        assert!(holds.len() + usize::from(blank) == 1, "row {r} is neither");
+        holds.first().copied()
+    }
+
+    fn rows_after(canvas: &Canvas) -> Vec<Option<usize>> {
+        (0..8).map(|r| row_holds(canvas, r)).collect()
+    }
+
+    #[test]
+    fn clearing_rows_blanks_all_eight_scanlines_of_each_and_nothing_else() {
+        let mut canvas = striped();
+        canvas.clear_rows(2, 3);
+        assert_eq!(
+            rows_after(&canvas),
+            [
+                Some(0),
+                Some(1),
+                None,
+                None,
+                None,
+                Some(5),
+                Some(6),
+                Some(7)
+            ]
+        );
+        let mut canvas = striped();
+        canvas.clear_rows(6, 5);
+        assert_eq!(
+            rows_after(&canvas),
+            [
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                None,
+                None
+            ]
+        );
+        for (first, count) in [(0, 0), (3, 0), (8, 2), (200, 1), (usize::MAX, usize::MAX)] {
+            let mut canvas = striped();
+            canvas.clear_rows(first, count);
+            assert_eq!(
+                rows_after(&canvas),
+                (0..8).map(Some).collect::<Vec<_>>(),
+                "clear_rows({first}, {count})"
+            );
+        }
+    }
+
+    #[test]
+    fn shifting_rows_up_moves_all_but_the_first_and_clears_the_last() {
+        let mut canvas = striped();
+        canvas.shift_rows(1, 4, true);
+        assert_eq!(
+            rows_after(&canvas),
+            [
+                Some(0),
+                Some(2),
+                Some(3),
+                Some(4),
+                None,
+                Some(5),
+                Some(6),
+                Some(7)
+            ]
+        );
+        let mut canvas = striped();
+        canvas.shift_rows(0, 8, true);
+        assert_eq!(
+            rows_after(&canvas),
+            [
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(6),
+                Some(7),
+                None
+            ]
+        );
+    }
+
+    #[test]
+    fn shifting_rows_down_moves_all_but_the_last_and_clears_the_first() {
+        let mut canvas = striped();
+        canvas.shift_rows(1, 4, false);
+        assert_eq!(
+            rows_after(&canvas),
+            [
+                Some(0),
+                None,
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(5),
+                Some(6),
+                Some(7)
+            ]
+        );
+        let mut canvas = striped();
+        canvas.shift_rows(0, 8, false);
+        assert_eq!(
+            rows_after(&canvas),
+            [
+                None,
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(6)
+            ]
+        );
+    }
+
+    #[test]
+    fn shifting_a_range_of_one_row_clears_it_and_a_range_past_the_last_row_is_cut() {
+        for up in [true, false] {
+            let mut canvas = striped();
+            canvas.shift_rows(4, 1, up);
+            assert_eq!(
+                rows_after(&canvas),
+                [
+                    Some(0),
+                    Some(1),
+                    Some(2),
+                    Some(3),
+                    None,
+                    Some(5),
+                    Some(6),
+                    Some(7)
+                ]
+            );
+        }
+        let mut canvas = striped();
+        canvas.shift_rows(6, 9, true);
+        assert_eq!(
+            rows_after(&canvas),
+            [
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(7),
+                None
+            ]
+        );
+        let mut canvas = striped();
+        canvas.shift_rows(6, 9, false);
+        assert_eq!(
+            rows_after(&canvas),
+            [
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                None,
+                Some(6)
+            ]
+        );
+        for (first, count, up) in [(0, 0, true), (5, 0, false), (8, 3, true), (9, 3, false)] {
+            let mut canvas = striped();
+            canvas.shift_rows(first, count, up);
+            assert_eq!(
+                rows_after(&canvas),
+                (0..8).map(Some).collect::<Vec<_>>(),
+                "shift_rows({first}, {count}, {up})"
+            );
+        }
+    }
+
+    #[test]
+    fn clearing_and_shifting_rows_record_one_call_each() {
+        let mut canvas = Canvas::recording();
+        canvas.clear_rows(1, 2);
+        canvas.shift_rows(2, 3, true);
+        let (_, calls) = canvas.into_parts();
+        assert_eq!(
+            calls,
+            [
+                Call::ClearRows { first: 1, count: 2 },
+                Call::ShiftRows {
+                    first: 2,
+                    count: 3,
+                    up: true
+                }
+            ]
         );
     }
 }

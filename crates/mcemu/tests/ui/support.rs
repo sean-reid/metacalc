@@ -1,4 +1,6 @@
-use mcemu::{ENTRY, FLASH_TEST_PAGE, LCD_HEIGHT, LCD_WIDTH, Machine, STUB_ROM, Speed, Stop};
+use mcemu::{
+    ENTRY, FLASH_TEST_PAGE, LCD_HEIGHT, LCD_WIDTH, LcdAccess, Machine, STUB_ROM, Speed, Stop,
+};
 use mcglyph::Bitmap;
 use mcglyph::z80::Table;
 use mcui::canvas::{Call, Canvas};
@@ -98,6 +100,25 @@ pub enum Op {
     },
     Blit,
     Clear,
+    ClearRows {
+        first: u8,
+        count: u8,
+    },
+    /// `dir` is the C register of the call: 0 moves up, anything else down.
+    ShiftRows {
+        first: u8,
+        count: u8,
+        dir: u8,
+    },
+    /// The 768 bytes of the frame, put there directly, as another routine's drawing would leave
+    /// them.
+    SetFrame(Vec<u8>),
+    /// One byte of the variable block, `ui_dirty` and `ui_sent` among them, at an offset.
+    SetVar(u8, u8),
+    /// Forgets the LCD writes recorded so far.
+    ClearLcdWrites,
+    /// A busy loop of `n` rounds, 26 T-states each, with the interrupt state as it is.
+    Delay(u16),
     /// An LCD command, after a delay that lets the controller take it.
     Command(u8),
     /// The LCD status byte, read from port 10h.
@@ -200,6 +221,15 @@ pub fn ops(calls: &[Call]) -> Vec<Op> {
                 selected: *selected,
             },
             Call::Marker(row) => Op::Marker(byte(*row)),
+            Call::ClearRows { first, count } => Op::ClearRows {
+                first: byte(*first),
+                count: byte(*count),
+            },
+            Call::ShiftRows { first, count, up } => Op::ShiftRows {
+                first: byte(*first),
+                count: byte(*count),
+                dir: u8::from(!*up),
+            },
             Call::Bar { row, done, total } => Op::Bar {
                 row: byte(*row),
                 done: count(*done),
@@ -210,12 +240,18 @@ pub fn ops(calls: &[Call]) -> Vec<Op> {
         .collect()
 }
 
+/// What the host does when the script halts for it.
+enum Pause {
+    Ink(Bitmap),
+    ClearLcdWrites,
+}
+
 struct Script {
     code: Vec<u8>,
     data: Vec<u8>,
     image: Image,
     results: u16,
-    inks: Vec<(u16, Bitmap)>,
+    pauses: Vec<(u16, Pause)>,
     placed: Vec<Placed>,
 }
 
@@ -320,11 +356,37 @@ impl Script {
             }
             Op::Blit => self.run("ui_blit", &[], call),
             Op::Clear => self.run("ui_clear", &[], call),
+            Op::ClearRows { first, count } => {
+                self.code.extend_from_slice(&[0x3E, *first, 0x06, *count]);
+                self.run("ui_clear_rows", &[], call);
+            }
+            Op::ShiftRows { first, count, dir } => {
+                self.code
+                    .extend_from_slice(&[0x3E, *first, 0x06, *count, 0x0E, *dir]);
+                self.run("ui_shift_rows", &[], call);
+            }
+            Op::SetFrame(bytes) => {
+                assert_eq!(bytes.len(), FRAME_BYTES);
+                let at = self.put(bytes);
+                self.word(&[0x21], at);
+                self.word(&[0x11], self.image.frame);
+                self.word(&[0x01], FRAME_LEN);
+                self.code.extend_from_slice(&[0xED, 0xB0]);
+            }
+            Op::SetVar(offset, value) => {
+                self.word(&[0x21], self.image.vars + u16::from(*offset));
+                self.code.extend_from_slice(&[0x36, *value]);
+            }
             Op::Command(value) if call => {
                 self.code
                     .extend_from_slice(&[0x06, 0x00, 0x10, 0xFE, 0x3E, *value, 0xD3, 0x10]);
             }
             Op::Command(_) => {}
+            Op::Delay(n) if call => {
+                self.word(&[0x01], *n);
+                self.code.extend_from_slice(&[0x0B, 0x78, 0xB1, 0x20, 0xFB]);
+            }
+            Op::Delay(_) => {}
             Op::Status => {
                 if call {
                     self.code.extend_from_slice(&[0xDB, 0x10]);
@@ -338,11 +400,8 @@ impl Script {
                 self.keep(&[0x22]);
             }
             Op::Iff => {}
-            Op::Ink(layer) => {
-                self.code.push(0x76);
-                self.inks
-                    .push((SCRIPT + self.code.len() as u16, layer.clone()));
-            }
+            Op::Ink(layer) => self.pause(Pause::Ink(layer.clone())),
+            Op::ClearLcdWrites => self.pause(Pause::ClearLcdWrites),
             Op::SetFont(table) => {
                 let at = self.put(table);
                 self.word(&[0x21], at);
@@ -401,6 +460,11 @@ impl Script {
         }
     }
 
+    fn pause(&mut self, pause: Pause) {
+        self.code.push(0x76);
+        self.pauses.push((SCRIPT + self.code.len() as u16, pause));
+    }
+
     fn run(&mut self, routine: &str, store: &[u8], call: bool) {
         if !call {
             return;
@@ -417,6 +481,12 @@ pub struct Outcome {
     pub results: Vec<u16>,
     pub tstates: u32,
     pub lcd: Vec<bool>,
+    /// The controller's memory as the screen would show it, whatever its on state.
+    pub lcd_ram: Vec<bool>,
+    /// The writes to the LCD's ports 10h and 11h since the start or the last `Op::ClearLcdWrites`.
+    pub lcd_writes: Vec<LcdAccess>,
+    /// The variable block, `VARS_LEN` bytes.
+    pub vars: Vec<u8>,
     /// Where the last run stopped.
     pub pc: u16,
     /// Bytes of stack the run reached below its starting point, calls from the script included.
@@ -435,8 +505,8 @@ impl Outcome {
 }
 
 pub const MARK: u8 = 0xA5;
-const FRAME_LEN: u16 = 768;
-const VARS_LEN: u16 = 0x1A;
+pub const FRAME_LEN: u16 = 768;
+pub const VARS_LEN: u16 = 0x1A;
 /// RAM guarded below the two blocks, and above them up to the script, at most `GUARD_ABOVE`.
 const GUARD: u16 = 0x200;
 const GUARD_ABOVE: u16 = 0x800;
@@ -473,7 +543,43 @@ pub fn run_code_on(
     ops: &[Op],
     call: bool,
 ) -> Outcome {
-    run_marked(rom, timer, image, code, settings, ops, call, MARK, &[])
+    run_marked(
+        rom,
+        timer,
+        image,
+        code,
+        settings,
+        ops,
+        call,
+        MARK,
+        &[],
+        LIMIT,
+    )
+    .expect("the script halts")
+}
+
+/// `run_code_on` with a limit of `limit` T-states for each run of the script, and `None` when a run does
+/// not halt within it.
+pub fn run_bounded(
+    rom: &[u8],
+    image: Image,
+    code: &[u8],
+    ops: &[Op],
+    limit: u32,
+) -> Option<Outcome> {
+    let settings = (Speed::Mhz6, true);
+    run_marked(
+        rom,
+        true,
+        image,
+        code,
+        settings,
+        ops,
+        true,
+        MARK,
+        &[],
+        limit,
+    )
 }
 
 /// The deepest the stack goes in a run of `ops`, as the larger of two measures with different
@@ -493,7 +599,9 @@ pub fn stack_depth(image: Image, ops: &[Op]) -> usize {
                 true,
                 mark,
                 &[],
+                LIMIT,
             )
+            .expect("the script halts")
             .stack
         })
         .max()
@@ -511,13 +619,14 @@ fn run_marked(
     call: bool,
     stack_mark: u8,
     watch: &[(u16, u16)],
-) -> Outcome {
+    limit: u32,
+) -> Option<Outcome> {
     let mut script = Script {
         code: vec![],
         data: vec![],
         image,
         results: 0,
-        inks: vec![],
+        pauses: vec![],
         placed: vec![],
     };
     script.word(&[0x31], STACK);
@@ -557,16 +666,26 @@ fn run_marked(
     m.load_ram(SCRIPT, &script.code);
     m.load_ram(DATA, &script.data);
     m.set_speed(speed);
-    let mut run = m.run(SCRIPT, LIMIT);
-    assert_eq!(run.stop, Stop::Halted);
-    for (next, layer) in &script.inks {
-        let mut frame = m.read_ram(image.frame, FRAME_BYTES);
-        for (byte, ink) in frame.iter_mut().zip(pack(layer)) {
-            *byte |= ink;
+    m.trace_lcd(true);
+    let mut run = m.run(SCRIPT, limit);
+    if run.stop != Stop::Halted {
+        return None;
+    }
+    for (next, pause) in &script.pauses {
+        match pause {
+            Pause::Ink(layer) => {
+                let mut frame = m.read_ram(image.frame, FRAME_BYTES);
+                for (byte, ink) in frame.iter_mut().zip(pack(layer)) {
+                    *byte |= ink;
+                }
+                m.load_ram(image.frame, &frame);
+            }
+            Pause::ClearLcdWrites => drop(m.take_lcd_trace()),
         }
-        m.load_ram(image.frame, &frame);
-        let more = m.run(*next, LIMIT);
-        assert_eq!(more.stop, Stop::Halted);
+        let more = m.run(*next, limit);
+        if more.stop != Stop::Halted {
+            return None;
+        }
         run.tstates += more.tstates;
     }
     assert_eq!(ENTRY, 0x4000);
@@ -600,21 +719,33 @@ fn run_marked(
         .position(|&b| b != stack_mark)
         .map_or(0, |at| window.len() - at);
     let pc = m.regs().pc;
-    let lcd = m.lcd();
-    let lcd = (0..LCD_HEIGHT)
-        .flat_map(|y| (0..LCD_WIDTH).map(move |x| (x, y)))
-        .map(|(x, y)| lcd.pixel(x, y))
+    let pixels = |lcd: mcemu::Lcd| -> Vec<bool> {
+        (0..LCD_HEIGHT)
+            .flat_map(|y| (0..LCD_WIDTH).map(move |x| (x, y)))
+            .map(|(x, y)| lcd.pixel(x, y))
+            .collect()
+    };
+    let lcd = pixels(m.lcd());
+    let lcd_ram = pixels(m.lcd_ram());
+    let lcd_writes = m
+        .take_lcd_trace()
+        .into_iter()
+        .filter(|a| a.is_write() && matches!(a.port, 0x10 | 0x11))
         .collect();
-    Outcome {
+    let vars = m.read_ram(image.vars, usize::from(VARS_LEN));
+    Some(Outcome {
         frame,
         results,
         tstates: run.tstates,
         lcd,
+        lcd_ram,
+        lcd_writes,
+        vars,
         pc,
         stack,
         data,
         placed: script.placed,
-    }
+    })
 }
 
 /// `run` that also marks the `(address, length)` ranges in `watch` and fails when a run changes
@@ -622,8 +753,9 @@ fn run_marked(
 pub fn run_watched(image: Image, ops: &[Op], watch: &[(u16, u16)]) -> Outcome {
     let settings = (Speed::Mhz6, true);
     run_marked(
-        STUB_ROM, false, image, image.code, settings, ops, true, MARK, watch,
+        STUB_ROM, false, image, image.code, settings, ops, true, MARK, watch, LIMIT,
     )
+    .expect("the script halts")
 }
 
 pub fn run(image: Image, ops: &[Op]) -> Outcome {

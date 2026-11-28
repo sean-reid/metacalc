@@ -8,9 +8,9 @@ use crate::shell_cost::*;
 
 /// The most bytes the three code pages (entry, draw and data) may use in the builds around the
 /// fixture library as three and as six stages, and around ring as its shipped three.
-const PAGES_THREE: [u32; 3] = [12_145, 15_811, 10_762];
-const PAGES_SIX: [u32; 3] = [12_222, 15_811, 10_762];
-const PAGES_RING: [u32; 3] = [12_169, 15_811, 10_762];
+const PAGES_THREE: [u32; 3] = [12_159, 16_070, 10_762];
+const PAGES_SIX: [u32; 3] = [12_236, 16_070, 10_762];
+const PAGES_RING: [u32; 3] = [12_183, 16_070, 10_762];
 
 fn fits(name: &str, built: &Built, ceilings: [u32; 3]) {
     println!("{name}: code pages {:?} of 16384 bytes", built.used);
@@ -38,7 +38,7 @@ fn the_code_pages_of_ring_in_three_stages_stay_within_their_ceilings() {
 /// The most T-states a cursor move may take with the frame it redraws, on six stages with every
 /// stage under way: libs_key, then scr_draw and ui_blit, for the move that scrolls the rows and
 /// for those that do not.
-const MOVE_AND_REDRAW: u32 = 161_900;
+const MOVE_AND_REDRAW: u32 = 163_768;
 
 #[test]
 fn a_cursor_move_and_the_frame_it_redraws_fit_their_ceiling() {

@@ -40,6 +40,7 @@ fn opened(stage: usize) -> Walker {
 fn a_walk_by_row_over_every_title_of_each_stage_has_the_models_frames_and_counts() {
     let built = rich();
     assert_eq!(&title_counts(built)[1..], &COUNTS);
+    reset_lcd_checks();
     for (n, len) in COUNTS.into_iter().enumerate() {
         let mut walker = opened(n + 1);
         let list = &mut walker.list;
@@ -63,11 +64,13 @@ fn a_walk_by_row_over_every_title_of_each_stage_has_the_models_frames_and_counts
             n + 1
         );
     }
+    assert_lcd_checks("the row walk", [KIND_SECTIONS], |_| 190);
 }
 
 #[test]
 fn a_walk_by_page_from_either_end_and_from_between_has_the_models_frames() {
     let mut pages = 0;
+    reset_lcd_checks();
     for (n, len) in COUNTS.into_iter().enumerate() {
         for start in [0, 3] {
             if start >= len {
@@ -98,6 +101,7 @@ fn a_walk_by_page_from_either_end_and_from_between_has_the_models_frames() {
         }
     }
     assert_eq!(pages, 65, "the pages walked");
+    assert_lcd_checks("the page walk", [KIND_SECTIONS], |_| 98);
 }
 
 /// Every title of each stage of the shipped list walked down and up by `scan`, `step` titles a key, with

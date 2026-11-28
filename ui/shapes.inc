@@ -1,9 +1,10 @@
 ; Shapes: rectangle inversion.
 
 ; ui_invert   in:  B = x, C = y, D = width, E = height, in pixels
-;             flips the rectangle, clipped to the screen; nothing when width or height is 0. Each
-;             scanline is flipped a byte at a time, the bytes between the edge ones with cpl and
-;             the edge ones through a mask. A rectangle that starts in the first byte column and
+;             flips the rectangle, clipped to the screen, and marks the text rows its clipped
+;             scanlines are in; nothing is flipped or marked when width or height is 0 or the
+;             rectangle starts off the screen. Each scanline is flipped a byte at a time, the
+;             bytes between the edge ones with cpl and the edge ones through a mask. A rectangle that starts in the first byte column and
 ;             ends in the last is one run of bytes from its first scanline to its last
 ;             destroys AF BC DE HL
 ui_invert:
@@ -29,6 +30,22 @@ iv_w:
 	jr nc,iv_h
 	ld e,a
 iv_h:
+	ld a,c
+	and 7
+	add a,e
+	cp 9
+	jr nc,iv_rows
+	ld a,c
+	rrca
+	and $1C
+	or (ut_rows+2)&$FF
+	ld l,a
+	ld h,ut_rows>>8
+	ld a,(hl)
+iv_mark:
+	ld hl,ui_dirty
+	or (hl)
+	ld (hl),a
 	ld a,b
 	add a,d
 	dec a
@@ -67,6 +84,27 @@ iv_h:
 	cp 8
 	jp z,iv_rows8
 	jp iv_flip_row
+iv_rows:
+	ld a,c
+	add a,e
+	dec a
+	rrca
+	and $1C
+	or (ut_rows+2)&$FF
+	ld l,a
+	ld h,ut_rows>>8
+	ld a,(hl)
+	add a,a
+	ld h,a
+	ld a,c
+	rrca
+	and $1C
+	or (ut_rows+2)&$FF
+	ld l,a
+	ld a,h
+	ld h,ut_rows>>8
+	sub (hl)
+	jr iv_mark
 iv_gen:
 	ld a,d
 	and 7

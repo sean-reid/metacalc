@@ -5,6 +5,8 @@
 
 #[path = "app_pages/app.rs"]
 mod app;
+#[path = "app_pages/blit_cost.rs"]
+mod blit_cost;
 #[path = "app_pages/builds.rs"]
 mod builds;
 #[path = "app_pages/built.rs"]

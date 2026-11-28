@@ -104,7 +104,7 @@ fn on_the_reference_os_opening_the_list_and_a_move_with_its_frame_fit_their_budg
         f64::from(open) / 6000.0
     );
     assert!(open < OPEN_BUDGET);
-    within("opening the list", open, 461_598);
+    within("opening the list", open, 463_842);
     let key = app.label("list_key");
     let (idle, count, preview) = (
         app.label("list_idle"),
@@ -133,7 +133,7 @@ fn on_the_reference_os_opening_the_list_and_a_move_with_its_frame_fit_their_budg
         within(
             &format!("a move by {name}"),
             total,
-            if code == 2 { 223_339 } else { 227_921 },
+            if code == 2 { 225_524 } else { 230_074 },
         );
         app.poke(count, &[0]);
         assert_eq!(app.peek(preview, 1), [PENDING]);
@@ -156,7 +156,7 @@ fn on_the_reference_os_opening_the_list_and_a_move_with_its_frame_fit_their_budg
         within(
             &format!("the settled frame after a move by {name}"),
             draw + blit,
-            if code == 2 { 236_390 } else { 231_957 },
+            if code == 2 { 238_761 } else { 234_214 },
         );
         within(
             &format!("the fit after a move by {name}"),

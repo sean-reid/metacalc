@@ -69,9 +69,9 @@ fn pass_screen(speed: &str, in20: u8) -> Vec<String> {
         "d01 00768 00000".into(),
         "d23 00000 00000".into(),
         "dtot 00000".into(),
-        "c01 00013 00013".into(),
+        "c01 00025 00001".into(),
         "c23 00000 00000".into(),
-        "ctot 00013".into(),
+        "ctot 00001".into(),
         format!("any key in20={in20:02X}"),
     ]
     .to_vec()

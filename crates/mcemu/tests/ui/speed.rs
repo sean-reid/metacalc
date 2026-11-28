@@ -221,10 +221,10 @@ fn the_slowest_bar_takes_under_its_ceiling_at_6_mhz() {
 /// Ceilings in T-states for the dearest ui_invert of each rectangle over the left edges tried and
 /// the eight text rows, a little above what each takes: (width, left edges, ceiling, what).
 const INVERTS: [(u8, &[u8], u32, &str); 4] = [
-    (94, &[0, 1, 2, 3, 4, 5, 6, 7], 3_220, "94 by 8"),
-    (96, &[0], 3_220, "the full 96 wide run"),
-    (80, &[9], 3_880, "80 by 8 from x 9"),
-    (8, &[0, 1, 2, 3, 4, 5, 6, 7], 1_800, "8 by 8"),
+    (94, &[0, 1, 2, 3, 4, 5, 6, 7], 3_367, "94 by 8"),
+    (96, &[0], 3_367, "the full 96 wide run"),
+    (80, &[9], 4_027, "80 by 8 from x 9"),
+    (8, &[0, 1, 2, 3, 4, 5, 6, 7], 1_935, "8 by 8"),
 ];
 
 #[test]
@@ -240,5 +240,70 @@ fn inverting_wide_and_square_rectangles_takes_under_their_ceilings_at_6_mhz() {
             "6 MHz: ui_invert of {what} takes {took} T-states at most (x {at}, y {row}), ceiling {ceiling}"
         ));
         assert!(took < ceiling, "{what} took {took}");
+    }
+}
+
+/// A blit of the rows in `mask`, and the row routines, in T-states from flash with the wait states: each
+/// pinned within 2 percent of what it took, which a call that returns at once is far under.
+#[test]
+fn blits_of_few_rows_and_the_row_routines_cost_what_they_are_pinned_at() {
+    let (a, _) = crate::masks::frames();
+    let blit = |mask: u8| {
+        vec![
+            Op::SetFrame(a.clone()),
+            Op::SetVar(crate::masks::dirty_at(), mask),
+            Op::Blit,
+        ]
+    };
+    let rows = |op: Op| {
+        vec![
+            Op::SetFrame(a.clone()),
+            Op::SetVar(crate::masks::dirty_at(), 0),
+            op,
+        ]
+    };
+    let clear = |count| Op::ClearRows { first: 1, count };
+    let shift = |count, dir| Op::ShiftRows {
+        first: 1,
+        count,
+        dir,
+    };
+    let cases: Vec<(&str, Speed, Vec<Op>, u32)> = vec![
+        ("blit of FFh", Speed::Mhz6, blit(0xFF), 74253),
+        ("blit of FFh", Speed::Mhz15, blit(0xFF), 150977),
+        ("blit of one row", Speed::Mhz6, blit(0x08), 13037),
+        ("blit of two rows", Speed::Mhz6, blit(0x18), 21804),
+        ("blit of no row", Speed::Mhz6, blit(0x00), 418),
+        ("clear of one row", Speed::Mhz6, rows(clear(1)), 1401),
+        ("clear of six rows", Speed::Mhz6, rows(clear(6)), 5091),
+        ("shift of one row", Speed::Mhz6, rows(shift(1, 0)), 1416),
+        (
+            "shift of six rows up",
+            Speed::Mhz6,
+            rows(shift(6, 0)),
+            13579,
+        ),
+        (
+            "shift of six rows down",
+            Speed::Mhz6,
+            rows(shift(6, 1)),
+            13583,
+        ),
+    ];
+    let tooks: Vec<u32> = cases
+        .iter()
+        .map(|(what, speed, ops, want)| {
+            let took = cost(*speed, ops);
+            report(format!(
+                "{speed:?}: {what}: {took} T-states, pinned at {want}"
+            ));
+            took
+        })
+        .collect();
+    for ((what, _, _, want), took) in cases.iter().zip(tooks) {
+        assert!(
+            took.abs_diff(*want) <= want / 50,
+            "{what}: {took} against {want}"
+        );
     }
 }

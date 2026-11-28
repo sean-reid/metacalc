@@ -7,9 +7,10 @@
 //! with them off. The forced run is masked from the entry, so that the timer's interrupt stays pending, and
 //! takes it after one of those instructions by turning interrupts on for that one instruction.
 //!
-//! On the reference OS at speed 0 the shell's timer is not pending at the draw's deepest instructions, so
-//! the draw's 36 there is a bound the shell does not produce, reached only by running the clock on at a
-//! HALT; at speed 1 it is produced, and the enter's 32 needs no wait at either speed.
+//! On the reference OS at both speeds and on the stub at speed 0 the shell's timer is not pending at the
+//! draw's deepest instructions, so the draw's 36 and 30 there are bounds the shell does not produce,
+//! reached only by running the clock on in a loop; on the stub at speed 1 it is produced, and the enter's
+//! 32 and 26 need no wait at either speed.
 
 use crate::checkrig::{Run, WAIT};
 use crate::dist_depth::{expected, handler};
@@ -108,7 +109,7 @@ fn take(
     speed: u8,
     d: &Deepest,
     target: (usize, u16),
-    idle: Option<u16>,
+    idle: bool,
 ) -> Option<Forced> {
     let at = run.shell.app.label(label);
     run.run_to_addr(label, at, WAIT);
@@ -191,27 +192,36 @@ fn take(
         phase: 0,
         candidates: d.reachable.len(),
         answer: (regs.af >> 8) as u8,
-        waited: idle.is_some(),
+        waited: idle,
     })
 }
 
-/// Whether the timer's interrupt is pending, after letting the clock run at the HALT at `idle` with
-/// interrupts off until it is when there is one, which leaves the registers as they were.
-fn wait_for_timer(run: &mut Run, idle: Option<u16>) -> bool {
+/// Whether the timer's interrupt is pending, after letting the clock run in a JR to itself in erased
+/// flash of the first page with interrupts off until it is when `idle` is set, which leaves the
+/// registers and the two bytes of the loop as they were.
+fn wait_for_timer(run: &mut Run, idle: bool) -> bool {
     let pending = |run: &mut Run| run.m().in_port(4) & 2 != 0;
-    let Some(halt) = idle else {
+    if !idle {
         return pending(run);
-    };
+    }
     let kept = run.m().regs();
-    let mut at_halt = kept;
-    at_halt.pc = halt;
+    let spin = run
+        .m()
+        .read_flash(0, 0, 0x4000)
+        .windows(2)
+        .position(|w| w == [0xFF, 0xFF])
+        .expect("two erased bytes in the first page");
+    run.m().load_flash(0, spin, &[0x18, 0xFE]);
+    let mut looping = kept;
+    looping.pc = spin as u16;
     for _ in 0..1_000 {
         if pending(run) {
             break;
         }
-        run.m().set_regs(&at_halt);
+        run.m().set_regs(&looping);
         run.m().resume(1_000);
     }
+    run.m().load_flash(0, spin, &[0xFF, 0xFF]);
     run.m().set_regs(&kept);
     pending(run)
 }
@@ -233,7 +243,7 @@ pub fn forced(
     on_theorem: &dyn Fn(&str) -> Walker,
     routine: &str,
     speed: u8,
-    idle: Option<u16>,
+    idle: bool,
 ) -> (Vec<Forced>, usize) {
     let label = format!("dist_{routine}");
     let want = expected()[routine].0;
@@ -267,7 +277,7 @@ pub fn forced(
         let before = found.len();
         for phase in 0..24 {
             let mut walker = ready(phase);
-            let got = take(&mut walker.list.run, &label, speed, &d, target, None);
+            let got = take(&mut walker.list.run, &label, speed, &d, target, false);
             if let Some(mut f) = got {
                 f.phase = phase;
                 f.candidates = d.reachable.len();
@@ -281,7 +291,7 @@ pub fn forced(
             walker.list.run.release(F2);
             walker.list.run.run(3_000_000);
         }
-        if found.len() > before || idle.is_none() {
+        if found.len() > before || !idle {
             continue;
         }
         let mut walker = ready(0);
@@ -315,10 +325,11 @@ fn deepest_count(routine: &str) -> usize {
 }
 
 /// Whether the timer's interrupt is pending at the deepest instructions only after the clock runs on: the
-/// reference OS's draw at speed 0, whose deepest instructions come 16,324 to 17,533 T-states after its entry
-/// and the timer fires 34,128 after it.
+/// draw's, on the reference OS at both speeds and on the stub at speed 0. The draw's deepest instructions
+/// come 16,347 T-states after its entry on the stub and 16,324 to 17,533 on the reference OS, and the
+/// timer's next interrupt after the entry is later, except on the stub at speed 1.
 fn needs_wait(real: bool, routine: &str, speed: u8) -> bool {
-    real && routine == "draw" && speed == 0
+    routine == "draw" && (real || speed == 0)
 }
 
 fn check(os: &str, speed: u8, routine: &str, (found, total): (Vec<Forced>, usize), real: bool) {
@@ -359,7 +370,7 @@ fn check(os: &str, speed: u8, routine: &str, (found, total): (Vec<Forced>, usize
 fn on_the_stub_an_interrupt_at_a_deepest_instruction_adds_what_its_handler_writes() {
     for speed in [0u8, 1] {
         for routine in ["enter", "draw"] {
-            let got = forced(&on_theorem_stub, routine, speed, None);
+            let got = forced(&on_theorem_stub, routine, speed, true);
             check("stub", speed, routine, got, false);
         }
     }
@@ -381,16 +392,9 @@ fn on_the_reference_os_an_interrupt_at_each_deepest_instruction_adds_the_keypad_
         walker.open();
         walker
     };
-    let idle = {
-        let mut walker = on_theorem(SEVEN);
-        let page = walker.list.run.m().read_flash(0, 0, 0x4000);
-        page.iter()
-            .position(|&b| b == 0x76)
-            .expect("a HALT in the first page") as u16
-    };
     for speed in [0u8, 1] {
         for routine in ["enter", "draw"] {
-            let got = forced(&on_theorem, routine, speed, Some(idle));
+            let got = forced(&on_theorem, routine, speed, true);
             check("ROM", speed, routine, got, true);
         }
     }

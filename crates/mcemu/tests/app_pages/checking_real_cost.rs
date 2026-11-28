@@ -19,9 +19,9 @@ use mcemu::Machine;
 /// The least and the most T-states scr_draw and ui_blit may take together, cold, for each frame of
 /// the checking screen of prop in ring's build, a little under and a little above what they take
 /// on the reference OS.
-const ROM_FRAME_READING: (u32, u32) = (128_800, 133_900);
-const ROM_FRAME_STEPS: (u32, u32) = (152_800, 158_900);
-const ROM_FRAME_FINISHED: (u32, u32) = (126_600, 131_700);
+const ROM_FRAME_READING: (u32, u32) = (129_984, 135_084);
+const ROM_FRAME_STEPS: (u32, u32) = (154_098, 160_198);
+const ROM_FRAME_FINISHED: (u32, u32) = (127_784, 132_884);
 /// The least and greatest bytes an idle call of each class writes below the stack pointer
 /// scr_idle was called with on the reference OS, interrupts off at the call, and the fewest calls
 /// of the class in prop's check, exactly for the classes that leave the screen.

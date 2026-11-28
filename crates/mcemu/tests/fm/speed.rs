@@ -19,12 +19,12 @@ struct Ceilings {
 }
 
 const FIXTURE: Ceilings = Ceilings {
-    frame: 273_400,
-    draw: 153_500,
+    frame: 278_074,
+    draw: 156_920,
 };
 const RING: Ceilings = Ceilings {
-    frame: 267_000,
-    draw: 147_000,
+    frame: 270_762,
+    draw: 149_508,
 };
 const STRINGS: u16 = 0xB000;
 
@@ -199,8 +199,9 @@ fn heaviest_frame(name: &str, bytes: &[u8], folds: &crate::foldspeed::Ceilings) 
     best
 }
 
+/// The frame redraws within 50 ms; the fixture's worst cursor frame does not, which cursor_costs pins at its exact figure.
 #[test]
-fn a_frame_of_six_full_rows_redraws_within_50_ms_at_6_mhz() {
+fn a_frame_of_six_full_rows_redraws_within_50_ms_and_its_worst_cursor_frame_is_over_at_6_mhz() {
     let best = heaviest_frame("fixture", &fixture::library(), &crate::foldspeed::FIXTURE);
     assert!(best.total() < BUDGET, "{} T-states", best.total());
     assert!(best.total() <= FIXTURE.frame, "{} T-states", best.total());

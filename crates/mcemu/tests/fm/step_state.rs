@@ -379,5 +379,5 @@ fn what_a_statement_outside_the_window_costs_fm_to_select_and_draw() {
         );
         got.push((select, out.tstates - base, inside));
     }
-    assert_eq!(got, [(823, 1344, 81_314), (823, 1344, 146_528)]);
+    assert_eq!(got, [(823, 1344, 82_739), (823, 1344, 149_036)]);
 }

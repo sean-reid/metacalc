@@ -42,33 +42,33 @@ fn tap(app: &mut App, scan: u8) {
 
 /// The most T-states scr_draw and ui_blit may take together for each screen, a little above what
 /// they take on the fixture library.
-const LIBRARIES_PLAIN: u32 = 126_000;
-const LIBRARIES_ONE: u32 = 133_400;
-const LIBRARIES_THREE: u32 = 138_000;
-const LIBRARIES_SIX: u32 = 140_500;
-const LIBRARIES_SIX_TABLE: u32 = 158_200;
-const LIBRARIES_THREE_TABLE: u32 = 146_800;
-const STAGE_ABOUT: u32 = 136_000;
-const ABOUT: u32 = 141_000;
-const NOTICE: u32 = 113_650;
+const LIBRARIES_PLAIN: u32 = 127_298;
+const LIBRARIES_ONE: u32 = 134_812;
+const LIBRARIES_THREE: u32 = 139_640;
+const LIBRARIES_SIX: u32 = 142_368;
+const LIBRARIES_SIX_TABLE: u32 = 160_068;
+const LIBRARIES_THREE_TABLE: u32 = 148_440;
+const STAGE_ABOUT: u32 = 137_197;
+const ABOUT: u32 = 142_197;
+const NOTICE: u32 = 114_733;
 /// The same for the cold frame, the first one after a screen opens or after a power down, which
 /// copies the screen's strings into APP_STAGE first. That is the frame a user sees first.
-const LIBRARIES_PLAIN_COLD: u32 = 127_400;
-const LIBRARIES_ONE_COLD: u32 = 134_800;
-const LIBRARIES_THREE_COLD: u32 = 139_300;
-const LIBRARIES_SIX_COLD: u32 = 141_800;
-const LIBRARIES_SIX_TABLE_COLD: u32 = 159_600;
-const LIBRARIES_THREE_TABLE_COLD: u32 = 148_200;
-const STAGE_ABOUT_COLD: u32 = 136_000;
-const ABOUT_COLD: u32 = 141_900;
-const NOTICE_COLD: u32 = 116_300;
+const LIBRARIES_PLAIN_COLD: u32 = 128_698;
+const LIBRARIES_ONE_COLD: u32 = 136_212;
+const LIBRARIES_THREE_COLD: u32 = 140_940;
+const LIBRARIES_SIX_COLD: u32 = 143_668;
+const LIBRARIES_SIX_TABLE_COLD: u32 = 161_468;
+const LIBRARIES_THREE_TABLE_COLD: u32 = 149_840;
+const STAGE_ABOUT_COLD: u32 = 137_197;
+const ABOUT_COLD: u32 = 143_097;
+const NOTICE_COLD: u32 = 117_383;
 /// The theorem screen's frame of the first assertion's conclusion, which has no hypothesis.
-const THEOREM: u32 = 122_800;
-const THEOREM_COLD: u32 = 125_100;
-/// The least it may take: 120,400 warm and 122,633 cold were measured, so a frame that costs far less did
+const THEOREM: u32 = 124_155;
+const THEOREM_COLD: u32 = 126_455;
+/// The least it may take: 121,747 warm and 123,980 cold were measured, so a frame that costs far less did
 /// not draw the screen.
-const THEOREM_FLOOR: u32 = 119_000;
-const THEOREM_COLD_FLOOR: u32 = 121_400;
+const THEOREM_FLOOR: u32 = 120_355;
+const THEOREM_COLD_FLOOR: u32 = 122_755;
 /// The most the loop may take around app_key for a key no screen answers, scr_key included.
 const IGNORED_KEY: u32 = 2_470;
 /// The least: it takes 2,457 with the idle point.
@@ -76,8 +76,8 @@ const IGNORED_KEY_FLOOR: u32 = 2_408;
 /// The most app_stage_block may take for a block the area already holds.
 const WARM_STAGE: u32 = 120;
 /// The most bytes each code page may use: entry, draw and data.
-const PAGES_PLAIN: [u32; 3] = [2_862, 15_811, 10_762];
-const PAGES_LIBRARY: [u32; 3] = [12_064, 15_811, 10_762];
+const PAGES_PLAIN: [u32; 3] = [2_876, 16_070, 10_762];
+const PAGES_LIBRARY: [u32; 3] = [12_078, 16_070, 10_762];
 
 /// Clears the staging tag, so that the next draw copies its screen's strings.
 pub fn go_cold(app: &mut App) {
@@ -472,8 +472,8 @@ fn a_cursor_move_costs_little() {
 
 /// The most T-states scr_draw and ui_blit may take for ring's three stages with a table that leaves
 /// each under way, warm and cold.
-const LIBRARIES_RING: u32 = 162_800;
-const LIBRARIES_RING_COLD: u32 = 164_200;
+const LIBRARIES_RING: u32 = 164_440;
+const LIBRARIES_RING_COLD: u32 = 165_840;
 
 #[test]
 #[ignore = "needs the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]

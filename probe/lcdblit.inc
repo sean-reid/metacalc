@@ -1,7 +1,10 @@
-; probe_blit is ui_blit's instruction sequence, copied, with a count of the busy reads of every
-; wait added right after the wait's last poll, so the gap from an LCD write to the next first poll is
-; the same instructions as in ui_blit. Built with REF_BLIT the probe calls ui_blit itself instead,
-; which is how a test compares the two.
+; probe_blit is ui_blit's instruction sequence for a full frame, copied, with a count of the busy
+; reads of every wait added right after the wait's last poll, so the gap from an LCD write to the
+; next first poll is the same instructions as in ui_blit. The run list is not copied: pop bc and
+; pop de are loads of the same cost, ld sp,UI_VARS an equal load, and a delay after the second mode
+; command, as long as the list's build, makes that gap ui_blit's. Every gap of a full frame is
+; ui_blit's, T-state for T-state. Built with REF_BLIT the probe calls ui_blit itself with every
+; text row marked, which is how a test compares the two.
 ; Contract: as ui_blit (ui/blit.inc): interrupts off for the call, back as the caller had them,
 ; AF BC DE HL destroyed, the controller left in 8 bit mode with increment mode 5. The shadow
 ; registers are not touched, and the stack takes 10 bytes with the return address. It adds to
@@ -86,15 +89,33 @@ pb_masked:
 	ld de,UI_STRIDE
 	ld a,$20
 	ld (ui_cnt),a
+	ld c,LCD_CMD
+	ld b,41
+	djnz $
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
 pb_col:
 	PWAIT(LCD_HIST_CMD, LCD_TOTAL_CMD)
 	ld a,(ui_cnt)
 	out (LCD_CMD),a
-	PWAIT(LCD_HIST_CMD, LCD_TOTAL_CMD)
-	ld a,$80
-	out (LCD_CMD),a
-	ld a,UI_HEIGHT/8
+	ld de,UI_STRIDE
+pb_run:
+	ld bc,$80C0
+	ld a,c
 	ld (ui_blk),a
+	ld a,b
+	ld c,LCD_CMD
+	PWAIT(LCD_HIST_CMD, LCD_TOTAL_CMD)
+	out (LCD_CMD),a
 pb_block:
 	PBYTE
 	PBYTE
@@ -105,12 +126,13 @@ pb_block:
 	PBYTE
 	PBYTE
 	ld a,(ui_blk)
-	dec a
+	add a,8
 	ld (ui_blk),a
 	jp nz,pb_block
-	ld bc,1-UI_FRAME_SIZE
-	add hl,bc
-	ld c,LCD_CMD
+	ld de,1-UI_FRAME_SIZE
+	add hl,de
+	ld de,UI_STRIDE
+	jp nc,pb_run
 	ld a,(ui_cnt)
 	inc a
 	ld (ui_cnt),a
