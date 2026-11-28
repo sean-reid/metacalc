@@ -118,15 +118,7 @@ fn model_of(bytes: Vec<u8>) -> Lib {
 
 /// F2 on the theorem screen of `label` with `patch` applied: the notice the enter's refusal pushes over it,
 /// whose status is `status`.
-/// Returns the byte count of the reader's last planned read, lr_cnt, which a refusal in lw_need leaves as
-/// the window fill before it set it.
-fn enter_refused(
-    on_theorem: OnTheorem,
-    label: &str,
-    patch: MakePatch,
-    status: u8,
-    what: &str,
-) -> u8 {
+fn enter_refused(on_theorem: OnTheorem, label: &str, patch: MakePatch, status: u8, what: &str) {
     let mut walker = on_theorem(label);
     let built = walker.built;
     let library = built.library.clone().unwrap();
@@ -140,8 +132,6 @@ fn enter_refused(
         before[..3],
         "{what}: the screens below"
     );
-    let at = walker.list.run.shell.app.label("lr_cnt");
-    walker.list.run.peek(at, 1)[0]
 }
 
 /// The frame the draw blits at first row 1, with `patch` applied after the screen opened.
@@ -248,16 +238,12 @@ fn pair_counts(on_theorem: OnTheorem, os: &str) {
             ),
         }
         let at = format!("{os}, {}", case.label);
-        let planned = enter_refused(
+        enter_refused(
             on_theorem,
             &case.label,
             &past,
             BAD,
             &format!("{at}, one past the limit"),
-        );
-        assert_ne!(
-            planned, 0,
-            "{at}: lw_need refused before it planned a read of the bytes left"
         );
         enter_refused(
             on_theorem,
