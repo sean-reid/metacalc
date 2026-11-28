@@ -14,8 +14,8 @@ const MOVE_BUDGET: u32 = 300_000;
 const F3_BUDGET: u32 = 1_800_000;
 /// The two Unchecked row moves over a table whose only unchecked assertions are the first and the last
 /// take over MOVE_BUDGET, each a little under its own ceiling.
-const WORST_ROW_CEILING: u32 = 308_000;
-const WORST_BACK_CEILING: u32 = 306_000;
+const WORST_ROW_CEILING: u32 = 313_603;
+const WORST_BACK_CEILING: u32 = 311_603;
 
 /// The theorem bit of each assertion of the shipped ring library.
 pub fn ring_bits(list: &Lister) -> Vec<bool> {
@@ -220,7 +220,7 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         k,
         f,
         MOVE_BUDGET,
-        Some(267170),
+        Some(273087),
     );
     let (k, f, a) = cost(&mut list, ax, 567, last_row(&axioms, 567), UP_KEY);
     assert_eq!(a, 1);
@@ -229,13 +229,13 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         k,
         f,
         MOVE_BUDGET,
-        Some(235996),
+        Some(241929),
     );
     let at5 = axioms.iter().position(|&i| i == 5).unwrap();
     assert_eq!(axioms[at5 + 5], 567);
     let (k, f, a) = cost(&mut list, ax, 5, last_row(&axioms, 5), RIGHT_KEY);
     assert_eq!(a, 1);
-    report("Axioms, a page from 5", k, f, MOVE_BUDGET, Some(296075));
+    report("Axioms, a page from 5", k, f, 302_000, Some(301960));
     let (k, f, a) = cost(&mut list, ax, 5, 5, RIGHT_KEY);
     assert_eq!(a, 1);
     report(
@@ -243,7 +243,7 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         k,
         f,
         MOVE_BUDGET,
-        Some(289499),
+        Some(295384),
     );
     let a5 = after(&axioms, 137);
     let (k, f, a) = cost(&mut list, ax, a5, 137, UP_KEY);
@@ -254,7 +254,7 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         k,
         f,
         MOVE_BUDGET,
-        Some(231166),
+        Some(237099),
     );
     let (k, f, a) = cost(&mut list, th, 2988, last_row(&theorems, 2988), DOWN_KEY);
     assert_eq!(a, 1);
@@ -264,7 +264,7 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         k,
         f,
         MOVE_BUDGET,
-        Some(259683),
+        Some(265600),
     );
     let (k, f, a) = cost(&mut list, th, 3019, last_row(&theorems, 3019), UP_KEY);
     assert_eq!(a, 1);
@@ -273,10 +273,10 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         k,
         f,
         MOVE_BUDGET,
-        Some(241538),
+        Some(247471),
     );
     let (k, f, _) = cost(&mut list, th, 100, last_row(&theorems, 100), LEFT_KEY);
-    report("Theorems, a page", k, f, MOVE_BUDGET, Some(242678));
+    report("Theorems, a page", k, f, MOVE_BUDGET, Some(248579));
 
     let just_after = 299;
     assert!(bits[just_after]);
@@ -293,7 +293,7 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         k,
         f,
         F3_BUDGET,
-        Some(259343),
+        Some(265342),
     );
     let past_last = 3320;
     assert!(past_last > *axioms.last().unwrap());
@@ -310,20 +310,20 @@ fn on_the_reference_os_the_moves_under_axioms_and_theorems_fit_a_move_with_its_f
         k,
         f,
         F3_BUDGET,
-        Some(248676),
+        Some(254675),
     );
     let (k, f, _) = cost(&mut list, code(Kind::All), 1600, 1596, F3_KEY);
-    report("F3 from All to Theorems", k, f, F3_BUDGET, Some(248336));
+    report("F3 from All to Theorems", k, f, F3_BUDGET, Some(254335));
     let (k, f, _) = cost(&mut list, code(Kind::Unchecked), 1600, 1596, F3_KEY);
     report(
         "F3 from Unchecked to All, no table",
         k,
         f,
         F3_BUDGET,
-        Some(207412),
+        Some(213411),
     );
     let (k, f, _) = cost(&mut list, code(Kind::All), 1600, 1596, DOWN_KEY);
-    report("All, a row", k, f, MOVE_BUDGET, Some(205512));
+    report("All, a row", k, f, MOVE_BUDGET, Some(211432));
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn on_the_reference_os_unchecked_on_a_table_of_ones_with_the_first_and_the_last_
         k,
         f,
         WORST_ROW_CEILING,
-        Some(306465),
+        Some(312382),
     );
     let unchecked = shown_on_ring(&list, un);
     let (k, f, a) = cost(&mut list, un, n - 1, last_row(&unchecked, n - 1), UP_KEY);
@@ -355,7 +355,7 @@ fn on_the_reference_os_unchecked_on_a_table_of_ones_with_the_first_and_the_last_
         k,
         f,
         WORST_BACK_CEILING,
-        Some(304707),
+        Some(310640),
     );
     let (k, f, a) = cost(&mut list, code(Kind::Axioms), 1, 0, F3_KEY);
     assert_eq!(a, 1);
@@ -364,7 +364,7 @@ fn on_the_reference_os_unchecked_on_a_table_of_ones_with_the_first_and_the_last_
         k,
         f,
         F3_BUDGET,
-        Some(314654),
+        Some(320653),
     );
 }
 

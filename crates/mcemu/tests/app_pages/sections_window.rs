@@ -282,8 +282,8 @@ fn the_second_pass_runs_for_the_rows_whose_first_24_characters_fit_and_for_no_ot
 /// T-states on the stub from the first SX_USED write of a row to the write of SX_ROW that ends it, for a
 /// row of 29 narrow characters that is converted twice and for a row of exactly 24 that is converted once, and
 /// the part of the first up to the second SX_USED write.
-const SECOND_PASS_ROW: u32 = 44_763;
-const ONE_PASS_ROW: u32 = 28_060;
+const SECOND_PASS_ROW: u32 = 44_820;
+const ONE_PASS_ROW: u32 = 26_971;
 const UP_TO_THE_SECOND_PASS: u32 = 11_568;
 
 #[test]
