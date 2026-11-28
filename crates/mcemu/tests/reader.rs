@@ -48,6 +48,8 @@ mod kinds;
 mod lastrecord;
 #[path = "reader/libraries.rs"]
 mod libraries;
+#[path = "reader/lwneed.rs"]
+mod lwneed;
 #[path = "common/refs.rs"]
 mod oracle;
 #[path = "reader/placements.rs"]

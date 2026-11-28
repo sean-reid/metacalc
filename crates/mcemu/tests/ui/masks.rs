@@ -1,7 +1,7 @@
 //! The masked blit: which rows of the frame reach the LCD, and the exact writes that take them there.
 
 use crate::support::*;
-use mcemu::{PortWrite, Speed};
+use mcemu::{LcdAccess, Speed};
 
 const CMD: u8 = 0x10;
 const DATA: u8 = 0x11;
@@ -168,7 +168,7 @@ pub fn expected(frame: &[u8], mask: u8) -> Vec<(u8, u8)> {
 pub fn writes(got: &Outcome) -> Vec<(u8, u8)> {
     got.lcd_writes
         .iter()
-        .map(|w: &PortWrite| (w.port, w.value))
+        .map(|w: &LcdAccess| (w.port, w.value))
         .collect()
 }
 

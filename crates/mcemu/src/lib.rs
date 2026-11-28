@@ -10,7 +10,7 @@ mod stub {
 }
 
 pub use app::{AppError, decode as decode_app};
-pub use ffi::{PortWrite, Regs, Write};
+pub use ffi::{LcdAccess, PortWrite, Regs, Write};
 pub use vars::{E_BAD_CALL, E_MEMORY, NoRoom, Var};
 
 /// Free stub ROM: boots to a known state and jumps to `ENTRY`.
@@ -345,19 +345,6 @@ impl Machine {
         self.calc.take_port_writes()
     }
 
-    /// Every write to the LCD's command port 10h and data port 11h since the last call, in order,
-    /// with the CPU clock when each ran. The record holds 4096 writes; more panics.
-    pub fn take_lcd_writes(&mut self) -> Vec<PortWrite> {
-        let (writes, full) = self.calc.take_lcd_writes();
-        assert!(!full, "the LCD record was full; take the writes more often");
-        writes
-    }
-
-    /// Forgets the LCD writes recorded so far.
-    pub fn clear_lcd_writes(&mut self) {
-        self.calc.take_lcd_writes();
-    }
-
     /// Forgets the port writes recorded so far, however many.
     pub fn clear_port_writes(&mut self) {
         self.calc.take_port_writes();
@@ -367,6 +354,30 @@ impl Machine {
     /// finishes would.
     pub fn stick_lcd_busy(&mut self, on: bool) {
         self.calc.stick_lcd_busy(on);
+    }
+
+    /// Sets how long the LCD controller stays busy after a write or a data read, in CPU clocks at
+    /// 6 MHz, scaled with the clock like the core's own 50; 0 puts the core's window back. Applies
+    /// to a machine made with `new`.
+    pub fn set_lcd_busy_window(&mut self, clocks: u32) {
+        self.calc.set_lcd_busy_window(clocks);
+    }
+
+    /// Starts or stops recording every access to the LCD ports 10h to 13h and every write to the
+    /// speed port 20h, with its CPU clock, in a machine made with `new`; either forgets what was
+    /// recorded.
+    pub fn trace_lcd(&mut self, on: bool) {
+        self.calc.trace_lcd(on);
+    }
+
+    /// The LCD port accesses and speed writes since the last call, in order. The record holds 65536; more panics.
+    pub fn take_lcd_trace(&mut self) -> Vec<LcdAccess> {
+        let (accesses, full) = self.calc.take_lcd_trace();
+        assert!(
+            !full,
+            "the LCD record was full; take the accesses more often"
+        );
+        accesses
     }
 
     pub fn out_port(&mut self, port: u8, value: u8) {

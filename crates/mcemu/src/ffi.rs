@@ -39,9 +39,11 @@ unsafe extern "C" {
     fn mcemu_port_len(calc: *mut Raw) -> usize;
     fn mcemu_port_cap() -> usize;
     fn mcemu_port_take(calc: *mut Raw, out: *mut PortWrite, cap: usize) -> usize;
-    fn mcemu_lcd_len(calc: *mut Raw) -> usize;
-    fn mcemu_lcd_cap() -> usize;
-    fn mcemu_lcd_take(calc: *mut Raw, out: *mut PortWrite, cap: usize) -> usize;
+    fn mcemu_set_lcd_busy_window(calc: *mut Raw, clocks: u32);
+    fn mcemu_lcd_trace(calc: *mut Raw, on: i32);
+    fn mcemu_lcd_trace_len(calc: *mut Raw) -> usize;
+    fn mcemu_lcd_trace_cap() -> usize;
+    fn mcemu_lcd_trace_take(calc: *mut Raw, out: *mut LcdAccess, cap: usize) -> usize;
     fn mcemu_lcd(calc: *mut Raw, out: *mut u8, width: i32, height: i32) -> i32;
     fn mcemu_lcd_ram(calc: *mut Raw, out: *mut u8, width: i32, height: i32) -> i32;
 }
@@ -87,13 +89,31 @@ pub struct Write {
     pub value: u8,
 }
 
-/// A write to a recorded port and the CPU clock in T-states when it ran.
+/// A write to port 1, 3 or 4 and the CPU clock in T-states when it ran.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PortWrite {
     pub clock: u32,
     pub port: u8,
     pub value: u8,
+}
+
+/// One access to the LCD ports, 10h to 13h, or a write to the speed port, 20h, and the CPU clock in
+/// T-states when it ran. `value` is what was written, or what the read returned.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LcdAccess {
+    pub clock: u32,
+    pub port: u8,
+    pub value: u8,
+    write: u8,
+    pad: u8,
+}
+
+impl LcdAccess {
+    pub fn is_write(&self) -> bool {
+        self.write != 0
+    }
 }
 
 pub struct Calc(NonNull<Raw>);
@@ -164,6 +184,28 @@ impl Calc {
     pub fn stick_lcd_busy(&mut self, on: bool) {
         // SAFETY: the handle is live.
         unsafe { mcemu_stick_lcd_busy(self.0.as_ptr(), on.into()) }
+    }
+
+    pub fn set_lcd_busy_window(&mut self, clocks: u32) {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_set_lcd_busy_window(self.0.as_ptr(), clocks) }
+    }
+
+    pub fn trace_lcd(&mut self, on: bool) {
+        // SAFETY: the handle is live.
+        unsafe { mcemu_lcd_trace(self.0.as_ptr(), on.into()) }
+    }
+
+    /// The LCD port accesses and speed writes since the last call, and whether the record filled up.
+    pub fn take_lcd_trace(&mut self) -> (Vec<LcdAccess>, bool) {
+        // SAFETY: the handle is live.
+        let len = unsafe { mcemu_lcd_trace_len(self.0.as_ptr()) };
+        let mut out = vec![LcdAccess::default(); len];
+        // SAFETY: `out` has room for `len` records, which is all the C side copies.
+        let n = unsafe { mcemu_lcd_trace_take(self.0.as_ptr(), out.as_mut_ptr(), len) };
+        out.truncate(n);
+        // SAFETY: no arguments.
+        (out, n == unsafe { mcemu_lcd_trace_cap() })
     }
 
     pub fn khz(&self) -> i32 {
@@ -268,19 +310,6 @@ impl Calc {
         out.truncate(n);
         // SAFETY: no arguments.
         (out, n == unsafe { mcemu_port_cap() })
-    }
-
-    /// The writes to the LCD's ports 10h and 11h since the last call, and whether the record
-    /// filled up.
-    pub fn take_lcd_writes(&mut self) -> (Vec<PortWrite>, bool) {
-        // SAFETY: the handle is live.
-        let len = unsafe { mcemu_lcd_len(self.0.as_ptr()) };
-        let mut out = vec![PortWrite::default(); len];
-        // SAFETY: `out` has room for `len` records, which is all the C side copies.
-        let n = unsafe { mcemu_lcd_take(self.0.as_ptr(), out.as_mut_ptr(), len) };
-        out.truncate(n);
-        // SAFETY: no arguments.
-        (out, n == unsafe { mcemu_lcd_cap() })
     }
 
     pub fn lcd(&mut self, out: &mut [u8], width: usize, height: usize) -> bool {

@@ -1,5 +1,5 @@
 use mcemu::{
-    ENTRY, FLASH_TEST_PAGE, LCD_HEIGHT, LCD_WIDTH, Machine, PortWrite, STUB_ROM, Speed, Stop,
+    ENTRY, FLASH_TEST_PAGE, LCD_HEIGHT, LCD_WIDTH, LcdAccess, Machine, STUB_ROM, Speed, Stop,
 };
 use mcglyph::Bitmap;
 use mcglyph::z80::Table;
@@ -477,7 +477,7 @@ pub struct Outcome {
     /// The controller's memory as the screen would show it, whatever its on state.
     pub lcd_ram: Vec<bool>,
     /// The writes to the LCD's ports 10h and 11h since the start or the last `Op::ClearLcdWrites`.
-    pub lcd_writes: Vec<PortWrite>,
+    pub lcd_writes: Vec<LcdAccess>,
     /// The variable block, `VARS_LEN` bytes.
     pub vars: Vec<u8>,
     /// Where the last run stopped.
@@ -620,7 +620,7 @@ fn run_marked(
     m.load_ram(SCRIPT, &script.code);
     m.load_ram(DATA, &script.data);
     m.set_speed(speed);
-    m.clear_lcd_writes();
+    m.trace_lcd(true);
     let mut run = m.run(SCRIPT, LIMIT);
     assert_eq!(run.stop, Stop::Halted);
     for (next, pause) in &script.pauses {
@@ -632,7 +632,7 @@ fn run_marked(
                 }
                 m.load_ram(image.frame, &frame);
             }
-            Pause::ClearLcdWrites => m.clear_lcd_writes(),
+            Pause::ClearLcdWrites => drop(m.take_lcd_trace()),
         }
         let more = m.run(*next, LIMIT);
         assert_eq!(more.stop, Stop::Halted);
@@ -677,7 +677,11 @@ fn run_marked(
     };
     let lcd = pixels(m.lcd());
     let lcd_ram = pixels(m.lcd_ram());
-    let lcd_writes = m.take_lcd_writes();
+    let lcd_writes = m
+        .take_lcd_trace()
+        .into_iter()
+        .filter(|a| a.is_write() && matches!(a.port, 0x10 | 0x11))
+        .collect();
     let vars = m.read_ram(image.vars, usize::from(VARS_LEN));
     Outcome {
         frame,
