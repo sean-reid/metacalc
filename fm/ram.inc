@@ -1,3 +1,5 @@
+#ifndef FM_RAM_INC
+#define FM_RAM_INC
 #include "kernel/ram.inc"
 #if FM_RAM & $FF
  .error "FM_RAM must be a multiple of $100"
@@ -207,3 +209,4 @@ FM_ERR_READ         .equ 8
 FM_ERR_TREE         .equ 9
 FM_ERR_LIMIT        .equ 10
 FM_ERR_CLIPPED      .equ 11
+#endif

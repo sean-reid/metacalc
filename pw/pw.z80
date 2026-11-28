@@ -1,0 +1,113 @@
+; metacalc proof walk for the TI-84 Plus SE. pw_shape reads a theorem's stored proof straight from
+; flash and counts the shape of the goal tree the host model builds from it (crates/mcui,
+; crates/mcpack/src/mm/outline.rs): the steps, the distinct goals, the links from a goal to its
+; subgoals and the nodes of the whole tree, a shared goal counted once for each use. It does not
+; judge the proof: it compares no statement, substitution or disjoint pair, only the first symbol
+; of the theorem's conclusion, of each essential hypothesis and of each referenced conclusion with
+; the provable typecode.
+;
+; Code runs from flash in bank A and is position dependent. Assembling this file places nothing: an
+; including file places it after the reader (lib/lib.z80), with -I at the repository root and at
+; app/src. It is on the data page of the app (app/src/page_data.inc), where nothing calls it yet,
+; and in the test image (crates/mcemu/tests/routines/reader_test.z80, with WITH_PW).
+;
+;   pw_shape      in:  HL = assertion number; B = the symbol id of the provable typecode, the
+;                      library's `|-`; DE = a block of 8 bytes in bank B, clear of the state block
+;                 out: A = status, 0 meaning ok, with the zero flag set exactly when A is 0; all
+;                      registers but IX and IY are destroyed. On 0 the block holds, little endian:
+;                        +0  2  steps: the numbers of the proof, a save marker not counted
+;                        +2  1  distinct goals: the steps that make a goal and are not a reuse of
+;                               a saved step
+;                        +3  2  links: the goals under each distinct goal, added up
+;                        +5  3  the nodes of the root's tree, a shared goal once for each use
+;                      On any other status the block is not written.
+;
+; Method. lib_proof says where the theorem's record, reference list and proof lie. The walk maps the
+; flash page that holds them in bank B through port 7 and reads them in place, and reads the head
+; of the record of each assertion the references name from the page that holds it, with bounds
+; checks of its own; it does not go through lib_read or the byte accessors. A stack of one byte an
+; entry holds a goal's number, 0 to 254, or FFh for a syntax statement. A step number below the
+; theorem's hypothesis count is a hypothesis: a goal when it is essential and its first symbol is
+; the provable typecode, else a syntax entry. The numbers after those, up to the reference count,
+; name the reference list: an entry of 8000h or more is a dummy variable, which takes nothing and
+; gives a syntax entry; any other is an assertion, which takes as many entries as it has
+; hypotheses and gives a goal when its conclusion's first symbol is the provable typecode, else a
+; syntax entry. The numbers after the references name the saved steps, each a copy of an entry, and
+; FFh saves the top entry. A goal's size is one more than the sizes of its subgoals, which are the
+; goal entries among those its step takes, so the walk does not read how many of an assertion's
+; hypotheses are essential. A number of F0h to FEh takes the next byte, as the kernel decodes it.
+;
+; The provable typecode is an argument and not the root's: a theorem whose conclusion starts with
+; another typecode, and a proof whose one entry is a syntax statement, give PW_ERR_SYNTAX, the host
+; model's "it proves a syntax statement".
+;
+; Memory. The tables and the walk's own stack are on the kernel's spare page, KERNEL_RAM_PAGE, in
+; bank C through port 5, because the caller's stack is on a page port 5 takes away. The library is
+; read in bank B through port 7, where the app's RAM is not. The walk borrows fm's statement store
+; and fm's private stack and does not give them back: the statements fm had loaded are gone, and a
+; caller that uses fm next loads them again with fm_assertion or fm_statement. It does not write
+; the kernel's ready mark, fm's variables or open mark, FM_LOW, or any byte of either page but
+; those named here and the bounce buffer.
+;   PW_VARS   $E000, 59 bytes: the variables, at the start of FM_STACK
+;   stack     down from FM_STACK_TOP, $E100: 8 bytes at most
+;   FM_TOKENS $F100 +$000, up to 256 bytes: the stack of entries
+;             +$100, up to 512 bytes: the saved entries
+;             +$300, 3 bytes for each goal, up to 765: its size
+;             +$600, 1 byte for each hypothesis of the theorem, up to 255: 1 for a goal
+;             +$700, 2 bytes for each reference, up to 1,024: the assertion's hypothesis count, then
+;                    1 when its conclusion starts with the provable typecode; both 0 for a dummy
+;                    FM_TOKENS from +$B00 to its end is not written
+;   the caller's block of 8 bytes, only on status 0, after the caller's port 7 is back
+; and in the reader's state what lib_proof writes (its block, lr_dcbase and the scratch it lists)
+; and, by pw_shape itself, lr_bufp, lr_k, lr_cn and, with the conclusion's first symbol, lr_hdr; the
+; reads of lib_proof and of that symbol write the bounce buffer as every lr_read does.
+;
+; Ports and interrupts. Before the session the walk is the reader's: the caller's ports and
+; interrupt state are back at every exit. The session reads the interrupt state with ld a,i twice,
+; turns interrupts off, saves ports 7 and 5 in registers, maps the spare page, copies what it needs
+; from the reader's state, stores SP in the spare page and switches to the private stack. From the
+; port 5 write to that switch, and from the restore of SP to the port 5 write after it, no
+; instruction touches the stack, which lies in the page being swapped. Interrupts are off for as
+; long as port 5 or 7 differs from the caller's. Every exit of the session, whatever the status,
+; puts port 7 back, writes the block when the status is 0, restores SP, then port 5, then turns
+; interrupts on if they were on. IX, IY and port 20, the CPU speed, are never touched, and the
+; shadow registers only by lr_read, after its own di.
+;
+; Bounds. lib_proof checks that the theorem's record, reference list and proof lie in one 16 KB
+; chunk and inside the library, and the walk reads them from the one page that shows it. The head
+; of another assertion's record is read with each pointer checked against the end of the page it
+; lies in and the end of the library: a directory entry or a record the format forbids, or that
+; leaves its chunk, gives 3.
+;
+; Stack. On the caller's stack the call goes at most 10 bytes below the return address: 2 for the
+; call of lib_proof and its 8. On the private stack 8 bytes at most.
+;
+; Statuses, in the order found. The reader's: 4 before lib_open; 2 for a block not wholly in bank B
+; or touching the state block; lib_proof's, 5 for a number at or past the assertion count, 3 for a
+; record or proof it refuses, 9 for an axiom; 3 for a conclusion with no symbol or one that cannot be
+; read. The walk's own are 32 and up, so that none is a reader's 1 to 10 or a kernel status:
+;   PW_ERR_SYNTAX         42  the conclusion starts with another typecode than B
+;   PW_ERR_REFS           44  more than 512 references
+; then, as the reference list is read in order, before the first step: 3 for a referenced
+; assertion's directory entry or record the format forbids or that leaves the library, and
+;   PW_ERR_FORWARD        34  a reference to an assertion at or after the theorem, used or not
+; then, in the order the proof meets them:
+;   PW_ERR_CUT            41  a number of F0h to FEh with no byte after it
+;   PW_ERR_BAD_REF        33  a number past the references and the saved steps made so far
+;   PW_ERR_UNDERFLOW      32  a reference takes more entries than the stack holds
+;   PW_ERR_SAVE_EMPTY     35  a save marker with an empty stack
+;   PW_ERR_SAVED          40  a 513th save marker
+;   PW_ERR_STACK          39  a 257th entry
+;   PW_ERR_GOALS          38  a 256th distinct goal
+;   PW_ERR_TOTAL          43  a goal whose size passes 16,777,215
+; then at the end of the proof:
+;   PW_ERR_NO_ENTRY       36  the stack is empty
+;   PW_ERR_MANY_ENTRIES   37  more than one entry is left
+;   PW_ERR_SYNTAX         42  the one entry is a syntax statement
+; The caps on the entries and the saved steps are the kernel's CAP_STACK_ENTRIES and
+; CAP_SAVED_ENTRIES (kernel/ram.inc).
+
+#include "pw/ram.inc"
+#include "pw/head.inc"
+#include "pw/steps.inc"
+#include "pw/walk.inc"

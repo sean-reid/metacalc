@@ -52,6 +52,7 @@ expect release-workflow "site installer" .github/workflows/release-please.yml
 expect new-crate "rust audit" crates/mcnew/src/main.rs
 expect kernel "$z80" kernel/init.inc
 expect reader "$z80" lib/lib.z80
+expect proof-walk "$z80" pw/pw.z80
 expect drawing "$z80" ui/blit.inc
 expect formulas "$z80" fm/layout.inc
 expect formula-header "$z80" fm/fm.z80

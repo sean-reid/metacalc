@@ -25,7 +25,7 @@ while IFS= read -r path; do
 		;;
 	crates/mcsend/*) rust=true audit=true app=true installer=true ;;
 	crates/*) rust=true audit=true ;;
-	kernel/* | lib/* | ui/* | fm/* | scr/* | app/* | probe/*) emu=true app=true libraries=true ;;
+	kernel/* | lib/* | pw/* | ui/* | fm/* | scr/* | app/* | probe/*) emu=true app=true libraries=true ;;
 	libraries/*) rust=true libraries=true ;;
 	release-please-config.json | .release-please-manifest.json) site=true ;;
 	scripts/install.sh | scripts/package-mcsend.sh | scripts/check-mcsend-links.sh | .github/workflows/release-please.yml) installer=true site=true ;;

@@ -172,3 +172,6 @@ call_iff_off:
 #ifdef FONT_AFTER_LIB
 #include "font.inc"
 #endif
+#ifdef WITH_PW
+#include "pw/pw.z80"
+#endif
