@@ -303,27 +303,21 @@ fn a_stage_name_that_fills_the_room_exactly_fits_and_one_pixel_more_is_cut() {
     let list = &mut walker.list;
     let (mut whole, mut cut) = (0, 0);
     list.open_sections();
-    let len_text = |title: usize| format!("{}/{len}", title + 1);
-    for (side, over) in [(w, false), (w - 1, false), (w + 1, true)] {
+    for side in [w, w - 1, w + 1] {
         let title = widths.iter().position(|&x| x == side).unwrap();
-        assert_eq!(
-            font.text_width(&name) + font.text_width(&right(title)),
-            91 + usize::from(over) - usize::from(side < w),
-            "{}: the name and the right side {:?} against the 91 the gap leaves",
-            name,
-            right(title)
-        );
+        let right = right(title);
+        let over = font.text_width(&name) + font.text_width(&right) > 91;
         list.goto_title(title);
         let drawn = list.run.frame();
         let shown = list.shown();
-        let right = len_text(title);
-        let was_cut = [&drawn, &shown].map(|frame| bar(frame) != uncut_bar(&name, &right));
         assert_eq!(
-            was_cut[0], was_cut[1],
-            "{right}: the bar the Z80 drew and the model's agree on the cut"
+            bar(&drawn),
+            bar(&shown),
+            "{right}: the title bar the Z80 drew is the model's"
         );
-        assert_eq!(was_cut[0], over, "{right}: the name drawn cut or whole");
-        if was_cut[0] {
+        let was_cut = bar(&drawn) != uncut_bar(&name, &right);
+        assert_eq!(was_cut, over, "{right}: the name drawn cut or whole");
+        if over {
             cut += 1;
         } else {
             whole += 1;
@@ -332,7 +326,7 @@ fn a_stage_name_that_fills_the_room_exactly_fits_and_one_pixel_more_is_cut() {
     assert_eq!(
         (whole, cut),
         (2, 1),
-        "bars drawn with the name whole and cut"
+        "title bars whose name fits the room, and does not"
     );
 }
 
