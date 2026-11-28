@@ -35,7 +35,7 @@ fn word(lib: &[u8], at: usize) -> usize {
 }
 
 /// The size of the axiom record at `start` and the offset of its pair list.
-fn axiom(lib: &[u8], start: usize) -> (usize, usize) {
+pub fn axiom(lib: &[u8], start: usize) -> (usize, usize) {
     let mut at = start + 2 + usize::from(lib[start + 1]);
     let hyps = usize::from(lib[at]);
     at += 1;
