@@ -41,13 +41,14 @@ iv_h:
 	ld h,ut_rows>>8
 	ld a,(hl)
 	add a,a
-	ld (ui_cnt),a
+	ld h,a
 	ld a,c
 	rrca
 	and $1C
 	or (ut_rows+2)&$FF
 	ld l,a
-	ld a,(ui_cnt)
+	ld a,h
+	ld h,ut_rows>>8
 	sub (hl)
 	ld hl,ui_dirty
 	or (hl)
