@@ -7,16 +7,16 @@ use crate::list_rig::*;
 use crate::sections_jump::marks;
 use crate::sections_rig::*;
 use crate::shellrig::*;
-use mcui::canvas::{TEXT_WIDTH, text_width};
+use mcui::canvas::{TEXT_WIDTH, text_width, truncate};
 use mcui::data::Lib;
 use mcui::{Installed, Key, Status};
 
 /// The suffix the title bar puts after the name under the kind F3 has stepped to, from All.
 const TAILS: [&str; 5] = ["", ":thm", ":ax", ":?", ""];
 
-/// Whether the model's title bar cuts the name of `stage` of `built` under `tail`: the name and the
-/// suffix do not fit the room the count on the right leaves.
-fn cut(built: &Built, status: &[Status], stage: usize, tail: &str) -> bool {
+/// The room the title bar leaves the name of `stage` of `built` under `tail`: what the count on the
+/// right leaves, less the suffix.
+fn name_room(built: &Built, status: &[Status], stage: usize, tail: &str) -> usize {
     let lib = Lib::with_stages(
         Installed {
             name: "library".into(),
@@ -28,8 +28,19 @@ fn cut(built: &Built, status: &[Status], stage: usize, tail: &str) -> bool {
     .unwrap();
     let counts = lib.counts(stage);
     let right = format!("{}/{}", counts.checked, counts.total);
-    let room = TEXT_WIDTH - text_width(&right) - 3;
-    text_width(&built.stages[stage].name) + text_width(tail) > room
+    (TEXT_WIDTH - text_width(&right) - 3).saturating_sub(text_width(tail))
+}
+
+/// Whether the model's title bar cuts the name of `stage` of `built` under `tail`.
+fn cut(built: &Built, status: &[Status], stage: usize, tail: &str) -> bool {
+    text_width(&built.stages[stage].name) > name_room(built, status, stage, tail)
+}
+
+/// Whether the cut name is as wide as its room, so the name and suffix joined run one pixel past it.
+fn fills(built: &Built, status: &[Status], stage: usize, tail: &str) -> bool {
+    let room = name_room(built, status, stage, tail);
+    cut(built, status, stage, tail)
+        && text_width(&truncate(&built.stages[stage].name, room)) == room
 }
 
 /// How many frames were compared, in how many the name was cut and in how many whole.
@@ -42,6 +53,7 @@ struct Frames {
 #[test]
 fn wide_stage_names_have_the_models_title_bar_under_every_kind() {
     let mut frames = Frames::default();
+    let mut filling = Vec::new();
     for (letter, built) in [("W", wide()), ("M", mmmm())] {
         for table in [false, true] {
             let marked = marks(built);
@@ -64,6 +76,9 @@ fn wide_stage_names_have_the_models_title_bar_under_every_kind() {
                         assert!(list.key(F3, Key::F3), "{at}: F3 redraws");
                         list.settle();
                     }
+                    if fills(built, &status, stage, tail) {
+                        filling.push((letter, table, stage, *tail));
+                    }
                     if cut(built, &status, stage, tail) {
                         frames.cut += 1;
                     } else {
@@ -78,5 +93,15 @@ fn wide_stage_names_have_the_models_title_bar_under_every_kind() {
         frames,
         Frames { cut: 72, whole: 48 },
         "frames compared with the name cut and whole"
+    );
+    assert_eq!(
+        filling,
+        [
+            ("W", true, 2, ":ax"),
+            ("W", true, 3, ":ax"),
+            ("M", true, 2, ":ax"),
+            ("M", true, 3, ":ax")
+        ],
+        "frames where the cut name fills its room"
     );
 }
