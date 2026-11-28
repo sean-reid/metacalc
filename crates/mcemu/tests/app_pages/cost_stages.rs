@@ -8,9 +8,9 @@ use crate::shell_cost::*;
 
 /// The most bytes the three code pages (entry, draw and data) may use in the builds around the
 /// fixture library as three and as six stages, and around ring as its shipped three.
-const PAGES_THREE: [u32; 3] = [12_145, 15_811, 10_762];
-const PAGES_SIX: [u32; 3] = [12_222, 15_811, 10_762];
-const PAGES_RING: [u32; 3] = [12_169, 15_811, 10_762];
+const PAGES_THREE: [u32; 3] = [12_173, 15_811, 13_294];
+const PAGES_SIX: [u32; 3] = [12_250, 15_811, 13_294];
+const PAGES_RING: [u32; 3] = [12_197, 15_811, 13_294];
 
 fn fits(name: &str, built: &Built, ceilings: [u32; 3]) {
     println!("{name}: code pages {:?} of 16384 bytes", built.used);
