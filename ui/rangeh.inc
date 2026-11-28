@@ -3,7 +3,7 @@
 ; ur_clip   in:  A = first text row, B = count
 ;           out: Z when there is nothing to do, a first row of 8 or more or a count of 0;
 ;                else NZ, C = first row, B = count cut at row 7
-;           destroys AF
+;           destroys AF BC
 ur_clip:
 	cp UI_TEXT_ROWS
 	jr nc,ur_none
@@ -75,6 +75,7 @@ ur_base:
 ; ur_clear  in:  C = first text row, B = count, at least 1, first + count at most 8
 ;           zeroes those rows through the stack and ends the calling routine, with interrupts as
 ;           they were at its call
+;           destroys AF BC DE HL
 ur_clear:
 	ld a,c
 	add a,b

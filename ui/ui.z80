@@ -37,9 +37,11 @@
 ; GLYPH_ADV, a macro in glyph.inc, is the advance of one glyph code in A; ui_text_width and the
 ; fitting routines expand it.
 ;
-; Every routine that writes the frame ORs the bits of the rows it writes into ui_dirty, and ui_blit
-; sends only the rows in it; each routine says which rows it marks. A call that returns before it
-; writes marks nothing, but ui_text marks its row for a string that starts right of the screen.
+; Every routine that writes the frame ORs the bits of the rows it writes into ui_dirty, ui_clear alone
+; storing $FF there, and ui_blit sends only the rows in it; each routine says which rows it marks. ui_text,
+; ui_clear_rows and ui_shift_rows set the mark before they write. A call that returns before it writes
+; marks nothing, but ui_text marks its row for a string that starts right of the screen. An interrupt
+; handler must not call the canvas: the blit builds its run list in the scratch bytes the routines use.
 ;
 ; Routines (details at each): ui_set_font, ui_clear, ui_clear_rows, ui_shift_rows, ui_text, ui_text_width, ui_text_right,
 ; ui_text_centered, ui_truncate, ui_tail, ui_wrap, ui_invert, ui_invert_row, ui_marker,
