@@ -95,7 +95,7 @@ fn on_the_reference_os_opening_the_list_and_a_move_with_its_frame_fit_their_budg
         },
     );
     assert_eq!(entered.status(), 0);
-    app.m.load_ram(tag, &[0, 0]);
+    app.poke(tag, &[0, 0]);
     let (cold_draw, cold_blit) = timed_frame(app);
     let open = enter_key + entered.tstates + cold_draw + cold_blit;
     println!(
@@ -135,8 +135,8 @@ fn on_the_reference_os_opening_the_list_and_a_move_with_its_frame_fit_their_budg
             total,
             if code == 2 { 223_339 } else { 227_921 },
         );
-        app.m.load_ram(count, &[0]);
-        assert_eq!(app.m.read_ram(preview, 1), [PENDING]);
+        app.poke(count, &[0]);
+        assert_eq!(app.peek(preview, 1), [PENDING]);
         let fit = app.timed(
             BASE,
             idle,

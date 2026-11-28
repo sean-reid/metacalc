@@ -107,7 +107,7 @@ fn checking_enter_returns_with_interrupts_on_and_the_speed_it_had_for_every_answ
         let mut run = opened(built, Some(&table), speed);
         call_of(&mut run, "checking_enter", |_| true);
         let phase = run.shell.app.label("CKS_PHASE");
-        let regs = through(&mut run, speed, |r| r.m().load_ram(phase, &[UNSET]));
+        let regs = through(&mut run, speed, |r| r.shell.app.poke(phase, &[UNSET]));
         assert_eq!(
             (regs.af >> 8, phase_at(&mut run)),
             (0, PHASE_STEP),
@@ -117,7 +117,7 @@ fn checking_enter_returns_with_interrupts_on_and_the_speed_it_had_for_every_answ
         // CK_NEED_CRC: no table.
         let mut run = opened(padded(), None, speed);
         call_of(&mut run, "checking_enter", |_| true);
-        let regs = through(&mut run, speed, |r| r.m().load_ram(phase, &[UNSET]));
+        let regs = through(&mut run, speed, |r| r.shell.app.poke(phase, &[UNSET]));
         assert_eq!(
             (regs.af >> 8, phase_at(&mut run)),
             (0, PHASE_READ),
@@ -128,7 +128,7 @@ fn checking_enter_returns_with_interrupts_on_and_the_speed_it_had_for_every_answ
         let mut run = opened(built, Some(&table), speed);
         call_of(&mut run, "checking_enter", |_| true);
         let regs = through(&mut run, speed, |r| {
-            r.m().load_ram(phase, &[UNSET]);
+            r.shell.app.poke(phase, &[UNSET]);
             r.m().press_key(Machine::KEY_ON);
         });
         assert_eq!(
@@ -140,7 +140,7 @@ fn checking_enter_returns_with_interrupts_on_and_the_speed_it_had_for_every_answ
         // A failing status: the reader answers ST_MALFORMED to a library of length 0 once the kernel has begun.
         let mut run = opened_after(built, Some(&table), speed, |r| {
             let length = r.shell.app.label("lr_length");
-            r.m().load_ram(length, &[0, 0, 0]);
+            r.shell.app.poke(length, &[0, 0, 0]);
         });
         call_of(&mut run, "checking_enter", |_| true);
         let length = run.shell.app.label("lr_length");
@@ -149,7 +149,7 @@ fn checking_enter_returns_with_interrupts_on_and_the_speed_it_had_for_every_answ
             [0, 0, 0],
             "the reader's length"
         );
-        let regs = through(&mut run, speed, |r| r.m().load_ram(phase, &[UNSET]));
+        let regs = through(&mut run, speed, |r| r.shell.app.poke(phase, &[UNSET]));
         assert_eq!(
             (regs.af >> 8, phase_at(&mut run)),
             (READER_FAILED, UNSET),
@@ -190,7 +190,7 @@ fn checking_enter_returns_with_interrupts_on_and_the_speed_it_had_when_the_heade
             "a library longer than 8: {whole:02X?}"
         );
         let regs = through(&mut run, speed, |r| {
-            r.m().load_ram(phase, &[UNSET]);
+            r.shell.app.poke(phase, &[UNSET]);
             r.run_to_addr("check_begin", begin, WAIT);
             let answered = begin_returns(r);
             assert_eq!(
@@ -203,7 +203,7 @@ fn checking_enter_returns_with_interrupts_on_and_the_speed_it_had_when_the_heade
                 whole,
                 "check_begin left the length alone"
             );
-            r.m().load_ram(length, &[8, 0, 0]);
+            r.shell.app.poke(length, &[8, 0, 0]);
             r.run_to_addr("the reader's failure", reader, WAIT);
             assert_eq!(r.byte("CKS_PHASE"), UNSET, "nothing started");
             r.run_to_addr("check_end", end, WAIT);

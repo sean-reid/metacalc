@@ -54,10 +54,6 @@ const IDLE_HOOK: u16 = 0xB5E8;
 /// The first and the end of the RAM the rig's counters and hooks use.
 pub const HOOKS: (u16, u16) = (BLIT_HOOK, 0xB600);
 pub const SAVE_SCREEN: u16 = 0x86EC;
-/// The RAM page the reader puts in bank C for a read window (LIB_SPARE_PAGE in lib/ram.inc).
-const SPARE_PAGE: u8 = 3;
-/// What port 7 reads while bank B shows the RAM the app keeps its variables in.
-const RAM_BANK_B: u8 = 0x81;
 
 /// Loads a hook at `at`, which must end by `limit`, where the next hook or the end of the rig's RAM
 /// begins.
@@ -262,8 +258,7 @@ impl Shell {
     /// Whether the CPU is inside a reader, fm or kernel call, where bank B can show the library's flash
     /// page and bank C the spare RAM page.
     pub fn in_call(&mut self) -> bool {
-        let m = &mut self.app.m;
-        m.in_port(7) != RAM_BANK_B || m.in_port(5) == SPARE_PAGE
+        self.app.in_call()
     }
 
     /// Runs on, an instruction at a time, until the CPU is outside a reader, fm or kernel call, and
