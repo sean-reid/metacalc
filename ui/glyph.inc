@@ -701,7 +701,12 @@ ui_tcol:
 	BYTES8(9)
 	BYTES8(10)
 	BYTES8(11)
-	.fill 160,0
+ui_tcol_tail:
+#include "rangeh.inc"
+#if ($-ui_tcol_tail) > 160
+ .error "the code in the tail of the ui_tcol page outgrew its 160 bytes"
+#endif
+	.fill 160-($-ui_tcol_tail),0
 #if ((ui_toff&255) != 0) || (((ui_toff+256)&255) != 0) || ((ui_tfit&255) != 0) || ((ui_tblk&255) != 0) || ((ui_tcol&255) != 0)
  .error "ui_toff, its high half, ui_tfit, ui_tblk and ui_tcol must each start a page"
 #endif

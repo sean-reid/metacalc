@@ -6,6 +6,16 @@ use crate::list_rig::LIMIT;
 use crate::realos::BASE;
 use crate::ui_support::same_frame;
 use mcemu::{Machine, Stop};
+use std::cell::Cell;
+
+thread_local! {
+    static LCD_CHECKS: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Frames this thread has checked against the LCD with `assert_lcd_holds_the_frame`.
+pub fn lcd_checks() -> usize {
+    LCD_CHECKS.with(Cell::get)
+}
 
 pub const F1: u8 = 0x35;
 pub const F2: u8 = 0x34;
@@ -433,8 +443,32 @@ impl Shell {
         );
     }
 
+    /// The frame is `want`, the last blit sent every row, nothing has been drawn since, and the
+    /// LCD's memory holds the frame. Counted by `lcd_checks` on this thread.
     pub fn shows(&mut self, what: &str, want: &[u8]) {
         same_frame(what, &self.frame(), want);
+        self.assert_lcd_holds_the_frame(what);
+    }
+
+    /// ui_sent is FFh, ui_dirty is 0 and the controller's memory equals the frame.
+    pub fn assert_lcd_holds_the_frame(&mut self, what: &str) {
+        let (sent, dirty) = (self.app.label("ui_sent"), self.app.label("ui_dirty"));
+        let (sent, dirty) = (self.peek(sent, 1)[0], self.peek(dirty, 1)[0]);
+        assert_eq!((sent, dirty), (0xFF, 0), "{what}: ui_sent and ui_dirty");
+        let frame = self.frame();
+        let lcd = self.app.m.lcd_ram();
+        let differ = (0..64 * 96)
+            .filter(|&i| {
+                let (y, x) = (i / 96, i % 96);
+                let lit = frame[y * 12 + x / 8] & (0x80 >> (x % 8)) != 0;
+                lcd.pixel(x, y) != lit
+            })
+            .count();
+        assert_eq!(
+            differ, 0,
+            "{what}: pixels where the LCD differs from the frame"
+        );
+        LCD_CHECKS.with(|c| c.set(c.get() + 1));
     }
 
     /// The LCD's pixels packed 8 to a byte, which is what the OS copies over saveSScreen at an

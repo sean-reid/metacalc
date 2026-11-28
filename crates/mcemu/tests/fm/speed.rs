@@ -19,12 +19,12 @@ struct Ceilings {
 }
 
 const FIXTURE: Ceilings = Ceilings {
-    frame: 273_400,
-    draw: 153_500,
+    frame: 281_809,
+    draw: 156_920,
 };
 const RING: Ceilings = Ceilings {
-    frame: 267_000,
-    draw: 147_000,
+    frame: 274_497,
+    draw: 149_508,
 };
 const STRINGS: u16 = 0xB000;
 

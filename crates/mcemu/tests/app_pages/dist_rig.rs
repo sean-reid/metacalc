@@ -135,5 +135,10 @@ pub fn press(walker: &mut Walker, scan: u8, key: Key) -> bool {
         assert_eq!(scratch(walker), kept, "{scan:02X}: the scratch");
         assert_eq!(walker.list.run.frame(), picture, "{scan:02X}: the picture");
     }
+    walker
+        .list
+        .run
+        .shell
+        .assert_lcd_holds_the_frame(&format!("dist after {scan:02X}"));
     drew
 }

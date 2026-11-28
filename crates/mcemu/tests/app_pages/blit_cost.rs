@@ -1,5 +1,5 @@
 //! What the canvas's blit, its row marking and its row routines cost on the reference OS at 6 MHz,
-//! printed on passing runs and pinned within 2 percent.
+//! printed on passing runs and pinned within 2 percent. Ignored: they need the reference ROM.
 
 use crate::app::*;
 use crate::built::shipped_staged;
@@ -7,6 +7,10 @@ use crate::realos::BASE;
 use mcemu::Speed;
 
 const STRING: u16 = 0xA9D0;
+
+/// One call of ui_text before the rows were marked, "Metamath" at x 1 on row 3, and the full blit.
+const OLD_TEXT: u32 = 6_274;
+const OLD_BLIT: u32 = 73_579;
 
 fn app_on_rom() -> App {
     App::on_real_os(shipped_staged())
@@ -17,7 +21,30 @@ fn timed(app: &mut App, name: &str, input: In) -> u32 {
     app.timed(BASE, at, input).tstates
 }
 
-/// One call of ui_text, "Metamath" at x 1 on row 3: the cost with whatever the canvas does to mark.
+fn var(app: &App, name: &str) -> u16 {
+    app.label(name)
+}
+
+fn blit(app: &mut App, mask: u8) -> u32 {
+    let (dirty, sent) = (var(app, "ui_dirty"), var(app, "ui_sent"));
+    app.poke(dirty, &[mask]);
+    app.poke(sent, &[mask ^ 0xA5]);
+    let took = timed(app, "far_ui_blit", In::default());
+    assert_eq!(app.peek(sent, 1), [mask], "ui_sent after the blit");
+    assert_eq!(app.peek(dirty, 1), [0], "ui_dirty after the blit");
+    took
+}
+
+/// Within 2 percent of `want`, and printed.
+fn pinned(what: &str, got: u32, want: u32) {
+    println!("ROM 6 MHz: {what}: {got} T-states, pinned at {want}");
+    let slack = want / 50;
+    assert!(
+        got.abs_diff(want) <= slack,
+        "{what}: {got} against {want} within {slack}"
+    );
+}
+
 fn text_cost(app: &mut App) -> u32 {
     let codes = mcglyph::z80::Table::builtin().encode("Metamath");
     app.poke(STRING, &codes);
@@ -35,13 +62,83 @@ fn text_cost(app: &mut App) -> u32 {
 
 #[test]
 #[ignore = "needs the reference ROM image"]
-fn probe_the_full_blit_and_one_text_call_on_the_reference_os() {
+fn on_the_reference_os_the_blit_costs_what_the_rows_it_sends_say() {
     let mut app = app_on_rom();
-    for (speed, name) in [(Speed::Mhz6, "6 MHz"), (Speed::Mhz15, "15 MHz")] {
-        app.m.set_speed(speed);
-        let blit = timed(&mut app, "far_ui_blit", In::default());
-        println!("ROM {name}: full blit {blit} T-states");
-    }
-    app.m.set_speed(Speed::Mhz6);
-    println!("ROM 6 MHz: ui_text once {}", text_cost(&mut app));
+    let full = blit(&mut app, 0xFF);
+    let one = blit(&mut app, 0x08);
+    let two = blit(&mut app, 0x18);
+    let none = blit(&mut app, 0x00);
+    println!("ROM 6 MHz: the full blit was {OLD_BLIT} before the mask");
+    pinned("full blit", full, FULL);
+    pinned("blit of one row", one, ONE);
+    pinned("blit of two adjacent rows", two, TWO);
+    pinned("blit of no row", none, NONE);
+    assert!(
+        one > 12_000 && two > one + 8_000,
+        "a blit that sends nothing fails"
+    );
+    assert!(full > two && none < 1_000);
+    app.m.set_speed(Speed::Mhz15);
+    let at15 = blit(&mut app, 0xFF);
+    println!("ROM 15 MHz: full blit {at15} T-states");
 }
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn on_the_reference_os_marking_a_row_adds_what_the_header_says_to_ui_text() {
+    let mut app = app_on_rom();
+    let got = text_cost(&mut app);
+    println!(
+        "ROM 6 MHz: ui_text once: {OLD_TEXT} before, {got} now, {} more",
+        got - OLD_TEXT
+    );
+    pinned("ui_text once", got, TEXT);
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn on_the_reference_os_clearing_and_shifting_rows_cost_what_they_are_pinned_at() {
+    let mut app = app_on_rom();
+    let (dirty, frame) = (var(&app, "ui_dirty"), 0x9340u16);
+    let call = |app: &mut App, name: &str, first: u8, count: u8, dir: u8| {
+        app.poke(frame, &[0x5A; 768]);
+        app.poke(dirty, &[0]);
+        let took = timed(
+            app,
+            name,
+            In {
+                a: first,
+                bc: u16::from(count) << 8 | u16::from(dir),
+                ..In::default()
+            },
+        );
+        let mask = (first..first + count).fold(0u8, |m, r| m | (1 << r));
+        assert_eq!(app.peek(dirty, 1), [mask], "{name} {count}: ui_dirty");
+        took
+    };
+    for (name, rows, dir, want) in [
+        ("far_ui_clear_rows", 1, 0, CLEAR_ONE),
+        ("far_ui_clear_rows", 6, 0, CLEAR_SIX),
+        ("far_ui_shift_rows", 1, 0, SHIFT_ONE),
+        ("far_ui_shift_rows", 6, 0, SHIFT_SIX_UP),
+        ("far_ui_shift_rows", 6, 1, SHIFT_SIX_DOWN),
+    ] {
+        let got = call(&mut app, name, 1, rows, dir);
+        pinned(
+            &format!("{name} of {rows} rows, direction {dir}"),
+            got,
+            want,
+        );
+    }
+}
+
+const FULL: u32 = 0;
+const ONE: u32 = 0;
+const TWO: u32 = 0;
+const NONE: u32 = 0;
+const TEXT: u32 = 0;
+const CLEAR_ONE: u32 = 0;
+const CLEAR_SIX: u32 = 0;
+const SHIFT_ONE: u32 = 0;
+const SHIFT_SIX_UP: u32 = 0;
+const SHIFT_SIX_DOWN: u32 = 0;

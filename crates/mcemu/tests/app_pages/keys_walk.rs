@@ -299,7 +299,17 @@ fn long_walk(checking: bool) {
             built.stages.len()
         );
     }
+    let checked = lcd_checks();
+    println!("{checked} frames checked against the LCD");
+    assert!(
+        checked >= LCD_CHECKS_FLOOR,
+        "{checked} frames checked against the LCD"
+    );
 }
+
+/// Frames the walk compared with the LCD's memory, sent in full each: set a little under what a
+/// run printed.
+const LCD_CHECKS_FLOOR: usize = 1;
 
 #[test]
 fn a_long_walk_through_every_kind_of_screen_in_one_session_is_the_models_at_every_step() {

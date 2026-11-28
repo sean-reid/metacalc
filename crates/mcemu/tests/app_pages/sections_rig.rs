@@ -271,6 +271,9 @@ impl Lister {
         assert_eq!(self.run.top_kind(), KIND_SECTIONS, "still on the screen");
         let at = self.sections();
         self.same_sections(&format!("after {scan:02X}"), &at);
+        self.run
+            .shell
+            .assert_lcd_holds_the_frame(&format!("sections after {scan:02X}"));
         drew
     }
 
