@@ -313,7 +313,7 @@ fn the_title_is_rebuilt_by_the_enter_after_a_notice_and_after_an_auto_power_down
         }
         walker.open();
         marks.insert(walker.model_title()[0]);
-        walker.excursion(F2, Key::F2);
+        walker.excursion(F3, Key::F3);
         walker.list.run.run(600_000);
         walker.list.run.shell.power_down();
         let app = &walker.list.run.shell.app;

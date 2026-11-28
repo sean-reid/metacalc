@@ -160,7 +160,7 @@ fn fold_unfold_the_soft_keys_and_clear_are_the_models_on_the_reference_os() {
     crate::theorem_keys::onto_a_folded_node(&mut w);
     assert!(w.press(ENTER, Key::Enter), "the fold is undone");
     assert!(w.press(F1, Key::F1), "and made again");
-    for (scan, key) in [(F2, Key::F2), (F3, Key::F3), (F4, Key::F4)] {
+    for (scan, key) in [(F3, Key::F3), (F4, Key::F4)] {
         w.excursion(scan, key);
     }
     assert!(!w.press(F5, Key::F5), "F5 does nothing");

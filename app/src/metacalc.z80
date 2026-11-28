@@ -69,10 +69,12 @@
 ;                 push a notice, F5 the stage's sections when it has titles, CLEAR goes back
 ;                 (screen_list.inc, screen_list_key.inc, screen_list_kind.inc, screen_list_land.inc)
 ;   7 theorem     an assertion's statements folded to six rows, with a cursor that moves by
-;                 subexpression and folds on ENTER and F1; F2 to F4 push a notice, CLEAR goes back
-;                 (screen_theorem.inc)
+;                 subexpression and folds on ENTER and F1; F2 pushes the Dist screen, F3 and F4 a
+;                 notice, CLEAR goes back (screen_theorem.inc)
 ;   8 sections    the section titles of a stage, six rows from the first shown, indented by depth; Go and
 ;                 ENTER jump the list to the cursor's section, CLEAR goes back (screen_sections.inc)
+;   9 dist        an assertion's distinct-variable pairs wrapped over six rows from the first shown;
+;                 UP and DOWN scroll a row, CLEAR goes back (screen_dist.inc)
 ; Stages. With LIBRARY the build's stage table (stages.inc, from app/Makefile) says what the rows
 ; are; STAGE_COUNT is 0 without one. The table is on this page, so the screens that draw it copy
 ; the strings they need to APP_TEXT. The status table store (store.inc) is linked in on this page,
@@ -360,6 +362,7 @@ STAGE_COUNT .equ 0
 #include "screen_theorem_key.inc"
 #include "screen_theorem_draw.inc"
 #include "screen_sections.inc"
+#include "screen_dist.inc"
 #ifdef LIBRARY
 #include "store.inc"
 #include "check_ram.inc"

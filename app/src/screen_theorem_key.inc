@@ -10,7 +10,7 @@ theorem_key:
 	jr z, tk_main
 	ld a, c
 	cp KEY_F2
-	jr z, tk_notice
+	jr z, tk_dist
 	cp KEY_F4
 	jr z, tk_notice
 	cp KEY_CLEAR
@@ -24,6 +24,7 @@ tk_main:
 	jr z, tk_quiet
 	cp KEY_F2
 	jr c, tk_work
+	jr z, tk_dist
 	cp KEY_F5
 	jr c, tk_notice
 tk_quiet:
@@ -42,6 +43,9 @@ tk_stay:
 tk_pop:
 	ld a, SCR_POP
 	ret
+tk_dist:
+	ld a, KIND_DIST
+	jp theorem_push_kind
 tk_notice:
 	inc hl
 	ld c, (hl)

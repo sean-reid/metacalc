@@ -51,6 +51,41 @@ mod cost_stages;
 mod counts;
 #[path = "app_pages/data.rs"]
 mod data;
+#[path = "app_pages/dist_boundary.rs"]
+mod dist_boundary;
+#[path = "app_pages/dist_depth.rs"]
+mod dist_depth;
+#[path = "app_pages/dist_errors.rs"]
+mod dist_errors;
+#[path = "app_pages/dist_far.rs"]
+mod dist_far;
+#[path = "app_pages/dist_frames.rs"]
+mod dist_frames;
+#[path = "app_pages/dist_keys.rs"]
+mod dist_keys;
+#[path = "app_pages/dist_large.rs"]
+mod dist_large;
+#[allow(dead_code)]
+#[path = "app_pages/dist_lib.rs"]
+mod dist_lib;
+#[path = "app_pages/dist_power.rs"]
+mod dist_power;
+#[path = "app_pages/dist_real.rs"]
+mod dist_real;
+#[path = "app_pages/dist_real_scroll.rs"]
+mod dist_real_scroll;
+#[path = "app_pages/dist_refuse.rs"]
+mod dist_refuse;
+#[path = "app_pages/dist_rig.rs"]
+mod dist_rig;
+#[path = "app_pages/dist_rows.rs"]
+mod dist_rows;
+#[path = "app_pages/dist_screens.rs"]
+mod dist_screens;
+#[path = "app_pages/dist_straddle.rs"]
+mod dist_straddle;
+#[path = "app_pages/dist_watch.rs"]
+mod dist_watch;
 #[path = "app_pages/draw.rs"]
 mod draw;
 #[path = "common/exit_kit.rs"]
@@ -95,6 +130,8 @@ mod idlerig_script;
 mod idlerig_watch;
 #[path = "app_pages/key_memory.rs"]
 mod key_memory;
+#[path = "app_pages/key_scans.rs"]
+mod key_scans;
 #[path = "app_pages/keys.rs"]
 mod keys;
 #[path = "app_pages/keys_walk.rs"]

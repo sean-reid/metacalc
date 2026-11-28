@@ -3,6 +3,7 @@
 //! compared with the model's.
 
 use crate::app::*;
+use crate::idlerig_watch::KBD_SCAN;
 use crate::list_rig::*;
 use crate::shellrig::*;
 use crate::theorem_mirror::Mirror;
@@ -11,6 +12,7 @@ use mcui::canvas::{CONTENT_ROWS, STATEMENT_WIDTH, text_width};
 use mcui::data::Lib;
 use mcui::fold::{Fit, fit, fit_one, layout};
 use mcui::{Installed, Key, State, Status};
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 
 pub const KIND_THEOREM: u8 = 7;
 /// The frame's bytes the theorem screen uses: kind, stage, assertion, statement, node, scroll,
@@ -124,9 +126,24 @@ fn wait_for_blits(list: &mut Lister, want: u16) {
 pub fn tap(list: &mut Lister, scan: u8) {
     let code = u16::from(code_of(scan));
     let before = list.run.scr_keys();
+    let scans = list.run.scans_since_release();
+    let since = list.run.m().clock().wrapping_sub(list.run.released_at);
     list.run.press(scan);
     loop {
-        list.run.run_to("scr_key", LIMIT);
+        let run = &mut list.run;
+        let reached = catch_unwind(AssertUnwindSafe(|| run.run_to("scr_key", LIMIT)));
+        if let Err(lost) = reached {
+            let m = run.m();
+            let (iff1, pc, page, clock) = (m.regs().iff1, m.pc(), m.in_port(6), m.clock());
+            let speed = m.in_port(0x20) & 1;
+            let (code, depth) = (run.peek(KBD_SCAN, 1)[0], run.depth());
+            eprintln!(
+                "key {scan:02X} lost: {scans} scans and {since} T-states since the last release, \
+                 interrupts on {iff1}, speed {speed}, pc {pc:04X} on page {page:02X}, scan code \
+                 {code:02X}, {depth} screens, clock {clock}"
+            );
+            resume_unwind(lost);
+        }
         if list.run.m().regs().af >> 8 == code {
             break;
         }

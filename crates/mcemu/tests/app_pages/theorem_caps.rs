@@ -97,9 +97,7 @@ fn fm_refuses_exactly_what_the_models_caps_refuse_for_each_way_past_a_cap() {
             ] {
                 assert!(!walker.press(scan, key), "{what}: {scan:02X} stays");
             }
-            for (scan, key) in [(F2, Key::F2), (F4, Key::F4)] {
-                walker.excursion(scan, key);
-            }
+            walker.excursion(F4, Key::F4);
             assert!(!walker.press(F5, Key::F5), "{what}: F5 stays");
         }
         walker.back();
