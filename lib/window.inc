@@ -77,6 +77,12 @@ lw_ptr:
 
 ; in: A = bytes wanted from the cursor, at most LIB_WINDOW. Refills the window at the cursor if it
 ; holds fewer. out: Z, or NZ and A = LIB_ERR_BAD when the library ends first.
+; Held: the window already holds that many from the cursor and is left as it is. Destroys A, C, HL and
+; the flags.
+; Refilled: the window is refilled from the cursor, as far as LIB_WINDOW and the library allow, with
+; lr_wp 0. Destroys all but IX, IY.
+; Refused: the window is empty at the cursor (lr_wlen 0, lr_wp 0). The length checks refuse before any
+; read starts; a read that fails refuses the same way with lr_wlen already 0. Destroys all but IX, IY.
 lw_need:
 	ld c,a
 	ld a,(lr_wlen)
