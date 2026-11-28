@@ -225,6 +225,8 @@ mod theorem_idle;
 mod theorem_keys;
 #[path = "app_pages/theorem_mirror.rs"]
 mod theorem_mirror;
+#[path = "app_pages/theorem_nest.rs"]
+mod theorem_nest;
 #[path = "app_pages/theorem_paths.rs"]
 mod theorem_paths;
 #[path = "app_pages/theorem_real.rs"]
