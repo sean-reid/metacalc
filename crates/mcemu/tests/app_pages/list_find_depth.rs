@@ -56,6 +56,11 @@ fn on_the_reference_os_every_arm_keeps_interrupts_and_speed_and_writes_these_dep
         let open = || {
             let mut list = ring(table.then_some(&status[..]));
             list.go_to_kind(kind);
+            assert_eq!(
+                list.var("LV_TABLE"),
+                u8::from(table),
+                "{kind:?}: the list has the table the case names"
+            );
             list
         };
         for speed in [0, 1] {
