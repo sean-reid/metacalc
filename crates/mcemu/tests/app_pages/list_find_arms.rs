@@ -92,7 +92,7 @@ pub fn arms(list: &Lister) -> Vec<Arm> {
     let other = |text: &str| {
         ['a', 'e', 's', 'm']
             .into_iter()
-            .find(|&c| text.chars().last() != Some(c))
+            .find(|&c| !text.ends_with(c))
             .unwrap()
     };
     let after_miss = format!("{c0}{miss_second}");
