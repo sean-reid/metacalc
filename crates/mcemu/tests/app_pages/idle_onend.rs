@@ -67,10 +67,12 @@ fn snapshots(rig: &mut Rig) -> Vec<Snapshot> {
         .collect()
 }
 
-/// The snapshots with ON down 300 ms after the shell began to wait, and 200 ms after ON went up,
-/// each read across a timer period, then what a tap of Down did: scr_key calls and blits.
+/// The snapshot with ON down 300 ms after the shell began to wait, the mask read across a timer
+/// period in a second rig at the same point, the reads from 200 ms after ON went up, and what a tap
+/// of Down did: scr_key calls and blits.
 struct Case {
-    down: Vec<Snapshot>,
+    down: Snapshot,
+    down_reads: Vec<Snapshot>,
     up: Vec<Snapshot>,
     tap: (u16, u16),
 }
@@ -87,11 +89,14 @@ fn mask_tally(snaps: &[Snapshot]) -> std::collections::BTreeMap<u8, usize> {
 fn run_case(real: bool, work: bool) -> Case {
     let (mut rig, since) = on_down(real, work);
     rig.until("300 ms", 1_000_000, |r| r.t >= since + 300_000);
-    let down = snapshots(&mut rig);
+    let down = snapshot(&mut rig);
     rig.m().release_key(Machine::KEY_ON);
     rig.step(200_000);
     let up = snapshots(&mut rig);
     let (keys, blits) = (rig.shell.scr_keys(), rig.shell.blits());
+    let (mut other, since) = on_down(real, work);
+    other.until("300 ms", 1_000_000, |r| r.t >= since + 300_000);
+    let down_reads = snapshots(&mut other);
     rig.tap_when_taken(DOWN);
     rig.step(300_000);
     let tap = (rig.shell.scr_keys() - keys, rig.shell.blits() - blits);
@@ -99,8 +104,8 @@ fn run_case(real: bool, work: bool) -> Case {
         "{} OS, work {work}: ON down {:?} at {:?}; 200 ms after the release {:?} at {:?}; \
          a tap of Down made {} scr_key calls and {} blits",
         os_name(real),
-        down[0].os,
-        down[0].at,
+        down.os,
+        down.at,
         up[0].os,
         up[0].at,
         tap.0,
@@ -110,37 +115,44 @@ fn run_case(real: bool, work: bool) -> Case {
         "{} OS, work {work}: the mask read at {READS} points of a timer period, ON down {:?}, \
          200 ms after the release {:?}",
         os_name(real),
-        mask_tally(&down),
+        mask_tally(&down_reads),
         mask_tally(&up)
     );
-    Case { down, up, tap }
+    Case {
+        down,
+        down_reads,
+        up,
+        tap,
+    }
 }
 
 /// After ON goes up the two cases are in one state but for the power down timer, which differs by a
 /// count at most, and a tap of Down is acted on once in each.
 /// The OS flags a press once, so the break flag the shell cleared during the work stays clear while
-/// ON is down, where the plain wait holds it set until ON goes up; on the reference OS the interrupt
-/// mask also reads 15 where the plain wait reads 11 while ON is down.
+/// ON is down, where the plain wait holds it set until ON goes up. The interrupt mask does not
+/// depend on the phase of the timer period but on where the reference OS's own code is when it is
+/// read: 15 at most reads, and 9, 11 or 13 for the few reads inside its key scan; the plain wait with
+/// ON down reads 11 at every point. The stub reads 11 throughout.
 fn the_two_cases_agree_once_on_is_up(real: bool) {
     let work = run_case(real, true);
     let plain = run_case(real, false);
     assert_eq!(
-        plain.down[0].os.flags & ON_INTERRUPT,
+        plain.down.os.flags & ON_INTERRUPT,
         ON_INTERRUPT,
         "the plain wait holds the flag while ON is down"
     );
     assert_eq!(
-        work.down[0].os.flags & ON_INTERRUPT,
+        work.down.os.flags & ON_INTERRUPT,
         0,
         "the work case cleared it"
     );
     assert_eq!(
-        work.down[0].at,
+        work.down.at,
         Where::OsKeyWait,
         "after work the app waits in the OS's key wait with ON down"
     );
     assert_eq!(
-        plain.down[0].at,
+        plain.down.at,
         Where::WaitingForOnUp,
         "the plain wait is in app_key's wait for ON to go up"
     );
@@ -159,7 +171,7 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
         work.up[0].os.timers.1, plain.up[0].os.timers.1,
         "timer byte 2"
     );
-    let ran = |c: &Case| i32::from(c.down[READS - 1].os.timers.0) - i32::from(c.up[0].os.timers.0);
+    let ran = |c: &Case| i32::from(c.down.os.timers.0) - i32::from(c.up[0].os.timers.0);
     println!(
         "{} OS: the power down timer ran down {} counts in the work case and {} in the plain one",
         os_name(real),
@@ -176,8 +188,8 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
     let calm = if real { 15 } else { 11 };
     let allowed: &[u8] = if real { &[9, 11, 13, 15] } else { &[11] };
     for (what, snaps) in [
-        ("work, ON down", &work.down),
-        ("plain, ON down", &plain.down),
+        ("work, ON down", &work.down_reads),
+        ("plain, ON down", &plain.down_reads),
         ("work, ON up", &work.up),
         ("plain, ON up", &plain.up),
     ] {
