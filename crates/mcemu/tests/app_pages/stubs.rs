@@ -31,8 +31,8 @@ const FAR_CALL_NAMES: [&str; 17] = [
     "vars_size",
 ];
 
-/// The entries the app names `far_<routine>` for: the canvas and fm on the draw page, the kernel
-/// and the reader on the data page. Every other `far_` label must be one of the far call's own.
+/// The entries the app names `far_<routine>` for: the canvas and fm on the draw page, the kernel,
+/// the reader and the proof walk on the data page. Every other `far_` label must be one of the far call's own.
 fn stubs(built: &Built) -> Vec<(String, &'static str)> {
     let mut found = Vec::new();
     for line in built.labels.lines() {
@@ -45,7 +45,7 @@ fn stubs(built: &Built) -> Vec<(String, &'static str)> {
         };
         let far = match routine.split('_').next().unwrap() {
             "ui" | "fm" => "far_page1",
-            "kernel" | "lib" => "far_page2",
+            "kernel" | "lib" | "pw" => "far_page2",
             _ if FAR_CALL_NAMES.contains(&routine) => continue,
             _ => panic!("the label {name} is neither a stub nor one of the far call's own"),
         };
