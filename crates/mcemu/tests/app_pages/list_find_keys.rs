@@ -227,3 +227,65 @@ fn a_library_with_no_label_order_section_keeps_the_notice_on_f2_and_ignores_lett
     }
     list.walk_kind("a stripped library");
 }
+
+/// F2 on a library with no label order section pushes the stage's notice, which CLEAR pops, the list
+/// coming back as it was.
+fn f2_notice_round_trip(list: &mut Lister, title: &str, at: &str) {
+    let before = list.run.frames()[1].clone();
+    list.tap(F2);
+    let frame = list.run.next_blit();
+    list.run.run(300_000);
+    same_frame(&format!("{at}: F2"), &frame, &model::unavailable(title));
+    assert_eq!(list.run.depth(), 3, "{at}: the notice is on top");
+    list.tap(CLEAR);
+    list.run.next_blit();
+    list.run.run(300_000);
+    assert_eq!(list.run.frames()[1], before, "{at}: the list as it was");
+    list.ui = list.replayed();
+    list.skip_the_wait();
+    list.settle();
+}
+
+#[test]
+fn f2_without_the_section_pushes_the_notice_under_each_kind_and_on_a_list_that_shows_nothing() {
+    let built = stripped_built();
+    let status: Vec<mcui::Status> = (0..count(built))
+        .map(|i| {
+            if i % 3 == 0 {
+                mcui::Status::Checked
+            } else {
+                mcui::Status::Unchecked
+            }
+        })
+        .collect();
+    let data = table_of(built, &status);
+    for (kind, table) in [
+        (Kind::All, false),
+        (Kind::Theorems, false),
+        (Kind::Axioms, false),
+        (Kind::Unchecked, true),
+        (Kind::Unchecked, false),
+    ] {
+        let mut list = Lister::open(built, table.then_some((&data[..], &status[..])), 0);
+        list.settle();
+        list.go_to_kind(kind);
+        assert_eq!(list.var("LV_HASO"), 0);
+        f2_notice_round_trip(&mut list, "Kinds", &format!("{kind:?} table {table}"));
+    }
+    let library = without_order(&pattern_library("AAAA"));
+    let end = crate::table::header_of(&library).1 as usize;
+    let axioms = staged_with(
+        "pages-find-stripped-axioms",
+        &library,
+        &[mcui::Stage {
+            name: "None".into(),
+            title: "None".into(),
+            end,
+        }],
+    );
+    let mut list = Lister::open(axioms, None, 0);
+    list.settle();
+    list.go_to_kind(Kind::Theorems);
+    assert_eq!(list.pos().len, 0, "Theorems shows nothing here");
+    f2_notice_round_trip(&mut list, "None", "a list that shows nothing");
+}
