@@ -70,15 +70,16 @@
 ; is the shell's call, not this screen's.
 ; Stack, in bytes written below the stack pointer at the entry, the caller's return address counted, with interrupts masked,
 ; measured and asserted exactly in dist_depth.rs on the stub OS and in dist_real.rs on the reference OS, at both speeds:
-; dist_key 2 on every path; dist_enter 22, which holds whether the reader's descriptor already describes the assertion, as
-; the theorem's enter leaves it, or is cold, lr_dn at FFFFh as after a failed far_lib_record, and 12 for an assertion with no
+; dist_key 2 on every path; dist_enter 22, which holds whether the reader's descriptor already describes the assertion, as the
+; theorem's enter leaves it, or is cold, lr_dn at FFFFh as after a failed far_lib_record, and 12 for an assertion with no
 ; pair; dist_draw 26, warm or cold; the F2 that pushes the screen 8 in theorem_key, on the theorem screen and on the too large
-; screen. A refusal the reader makes is 12 for far_lib_record given an assertion number past the count (status 5, measured
-; on both OSes). The rig's refusals of the other calls, a hook that answers at the far entry, are not a reader's: far_lib_read
-; 14, far_lib_glyph 22 and, in the draw, far_lib_label 24 and the rest 26; no packed library makes the reader refuse a read or
-; a glyph the descriptor accepts, so those are unmeasured for the reader, which leaves earlier than a call that succeeds, so
-; no deeper than the 22 and 26 above. With interrupts on at the call a handler that lands where the stack is deepest adds
-; its bytes: dist_depth.rs and dist_real.rs assert those figures too.
+; screen. A refusal the reader makes is 12 for far_lib_record given an assertion number past the count (status 5, measured on
+; both OSes). The rig's refusals, a hook that answers at the far entry, are not a reader's: in the enter far_lib_record 10,
+; far_lib_read 14 and far_lib_glyph 22, in the draw far_lib_label 24 and the rest 26; no packed library makes the reader
+; refuse a read or a glyph the descriptor accepts, so those are unmeasured for the reader, which leaves earlier than a call
+; that succeeds, so no deeper than the 22 and 26 above. With interrupts on at the call a key and the F2 are as deep as masked;
+; in the enter and the draw a handler that lands where the stack is deepest adds its bytes, at most 4 on the stub OS and 6 on
+; the reference OS, which dist_depth.rs and dist_real.rs assert.
 ; Calls: far_lib_record, far_lib_read, far_lib_glyph and far_lib_label through list_label_text, far_ui_text_width, far_ui_text,
 ; far_ui_clear, far_ui_truncate, far_ui_title, far_ui_text_centered, far_ui_soft_keys, and app_stage_block, app_strcpy,
 ; app_dec16 and list_room on this page.
