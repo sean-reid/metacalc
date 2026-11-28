@@ -137,6 +137,7 @@ fn case(
             win: vec![MARK; WINDOW],
         };
         assert_eq!(after, held, "{what}: the window after a refusal");
+        assert_eq!(cnt, MARK, "{what}: a refused need starts no read");
     }
     assert!(after.len >= n || !accepted, "{what}: fewer than wanted");
     assert_eq!(cursor(rig), at, "{what}: the cursor after");
