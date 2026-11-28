@@ -167,6 +167,40 @@ mod room;
 mod screen;
 #[path = "app_pages/screens.rs"]
 mod screens;
+#[path = "app_pages/sections_big.rs"]
+mod sections_big;
+#[path = "app_pages/sections_depth.rs"]
+mod sections_depth;
+#[path = "app_pages/sections_enter_store.rs"]
+mod sections_enter_store;
+#[path = "app_pages/sections_fail.rs"]
+mod sections_fail;
+#[path = "app_pages/sections_frames.rs"]
+mod sections_frames;
+#[path = "app_pages/sections_jump.rs"]
+mod sections_jump;
+#[path = "app_pages/sections_land.rs"]
+mod sections_land;
+#[path = "app_pages/sections_land_paths.rs"]
+mod sections_land_paths;
+#[path = "app_pages/sections_owner.rs"]
+mod sections_owner;
+#[path = "app_pages/sections_power.rs"]
+mod sections_power;
+#[path = "app_pages/sections_push_fail.rs"]
+mod sections_push_fail;
+#[path = "app_pages/sections_real_cost.rs"]
+mod sections_real_cost;
+#[path = "app_pages/sections_rig.rs"]
+mod sections_rig;
+#[path = "app_pages/sections_titlebar.rs"]
+mod sections_titlebar;
+#[path = "app_pages/sections_walk.rs"]
+mod sections_walk;
+#[path = "app_pages/sections_watch.rs"]
+mod sections_watch;
+#[path = "app_pages/sections_window.rs"]
+mod sections_window;
 #[path = "app_pages/sentinel.rs"]
 mod sentinel;
 #[path = "app_pages/shell_cost.rs"]

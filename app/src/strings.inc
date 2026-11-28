@@ -207,6 +207,22 @@ THEOREM_BLOCK_SIZE	.equ theorem_block_end - theorem_block
  .error "the theorem screen's strings are longer than APP_STAGE_DATA_SIZE"
 #endif
 
+sections_block:
+sxs_go:
+	.db UI_KEY_FONT_CH_47, UI_KEY_FONT_CH_6F, 0
+sxs_none:
+	.db 0
+sxs_keys:
+	.dw STG_SX_GO, STG_SX_NONE, STG_SX_NONE, STG_SX_NONE, STG_SX_NONE
+sections_block_end:
+STG_SX_GO	.equ APP_STAGE_DATA + (sxs_go - sections_block)
+STG_SX_NONE	.equ APP_STAGE_DATA + (sxs_none - sections_block)
+STG_SX_KEYS	.equ APP_STAGE_DATA + (sxs_keys - sections_block)
+SECTIONS_BLOCK_SIZE	.equ sections_block_end - sections_block
+#if SECTIONS_BLOCK_SIZE > APP_STAGE_DATA_SIZE
+ .error "the sections screen's strings are longer than APP_STAGE_DATA_SIZE"
+#endif
+
 checking_block:
 kx_checking:
 	.db UI_FONT_CH_43, UI_FONT_CH_68, UI_FONT_CH_65, UI_FONT_CH_63, UI_FONT_CH_6B, UI_FONT_CH_69, UI_FONT_CH_6E, UI_FONT_CH_67, 0

@@ -230,7 +230,7 @@ fn on_the_reference_os_every_routine_of_the_list_keeps_interrupts_and_speed_and_
             ("f2", 6),
             ("f3", 24),
             ("f4", 6),
-            ("f5", 6),
+            ("f5", 18),
             ("left", 4),
             ("letter", 2),
             ("right", 4),
@@ -245,8 +245,8 @@ fn on_the_reference_os_every_routine_of_the_list_keeps_interrupts_and_speed_and_
 }
 
 /// What a user does with the list, on each stage of the shipped build: open the list, move
-/// by row and by page to both ends, every soft key's notice and the way back by each of the keys
-/// that pop it, and CLEAR to Libraries
+/// by row and by page to both ends, the notices of F2 and F4 and the way back by each of the keys
+/// that pop them, F5's sections screen and CLEAR back from it, and CLEAR to Libraries
 /// with the stage's row where it was.
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
@@ -286,6 +286,33 @@ fn on_the_reference_os_each_stage_opens_moves_to_both_ends_opens_each_notice_and
         }
         let sections = list.var("LV_SECT") == 1;
         for (n, scan) in [F2, F4, F5].into_iter().enumerate() {
+            if scan == F5 && sections {
+                let before = list.frame_bytes();
+                list.tap(scan);
+                let frame = list.run.next_blit();
+                let mut model = list.replayed();
+                model.press(Key::F5);
+                crate::ui_support::same_frame(
+                    &format!("{at}, F5 opens the sections screen"),
+                    &frame,
+                    &crate::shellrig::model::frame(&model),
+                );
+                list.run.run(600_000);
+                assert_eq!(list.run.depth(), 3, "{at}");
+                assert_eq!(list.run.top_kind(), crate::sections_rig::KIND_SECTIONS);
+                list.tap(CLEAR);
+                list.run.next_blit();
+                list.run.run(2_000);
+                assert_eq!(
+                    list.frame_bytes(),
+                    before,
+                    "{at}: the list is where it was after F5 and CLEAR"
+                );
+                list.ui = list.replayed();
+                list.same_position(&format!("{at}, back from the sections screen"));
+                list.settle();
+                continue;
+            }
             if scan == F5 && !sections {
                 let before = list.frame_bytes();
                 list.tap(scan);
