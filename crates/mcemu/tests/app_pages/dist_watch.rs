@@ -70,6 +70,10 @@ fn watched(walker: &mut Walker, label: &str) -> Vec<(String, u16, bool)> {
     let run = &mut walker.list.run;
     let at = run.shell.app.label(label);
     run.run_to_addr(label, at, WAIT);
+    if label == "dist_enter" {
+        let top = run.shell.app.label("DV_TOP");
+        run.m().load_ram(top, &[0, 0]);
+    }
     let sp = run.m().regs().sp;
     let ret = {
         let b = run.m().read_ram(sp, 2);
