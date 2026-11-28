@@ -159,6 +159,7 @@ struct Outcome {
 /// the release on to `after_ms` after the press, and whether the key reached scr_key.
 fn press_again(w: &mut Walker, real: bool, gap_ms: u32) -> Outcome {
     tap(&mut w.list, CLEAR);
+    w.list.run.allow_raw_press();
     let t0 = w.list.run.released_at;
     let m = &mut w.list.run.shell.app.m;
     let before = scr_keys(m);
