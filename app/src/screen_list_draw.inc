@@ -166,8 +166,9 @@ ll_cut:
 	ld (de), a
 	ret
 
-; Draws the title bar: the stage's name, cut to the room the counts leave, and "checked/total" with the
-; model's "flat " in front when LV_FLAT is 1.
+; Draws the title bar: the stage's name, cut to the room the right side leaves, and on the right
+; "checked/total" with the model's "flat " in front when LV_FLAT is 1, or, when LV_FIND has a length, the
+; prefix (list_find_right).
 list_title:
 	ld a, (LV_FIND)
 	and LIST_FIND_LEN

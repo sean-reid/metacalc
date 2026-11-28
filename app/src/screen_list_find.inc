@@ -1,5 +1,6 @@
 ; The list's find by typed prefix (screen_list.inc has the screen's header, screen_list_key.inc the keys').
-; lk_letter, lk_f2, lk_clear and list_find_again answer as list_key does. list_find looks the prefix up in the
+; lk_letter, lk_f2 and lk_clear answer as list_key does; list_find_again answers nothing: A is undefined at its
+; return and list_kind_step loads it again. list_find looks the prefix up in the
 ; label order and, under the kind in force, takes the first shown assertion at or after the start whose label
 ; starts with it: far_lib_find_range once, then one far_lib_find_walk (All, Theorems, Axioms, and Unchecked with
 ; no table), or under Unchecked with a table one far_lib_find_copy and one store_least_not_one for each run of
@@ -9,7 +10,7 @@
 ; Statuses: a status other than 0 from far_lib_find_range, far_lib_find_walk or far_lib_find_copy is a miss; one
 ; from store_least_not_one shows every assertion, as lf_next does. A miss sets bit 7 of byte 7 and moves nothing.
 ; Writes: the frame's bytes 2 to 5 and 7 to 15, LV_PREVIEW and LV_COUNT, LV_KIND, LV_END, LK_FR, LK_CUR, LK_T,
-; LK_N, LF_ in LV_NAME and LV_CUT, FM_SCRATCH and the reader's and the store's state. A refused character, a
+; LK_N, LK_AGAIN (lf_next and lf_prev write it under Unchecked with a table), LF_ in LV_NAME and LV_CUT, FM_SCRATCH and the reader's and the store's state. A refused character, a
 ; ninth character and a letter with LV_HASO 0 write nothing. Interrupts and speed are as at the call.
 
 #ifdef LIBRARY

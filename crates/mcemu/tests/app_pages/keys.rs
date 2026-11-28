@@ -341,7 +341,7 @@ pub fn pops_a_notice(key: Option<Key>) -> bool {
     ui.depth() == 1
 }
 
-/// The notice a stage's list opens on F4: the model's list has the Dist screen there, which
+/// The notice a stage's list opens on F4: the model's list has the Proving screen there, which
 /// the app does not have yet, so the oracle is the notice's rule, that the keys that close the
 /// model's Notice pop and the rest change nothing, over the frame the model has for the list that
 /// is under it and its own frame for the notice.

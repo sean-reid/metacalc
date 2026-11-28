@@ -13,7 +13,8 @@
 ;   KIND_STAGE      byte 1 the stage
 ;   KIND_CHECKING   byte 1 the stage, byte 2 1 once its check has finished
 ;   KIND_LIST       byte 1 the stage, bytes 2 and 3 the cursor's assertion, 4 and 5 the first shown,
-;                   byte 6 the kind of assertion shown
+;                   byte 6 the kind of assertion shown,
+;                   byte 7 the find's length and miss bit, bytes 8 to 15 its characters
 ;   KIND_THEOREM    byte 1 the stage, bytes 2 and 3 the assertion, 4 the cursor's statement, 5 its node,
 ;                   6 and 7 the first row shown, 8 following, 9 1 once entered
 ;

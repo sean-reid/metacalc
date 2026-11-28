@@ -98,7 +98,7 @@ pub fn the_fit(app: &mut App) -> u32 {
 }
 
 /// The most T-states a cursor move of the list may take with the frame it redraws: list_key, scr_draw
-/// and ui_blit, a little above the 190,019 the move by a page takes on the stub. A list row has a label
+/// and ui_blit, a little above the 190,617 the move by a page takes on the stub. A list row has a label
 /// and a mark to draw and a Libraries row a name and a progress text, and the list's frame has six
 /// rows, so it costs more than the 161,900 of cost_stages.rs.
 pub const MOVE_CEILING: u32 = 190_700;

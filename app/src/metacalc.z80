@@ -65,9 +65,11 @@
 ;                 and counts moving; F1, CLEAR and ON stop it (screen_checking.inc)
 ;   6 list        the assertions of a stage with their marks and a preview of the cursor's
 ;                 conclusion that idle lays out once the row has been still; F3 steps through the kinds
-;                 All, Theorems, Axioms and Unchecked; ENTER and F1 open the cursor's theorem, F2, F4
-;                 and F5 push a notice, CLEAR goes back (screen_list.inc, screen_list_key.inc,
-;                 screen_list_kind.inc)
+;                 All, Theorems, Axioms and Unchecked; ENTER and F1 open the cursor's theorem, F2
+;                 ends a find (letters add to it) on a library with the label order section and
+;                 pushes a notice on one without, F4 and F5 push a notice, CLEAR ends a find and
+;                 then goes back
+;                 (screen_list.inc, screen_list_key.inc, screen_list_kind.inc, screen_list_find.inc)
 ;   7 theorem     an assertion's statements folded to six rows, with a cursor that moves by
 ;                 subexpression and folds on ENTER and F1; F2 to F4 push a notice, CLEAR goes back
 ;                 (screen_theorem.inc)

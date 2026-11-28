@@ -25,13 +25,15 @@
 ; no prefix; the enter after a notice or a theorem screen pops and the refresh after an auto power down read
 ; the frame and write nothing to it, so bytes 7 to 15 are kept. Characters past the length are not cleared:
 ; a new prefix overwrites from the first and nothing reads past the length. Without the label order section
-; (LV_HASO 0) a letter stays, F2 pushes the notice and byte 7 stays 0.
+; (LV_HASO 0) a letter stays, F2 pushes the notice and byte 7 stays 0. After F2 or CLEAR ends a find bytes 8 to 15
+; hold the old characters, which nothing reads. When list_enter puts a cursor back under a kind the prefix and its
+; miss bit stay, so the cursor may not be on a label that starts with the prefix.
 ;
 ; Derived state, in APP_TEXT:
 ;   LV_HASK     1 when the library has the kinds section, which F3 needs: with 0 there is only All
 ;   LV_HASO     1 when the library has the label order section (lib_sections bit 6), which the find needs,
 ;               set by list_enter_kinds and cleared by list_enter; it is the last byte of APP_TEXT, which
-;               the variables now fill exactly (LV_VARS_END is APP_TEXT + 173) and the #if below refuses
+;               the variables fill exactly (LV_VARS_END is APP_TEXT + 173) and the #if below refuses
 ;               to outgrow
 ;   LV_KIND     the frame's kind byte, copied by each routine
 ;   LV_TABLE    1 when the status table is this library's (store_has), else 0; with 0 every row is
@@ -51,8 +53,8 @@
 ;               then settles as LVP_NONE without a call to fm
 ; The rest of APP_TEXT is scratch that no call reads before it writes: list_enter writes LV_STAGE,
 ; list_draw writes LV_STAGE, LV_CUR, LV_TOP, LV_END, LV_ROW, LV_AT, LV_MARK, LV_FIND (a copy of bytes 7 to 15
-; of the frame, which shares LV_TEXT) and the strings it builds, and lk_letter writes the find's scratch
-; LF_ in LV_NAME and LV_CUT and the copy buffer FM_SCRATCH,
+; of the frame, which shares LV_TEXT) and the strings it builds, and lk_letter and list_find_again (F3 with a find) write the
+; find's scratch LF_ in LV_NAME and LV_CUT and the copy buffer FM_SCRATCH,
 ; and list_idle writes LV_CUR. list_enter, list_key and list_idle also write LV_KIND and LV_END, and the
 ; LK_ scratch of screen_list_kind.inc at the start of LV_RIGHT, which list_draw builds again before it reads;
 ; LK_AGAIN holds the number lf_next and lf_prev were given while the store is asked.
@@ -70,7 +72,7 @@
 ; list_enter   in: HL = the frame. out: A = the status of libs_counts, which derives the counts the title
 ;              reads, or of the reader's assertion count; else 0. After the first status other than 0 it
 ;              returns with every variable as it was, and after the second with LV_COUNT, LV_PREVIEW
-;              and LV_NOFM as they were and LV_TABLE, LV_FLAT, LV_SECT, LV_HASK and LV_KIND at 0.
+;              and LV_NOFM as they were and LV_TABLE, LV_FLAT, LV_SECT, LV_HASK, LV_KIND and LV_HASO at 0.
 ;              Otherwise it asks the store (store_has) whether the table is the library's, the reader
 ;              whether it has trees and where the first section title starts, sets the preview pending
 ;              and LV_COUNT to LIST_WAIT, and calls list_enter_kinds, which asks the reader whether it
