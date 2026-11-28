@@ -346,17 +346,6 @@ put_state:
 state_text:
 	jp putstr
 
-; Prints HL as three decimal digits.
-putdec3:
-	ld de, 100
-	call digit
-	ld de, 10
-	call digit
-	ld hl, (P_TMP)
-	ld a, l
-	add a, '0'
-	jp putchar
-
 #include "printnum.inc"
 #include "statecompare.inc"
 

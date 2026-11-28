@@ -1,0 +1,5 @@
+#include "equates.inc"
+#define APP_NAME "lcdcheck"
+#include "header.inc"
+#include "ui/ram.inc"
+#include "lcdcheck.inc"

@@ -95,3 +95,17 @@ check-statecheck: $(BUILD)/statecheck.8xk
 	sh ../app/scripts/test-check-8xk.sh $(BUILD)/statecheck.8xk statechk
 
 .PHONY: check-statecheck
+
+all: $(BUILD)/lcdcheck.8xk
+
+$(BUILD)/lcdcheck.8xk: lcdcheck.z80 lcdcheck.inc lcdblit.inc lcdread.inc lcdscreen.inc onbreak.inc printnum.inc ../ui/ram.inc ../app/src/header.inc ../app/src/equates.inc ../app/src/ram_map.inc
+	mkdir -p "$(BUILD)"
+	$(ASM) -L -I ../app/src -I .. -I . lcdcheck.z80 $@
+
+check: check-lcdcheck
+
+check-lcdcheck: $(BUILD)/lcdcheck.8xk
+	sh ../app/scripts/check-8xk.sh $(BUILD)/lcdcheck.8xk lcdcheck
+	sh ../app/scripts/test-check-8xk.sh $(BUILD)/lcdcheck.8xk lcdcheck
+
+.PHONY: check-lcdcheck

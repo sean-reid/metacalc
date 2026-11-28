@@ -31,6 +31,17 @@ putdec:
 	add a, '0'
 	jp putchar
 
+; Prints HL as three decimal digits.
+putdec3:
+	ld de, 100
+	call digit
+	ld de, 10
+	call digit
+	ld hl, (P_TMP)
+	ld a, l
+	add a, '0'
+	jp putchar
+
 ; Prints the quotient of HL by DE as one digit and leaves the remainder in scratch.
 digit:
 	ld b, 0
