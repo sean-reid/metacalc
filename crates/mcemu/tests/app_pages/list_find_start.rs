@@ -29,7 +29,12 @@ fn counted(kind: Kind, table: bool) -> Lister {
 
 /// The character the named arm presses, from the labels the list shows.
 fn arm_char(list: &Lister, name: &str) -> char {
-    match arms(list).into_iter().find(|a| a.name == name).unwrap().press {
+    match arms(list)
+        .into_iter()
+        .find(|a| a.name == name)
+        .unwrap()
+        .press
+    {
         Press::Char(c) => c,
         _ => panic!("{name} presses no character"),
     }
@@ -54,7 +59,11 @@ fn a_prefix_with_an_empty_range_calls_neither_the_walk_nor_the_copy() {
         assert!(list.find().missed, "{at}: {miss:?} misses");
         let calls = (list.fail_calls(0), list.fail_calls(1), list.fail_calls(2));
         println!("{at}, a miss: range, walk, copy calls {calls:?}");
-        assert_eq!(calls, (1, 0, 0), "{at}: an empty range calls the range only");
+        assert_eq!(
+            calls,
+            (1, 0, 0),
+            "{at}: an empty range calls the range only"
+        );
 
         let mut list = counted(kind, table);
         let hit = arm_char(&list, "letter, first");
@@ -91,7 +100,11 @@ fn a_second_letter_after_the_table_was_lost_searches_from_the_cursor_and_not_the
         let frame = list.frame_bytes();
         u16::from_le_bytes([frame[2], frame[3]])
     };
-    assert_eq!(cursor(&mut list), 2, "the first letter lands on assertion 2");
+    assert_eq!(
+        cursor(&mut list),
+        2,
+        "the first letter lands on assertion 2"
+    );
     assert_eq!(list.var("LV_TABLE"), 1);
 
     list.run.m().delete_var("MCSTAT");
@@ -101,7 +114,10 @@ fn a_second_letter_after_the_table_was_lost_searches_from_the_cursor_and_not_the
     list.run.next_blit();
     list.run.run(300_000);
     let find = list.find();
-    assert_eq!((find.len, find.missed, find.chars.as_str()), (2, false, "ax"));
+    assert_eq!(
+        (find.len, find.missed, find.chars.as_str()),
+        (2, false, "ax")
+    );
     let (own, shown) = (list.pos(), list.items());
     let own = (shown[own.cursor], shown[own.top]);
     let frame = list.frame_bytes();
@@ -109,19 +125,73 @@ fn a_second_letter_after_the_table_was_lost_searches_from_the_cursor_and_not_the
         u16::from_le_bytes([frame[2], frame[3]]),
         u16::from_le_bytes([frame[4], frame[5]]),
     );
-    println!("after the second letter: the app (cursor, top) {app:?}, the model that kept its list {own:?}");
-    assert_eq!(app.0, 2, "the search starts at the cursor, not at hidden assertion 0");
+    println!(
+        "after the second letter: the app (cursor, top) {app:?}, the model that kept its list {own:?}"
+    );
+    assert_eq!(
+        app.0, 2,
+        "the search starts at the cursor, not at hidden assertion 0"
+    );
     assert_eq!(own.0, 2, "the model's own state is on the same assertion");
 
     let mut bare = crate::shellrig::model::ui(built, &[]);
-    for key in [Key::Enter, Key::Letter('a'), Key::Letter('x'), Key::Letter('-'), Key::Letter('2')] {
+    for key in [
+        Key::Enter,
+        Key::Letter('a'),
+        Key::Letter('x'),
+        Key::Letter('-'),
+        Key::Letter('2'),
+    ] {
         bare.press(key);
     }
     let State::List { cursor, top, .. } = bare.state() else {
         panic!("the model is on a list");
     };
-    println!("the model that never had a table, after typing ax-2: (cursor, top) {:?}", (cursor, top));
+    println!(
+        "the model that never had a table, after typing ax-2: (cursor, top) {:?}",
+        (cursor, top)
+    );
     assert_eq!((cursor, top), (2, 1));
-    assert_eq!((usize::from(app.0), usize::from(app.1)), (cursor, top), "the app is where a model with no table lands on assertion 2");
-    assert_ne!(usize::from(app.1), own.1, "the kept list puts the first row where it hides two assertions");
+    assert_eq!(
+        (usize::from(app.0), usize::from(app.1)),
+        (cursor, top),
+        "the app is where a model with no table lands on assertion 2"
+    );
+    assert_ne!(
+        usize::from(app.1),
+        own.1,
+        "the kept list puts the first row where it hides two assertions"
+    );
+}
+
+/// A letter on a list that shows nothing: Theorems over a stage of axioms, and Unchecked over a stage
+/// whose table checks every assertion. The frame is the model's, the find missed, and nothing else moved.
+#[test]
+fn a_letter_on_a_list_that_shows_nothing_is_a_miss_and_moves_nothing() {
+    let built = pattern_built("pages-find-nothing", "AAAAAA");
+    let checked = vec![Status::Checked; 6];
+    let table = table_of(built, &checked);
+    for (kind, with_table) in [(Kind::Theorems, false), (Kind::Unchecked, true)] {
+        let at = format!("{kind:?}");
+        let mut list = Lister::open(built, with_table.then_some((&table[..], &checked[..])), 0);
+        list.settle();
+        list.go_to_kind(kind);
+        assert_eq!(list.pos().len, 0, "{at}: the list shows nothing");
+        let (frame, preview, count) = (
+            list.frame_bytes(),
+            list.var("LV_PREVIEW"),
+            list.var("LV_COUNT"),
+        );
+        for (n, c) in ['a', 'x', 'q'].into_iter().enumerate() {
+            list.press_char(c);
+            list.same_find(&format!("{at}, letter {n}"));
+            let find = list.find();
+            assert_eq!((find.len, find.missed), (n + 1, true), "{at}: the miss bit");
+            assert_eq!(list.frame_bytes(), frame, "{at}: the position stays");
+            assert_eq!(list.var("LV_PREVIEW"), preview, "{at}: the preview");
+            assert_eq!(list.var("LV_COUNT"), count, "{at}: the wait");
+        }
+        list.f2();
+        assert_eq!(list.find().len, 0, "{at}: F2 ends the find");
+    }
 }

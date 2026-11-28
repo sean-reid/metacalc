@@ -14,7 +14,13 @@ fn open_list(kind: Kind, table: bool, stage: usize) -> Lister {
 }
 
 /// The greatest of each arm over the proofs library's stages 1 and 2.
-fn over_stages(kind: Kind, table: bool, mask: bool, speed: u8, sweep: bool) -> BTreeMap<&'static str, u16> {
+fn over_stages(
+    kind: Kind,
+    table: bool,
+    mask: bool,
+    speed: u8,
+    sweep: bool,
+) -> BTreeMap<&'static str, u16> {
     let mut greatest: BTreeMap<&'static str, u16> = BTreeMap::new();
     for stage in [1, 2] {
         let open = || open_list(kind, table, stage);
@@ -59,7 +65,10 @@ fn every_arm_keeps_interrupts_and_speed_and_writes_these_depths_under_each_kind(
             }
         }
     }
-    assert!(wrong.is_empty(), "the depths differ from the table in {wrong:?}");
+    assert!(
+        wrong.is_empty(),
+        "the depths differ from the table in {wrong:?}"
+    );
 }
 
 #[test]
@@ -87,7 +96,8 @@ fn expected(kind: Kind, table: bool) -> BTreeMap<&'static str, u16> {
     let row: [u16; 12] = match (kind, table) {
         (Kind::All, _) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 6, 6, 24],
         (Kind::Theorems, _) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 22, 22, 24],
-        (Kind::Axioms, _) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 22, 22, 20],
+        (Kind::Axioms, false) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 22, 22, 20],
+        (Kind::Axioms, true) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 22, 22, 28],
         (Kind::Unchecked, true) => [26, 26, 26, 4, 4, 2, 4, 4, 4, 26, 26, 22],
         (Kind::Unchecked, false) => [20, 20, 20, 4, 4, 2, 4, 4, 4, 10, 10, 20],
     };
@@ -136,5 +146,72 @@ fn a_letter_press_writes_only_the_frame_and_the_variables_the_header_names() {
                 "byte 7 was written"
             );
         }
+    }
+}
+
+/// Every byte of the app's regions, from the build's label file, but the driver's own RAM, read through
+/// the machine.
+fn snapshot(list: &mut Lister) -> Vec<(u16, u8)> {
+    let own = list.run.shell.app.scratch.clone();
+    let regions = crate::list_kind_stays::app_regions(list.built);
+    let mut bytes = Vec::new();
+    for (_, at, size) in regions {
+        let data = list.run.peek(at, usize::from(size));
+        for (i, b) in data.into_iter().enumerate() {
+            let addr = at + i as u16;
+            if !own.iter().any(|&(s, e)| (s..e).contains(&addr)) {
+                bytes.push((addr, b));
+            }
+        }
+    }
+    bytes
+}
+
+fn changed(before: &[(u16, u8)], after: &[(u16, u8)]) -> Vec<u16> {
+    assert_eq!(before.len(), after.len());
+    before
+        .iter()
+        .zip(after)
+        .filter(|(a, b)| a != b)
+        .map(|(a, _)| a.0)
+        .collect()
+}
+
+/// F2 and CLEAR with no find, a ninth letter and a refused character write nothing at all, and a letter
+/// after a miss writes byte 7 and the next character of the frame: every byte of the app's regions is
+/// compared, not the status.
+#[test]
+fn what_adds_nothing_changes_no_byte_and_a_letter_after_a_miss_changes_two() {
+    for (kind, table) in CASES {
+        let at = format!("{kind:?} table {table}");
+        let nothing: [(&str, &str, u8, u8, u8); 4] = [
+            ("F2 with no find", "", 8, 0, 0),
+            ("CLEAR with no find", "", 6, 0, 3),
+            ("a ninth letter", "pm2.61d1", 12, b'x', 0),
+            ("a refused character", "p", 12, b'/', 0),
+        ];
+        for (what, typed, key, b, answer) in nothing {
+            let mut list = open_list(kind, table, 1);
+            list.type_settled(typed);
+            let before = snapshot(&mut list);
+            let done = list.call_key(key, b);
+            let after = snapshot(&mut list);
+            assert_eq!(done.status(), answer, "{at}, {what}: the answer");
+            let moved = changed(&before, &after);
+            assert!(moved.is_empty(), "{at}, {what}: wrote {moved:04X?}");
+        }
+        let mut list = open_list(kind, table, 1);
+        list.type_settled("q");
+        assert!(list.find().missed, "{at}: q misses");
+        let frame = list.frame_addr();
+        let before = snapshot(&mut list);
+        let done = list.call_key(12, b'e');
+        let after = snapshot(&mut list);
+        assert_eq!(done.status(), 1, "{at}: a letter after a miss redraws");
+        assert_eq!(
+            changed(&before, &after),
+            [frame + 7, frame + 9],
+            "{at}: byte 7 and the next character"
+        );
     }
 }

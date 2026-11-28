@@ -49,7 +49,11 @@ fn single(c: char) -> bool {
 pub fn arms(list: &Lister) -> Vec<Arm> {
     let labels = labels_of(list.built);
     let items = list.items();
-    assert!(items.len() >= 2, "the list shows {} assertions", items.len());
+    assert!(
+        items.len() >= 2,
+        "the list shows {} assertions",
+        items.len()
+    );
     let shown: Vec<&str> = items.iter().map(|&i| labels[i].as_str()).collect();
     let c0 = shown[0].chars().next().unwrap();
     let firsts: BTreeSet<char> = shown.iter().filter_map(|l| l.chars().next()).collect();
@@ -151,7 +155,13 @@ pub const LAST: usize = usize::MAX;
 
 /// The arrows walked over what the list shows, a find that missed typed before each press: the greatest
 /// depth of any arrow and of RIGHT alone, with the answer and the find's end asserted at every press.
-fn arrow_walk(open: &dyn Fn() -> Lister, plan: &Plan, miss: char, mask: bool, speed: u8) -> [u16; 2] {
+fn arrow_walk(
+    open: &dyn Fn() -> Lister,
+    plan: &Plan,
+    miss: char,
+    mask: bool,
+    speed: u8,
+) -> [u16; 2] {
     let mut list = open();
     let len = list.pos().len;
     let steps = [
@@ -196,7 +206,11 @@ fn f3_walk(open: &dyn Fn() -> Lister, plan: &Plan, mask: bool, speed: u8) -> u16
         let mut list = open();
         let labels = labels_of(list.built);
         let items = list.items();
-        let item = if at == LAST { items.len() - 1 } else { at.min(items.len() - 1) };
+        let item = if at == LAST {
+            items.len() - 1
+        } else {
+            at.min(items.len() - 1)
+        };
         let typed: String = labels[items[item]].chars().take(8).collect();
         let arm = Arm {
             name: "F3",
@@ -251,7 +265,11 @@ pub fn depths(
 
 /// A press of a letter on a list whose library has no label order section: its depth and answer.
 pub fn no_section_depth(list: &mut Lister, mask: bool, speed: u8) -> u16 {
-    assert_eq!(list.var("LV_HASO"), 0, "the library has no label order section");
+    assert_eq!(
+        list.var("LV_HASO"),
+        0,
+        "the library has no label order section"
+    );
     let arm = Arm {
         name: "letter, no section",
         typed: String::new(),

@@ -81,7 +81,11 @@ fn eight_of_the_widest_characters_fit_the_prefix_room_and_overflow_what_a_miss_l
 
 fn right_text(prefix: &str, missed: bool) -> String {
     if missed {
-        format!("{} {}", mcui::canvas::tail(prefix, mcui::canvas::PREFIX_WIDTH - 9), mcglyph::CROSS)
+        format!(
+            "{} {}",
+            mcui::canvas::tail(prefix, mcui::canvas::PREFIX_WIDTH - 9),
+            mcglyph::CROSS
+        )
     } else {
         mcui::canvas::tail(prefix, mcui::canvas::PREFIX_WIDTH)
     }
@@ -95,7 +99,10 @@ fn eight_wide_characters_that_have_not_missed_fit_the_room_whole() {
         let mut ui = wide_ui();
         press(&mut ui, &[Enter, F2]);
         typed(&mut ui, label);
-        let State::List { find, label: at, .. } = ui.state() else {
+        let State::List {
+            find, label: at, ..
+        } = ui.state()
+        else {
             panic!("a list");
         };
         assert_eq!(at.as_deref(), Some(label));
@@ -109,7 +116,10 @@ fn eight_wide_characters_that_have_not_missed_fit_the_room_whole() {
 fn after_a_miss_the_longest_prefix_that_fits_41_pixels_shows_whole_and_one_more_is_cut() {
     let width = |s: &str| mcui::canvas::text_width(s);
     let room = mcui::canvas::PREFIX_WIDTH - 9;
-    let fits = (1..=8).rev().find(|&k| width(&"w".repeat(k)) <= room).unwrap();
+    let fits = (1..=8)
+        .rev()
+        .find(|&k| width(&"w".repeat(k)) <= room)
+        .unwrap();
     assert!(fits < 8, "eight w's are wider than {room}");
     assert!(width(&"w".repeat(fits + 1)) > room);
     for (k, whole) in [(fits, true), (fits + 1, false)] {
@@ -118,7 +128,11 @@ fn after_a_miss_the_longest_prefix_that_fits_41_pixels_shows_whole_and_one_more_
         press(&mut ui, &[Enter, F2]);
         typed(&mut ui, &prefix);
         let right = right_text(&prefix, true);
-        assert_eq!(right.starts_with(mcglyph::ELLIPSIS), !whole, "{k} w's: {right:?}");
+        assert_eq!(
+            right.starts_with(mcglyph::ELLIPSIS),
+            !whole,
+            "{k} w's: {right:?}"
+        );
         assert!(right.ends_with(mcglyph::CROSS));
         assert!(title_is(&ui.frame(), "logic", &right), "{k} w's");
     }

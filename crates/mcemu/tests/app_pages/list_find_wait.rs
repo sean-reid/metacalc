@@ -39,21 +39,45 @@ fn a_letter_that_moves_the_cursor_starts_the_wait_and_the_others_leave_a_settled
         let probe = settled(kind, table);
         let items = probe.items();
         let first = labels[items[0]].clone();
-        let far = items
-            .iter()
-            .map(|&i| labels[i].chars().next().unwrap())
-            .find(|&c| c != first.chars().next().unwrap())
-            .expect("a label that starts with another character");
         let miss = match arms(&probe).remove(2).press {
             Press::Char(c) => c,
             _ => unreachable!(),
         };
+        // The shortest prefix of the last shown label whose first hit is not the first shown assertion:
+        // its last character moves the cursor from where the shorter prefix left it.
+        let last = labels[*items.last().unwrap()].clone();
+        let hit_of = |p: &str| {
+            items
+                .iter()
+                .position(|&i| labels[i].starts_with(p))
+                .unwrap()
+        };
+        let start = probe.pos().cursor;
+        let cursor_at = |n: usize| if n == 0 { start } else { hit_of(&last[..n]) };
+        let n = (1..=last.len().min(8))
+            .find(|&n| hit_of(&last[..n]) != cursor_at(n - 1))
+            .expect("a character that moves the cursor");
 
         let mut list = settled(kind, table);
+        list.type_settled(&last[..n - 1]);
+        list.skip_the_wait();
+        list.settle();
+        assert_eq!(list.var("LV_PREVIEW"), ROW, "{at}: settled before");
         let before = list.pos().cursor;
-        list.press_char(far);
-        assert!(list.pos().cursor > before, "{at}: {far:?} moves the cursor");
-        println!("{at}: after a letter that moves, preview {} count {}", list.seen.0, list.seen.1);
+        assert_eq!(
+            before,
+            cursor_at(n - 1),
+            "{at}: where the shorter prefix leaves the cursor"
+        );
+        list.press_char(last.as_bytes()[n - 1] as char);
+        assert!(
+            list.pos().cursor != before,
+            "{at}: {last} moves the cursor at character {n}"
+        );
+        println!(
+            "{at}: after a letter that moves, preview {} count {}",
+            list.seen.0, list.seen.1
+        );
         assert_eq!(list.seen.0, PENDING, "{at}: the preview is pending");
         assert_eq!(u32::from(list.seen.1), WAIT_TICKS, "{at}: the full wait");
 
@@ -66,13 +90,25 @@ fn a_letter_that_moves_the_cursor_starts_the_wait_and_the_others_leave_a_settled
             let second = first.chars().nth(1).unwrap();
             let cursor = list.pos().cursor;
             list.press_char(second);
-            assert_eq!(list.pos().cursor, cursor, "{at}: {second:?} stays on the row");
-            assert_eq!((list.seen.0, list.seen.1), (ROW, 0), "{at}: a hit on the cursor's row keeps the preview");
+            assert_eq!(
+                list.pos().cursor,
+                cursor,
+                "{at}: {second:?} stays on the row"
+            );
+            assert_eq!(
+                (list.seen.0, list.seen.1),
+                (ROW, 0),
+                "{at}: a hit on the cursor's row keeps the preview"
+            );
         }
 
         let mut list = settled(kind, table);
         list.press_char(miss);
         assert!(list.find().missed);
-        assert_eq!((list.seen.0, list.seen.1), (ROW, 0), "{at}: a miss keeps the preview");
+        assert_eq!(
+            (list.seen.0, list.seen.1),
+            (ROW, 0),
+            "{at}: a miss keeps the preview"
+        );
     }
 }

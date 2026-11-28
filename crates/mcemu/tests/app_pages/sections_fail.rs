@@ -28,7 +28,7 @@ fn a_list_whose_enter_fails_under_the_jump_keeps_its_frame_under_the_error_notic
             let list = &mut walker.list;
             let log = list.log.len();
             list.open_sections();
-            list.poke_below(&[0x85, 1, 2, 3, 4, 5, 6, 7, 8]);
+            list.poke_below(&[0, 1, 2, 3, 4, 5, 6, 7, 8]);
             list.goto_title(30);
             let frames = list.run.frames();
             assert_eq!(frames.len(), 3);

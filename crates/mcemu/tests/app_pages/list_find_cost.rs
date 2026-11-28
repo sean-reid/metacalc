@@ -60,6 +60,8 @@ struct Mirror<'a> {
     top: usize,
     find: String,
     missed: bool,
+    /// Set where the press must be a miss, so that its cost is the walk's and not a hit's.
+    must_miss: bool,
 }
 
 impl<'a> Mirror<'a> {
@@ -71,6 +73,7 @@ impl<'a> Mirror<'a> {
             top: 0,
             find: String::new(),
             missed: false,
+            must_miss: false,
         }
     }
 
@@ -126,6 +129,10 @@ fn typed(list: &mut Lister, mirror: &mut Mirror, text: &str, at: &str, pins: &[u
     for (n, c) in text.chars().enumerate() {
         let (cost, answer) = press(list, 12, c.to_ascii_uppercase() as u8);
         mirror.type_char(c);
+        assert!(
+            !mirror.must_miss || mirror.missed,
+            "{at}, press {n}: a miss is what is pinned"
+        );
         check(list, mirror, &format!("{at}, {n}"));
         let shown = list.frame_now();
         assert_eq!(answer, if shown[7] & 0x0F == n as u8 + 1 { 1 } else { 0 });
@@ -201,12 +208,14 @@ fn on_ring_a_letter_press_with_its_frame_fits_the_budget_under_every_kind() {
         for text in ["s", "k"] {
             place(&mut list, first);
             let mut mirror = Mirror::new(&labels, items.clone());
+            mirror.must_miss = name == "Unchecked, ones";
             let at = format!("{name}, {text}");
             let costs = typed(&mut list, &mut mirror, text, &at, first_pins(name, text));
             pins.push((at, costs[0], mirror.missed));
         }
         place(&mut list, first);
         let mut mirror = Mirror::new(&labels, items.clone());
+        mirror.must_miss = name == "Unchecked, ones";
         let costs = typed(
             &mut list,
             &mut mirror,

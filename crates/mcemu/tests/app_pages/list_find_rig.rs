@@ -287,15 +287,18 @@ pub fn letter_may_write(list: &mut Lister) -> Vec<(u16, u16)> {
         (b.label("LV_COUNT"), 1),
         (b.label("LV_KIND"), 1),
         (b.label("LV_END"), 2),
-        (b.label("LV_RIGHT"), 22),
-        (b.label("LV_NAME"), 13),
-        (b.label("LV_CUT"), 18),
+        (b.label("LV_RIGHT"), b.label("LIST_RIGHT_SIZE")),
+        (b.label("LV_NAME"), b.label("LIST_NAME_SIZE")),
+        (b.label("LV_CUT"), b.label("LIST_CUT_SIZE")),
         (b.label("FM_SCRATCH"), 256),
         (b.label("LIB_STATE"), b.label("LIB_STATE_SIZE")),
         (b.label("LIB_BOUNCE"), b.label("LIB_BOUNCE_SIZE")),
         (b.label("KD_SCRATCH"), b.label("KD_SCRATCH_SIZE")),
         (b.label("FAR_VARS"), b.label("FAR_VARS_SIZE")),
-        (0x8478, 0x48),
+        (
+            b.label("OP1"),
+            b.label("OP5") + (b.label("OP2") - b.label("OP1")) - b.label("OP1"),
+        ),
     ];
     ranges.extend(list.run.shell.app.scratch.iter().map(|&(a, e)| (a, e - a)));
     ranges

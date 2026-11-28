@@ -70,8 +70,30 @@ fn long_walk(checking: bool) {
     let f = if checking { F2 } else { F4 };
     let walk = if checking { WALK_CHECKING } else { WALK };
     let stream = [
-        UP, DOWN, F1, f, F3, ENTER, CLEAR, F4, F5, LEFT, RIGHT, DOWN, F3, F1, ENTER, F3, TYPE,
-        TYPE + 1, TYPE + 2, TYPE + 3, TYPE, TYPE + 1, END_FIND, CLEAR,
+        UP,
+        DOWN,
+        F1,
+        f,
+        F3,
+        ENTER,
+        CLEAR,
+        F4,
+        F5,
+        LEFT,
+        RIGHT,
+        DOWN,
+        F3,
+        F1,
+        ENTER,
+        F3,
+        TYPE,
+        TYPE + 1,
+        TYPE + 2,
+        TYPE + 3,
+        TYPE,
+        TYPE + 1,
+        END_FIND,
+        CLEAR,
     ];
     let builds = [
         three_stages(),

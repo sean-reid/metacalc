@@ -286,7 +286,7 @@ fn the_watch_over_the_rom_records_a_write_there() {
 
 /// Every region ram_map.inc declares below bank C, from the build's label file, with its name, but
 /// the reader's own state, which a read writes.
-fn app_regions(built: &Built) -> Vec<(&str, u16, u16)> {
+pub fn app_regions(built: &Built) -> Vec<(&str, u16, u16)> {
     const READER: [&str; 3] = ["KD_SCRATCH", "FAR_VARS", "LIB_STATE"];
     let value = |name: &str| built.try_label(name);
     let mut regions: Vec<(&str, u16, u16)> = built
