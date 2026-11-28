@@ -84,53 +84,6 @@ pub fn expected(bytes: &[u8], n: usize, lib_page: u8) -> Block {
     }
 }
 
-/// More statements than one chunk holds, in three shapes of theorem.
-pub fn multi_source(count: usize) -> String {
-    let mut src = String::from(BASE);
-    let h = |l: &'static str, s: &'static str| (l, s);
-    for i in 0..count {
-        let pad = "x".repeat(i % 17);
-        src += &match i % 3 {
-            0 => theorem(
-                &format!("one{i}{pad}"),
-                &[h("h1", "|- p")],
-                "|- p",
-                &[],
-                &[Num(1)],
-            ),
-            1 => theorem(
-                &format!("use{i}{pad}"),
-                &[h("u1", "|- p")],
-                "|- ( p -> p )",
-                &["tri"],
-                &[Num(0), Num(1), Save, Num(3), Num(3), Num(2)],
-            ),
-            _ => theorem(
-                &format!("mp{i}{pad}"),
-                &[
-                    h("m1", "|- p"),
-                    h("m2", "|- ( p -> q )"),
-                    h("m3", "|- ( q -> r )"),
-                ],
-                "|- r",
-                &["ax-mp"],
-                &[
-                    Num(1),
-                    Num(2),
-                    Num(0),
-                    Num(1),
-                    Num(3),
-                    Num(4),
-                    Num(6),
-                    Num(5),
-                    Num(6),
-                ],
-            ),
-        };
-    }
-    src
-}
-
 /// Every assertion of `bytes` through lib_proof against the format and the decoder. Returns
 /// (theorems, axioms).
 pub fn sweep(bytes: &[u8], what: &str, every: usize) -> (usize, usize) {
