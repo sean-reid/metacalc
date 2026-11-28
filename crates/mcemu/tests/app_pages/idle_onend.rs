@@ -52,21 +52,45 @@ fn snapshot(rig: &mut Rig) -> Snapshot {
     Snapshot { os, at }
 }
 
+/// Reads of the OS's state, each one `READ_STEP_US` after the one before: half a timer period of
+/// 1953 us apart, over 23 ms, which is more than two of the OS's 9.8 ms key scan cycles.
+const READS: usize = 24;
+const READ_STEP_US: u32 = 977;
+
+fn snapshots(rig: &mut Rig) -> Vec<Snapshot> {
+    (0..READS)
+        .map(|_| {
+            let s = snapshot(rig);
+            rig.step(READ_STEP_US);
+            s
+        })
+        .collect()
+}
+
 /// The snapshots with ON down 300 ms after the shell began to wait, and 200 ms after ON went up,
-/// then what a tap of Down did: scr_key calls and blits.
+/// each read across a timer period, then what a tap of Down did: scr_key calls and blits.
 struct Case {
-    down: Snapshot,
-    up: Snapshot,
+    down: Vec<Snapshot>,
+    up: Vec<Snapshot>,
     tap: (u16, u16),
+}
+
+/// How often each value of the interrupt mask port was read.
+fn mask_tally(snaps: &[Snapshot]) -> std::collections::BTreeMap<u8, usize> {
+    let mut tally = std::collections::BTreeMap::new();
+    for s in snaps {
+        *tally.entry(s.os.mask).or_insert(0) += 1;
+    }
+    tally
 }
 
 fn run_case(real: bool, work: bool) -> Case {
     let (mut rig, since) = on_down(real, work);
     rig.until("300 ms", 1_000_000, |r| r.t >= since + 300_000);
-    let down = snapshot(&mut rig);
+    let down = snapshots(&mut rig);
     rig.m().release_key(Machine::KEY_ON);
     rig.step(200_000);
-    let up = snapshot(&mut rig);
+    let up = snapshots(&mut rig);
     let (keys, blits) = (rig.shell.scr_keys(), rig.shell.blits());
     rig.tap_when_taken(DOWN);
     rig.step(300_000);
@@ -75,12 +99,19 @@ fn run_case(real: bool, work: bool) -> Case {
         "{} OS, work {work}: ON down {:?} at {:?}; 200 ms after the release {:?} at {:?}; \
          a tap of Down made {} scr_key calls and {} blits",
         os_name(real),
-        down.os,
-        down.at,
-        up.os,
-        up.at,
+        down[0].os,
+        down[0].at,
+        up[0].os,
+        up[0].at,
         tap.0,
         tap.1
+    );
+    println!(
+        "{} OS, work {work}: the mask read at {READS} points of a timer period, ON down {:?}, \
+         200 ms after the release {:?}",
+        os_name(real),
+        mask_tally(&down),
+        mask_tally(&up)
     );
     Case { down, up, tap }
 }
@@ -94,51 +125,41 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
     let work = run_case(real, true);
     let plain = run_case(real, false);
     assert_eq!(
-        plain.down.os.flags & ON_INTERRUPT,
+        plain.down[0].os.flags & ON_INTERRUPT,
         ON_INTERRUPT,
         "the plain wait holds the flag while ON is down"
     );
     assert_eq!(
-        work.down.os.flags & ON_INTERRUPT,
+        work.down[0].os.flags & ON_INTERRUPT,
         0,
         "the work case cleared it"
     );
     assert_eq!(
-        work.down.os.mask,
-        if real { 15 } else { 11 },
-        "the mask with ON down after work"
-    );
-    assert_eq!(plain.down.os.mask, 11, "the mask with ON down, plain");
-    assert_eq!(
-        work.down.at,
+        work.down[0].at,
         Where::OsKeyWait,
         "after work the app waits in the OS's key wait with ON down"
     );
     assert_eq!(
-        plain.down.at,
+        plain.down[0].at,
         Where::WaitingForOnUp,
         "the plain wait is in app_key's wait for ON to go up"
     );
-    assert_eq!(work.up.at, Where::OsKeyWait, "after ON goes up, work");
-    assert_eq!(plain.up.at, Where::OsKeyWait, "after ON goes up, plain");
-    assert_eq!(work.up.os.flags, plain.up.os.flags, "flags after ON is up");
-    let masks = [work.up.os.mask, plain.up.os.mask];
-    if real {
-        assert_eq!(
-            masks,
-            [9, 15],
-            "the mask 200 ms after the release: work, plain"
-        );
-    } else {
-        assert_eq!(masks[0], masks[1], "mask after ON is up");
-    }
+    assert_eq!(work.up[0].at, Where::OsKeyWait, "after ON goes up, work");
+    assert_eq!(plain.up[0].at, Where::OsKeyWait, "after ON goes up, plain");
     assert_eq!(
-        (work.up.os.scan, work.up.os.key),
-        (plain.up.os.scan, plain.up.os.key),
+        work.up[0].os.flags, plain.up[0].os.flags,
+        "flags after ON is up"
+    );
+    assert_eq!(
+        (work.up[0].os.scan, work.up[0].os.key),
+        (plain.up[0].os.scan, plain.up[0].os.key),
         "key bytes after ON is up"
     );
-    assert_eq!(work.up.os.timers.1, plain.up.os.timers.1, "timer byte 2");
-    let ran = |c: &Case| i32::from(c.down.os.timers.0) - i32::from(c.up.os.timers.0);
+    assert_eq!(
+        work.up[0].os.timers.1, plain.up[0].os.timers.1,
+        "timer byte 2"
+    );
+    let ran = |c: &Case| i32::from(c.down[READS - 1].os.timers.0) - i32::from(c.up[0].os.timers.0);
     println!(
         "{} OS: the power down timer ran down {} counts in the work case and {} in the plain one",
         os_name(real),
@@ -151,6 +172,27 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
     );
     if real {
         assert!(ran(&work) > 0, "the timer counted down");
+    }
+    let calm = if real { 15 } else { 11 };
+    let allowed: &[u8] = if real { &[9, 11, 13, 15] } else { &[11] };
+    for (what, snaps) in [
+        ("work, ON down", &work.down),
+        ("plain, ON down", &plain.down),
+        ("work, ON up", &work.up),
+        ("plain, ON up", &plain.up),
+    ] {
+        let tally = mask_tally(snaps);
+        assert_eq!(snaps.len(), READS, "{what}: reads");
+        assert!(
+            tally.keys().all(|m| allowed.contains(m)),
+            "{what}: masks {tally:?}, allowed {allowed:?}"
+        );
+        if what == "plain, ON down" {
+            assert_eq!(tally.get(&11), Some(&READS), "{what}: masks {tally:?}");
+        } else {
+            let most = tally.get(&calm).copied().unwrap_or(0);
+            assert!(most >= 18, "{what}: {most} of {READS} reads at {calm}");
+        }
     }
     assert_eq!(work.tap, (1, 1), "Down acted on once after work");
     assert_eq!(plain.tap, (1, 1), "Down acted on once, plain");
