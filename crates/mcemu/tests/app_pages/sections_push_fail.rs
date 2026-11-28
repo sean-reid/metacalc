@@ -149,7 +149,9 @@ fn on_the_push(r: &Refusal) {
         assert_eq!(
             list.fail_calls(0),
             r.calls,
-            "{at}: the push's lookup passed, the screen's enter was refused, then the list's enter ran"
+            "{at}: calls of {} up to the notice, the refused one being call {}",
+            r.stub,
+            r.on_push
         );
         same_frame(&at, &drawn, &model::error(status));
         let frames = list.run.frames();
