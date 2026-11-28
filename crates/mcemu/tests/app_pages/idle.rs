@@ -99,7 +99,7 @@ fn every_screen_of_the_app_idles_to_nothing_and_changes_no_byte() {
     }
     let staged = three_stages();
     idle_after(staged, &[F3], KIND_STAGE, "a stage");
-    idle_after(staged, &[F1, F2], KIND_NOTICE, "a notice");
+    idle_after(staged, &[F1, F4], KIND_NOTICE, "a notice");
     idle_after(staged, &[F1, F1], KIND_THEOREM, "a theorem");
     idle_after(staged, &[F1, F1, F2], KIND_DIST, "a Dist screen");
 }
@@ -128,7 +128,7 @@ fn on_the_reference_os_every_screen_of_the_app_idles_to_nothing() {
     idle_on_the_reference_os(with_library(), &[], KIND_LIBRARIES, "Libraries");
     idle_on_the_reference_os(with_library(), &[F3], KIND_ABOUT, "About");
     idle_on_the_reference_os(three_stages(), &[F3], KIND_STAGE, "a stage");
-    idle_on_the_reference_os(three_stages(), &[F1, F2], KIND_NOTICE, "a notice");
+    idle_on_the_reference_os(three_stages(), &[F1, F4], KIND_NOTICE, "a notice");
     idle_on_the_reference_os(three_stages(), &[F1, F1], KIND_THEOREM, "a theorem");
     idle_on_the_reference_os(three_stages(), &[F1, F1, F2], KIND_DIST, "a Dist screen");
 }

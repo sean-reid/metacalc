@@ -9,6 +9,9 @@ use crate::ui_support::same_frame;
 use mcui::{Key, Kind};
 use std::collections::BTreeSet;
 
+/// Stands for the press the list ignores, which has no scancode of its own.
+const IGNORED: u8 = 0;
+
 const HEADER: &str = include_str!("../../../../app/src/screen_list_key.inc");
 
 /// The header's one sentence about a stay under a kind, its comment lines joined.
@@ -87,9 +90,10 @@ fn powered_down(kind: Kind, settled: bool) {
     let at = format!("{kind:?}, settled {settled}");
     let before = list.run.frames()[1].clone();
     assert_eq!(before[6], code(kind), "{at}");
+    let quiet = list.quiet_key();
     list.run.shell.power_down();
     let blits = list.run.blits();
-    list.tap(LETTER);
+    list.tap_quiet(quiet);
     let frame = list.run.next_blit();
     list.seen = (list.var("LV_PREVIEW"), list.var("LV_COUNT"));
     list.run.run(2_000);
@@ -163,13 +167,17 @@ pub fn nothing_below_ram(list: &mut Lister, at: &str, walk: bool, open: impl FnO
         list.settle();
         quiet(list, "an arrow and the idle calls");
     }
-    for scan in [F2, F4, F5, LETTER] {
+    for scan in [F4, F5, IGNORED] {
         let above = match scan {
-            F2 | F4 => Some(KIND_NOTICE),
+            F4 => Some(KIND_NOTICE),
             F5 if list.var("LV_SECT") == 1 => Some(crate::sections_rig::KIND_SECTIONS),
             _ => None,
         };
-        list.tap(scan);
+        if scan == IGNORED {
+            list.tap_ignored();
+        } else {
+            list.tap(scan);
+        }
         list.run.run(600_000);
         if let Some(kind) = above {
             assert_eq!(list.run.top_kind(), kind, "{at}: {scan:02X}");
@@ -188,7 +196,60 @@ pub fn nothing_below_ram(list: &mut Lister, at: &str, walk: bool, open: impl FnO
         list.run.run(600_000);
         quiet(list, "F3");
     }
+    let (hit, miss) = find_chars(list);
+    let after = |list: &mut Lister, what: &str| {
+        list.skip_the_wait();
+        list.settle();
+        list.run.run(300_000);
+        quiet(list, what);
+    };
+    list.f2();
+    after(list, "F2 with no find");
+    list.press_char(hit);
+    assert!(!list.find().missed, "{at}: the letter hits");
+    after(list, "a letter that hits");
+    list.key(UP, Key::Up);
+    after(list, "an arrow at the start with a find");
+    assert_eq!(list.find().len, 0, "{at}: the arrow ended the find");
+    list.press_char(hit);
+    list.press_char(miss);
+    assert!(list.find().missed, "{at}: the second letter misses");
+    after(list, "a letter that misses");
+    list.press_char(hit);
+    after(list, "a letter after a miss");
+    list.f2();
+    assert_eq!(list.find().len, 0, "{at}: F2 ended the find");
+    after(list, "F2 with a find");
+    list.press_char(hit);
+    list.key(CLEAR, Key::Clear);
+    assert_eq!(list.find().len, 0, "{at}: CLEAR ended the find");
+    after(list, "CLEAR with a find");
+    list.press_char(hit);
+    for _ in 0..4 {
+        list.key(F3, Key::F3);
+        after(list, "F3 with a find");
+    }
+    assert_eq!(list.find().len, 1, "{at}: F3 keeps the find");
+    list.f2();
+    after(list, "F2 at the end");
     list.run.m().unwatch_writes();
+}
+
+/// A character that hits the first assertion the open list shows, and one that, typed after it, misses.
+pub fn find_chars(list: &Lister) -> (char, char) {
+    let labels = crate::list_find_rig::labels_of(list.built);
+    let shown: Vec<&str> = list.items().iter().map(|&i| labels[i].as_str()).collect();
+    let hit = shown[0].chars().next().unwrap();
+    let seconds: BTreeSet<char> = shown
+        .iter()
+        .filter(|l| l.starts_with(hit))
+        .filter_map(|l| l.chars().nth(1))
+        .collect();
+    let miss = ('a'..='z')
+        .chain('0'..='9')
+        .find(|c| !seconds.contains(c))
+        .unwrap();
+    (hit, miss)
 }
 
 #[test]
@@ -198,6 +259,7 @@ fn nothing_is_written_below_ram_under_any_kind() {
         (Kind::Theorems, false),
         (Kind::Axioms, false),
         (Kind::Unchecked, true),
+        (Kind::Unchecked, false),
     ] {
         let built = proofs_three();
         let (data, status) = every_mark(built);
@@ -224,7 +286,7 @@ fn the_watch_over_the_rom_records_a_write_there() {
 
 /// Every region ram_map.inc declares below bank C, from the build's label file, with its name, but
 /// the reader's own state, which a read writes.
-fn app_regions(built: &Built) -> Vec<(&str, u16, u16)> {
+pub fn app_regions(built: &Built) -> Vec<(&str, u16, u16)> {
     const READER: [&str; 3] = ["KD_SCRATCH", "FAR_VARS", "LIB_STATE"];
     let value = |name: &str| built.try_label(name);
     let mut regions: Vec<(&str, u16, u16)> = built

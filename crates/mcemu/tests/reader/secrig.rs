@@ -13,6 +13,7 @@ pub const HAVE_TREES: u8 = 4;
 pub const FONT_MATCHES: u8 = 8;
 pub const HAVE_SHAPES: u8 = 16;
 pub const HAVE_KINDS: u8 = 32;
+pub const HAVE_ORDER: u8 = 64;
 
 /// The foreign-font image keeps a fingerprint the packer never writes.
 pub const FOREIGN: Image = Image {

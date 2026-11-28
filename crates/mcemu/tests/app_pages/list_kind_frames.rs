@@ -177,7 +177,7 @@ fn a_filter_that_shows_nothing_says_none_and_its_keys_do_what_an_empty_stages_do
     list.go_to_kind(Kind::Theorems);
     assert_eq!(list.pos().len, 0);
     assert_eq!(list.walk_kind("no theorem"), 0);
-    for scan in [ENTER, F1, F2, F4] {
+    for scan in [ENTER, F1, F4] {
         let mut list = Lister::open(built, None, 0);
         list.settle();
         list.go_to_kind(Kind::Theorems);

@@ -76,8 +76,8 @@ const IGNORED_KEY_FLOOR: u32 = 2_408;
 /// The most app_stage_block may take for a block the area already holds.
 const WARM_STAGE: u32 = 120;
 /// The most bytes each code page may use: entry, draw and data.
-const PAGES_PLAIN: [u32; 3] = [2_841, 15_555, 9_825];
-const PAGES_LIBRARY: [u32; 3] = [11_246, 15_555, 9_825];
+const PAGES_PLAIN: [u32; 3] = [2_862, 15_811, 10_762];
+const PAGES_LIBRARY: [u32; 3] = [12_064, 15_811, 10_762];
 
 /// Clears the staging tag, so that the next draw copies its screen's strings.
 pub fn go_cold(app: &mut App) {
@@ -159,7 +159,7 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
         (
             "Notice, a stage's list",
             three_stages(),
-            &[F1, F2],
+            &[F1, F4],
             NOTICE,
             NOTICE_COLD,
         ),

@@ -21,14 +21,23 @@ const WALK_CHECKING: [u8; 34] = [
     DOWN, F3, CLEAR, F1, ENTER, F2, CLEAR, DOWN, F3, CLEAR, UP, UP, UP, UP, F3, CLEAR,
 ];
 
-/// The keys the stream sent inside a list and inside a stage's notice in one build, 233 and 106 at the
-/// least, and the keys inside a list by the list's kind (All, Theorems, Axioms, Unchecked) and the
-/// theorem screens opened from one, printed by each run: 65, 67, 65 and 28 keys and 13, 15, 22 and 7
-/// screens at the least. A build with no theorem opens none under Theorems.
-const IN_LIST_FLOOR: usize = 225;
-const IN_NOTICE_FLOOR: usize = 100;
-const KEYS_UNDER_KIND_FLOOR: [usize; 4] = [65, 60, 60, 25];
-const THEOREMS_UNDER_KIND_FLOOR: [usize; 4] = [12, 14, 20, 6];
+/// The keys the stream sent inside a list and inside a stage's notice, 317 and 72 at the least, and the
+/// keys inside a list by the list's kind (All, Theorems, Axioms, Unchecked) and the theorem screens
+/// opened from one, printed by each run: 107, 94, 76 and 40 keys and 26, 24, 17 and 9 screens at the
+/// least. A build with no theorem opens none under Theorems.
+const IN_LIST_FLOOR: usize = 310;
+const IN_NOTICE_FLOOR: usize = 70;
+const KEYS_UNDER_KIND_FLOOR: [usize; 4] = [105, 92, 74, 38];
+const THEOREMS_UNDER_KIND_FLOOR: [usize; 4] = [26, 22, 16, 8];
+
+/// Stream codes that are no scancode: TYPE to TYPE + 3 type a character of `FIND_CHARS` in a list,
+/// END_FIND is F2 in a list. Outside a list they press nothing.
+const TYPE: u8 = 0xF0;
+const END_FIND: u8 = 0xF8;
+const FIND_CHARS: [char; 4] = ['s', 'a', 'e', 'p'];
+/// The letters of the stream that hit and that missed, 11 and 53 at the least.
+const LETTERS_HIT_FLOOR: usize = 10;
+const LETTERS_MISSED_FLOOR: usize = 50;
 
 /// Whether the open list shows no assertion, so that ENTER and F1 push the stage's notice as they do
 /// on a stage with none.
@@ -61,7 +70,30 @@ fn long_walk(checking: bool) {
     let f = if checking { F2 } else { F4 };
     let walk = if checking { WALK_CHECKING } else { WALK };
     let stream = [
-        UP, DOWN, F1, f, F3, ENTER, CLEAR, F4, F5, LEFT, RIGHT, DOWN, F3, F1, ENTER, F3,
+        UP,
+        DOWN,
+        F1,
+        f,
+        F3,
+        ENTER,
+        CLEAR,
+        F4,
+        F5,
+        LEFT,
+        RIGHT,
+        DOWN,
+        F3,
+        F1,
+        ENTER,
+        F3,
+        TYPE,
+        TYPE + 1,
+        TYPE + 2,
+        TYPE + 3,
+        TYPE,
+        TYPE + 1,
+        END_FIND,
+        CLEAR,
     ];
     let builds = [
         three_stages(),
@@ -90,6 +122,7 @@ fn long_walk(checking: bool) {
         let mut notice: Option<String> = None;
         let (mut in_list, mut in_notice) = (0, 0);
         let mut under = [0usize; 4];
+        let (mut hit, mut missed, mut ended) = (0usize, 0usize, 0usize);
         let mut opened = [0usize; 4];
         let mut seed = 0x9E37_79B9_u32;
         let mut keys = walk.to_vec();
@@ -109,6 +142,41 @@ fn long_walk(checking: bool) {
                 State::Libraries { cursor, .. } if cursor < built.stages.len()
             );
             let in_a_list = matches!(ui.state(), State::List { .. });
+            let key = if checking && key == F2 && in_a_list {
+                F4
+            } else {
+                key
+            };
+            if key >= TYPE {
+                if !in_a_list || fixed || notice.is_some() {
+                    continue;
+                }
+                if key == END_FIND {
+                    log.push(Key::F2);
+                    press(&mut shell, &mut ui, built, F2, &at);
+                    ended += 1;
+                    continue;
+                }
+                let c = FIND_CHARS[usize::from(key - TYPE)];
+                log.push(Key::Letter(c));
+                press_keys(
+                    &mut shell,
+                    &mut ui,
+                    built,
+                    &crate::list_find_rig::scans_for(c),
+                    Some(Key::Letter(c)),
+                    &at,
+                );
+                let State::List { find, label, .. } = ui.state() else {
+                    unreachable!("a list is open");
+                };
+                if label.is_some_and(|l| l.starts_with(&find)) {
+                    hit += 1;
+                } else {
+                    missed += 1;
+                }
+                continue;
+            }
             if let (None, State::List { kind, .. }) = (&notice, ui.state()) {
                 under[usize::from(code(kind))] += 1;
             }
@@ -140,9 +208,7 @@ fn long_walk(checking: bool) {
                 ui = replayed(built, &status, &log);
                 shell.shows(&at, &model::frame(&ui));
                 assert_eq!(shell.depth(), 2, "{at}: back on the list");
-            } else if in_a_list
-                && !fixed
-                && ([F2, F4, F5].contains(&key) || [ENTER, F1].contains(&key))
+            } else if in_a_list && !fixed && ([F4, F5].contains(&key) || [ENTER, F1].contains(&key))
             {
                 in_list += 1;
                 settle_list(&mut shell, &mut ui);
@@ -186,6 +252,11 @@ fn long_walk(checking: bool) {
             "{} stages: keys inside a list by kind {under:?}, theorem screens opened by kind {opened:?}",
             built.stages.len()
         );
+        println!(
+            "{} stages: {hit} letters hit, {missed} missed, F2 ended a find {ended} times",
+            built.stages.len()
+        );
+        assert!(hit >= LETTERS_HIT_FLOOR && missed >= LETTERS_MISSED_FLOOR);
         let theorems = crate::support::decoded(built.library.as_ref().unwrap())
             .assertions
             .iter()

@@ -47,7 +47,7 @@ fn a_library_without_a_shapes_section_opens_as_before() {
     assert_eq!((status, host), (ST_OK, true));
     assert_eq!(
         rig.sections(),
-        (ST_OK, HAVE_TITLES | HAVE_GLYPHS | HAVE_KINDS)
+        (ST_OK, HAVE_TITLES | HAVE_GLYPHS | HAVE_KINDS | HAVE_ORDER)
     );
     assert_eq!(rig.shapes().0, ST_NONE);
     assert_eq!(rig.shape(0).0, ST_NONE);
@@ -209,7 +209,7 @@ fn longer(item: &[u8], extra: usize) -> Vec<u8> {
 fn an_item_that_crosses_a_16_kb_chunk_is_refused_as_the_decoder_refuses_it() {
     let good = base();
     let items = items_of(&good);
-    assert_eq!(rows(&good).0, 5);
+    assert_eq!(rows(&good).0, 6);
     let section = section_of(&items, 0, 0);
     assert_eq!(section.len(), 22);
     let whole = with_section(&good, 2 * CHUNK - 24, &section_of(&items, 0, 0));

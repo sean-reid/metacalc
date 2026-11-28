@@ -13,6 +13,10 @@ mod fixture;
 mod kinds;
 #[path = "store/layout.rs"]
 mod layout;
+#[path = "store/least.rs"]
+mod least;
+#[path = "store/leastreads.rs"]
+mod leastreads;
 #[path = "store/marks.rs"]
 mod marks;
 #[path = "store/open.rs"]
@@ -25,6 +29,8 @@ mod production;
 mod rig;
 #[path = "store/sizes.rs"]
 mod sizes;
+#[path = "common/stubos.rs"]
+mod stubos;
 #[allow(dead_code)]
 #[path = "reader/support.rs"]
 mod support;

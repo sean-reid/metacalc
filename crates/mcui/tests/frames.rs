@@ -5,7 +5,7 @@ mod support;
 
 use mcui::Key::*;
 use mcui::Ui;
-use support::{check_frame, extra_ui, open, press, typed, ui};
+use support::{check_frame, extra_ui, open, press, typed, ui, wide_ui};
 
 fn check(ui: &Ui, name: &str) {
     check_frame(&ui.frame(), name);
@@ -165,11 +165,19 @@ fn a_syntax_theorem_has_no_goal_tree() {
 }
 
 #[test]
-fn a_long_find_prefix_shows_its_tail() {
+fn a_missed_prefix_of_eight_wide_characters_shows_its_tail() {
     let mut ui = ui();
     press(&mut ui, &[Enter, F2]);
-    typed(&mut ui, "abcdefghijklmnopqrstuvwxyzabcd");
+    typed(&mut ui, "mmmmmmmm");
     check(&ui, "list-find-long");
+}
+
+#[test]
+fn a_prefix_of_eight_wide_characters_that_has_not_missed_shows_whole() {
+    let mut ui = wide_ui();
+    press(&mut ui, &[Enter, F2]);
+    typed(&mut ui, "vwvwvwvw");
+    check(&ui, "list-find-wide");
 }
 
 #[test]

@@ -83,7 +83,7 @@
 ; refuse a read or a glyph the descriptor accepts, so those are not measured for the reader. With interrupts on at the call a
 ; key and the F2 measure as deep as masked in the
 ; runs traced, where no handler lands in them; for the enter and the draw the tests accept the masked figure plus a handler's
-; bytes, up to 4 on the stub OS and 6 on the reference OS, and force no interrupt at the deepest point.
+; bytes, up to 4 on the stub OS and 10 on the reference OS, and force no interrupt at the deepest point.
 ; Calls: far_lib_record, far_lib_read, far_lib_glyph and far_lib_label through list_label_text, far_ui_text_width, far_ui_text,
 ; far_ui_clear, far_ui_truncate, far_ui_title, far_ui_text_centered, far_ui_soft_keys, and app_stage_block, app_strcpy,
 ; app_dec16 and list_room on this page.

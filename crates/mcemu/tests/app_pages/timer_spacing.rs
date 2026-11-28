@@ -219,8 +219,8 @@ const KEYPAD_OFF: Figure = [0.02, 0.03];
 
 /// The most bytes of stack a handler holds with no ON edge, the interrupt's return address
 /// included: the stub's is that and the call into the scan, the reference OS saves registers.
-const STUB_STACK: u16 = 4;
-const REFERENCE_STACK: u16 = 10;
+pub const STUB_STACK: u16 = 4;
+pub const REFERENCE_STACK: u16 = 10;
 
 const ACK: [(u8, u8); 3] = [(3, 0x08), (3, 0x09), (3, 0x0B)];
 const IDLE_WRITES: [(u8, u8); 5] = [(1, 0x00), (1, 0xFF), ACK[0], ACK[1], ACK[2]];

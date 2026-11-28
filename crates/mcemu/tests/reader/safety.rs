@@ -1,5 +1,5 @@
 use crate::isolation::{Allowed, pattern, prime, stray};
-use crate::secrig::HAVE_KINDS;
+use crate::secrig::{HAVE_KINDS, HAVE_ORDER};
 use crate::sections::*;
 use crate::support::*;
 
@@ -11,7 +11,7 @@ fn workout(rig: &mut Rig, bytes: &[u8]) {
     let titles = sections.titles.as_ref().unwrap().len() as u16;
     let symbols = sections.glyphs.as_ref().unwrap().symbols.len() as u8;
     let assertions = library.assertions.len() as u16;
-    assert_eq!(rig.sections(), (ST_OK, 23 | HAVE_KINDS));
+    assert_eq!(rig.sections(), (ST_OK, 23 | HAVE_KINDS | HAVE_ORDER));
     assert_eq!(rig.title_count().0, ST_OK);
     for n in [0, 1, titles / 2, titles - 1] {
         assert_eq!(rig.title(n).0, ST_OK);

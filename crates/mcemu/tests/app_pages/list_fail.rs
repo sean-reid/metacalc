@@ -68,7 +68,7 @@ fn a_list_that_fails_to_enter_on_an_uncovering_keeps_its_frame_under_the_error_n
         list.settle();
         list.key(RIGHT, Key::Right);
         list.settle();
-        list.tap(F2);
+        list.tap(F4);
         list.run.next_blit();
         list.run.run(300_000);
         assert_eq!(list.run.depth(), 3);

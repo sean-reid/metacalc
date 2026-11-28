@@ -91,3 +91,87 @@ fn the_entry_check_sees_a_shadow_register_use_before_the_di() {
         }
     }
 }
+
+/// What an instruction at `at` touches that the section routines leave alone: the shadow registers,
+/// a port, the interrupt flag or mode, a halt.
+fn machine_use(code: &[u8], at: usize) -> Option<&'static str> {
+    match code[at] {
+        0xD9 | 0x08 => Some("shadow registers"),
+        0xDB | 0xD3 => Some("port"),
+        0xF3 | 0xFB => Some("interrupt flag"),
+        0x76 => Some("halt"),
+        0xED => match code[at + 1] {
+            0x46 | 0x4E | 0x56 | 0x5E | 0x66 | 0x6E | 0x76 | 0x7E => Some("interrupt mode"),
+            n if n & 0xC0 == 0x40 && n & 6 == 0 => Some("port"),
+            0xA2 | 0xAA | 0xB2 | 0xBA | 0xA3 | 0xAB | 0xB3 | 0xBB => Some("port"),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Every instruction of the label order calls, which are in lib/order.inc from FO_BEGIN to the end
+/// of the image apart from the 8 bytes of the bit mask table in the middle.
+fn order_machine_use(code: &[u8], image: Image) -> Vec<(usize, &'static str)> {
+    let (begin, table, walk) = (
+        at(image, "FO_BEGIN"),
+        at(image, "FWK_BITS"),
+        at(image, "LIB_FIND_WALK"),
+    );
+    assert_eq!(
+        walk,
+        table + 8,
+        "the table is 8 bytes and the walk follows it"
+    );
+    let mut found = Vec::new();
+    for (from, to) in [(begin, table), (walk, code.len())] {
+        let mut pc = from;
+        while pc < to {
+            found.extend(machine_use(code, pc).map(|why| (pc, why)));
+            pc += stackfree::decode(&code[pc..]).0;
+        }
+        assert_eq!(pc, to, "instruction boundaries miss the end");
+    }
+    found
+}
+
+#[test]
+fn the_find_calls_hold_no_shadow_register_port_or_interrupt_instruction() {
+    for image in [DEFAULT, MOVED, STRADDLE] {
+        let found = order_machine_use(image.code, image);
+        assert!(found.is_empty(), "{found:x?}");
+        let size = image.code.len() - at(image, "FO_BEGIN");
+        assert!(size > 800, "lib/order.inc is {size} bytes of the image");
+    }
+}
+
+#[test]
+fn the_find_scan_sees_each_instruction_it_looks_for() {
+    let image = DEFAULT;
+    let at = at(image, "FO_BEGIN") + 3;
+    assert_eq!(image.code[at], 0xC0, "the ret nz after the call");
+    for (patch, why) in [
+        (&[0xD9u8][..], "shadow registers"),
+        (&[0x08], "shadow registers"),
+        (&[0xF3], "interrupt flag"),
+        (&[0xFB], "interrupt flag"),
+        (&[0x76], "halt"),
+    ] {
+        let mut code = image.code.to_vec();
+        code[at..at + patch.len()].copy_from_slice(patch);
+        assert_eq!(order_machine_use(&code, image), [(at, why)]);
+    }
+    assert_eq!(image.code[at + 1], 0x3A, "the ld a,(ls_have) after it");
+    for (patch, why) in [
+        ([0xDBu8, 0x05, 0x00], "port"),
+        ([0xD3, 0x05, 0x00], "port"),
+        ([0xED, 0x78, 0x00], "port"),
+        ([0xED, 0x41, 0x00], "port"),
+        ([0xED, 0xA3, 0x00], "port"),
+        ([0xED, 0x56, 0x00], "interrupt mode"),
+    ] {
+        let mut code = image.code.to_vec();
+        code[at + 1..at + 4].copy_from_slice(&patch);
+        assert_eq!(order_machine_use(&code, image), [(at + 1, why)]);
+    }
+}

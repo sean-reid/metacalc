@@ -58,7 +58,7 @@ pub fn library_of_size(size: usize) -> Vec<u8> {
     // The kinds section ends the library, so the size modulo four follows the assertion count:
     // the short axioms move the count until it is the one that puts the size right.
     for syntax in SYNTAX {
-        for extras in 0..32 {
+        for extras in 0..64 {
             // The most fillers that leave room for a last axiom.
             let (mut low, mut high) = (0, size / 30);
             while low < high {

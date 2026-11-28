@@ -88,6 +88,16 @@ ST_ABSENT        = 7    ; no variable: open was not called, or the user deleted 
 ;                   not 1, or FFFFh when there is none. ST_RANGE for a from above the count. Whole
 ;                   table bytes of four 1s are passed four assertions at a time, going down. It
 ;                   destroys OP1 to OP3.
+; store_least_not_one  in:  HL = a list of BC 16-bit little-endian assertion numbers outside the table
+;              and OP1 and OP2, BC = the entry count, 0 allowed, DE = start, IX = limit, limit at
+;              most the count and start at most the limit
+;              out: A = status; HL = the least number n of the list with start <= n < limit whose
+;                   value is not 1, or `limit` when there is none. ST_RANGE for a limit above the
+;                   count or a start above the limit, with HL destroyed. A number outside
+;                   start..limit is skipped without a table read and a number from the best so far
+;                   up is skipped too, so only the numbers that can lower the answer are read. The
+;                   table is found once and no OS call follows. It destroys OP1 and OP2 and IX, and
+;                   leaves the list and the table as they were.
 ; Padding: the unused bits of the last table byte are never read. store_set changes only the two
 ; bits it is given and leaves the padding as it is; store_reset and a newly
 ; created table zero it; store_count ignores it.

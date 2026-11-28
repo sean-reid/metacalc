@@ -101,7 +101,7 @@ fn a_crc_chunk_returns_the_callers_speed_and_interrupts() {
     bad[20_000] ^= 1;
     let refused = || {
         let mut job = Job::new(&bad);
-        assert_eq!(job.begin(count_of(&bad)).a, NEED_CRC);
+        assert_eq!(job.begin(count_of(&bytes)).a, NEED_CRC);
         for _ in 0..bytes.len().div_ceil(1 << 14) {
             assert_eq!(job.crc_step().a, MORE);
         }

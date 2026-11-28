@@ -89,6 +89,15 @@ impl Out {
     }
 }
 
+/// The shadow registers AF', BC', DE' and HL'.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Shadows {
+    pub af: u16,
+    pub bc: u16,
+    pub de: u16,
+    pub hl: u16,
+}
+
 /// The caller's side of the reader: a machine with the library loaded in flash and a driver that
 /// makes one call per run, with the registers and interrupt state a test sets.
 pub struct Rig {
@@ -163,6 +172,25 @@ impl Rig {
         let run = self.m.run(self.label("CALL_ENTRY"), RUN_LIMIT);
         assert_eq!(run.stop, Stop::Halted, "{target} did not halt");
         self.outcome(run.tstates)
+    }
+
+    /// Like `call`, with the shadow registers seeded before the driver runs. Returns the outcome
+    /// and the shadow registers the halt left.
+    pub fn call_shadowed(&mut self, target: &str, regs: Regs, seed: Shadows) -> (Out, Shadows) {
+        self.prepare(target, regs);
+        let mut cpu = self.m.regs();
+        (cpu.af2, cpu.bc2, cpu.de2, cpu.hl2) = (seed.af, seed.bc, seed.de, seed.hl);
+        self.m.set_regs(&cpu);
+        let run = self.m.run(self.label("CALL_ENTRY"), RUN_LIMIT);
+        assert_eq!(run.stop, Stop::Halted, "{target} did not halt");
+        let cpu = self.m.regs();
+        let shadows = Shadows {
+            af: cpu.af2,
+            bc: cpu.bc2,
+            de: cpu.de2,
+            hl: cpu.hl2,
+        };
+        (self.outcome(run.tstates), shadows)
     }
 
     /// Like `call`, with the ON key pressed after `after` T-states, so that an interrupt arrives

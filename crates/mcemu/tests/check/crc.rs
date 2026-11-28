@@ -121,8 +121,8 @@ fn a_table_with_another_key_is_replaced_only_after_the_run_passed() {
 #[test]
 fn a_refused_run_leaves_another_librarys_table_alone() {
     let mut bytes = axioms(700);
-    bytes[20_000] ^= 1;
     let count = count_of(&bytes);
+    bytes[20_000] ^= 1;
     let mut other = Table::new(1, count);
     other.values.fill(2);
     let mut job = Job::new(&bytes);

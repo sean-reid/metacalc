@@ -6,17 +6,21 @@ use crate::checking_errors::damaged;
 use crate::checking_frames::*;
 use crate::checkrig::*;
 use crate::shellrig::*;
+use crate::timer_spacing::STUB_STACK;
 use mcemu::Machine;
 
 /// Every idle call of every scenario below with `fill` under the stack pointer: the calls made with
-/// interrupts off, then the calls made with them on.
-fn scenarios(fill: Fill) -> (Vec<Sample>, Vec<Sample>) {
+/// interrupts off, then the calls made with them on. Each scenario waits `lead_us` microseconds
+/// after the boot before its first key goes down, which moves where the timer interrupt falls in
+/// the calls that follow.
+fn scenarios(fill: Fill, lead_us: u32) -> (Vec<Sample>, Vec<Sample>) {
     let (mut masked, mut live) = (Vec::new(), Vec::new());
     for (speed, mask) in [(0u8, false), (1, false), (0, true)] {
         let sink = if mask { &mut masked } else { &mut live };
         let boot = |built: &'static Built, table: Option<&[u8]>| {
             let mut run = Run::boot(built, table);
             run.m().out_port(0x20, speed);
+            run.m().run_time(lead_us);
             run.m().press_key(F2);
             run
         };
@@ -214,6 +218,48 @@ fn scenarios(fill: Fill) -> (Vec<Sample>, Vec<Sample>) {
     (masked, live)
 }
 
+/// The least and greatest depth and the fewest calls of each class on the stub OS, interrupts off.
+const STUB: [(Class, (u16, u16, usize)); 11] = [
+    (Class::StepStays, (28, 28, 100)),
+    (Class::StepRedraws, (28, 28, 2)),
+    (Class::Chunk, (14, 14, 10)),
+    (Class::EndsCrcRun, (30, 30, 2)),
+    (Class::Finishing, (28, 28, 1)),
+    (Class::AfterFinish, (10, 10, 1)),
+    (Class::StopOn, (28, 28, 1)),
+    (Class::PausedStep, (28, 28, 1)),
+    (Class::PausedRead, (28, 28, 1)),
+    (Class::FailedStep, (26, 26, 2)),
+    (Class::Damaged, (16, 16, 1)),
+];
+
+fn assert_masked(what: &str, classes: &std::collections::BTreeMap<Class, (u16, u16, usize)>) {
+    assert_eq!(
+        classes.keys().copied().collect::<Vec<_>>(),
+        STUB.map(|c| c.0).to_vec(),
+        "{what}: the classes of call, none unclassified"
+    );
+    for (class, (least, most, calls)) in STUB {
+        let got = classes
+            .get(&class)
+            .unwrap_or_else(|| panic!("{what}: no call of {class:?}"));
+        assert_eq!(
+            (got.0, got.1),
+            (least, most),
+            "{what}, {class:?}: bytes of depth"
+        );
+        if LEAVES.contains(&class) {
+            assert_eq!(got.2, calls, "{what}, {class:?}: calls");
+        } else {
+            assert!(
+                got.2 >= calls,
+                "{what}, {class:?}: {} calls, at least {calls}",
+                got.2
+            );
+        }
+    }
+}
+
 /// Every idle call of the checking screen returns with interrupts on and the speed the shell had, at
 /// 6 and at 15 MHz, for every status the job answers: more, done, a chunk, the CRC run ending, ON
 /// at the idle point, CK_PAUSED, a CRC that is wrong, a table lost and a reader that fails. Run once
@@ -221,7 +267,7 @@ fn scenarios(fill: Fill) -> (Vec<Sample>, Vec<Sample>) {
 /// once more with interrupts on and the depth recorded too, which an interrupt in the call deepens.
 #[test]
 fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_speed_it_had() {
-    let [odd, inverse] = Fill::BOTH.map(scenarios);
+    let [odd, inverse] = Fill::BOTH.map(|f| scenarios(f, 0));
     let every = agreed("interrupts off", &odd.0, &inverse.0);
     let live = agreed("interrupts on", &odd.1, &inverse.1);
     let deepest = every.iter().map(|s| s.depth).max().unwrap();
@@ -233,40 +279,7 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
     for (class, (least, most, calls)) in &classes {
         println!("{class:?}: {calls} calls, {least} to {most} bytes");
     }
-    // The least and greatest depth and the fewest calls of each class on the stub OS.
-    let stub: [(Class, (u16, u16, usize)); 11] = [
-        (Class::StepStays, (28, 28, 100)),
-        (Class::StepRedraws, (28, 28, 2)),
-        (Class::Chunk, (14, 14, 10)),
-        (Class::EndsCrcRun, (30, 30, 2)),
-        (Class::Finishing, (28, 28, 1)),
-        (Class::AfterFinish, (10, 10, 1)),
-        (Class::StopOn, (28, 28, 1)),
-        (Class::PausedStep, (28, 28, 1)),
-        (Class::PausedRead, (28, 28, 1)),
-        (Class::FailedStep, (26, 26, 2)),
-        (Class::Damaged, (16, 16, 1)),
-    ];
-    assert_eq!(
-        classes.keys().copied().collect::<Vec<_>>(),
-        stub.map(|c| c.0).to_vec(),
-        "the classes of call, none unclassified"
-    );
-    for (class, (least, most, calls)) in stub {
-        let got = classes
-            .get(&class)
-            .unwrap_or_else(|| panic!("no call of {class:?}"));
-        assert_eq!((got.0, got.1), (least, most), "{class:?}: bytes of depth");
-        if LEAVES.contains(&class) {
-            assert_eq!(got.2, calls, "{class:?}: calls");
-        } else {
-            assert!(
-                got.2 >= calls,
-                "{class:?}: {} calls, at least {calls}",
-                got.2
-            );
-        }
-    }
+    assert_masked("lead 0", &classes);
     let inside = inside_by_class(&every);
     println!("the depth at the return of checking_idle, by class: {inside:?}");
     let expected: std::collections::BTreeMap<Class, std::collections::BTreeSet<u16>> =
@@ -284,34 +297,55 @@ fn every_idle_call_of_the_checking_screen_returns_with_interrupts_on_and_the_spe
         [SHELL_STACK].into(),
         "the shell's share of the depth"
     );
-    let live_most = live_depths(&every, &live);
-    assert_eq!(
-        live_most,
-        STUB_LIVE.into(),
-        "the greatest depth of each class with interrupts on"
+    let mut swept = live.clone();
+    for lead in LEADS_US {
+        let (off, on) = scenarios(Fill::Odd, lead);
+        assert_masked(&format!("lead {lead} us"), &by_class(&off));
+        assert_eq!(
+            inside_by_class(&off),
+            expected,
+            "lead {lead} us: the depth at the return of checking_idle"
+        );
+        swept.extend(on);
+    }
+    let live_most = live_depths(&every, &swept);
+    let masked = by_class(&every);
+    let on = by_class(&swept);
+    let mut reached = Vec::new();
+    println!(
+        "class: masked greatest, interrupts on least to greatest over {} leads",
+        LEADS_US.len() + 1
+    );
+    for (class, most) in &live_most {
+        let least_on = on[class].0;
+        let (least, greatest, _) = masked[class];
+        println!("{class:?}: {greatest}, {least_on} to {most}");
+        assert!(
+            least_on >= least,
+            "{class:?}: a call with interrupts on wrote {least_on}, under the least masked {least}"
+        );
+        assert!(
+            (greatest..=greatest + STUB_STACK).contains(most),
+            "{class:?}: {most} bytes with interrupts on, masked {greatest}, the handler holds {STUB_STACK}"
+        );
+        if *most == greatest + STUB_STACK {
+            reached.push(*class);
+        }
+    }
+    println!("classes that reach the masked depth plus the handler: {reached:?}");
+    assert!(
+        !reached.is_empty(),
+        "an interrupt landed at the deepest point of some class"
     );
     assert_eq!(
-        live.iter().map(|s| s.depth).max(),
-        Some(32),
-        "the deepest call with interrupts on"
+        live_most.len(),
+        masked.len(),
+        "every class was seen with interrupts on"
     );
 }
 
-/// The greatest depth of each class seen with interrupts on, over the phases swept. The stub's
-/// handler holds 4 bytes (STUB_STACK in timer_spacing.rs).
-const STUB_LIVE: [(Class, u16); 11] = [
-    (Class::StepStays, 32),
-    (Class::StepRedraws, 28),
-    (Class::Chunk, 16),
-    (Class::EndsCrcRun, 30),
-    (Class::Finishing, 30),
-    (Class::AfterFinish, 10),
-    (Class::StopOn, 28),
-    (Class::PausedStep, 28),
-    (Class::PausedRead, 28),
-    (Class::FailedStep, 26),
-    (Class::Damaged, 16),
-];
+/// Microseconds the scenarios wait before the first key, across the stub's timer period of 1953.
+const LEADS_US: [u32; 7] = [250, 500, 750, 1000, 1250, 1500, 1750];
 
 /// The depth of each class when checking_idle returns, before the shell acts on its answer: the
 /// screen's own share, which a push around check_end at ki_leave deepens.

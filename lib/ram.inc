@@ -68,6 +68,7 @@ LR_VAR(lr_dconc, $31, 3)
 LR_VAR(lr_dclen, $34, 1)
 LR_VAR(lr_hk, $35, 1)
 LR_VAR(lr_hoff, $36, 3)
+LR_VAR(ls_od, $39, 3)
 
 LR_AT($40)
 LR_VAR(lr_bufp, $40, 2)
@@ -114,6 +115,7 @@ LS_TREES            .equ 4
 LS_FONT             .equ 8
 LS_SHAPES           .equ 16
 LS_KINDS            .equ 32
+LS_ORDER            .equ 64
 LS_FIRST            .equ 6
 
 ls_lo               .equ lr_n

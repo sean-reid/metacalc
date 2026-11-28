@@ -67,7 +67,7 @@ fn a_library_fm_cannot_open_is_tried_once_for_each_enter_and_a_rest_after_it_cos
         "the first rest is the one that tries fm_open"
     );
 
-    list.tap(F2);
+    list.tap(F4);
     list.run.run(300_000);
     assert_eq!(
         list.run.top_kind(),

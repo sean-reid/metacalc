@@ -74,6 +74,11 @@
 //!            the length is 2 + the count over 8 rounded up and the bits past the last assertion
 //!            are zero; it may cross a multiple of CHUNK, and the library check compares it
 //!            with every record's kind byte
+//! label order id 6, written before kinds: assertion count (u16, equal to the library's), then
+//!            every assertion number once, two bytes each, sorted by label bytewise, so the
+//!            length is 2 + 2 * count; it may cross a multiple of CHUNK between two entries, and
+//!            the decoder refuses a count or length that does not fit, a number at or above the
+//!            count, a repeat, and two neighbours out of label order
 //! ```
 //!
 //! A record is only usable if its float hypotheses come before its essential ones and name
@@ -100,10 +105,10 @@ pub use read::{
     Assertion, Hypothesis, Library, ReadError, Reference, Step, Variable, decode, read,
 };
 pub use sections::{
-    AXIOM_CAPACITY, ENTRY_LEN, Entry, GLYPHS, GlyphMap, Glyphs, KINDS, Kinds, Node, Part,
-    SHAPE_CAPACITY, SHAPES, SectionCheckError, SectionError, Sections, Shapes, SyntaxAxiom, TITLES,
-    TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION, TREES, Title, Tree, Trees, VARIABLE_CAPACITY,
-    locate as locate_sections, titles_in_order, verify_sections,
+    AXIOM_CAPACITY, ENTRY_LEN, Entry, GLYPHS, GlyphMap, Glyphs, KINDS, Kinds, LABEL_ORDER,
+    LabelOrder, Node, Part, SHAPE_CAPACITY, SHAPES, SectionCheckError, SectionError, Sections,
+    Shapes, SyntaxAxiom, TITLES, TRAILER_LEN, TRAILER_MAGIC, TRAILER_VERSION, TREES, Title, Tree,
+    Trees, VARIABLE_CAPACITY, locate as locate_sections, titles_in_order, verify_sections,
 };
 pub use stages::{Stage, StagesError, parse as parse_stages, render as render_stages, stages};
 

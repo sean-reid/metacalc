@@ -8,6 +8,26 @@ mod damaged;
 mod differential;
 #[path = "reader/escapes.rs"]
 mod escapes;
+#[path = "reader/find.rs"]
+mod find;
+#[path = "reader/findcopy.rs"]
+mod findcopy;
+#[path = "reader/findcost.rs"]
+mod findcost;
+#[path = "reader/findedge.rs"]
+mod findedge;
+#[path = "reader/findexits.rs"]
+mod findexits;
+#[path = "reader/findkeep.rs"]
+mod findkeep;
+#[path = "reader/findrig.rs"]
+mod findrig;
+#[path = "reader/findstages.rs"]
+mod findstages;
+#[path = "reader/findstate.rs"]
+mod findstate;
+#[path = "reader/findwalk.rs"]
+mod findwalk;
 #[path = "reader/flags.rs"]
 mod flags;
 #[path = "common/guard.rs"]

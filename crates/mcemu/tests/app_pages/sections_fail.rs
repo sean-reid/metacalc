@@ -26,12 +26,13 @@ fn a_list_whose_enter_fails_under_the_jump_keeps_its_frame_under_the_error_notic
             walker.goto(4);
             walker.list.settle();
             let list = &mut walker.list;
+            list.type_settled("a");
             let log = list.log.len();
             list.open_sections();
-            list.poke_below(&[0x85, 1, 2, 3, 4, 5, 6, 7, 8]);
             list.goto_title(30);
             let frames = list.run.frames();
             assert_eq!(frames.len(), 3);
+            assert_ne!(frames[1][7], 0, "{at}: the list holds a find");
             list.fail_at(0, stub, call, status);
             list.tap(ENTER);
             let frame = list.run.next_blit();

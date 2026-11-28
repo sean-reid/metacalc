@@ -21,6 +21,7 @@ pub enum SectionError {
     Trees,
     Shapes,
     Kinds,
+    LabelOrder,
 }
 
 impl std::fmt::Display for SectionError {
@@ -35,6 +36,9 @@ impl std::fmt::Display for SectionError {
                 "the shapes section is damaged or does not match the parse trees"
             }
             SectionError::Kinds => "the kinds section is damaged or does not fit the assertions",
+            SectionError::LabelOrder => {
+                "the label order section is damaged or does not match the labels"
+            }
         })
     }
 }

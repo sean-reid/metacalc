@@ -4,7 +4,7 @@ use mcpack::library::Library;
 
 /// T-state ceilings per library, about 10 percent above the measured cost: every label, record
 /// and conclusion; lib_open with the sections; every title; a title lookup for every assertion;
-/// every glyph entry; every tree; every shape.
+/// every glyph entry; every tree; every shape. The lib_open ceiling is 2 percent above the cost.
 struct Ceilings {
     name: &'static str,
     statements: u64,
@@ -20,7 +20,7 @@ const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "prop",
         statements: 13_500_000,
-        open: 77_300,
+        open: 84_700,
         titles: 165_000,
         lookups: 14_740_000,
         glyphs: 140_000,
@@ -30,7 +30,7 @@ const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "pred",
         statements: 19_900_000,
-        open: 84_900,
+        open: 92_450,
         titles: 376_500,
         lookups: 27_160_000,
         glyphs: 223_700,
@@ -40,7 +40,7 @@ const CEILINGS: [Ceilings; 3] = [
     Ceilings {
         name: "ring",
         statements: 55_400_000,
-        open: 223_000,
+        open: 233_500,
         titles: 1_505_500,
         lookups: 106_950_000,
         glyphs: 1_003_000,

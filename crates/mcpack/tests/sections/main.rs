@@ -1,4 +1,5 @@
 mod kinds;
+mod label_order;
 mod shapes;
 mod trees;
 

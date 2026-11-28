@@ -155,6 +155,12 @@ impl Lister {
     /// Puts the open list on its last assertion by writing the cursor and the top into the frame as
     /// the model has them after paging to the end, and lets its preview settle.
     pub fn jump_to_the_end(&mut self) {
+        let quiet = self.quiet_key();
+        if quiet.is_none() {
+            let count = self.run.shell.app.label("LV_COUNT");
+            self.run.m().load_ram(count, &[255]);
+            self.arm_ignored();
+        }
         while self.pos().cursor + 1 < self.pos().len {
             self.ui.press(Key::Right);
             self.log.push(Key::Right);
@@ -174,7 +180,10 @@ impl Lister {
         );
         self.run.m().load_ram(count, &[0]);
         self.run.m().load_ram(preview, &[PENDING]);
-        self.tap(LETTER);
+        match quiet {
+            Some(scan) => self.tap(scan),
+            None => self.fire_ignored(),
+        }
         self.settle();
     }
 }
@@ -204,7 +213,7 @@ pub fn enter_depths(mask: bool, speed: u8, rig: &Rig) -> u16 {
     all.push(list.trace("list_enter", mask, speed));
     list.run.m().release_key(ENTER);
     list.run.run(1_000_000);
-    list.tap(F2);
+    list.tap(F4);
     list.run.run(300_000);
     list.run.m().press_key(CLEAR);
     all.push(list.trace("list_enter", mask, speed));
@@ -246,9 +255,14 @@ pub fn idle_depths(mask: bool, speed: u8, rig: &Rig) -> BTreeMap<&'static str, u
     };
     while trace_one(&mut list, &mut classes) != "fit" {}
     list.run.run(300_000);
-    list.run.m().press_key(LETTER);
+    let quiet = list.quiet_key();
+    if quiet.is_none() {
+        list.arm_ignored();
+    }
+    let held = quiet.unwrap_or(ONE);
+    list.run.m().press_key(held);
     assert_eq!(trace_one(&mut list, &mut classes), "settled");
-    list.run.m().release_key(LETTER);
+    list.run.m().release_key(held);
     classes
         .into_iter()
         .map(|(c, calls)| {
@@ -353,16 +367,16 @@ pub fn traced(rig: &Rig, want: &Figures) {
 pub fn stub_figures() -> Figures {
     Figures {
         keys: BTreeMap::from([
-            ("clear", 2),
+            ("clear", 4),
             ("down", 4),
             ("enter", 8),
             ("f1", 8),
-            ("f2", 6),
+            ("f2", 4),
             ("f3", 20),
             ("f4", 6),
             ("f5", 2),
             ("left", 4),
-            ("letter", 2),
+            ("letter", 20),
             ("right", 4),
             ("up", 4),
         ]),

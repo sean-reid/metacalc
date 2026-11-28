@@ -78,7 +78,7 @@ fn clear_returns_the_list_exactly_as_it_was_and_its_preview_is_pending_and_settl
             assert_eq!(settled == PENDING, held, "{at}: the preview before F5");
             let log = list.log.len();
             list.open_sections();
-            list.poke_below(&FINDS[0]);
+            list.poke_below(&[0, 1, 2, 3, 4, 5, 6, 7, 8]);
             let frames = list.run.frames();
             list.sections_key(DOWN, Key::Down);
             list.sections_key(RIGHT, Key::Right);

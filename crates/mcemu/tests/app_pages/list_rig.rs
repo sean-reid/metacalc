@@ -29,6 +29,7 @@ pub fn code_of(scan: u8) -> u8 {
         F4 => 10,
         F5 => 11,
         LETTER | ONE => 12,
+        s if crate::list_find_rig::letter_scans().contains(&s) => 12,
         _ => panic!("no key code for scancode {scan:02X}"),
     }
 }

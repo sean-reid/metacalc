@@ -225,8 +225,21 @@ lsx_shapes_alone:
 lsx_kinds:
 	ld a,(ls_have)
 	and LS_KINDS
-	ret z
+	jr z,lsx_order
 	ld hl,ls_kd
+	ld c,2
+	call lsx_head
+	ret nz
+	ld hl,(lr_hdr)
+	ld de,(lr_count)
+	or a
+	sbc hl,de
+	jp nz,lsx_bad_section
+lsx_order:
+	ld a,(ls_have)
+	and LS_ORDER
+	ret z
+	ld hl,ls_od
 	ld c,2
 	call lsx_head
 	ret nz

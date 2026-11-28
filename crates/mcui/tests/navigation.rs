@@ -932,12 +932,12 @@ fn eight_subgoals_scroll_the_view_to_the_highlight() {
 }
 
 #[test]
-fn a_long_find_prefix_leaves_every_later_frame_drawable() {
+fn a_find_prefix_at_the_cap_leaves_every_later_frame_drawable() {
     let mut ui = ui();
     press(&mut ui, &[Enter, F2]);
     support::typed(&mut ui, "abcdefghijklmnopqrstuvwxyzabcd");
     let frame = ui.frame();
-    let find = "abcdefghijklmnopqrstuvwxyzabcd";
+    let find = "abcdefgh";
     let right = format!(
         "{} {}",
         mcui::canvas::tail(find, mcui::canvas::PREFIX_WIDTH - 9),

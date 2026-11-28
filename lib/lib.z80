@@ -1,7 +1,7 @@
 ; metacalc library reader for the TI-84 Plus SE. Reads a library in format MCL1
 ; (crates/mcpack/src/library/mod.rs) from the flash pages of the app for the screens: counts,
-; labels, kinds, statements, hypotheses, symbol names, section titles, glyph codes and parse
-; trees. The proof kernel (kernel/) checks the library; this code only reads it and trusts
+; labels, kinds, the labels that start with a prefix, statements, hypotheses, symbol names, section
+; titles, glyph codes and parse trees. The proof kernel (kernel/) checks the library; this code only reads it and trusts
 ; nothing it reads past the bounds it checks.
 ;
 ; Code runs from flash in bank A and is position dependent. Assembling this file alone places it
@@ -21,12 +21,13 @@
 ;     page and no byte of page 80h is written.
 ;   LIB_STATE, default $989C, 725 bytes, in bank B after the scratch of probe/kerndriver.inc in
 ;     appBackUpScreen:
-;     $00 scratch of lib_read, $10 facts from the header and ls_kd, the kinds section's offset, whose bitmap starts 2 bytes in (3 bytes at $1D), $20 the record descriptor, $40
+;     $00 scratch of lib_read, $10 facts from the header and ls_kd, the kinds section's offset, whose bitmap starts 2 bytes in (3 bytes at $1D), $20 the record descriptor, ending
+;     with ls_od at $39, the label order section's offset, whose entries start 2 bytes in (3 bytes), $40
 ;     scratch, $60 a 32 byte window over the record being walked, $80 a cache of eight
 ;     directory entries, $A8 the symbol index: one 16-bit offset per symbol and one past the
 ;     last, 512 bytes, $2A8 the sections:
-;       ls_have   $2A8  1  bit 0 titles, 1 glyph map, 2 trees, 4 shapes, 5 kinds present; bit 3
-;                          the glyph map is for this build's font
+;       ls_have   $2A8  1  bit 0 titles, 1 glyph map, 2 trees, 4 shapes, 5 kinds, 6 label order
+;                          present; bit 3 the glyph map is for this build's font
 ;       ls_ti     $2A9  9  titles: offset, length, offset of the first item (3 bytes each)
 ;       ls_gl     $2B2  9  glyph map: the same
 ;       ls_tr     $2BB  9  trees: the same
@@ -87,9 +88,12 @@
 ;                          the trees', its offset table is longer than the section, its length
 ;                          does not fit 16 bits, or only one of shapes and trees is there, or the
 ;                          kinds section's length is not 2 + the assertion count over 8 rounded up
-;                          or its first two bytes are not the assertion count. The bits past the last
+;                          or its first two bytes are not the assertion count, or the label order section's length
+;                          is not 2 + twice the assertion count or its first two bytes are not
+;                          the assertion count. The bits past the last
 ;                          assertion are not checked: the reader opens a library with one set and the
-;                          decoder refuses it. Unknown
+;                          decoder refuses it, and the numbers of the label order section are not
+;                          checked at all. Unknown
 ;                          ids are skipped. A glyph map for another font, or for another number of
 ;                          symbols, does not fail the open.
 ;   lib_assertion_count   out: HL = assertions
@@ -122,8 +126,10 @@
 ;                          unless lib_kind_next or lib_kind_prev read the bitmap between them: that
 ;                          read drops the record window, so the next call reads the record again.
 ;                          A kind call that answers without reading it (from equal to end, from 0
-;                          for lib_kind_prev, no kinds section, a refused argument) keeps the window.
-;   lib_sections       out: B = bits 0 titles, 1 glyph map, 2 trees, 4 shapes, 5 kinds: which sections the library has
+;                          for lib_kind_prev, no kinds section, a refused argument) keeps the window. lib_find_range and
+;                          lib_find_walk drop it too, as their entries below say, and lib_find_copy
+;                          keeps it.
+;   lib_sections       out: B = bits 0 titles, 1 glyph map, 2 trees, 4 shapes, 5 kinds, 6 label order: which sections the library has
 ;   lib_title_count   out: HL = titles. 9 without a titles section.
 ;   lib_title         in:  HL = title number; DE = buffer of 255 bytes
 ;                     out: HL = the number of the first assertion under it, B = text length,
@@ -199,6 +205,66 @@
 ;                          that order, B and HL and DE are read before any status, no shadow
 ;                          register or port is touched outside lr_read, and the stack goes at
 ;                          most 6 bytes below the return address.
+;   lib_find_range   in:  DE = a prefix of B bytes in bank B, clear of the state block; B = 1 to 8
+;                     out: A = status; HL = the index in the label order section of the first entry
+;                          whose label starts with the prefix, BC = how many consecutive entries do.
+;                          BC = 0 when none does, and HL is then the index where the prefix would
+;                          sort: that of the first entry whose label sorts after it, or the assertion
+;                          count. HL and BC are destroyed when the status is not 0. Two halvings of
+;                          the section, one for the first entry and one for the end of the run; an
+;                          entry's label is compared bytewise with the prefix over the shorter of the
+;                          two lengths, and a label shorter than the prefix that equals its start sorts
+;                          before it. Each probe reads the entry (2 bytes), the directory entry (4)
+;                          and the label's length byte and the next B bytes, which are not all
+;                          label when it is shorter than the prefix, into lr_win.
+;   lib_find_walk     in:  HL = a block of 9 bytes in bank B, clear of the state block: first (u16)
+;                          and count (u16), a range of the section as lib_find_range gives it, start
+;                          (u16), bound (u16), kind (u8: 0 axiom, 1 theorem, FFh every assertion)
+;                     out: A = status; HL = the smallest assertion number n among the entries first
+;                          to first + count - 1 of the section with start <= n < bound that the
+;                          kind shows, or the bound when there is none; HL is destroyed when the
+;                          status is not 0. The block is read once and left as it was. The entries
+;                          are read 16 at a time into lr_win. Under kind 0 or 1 a candidate that is
+;                          inside start..bound and below the best so far costs one read of its
+;                          byte of the kinds bitmap, 1 byte, inside the call, and no other
+;                          candidate does. The best so far moves down only for a candidate that shows
+;                          the kind, so when the first candidate shows it a range in falling number
+;                          order tests each candidate and one in rising order tests one; when it does
+;                          not, every candidate is tested until one does. An entry at or above the
+;                          assertion count is above any bound and is skipped with no status, where
+;                          lib_find_range answers 3 for it and lib_find_copy returns it as stored.
+;   lib_find_copy     in:  HL = a first index in the section, BC = a count of entries from there,
+;                          DE = a buffer in bank B, clear of the state block, which must hold twice
+;                          the entries copied
+;                     out: A = status; HL = how many entries were copied, the smaller of BC and 127,
+;                          which may be 0 and then needs no buffer; the buffer holds them as stored,
+;                          two bytes each, the assertion number little endian. A caller that has
+;                          more to copy calls again with first + HL and BC - HL. HL is destroyed when
+;                          the status is not 0. It reads straight into the buffer and drops nothing.
+;                          The three calls: status 4 before lib_open, 9 for a library without the
+;                          label order section, then their own: lib_find_range 2 for a length of
+;                          0 or above 8 or a prefix not wholly in bank B or touching the state
+;                          block; lib_find_walk 2 for a block not allowed or a kind that is not 0,
+;                          1 or FFh, then 9 for kind 0 or 1 in a library without a kinds section,
+;                          then 5 for first + count above the assertion count, a bound above it or
+;                          a start above the bound; lib_find_copy 2 for a buffer not allowed, then 5
+;                          for first + BC above the assertion count; and 3 from every one of them
+;                          for a read that fails, and from lib_find_range for an entry number at or
+;                          above the assertion count or a directory entry past 24 bits. The
+;                          registers are read before any status; lib_find_walk reads its block after
+;                          the check of its address. Every library byte comes through
+;                          lr_read: no shadow register or port is touched outside it. The stack
+;                          goes below the return address 4 bytes on a refusal and on lib_find_copy,
+;                          and on a read of the walk's entries; 8 on the walk's kind test; 10 at most,
+;                          on a read of lib_find_range, which a refusal at open or at a closed
+;                          reader never reaches. lib_find_range
+;                          drops the record window (lr_wlen, lr_wp) on every exit but 4, 9 and 2;
+;                          lib_find_walk drops the record window and the directory cache (lr_dcbase)
+;                          on every exit but 4, 9 and 2; none of them touches the descriptor.
+;                          A call that exits with 4, 9 or 2 drops nothing, and every call writes
+;                          only scratch of the state block (lr_read's, lr_bufp, lr_len, lr_cn,
+;                          lr_n, lr_sr, lr_q, lr_k, lr_tr, lr_hdr, lr_win and, for the walk, lr_dc),
+;                          the bounce buffer and the caller's copy buffer.
 ; Statuses (LIB_ERR_*): 1 offset or length past the library, 2 a count or destination that is
 ; not allowed, 3 bytes the format forbids, 4 lib_open has not succeeded, 5 an assertion,
 ; hypothesis, symbol, title or syntax number out of range, 6 and 7 and 8 a damaged trailer, table
@@ -230,3 +296,4 @@
 #include "lib/trees.inc"
 #include "lib/shapes.inc"
 #include "lib/kinds.inc"
+#include "lib/order.inc"

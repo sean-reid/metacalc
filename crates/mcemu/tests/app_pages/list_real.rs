@@ -254,7 +254,8 @@ fn at_df_rng() -> (Lister, usize) {
     );
     list.run.m().load_ram(count, &[0]);
     list.run.m().load_ram(preview, &[PENDING]);
-    list.tap(LETTER);
+    let quiet = list.quiet_key();
+    list.tap_quiet(quiet);
     (list, n)
 }
 

@@ -52,12 +52,56 @@ fn snapshot(rig: &mut Rig) -> Snapshot {
     Snapshot { os, at }
 }
 
-/// The snapshots with ON down 300 ms after the shell began to wait, and 200 ms after ON went up,
-/// then what a tap of Down did: scr_key calls and blits.
+/// Reads of the OS's state, each one `READ_STEP_US` after the one before: half a timer period of
+/// 1953 us apart, over 23 ms, which is more than two of the OS's 9.8 ms key scan cycles.
+const READS: usize = 24;
+const READ_STEP_US: u32 = 977;
+
+fn snapshots(rig: &mut Rig) -> Vec<Snapshot> {
+    (0..READS)
+        .map(|_| {
+            let s = snapshot(rig);
+            rig.step(READ_STEP_US);
+            s
+        })
+        .collect()
+}
+
+/// The snapshot with ON down 300 ms after the shell began to wait, the mask read across a timer
+/// period in a second rig at the same point, the reads from 200 ms after ON went up, and what a tap
+/// of Down did: scr_key calls and blits.
 struct Case {
     down: Snapshot,
-    up: Snapshot,
+    down_reads: Vec<Snapshot>,
+    up: Vec<Snapshot>,
     tap: (u16, u16),
+}
+
+/// How often each value of the interrupt mask port was read.
+fn mask_tally(snaps: &[Snapshot]) -> std::collections::BTreeMap<u8, usize> {
+    let mut tally = std::collections::BTreeMap::new();
+    for s in snaps {
+        *tally.entry(s.os.mask).or_insert(0) += 1;
+    }
+    tally
+}
+
+/// The most frequent mask read and how often it was read.
+fn most_frequent(tally: &std::collections::BTreeMap<u8, usize>) -> (u8, usize) {
+    tally
+        .iter()
+        .map(|(&mask, &n)| (mask, n))
+        .max_by_key(|&(_, n)| n)
+        .expect("a read")
+}
+
+/// The first read whose mask is the most frequent one: the OS's own code is not in its key scan.
+fn steady(snaps: &[Snapshot]) -> usize {
+    let (mask, _) = most_frequent(&mask_tally(snaps));
+    snaps
+        .iter()
+        .position(|s| s.os.mask == mask)
+        .expect("a read at the most frequent mask")
 }
 
 fn run_case(real: bool, work: bool) -> Case {
@@ -66,8 +110,11 @@ fn run_case(real: bool, work: bool) -> Case {
     let down = snapshot(&mut rig);
     rig.m().release_key(Machine::KEY_ON);
     rig.step(200_000);
-    let up = snapshot(&mut rig);
+    let up = snapshots(&mut rig);
     let (keys, blits) = (rig.shell.scr_keys(), rig.shell.blits());
+    let (mut other, since) = on_down(real, work);
+    other.until("300 ms", 1_000_000, |r| r.t >= since + 300_000);
+    let down_reads = snapshots(&mut other);
     rig.tap_when_taken(DOWN);
     rig.step(300_000);
     let tap = (rig.shell.scr_keys() - keys, rig.shell.blits() - blits);
@@ -77,19 +124,34 @@ fn run_case(real: bool, work: bool) -> Case {
         os_name(real),
         down.os,
         down.at,
-        up.os,
-        up.at,
+        up[0].os,
+        up[0].at,
         tap.0,
         tap.1
     );
-    Case { down, up, tap }
+    println!(
+        "{} OS, work {work}: the mask read at {READS} points of a timer period, ON down {:?}, \
+         200 ms after the release {:?}",
+        os_name(real),
+        mask_tally(&down_reads),
+        mask_tally(&up)
+    );
+    Case {
+        down,
+        down_reads,
+        up,
+        tap,
+    }
 }
 
 /// After ON goes up the two cases are in one state but for the power down timer, which differs by a
 /// count at most, and a tap of Down is acted on once in each.
 /// The OS flags a press once, so the break flag the shell cleared during the work stays clear while
-/// ON is down, where the plain wait holds it set until ON goes up; on the reference OS the interrupt
-/// mask also reads 15 where the plain wait reads 11 while ON is down.
+/// ON is down, where the plain wait holds it set until ON goes up. The interrupt mask depends on where
+/// the reference OS's own code is when it is read, not on the timer's phase: its most frequent value is
+/// 15 and it is read at least 18 of 24 times, in both cases once ON is up; the plain wait with ON down
+/// reads 11 at every point. The stub reads 11 throughout. Flags, scan code and key are compared at the
+/// first read whose mask is the most frequent, since a read at another mask is inside the OS's key scan.
 fn the_two_cases_agree_once_on_is_up(real: bool) {
     let work = run_case(real, true);
     let plain = run_case(real, false);
@@ -104,12 +166,6 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
         "the work case cleared it"
     );
     assert_eq!(
-        work.down.os.mask,
-        if real { 15 } else { 11 },
-        "the mask with ON down after work"
-    );
-    assert_eq!(plain.down.os.mask, 11, "the mask with ON down, plain");
-    assert_eq!(
         work.down.at,
         Where::OsKeyWait,
         "after work the app waits in the OS's key wait with ON down"
@@ -119,17 +175,23 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
         Where::WaitingForOnUp,
         "the plain wait is in app_key's wait for ON to go up"
     );
-    assert_eq!(work.up.at, Where::OsKeyWait, "after ON goes up, work");
-    assert_eq!(plain.up.at, Where::OsKeyWait, "after ON goes up, plain");
-    assert_eq!(work.up.os.flags, plain.up.os.flags, "flags after ON is up");
-    assert_eq!(work.up.os.mask, plain.up.os.mask, "mask after ON is up");
+    assert_eq!(work.up[0].at, Where::OsKeyWait, "after ON goes up, work");
+    assert_eq!(plain.up[0].at, Where::OsKeyWait, "after ON goes up, plain");
+    let (w, p) = (steady(&work.up), steady(&plain.up));
     assert_eq!(
-        (work.up.os.scan, work.up.os.key),
-        (plain.up.os.scan, plain.up.os.key),
-        "key bytes after ON is up"
+        work.up[w].os.flags, plain.up[p].os.flags,
+        "flags after ON is up, at a steady read"
     );
-    assert_eq!(work.up.os.timers.1, plain.up.os.timers.1, "timer byte 2");
-    let ran = |c: &Case| i32::from(c.down.os.timers.0) - i32::from(c.up.os.timers.0);
+    assert_eq!(
+        (work.up[w].os.scan, work.up[w].os.key),
+        (plain.up[p].os.scan, plain.up[p].os.key),
+        "key bytes after ON is up, at a steady read"
+    );
+    assert_eq!(
+        work.up[0].os.timers.1, plain.up[0].os.timers.1,
+        "timer byte 2"
+    );
+    let ran = |c: &Case| i32::from(c.down.os.timers.0) - i32::from(c.up[0].os.timers.0);
     println!(
         "{} OS: the power down timer ran down {} counts in the work case and {} in the plain one",
         os_name(real),
@@ -142,6 +204,27 @@ fn the_two_cases_agree_once_on_is_up(real: bool) {
     );
     if real {
         assert!(ran(&work) > 0, "the timer counted down");
+    }
+    let calm = if real { 15 } else { 11 };
+    for (what, snaps) in [
+        ("work, ON down", &work.down_reads),
+        ("plain, ON down", &plain.down_reads),
+        ("work, ON up", &work.up),
+        ("plain, ON up", &plain.up),
+    ] {
+        let tally = mask_tally(snaps);
+        println!("{} OS, {what}: masks {tally:?}", os_name(real));
+        assert_eq!(snaps.len(), READS, "{what}: reads");
+        if !real {
+            assert_eq!(tally.get(&11), Some(&READS), "{what}: masks {tally:?}");
+        }
+        let (mask, most) = most_frequent(&tally);
+        if what == "plain, ON down" {
+            assert_eq!((mask, most), (11, READS), "{what}: masks {tally:?}");
+        } else {
+            assert_eq!(mask, calm, "{what}: the most frequent mask in {tally:?}");
+            assert!(most >= 18, "{what}: {most} of {READS} reads at {calm}");
+        }
     }
     assert_eq!(work.tap, (1, 1), "Down acted on once after work");
     assert_eq!(plain.tap, (1, 1), "Down acted on once, plain");

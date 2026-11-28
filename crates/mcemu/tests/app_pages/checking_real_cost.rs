@@ -13,6 +13,7 @@ use crate::checkrig::*;
 use crate::realos::BASE;
 use crate::shell_cost::FRAME_BUDGET;
 use crate::shellrig::*;
+use crate::timer_spacing::REFERENCE_STACK;
 use mcemu::Machine;
 
 /// The least and the most T-states scr_draw and ui_blit may take together, cold, for each frame of
@@ -47,17 +48,9 @@ const ROM_INSIDE: [(Class, [u16; 1]); 8] = [
     (Class::PausedRead, [16]),
 ];
 
-/// The greatest depth of each class seen with interrupts on.
-const ROM_LIVE: [(Class, u16); 8] = [
-    (Class::StepStays, 50),
-    (Class::StepRedraws, 48),
-    (Class::Chunk, 22),
-    (Class::EndsCrcRun, 48),
-    (Class::Finishing, 42),
-    (Class::AfterFinish, 10),
-    (Class::StopOn, 42),
-    (Class::PausedRead, 40),
-];
+/// Microseconds the runs wait after the launch before the first key, a quarter of the timer period
+/// of 1953 apart, which moves where the timer interrupt falls in the calls that follow.
+const LEADS_US: [u32; 3] = [488, 977, 1465];
 
 /// The T-states of scr_draw and then ui_blit for the screen on top, the driver's own taken off.
 fn frame_on_the_rom(app: &mut App) -> (u32, u32) {
@@ -124,10 +117,11 @@ fn on_the_reference_os_a_frame_of_the_checking_screen_costs_what_its_ceiling_say
 
 /// Prop's whole check on the reference OS and one call after the finish, every idle call sampled
 /// with interrupts on at the call, or off when `mask` is set.
-fn prop_calls(mask: bool, fill: Fill) -> Vec<Sample> {
+fn prop_calls(mask: bool, fill: Fill, lead_us: u32) -> Vec<Sample> {
     let built = shipped_staged();
     let end = built.stages[0].end;
     let mut run = launched(built, 0, &[]);
+    run.step_us(lead_us);
     run.m().press_key(F2);
     let mut finished = None;
     let all = idle_calls(
@@ -165,11 +159,12 @@ fn prop_calls(mask: bool, fill: Fill) -> Vec<Sample> {
 /// The idle calls of two stops on the reference OS: ON down at the idle point, and ON down as the
 /// kernel is called, which the job answers with CK_PAUSED. Both pop the screen, whichever call they
 /// land in.
-fn stop_calls(mask: bool, fill: Fill) -> Vec<Sample> {
+fn stop_calls(mask: bool, fill: Fill, lead_us: u32) -> Vec<Sample> {
     let mut all = Vec::new();
     for paused in [false, true] {
         let built = shipped_staged();
         let mut run = launched(built, 0, &[]);
+        run.step_us(lead_us);
         run.m().press_key(F2);
         let calls = idle_calls(
             "ON on the reference OS",
@@ -214,10 +209,10 @@ fn stop_calls(mask: bool, fill: Fill) -> Vec<Sample> {
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
 fn on_the_reference_os_every_idle_call_keeps_the_interrupts_the_speed_and_the_stack_the_header_gives()
  {
-    let calls = |mask, f| [prop_calls(mask, f), stop_calls(mask, f)].concat();
-    let [live_odd, live_inverse] = Fill::BOTH.map(|f| calls(false, f));
+    let calls = |mask, f, lead| [prop_calls(mask, f, lead), stop_calls(mask, f, lead)].concat();
+    let [live_odd, live_inverse] = Fill::BOTH.map(|f| calls(false, f, 0));
     let live = agreed("interrupts on", &live_odd, &live_inverse);
-    let [odd, inverse] = Fill::BOTH.map(|f| calls(true, f));
+    let [odd, inverse] = Fill::BOTH.map(|f| calls(true, f, 0));
     let all = agreed("interrupts off", &odd, &inverse);
     let deepest = all.iter().map(|s| s.depth).max().unwrap();
     println!(
@@ -257,16 +252,50 @@ fn on_the_reference_os_every_idle_call_keeps_the_interrupts_the_speed_and_the_st
     let expected: std::collections::BTreeMap<Class, std::collections::BTreeSet<u16>> =
         ROM_INSIDE.map(|(c, v)| (c, v.into())).into();
     assert_eq!(inside, expected, "the depth at the return of checking_idle");
-    let live_most = live_depths(&all, &live);
-    assert_eq!(
-        live_most,
-        ROM_LIVE.into(),
-        "the greatest depth of each class with interrupts on"
+    let mut swept = live.clone();
+    let mut tables = vec![(0, by_class(&live))];
+    for lead in LEADS_US {
+        let on = calls(false, Fill::Odd, lead);
+        tables.push((lead, by_class(&on)));
+        swept.extend(on);
+    }
+    let live_most = live_depths(&all, &swept);
+    for (lead, table) in &tables {
+        let row: Vec<String> = table
+            .iter()
+            .map(|(class, (_, most, _))| format!("{class:?} {most}"))
+            .collect();
+        println!(
+            "lead {lead} us, greatest with interrupts on: {}",
+            row.join(", ")
+        );
+    }
+    let on = by_class(&swept);
+    let mut reached = Vec::new();
+    for (class, most) in &live_most {
+        let (least, greatest, _) = classes[class];
+        let least_on = on[class].0;
+        assert!(
+            least_on >= least,
+            "{class:?}: {least_on} bytes with interrupts on, under the least masked {least}"
+        );
+        assert!(
+            (greatest..=greatest + REFERENCE_STACK).contains(most),
+            "{class:?}: {most} bytes with interrupts on, masked {greatest}, the handler holds {REFERENCE_STACK}"
+        );
+        if *most == greatest + REFERENCE_STACK {
+            reached.push(*class);
+        }
+    }
+    println!("classes that reach the masked depth plus the handler: {reached:?}");
+    assert!(
+        !reached.is_empty(),
+        "an interrupt landed at the deepest point of some class"
     );
     assert_eq!(
-        live.iter().map(|s| s.depth).max(),
-        Some(50),
-        "the deepest call with interrupts on"
+        live_most.len(),
+        classes.len(),
+        "every class was seen with interrupts on"
     );
     let shell: std::collections::BTreeSet<u16> =
         all.iter().map(|s| s.shell).filter(|&b| b > 0).collect();

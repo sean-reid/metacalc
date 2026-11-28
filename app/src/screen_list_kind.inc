@@ -25,8 +25,8 @@
 ;   Unchecked     36   38  34  34  36     -      38     42     40    36    36
 ; A dash is a place the 40 keys do not reach. ENTER and F1 write what DOWN does, the greatest of the walk,
 ; since they ask lf_next whether the kind shows the cursor before they open its theorem. Under each kind
-; the idle call settled takes 2, CLEAR and a letter 2, F2 and F4 6, F5 2 where no title starts in the stage
-; (with titles 18 under Theorems and Axioms on both OSs and, under Unchecked, 22 on the stub and 36 on the reference OS, sections_push's), a tick 8 on the stub and 14 on the reference OS. An interrupt that lands in a call can only add to these: the figures with the app's
+; the idle call settled takes 2, CLEAR and F2 4, a letter 20 (Unchecked with a table: 26 on the stub, 40 on the
+; reference OS), F4 6, F5 2 where no title starts in the stage (with titles 18 under Theorems and Axioms on both OSs and, under Unchecked, 22 on the stub and 36 on the reference OS, sections_push's), a tick 8 on the stub and 14 on the reference OS. An interrupt that lands in a call can only add to these: the figures with the app's
 ; interrupts on are never below the masked ones.
 
 LISTK_ALL	.equ 0
@@ -195,6 +195,8 @@ list_kind_step:
 	ld (LK_WAS), hl
 	call list_kind_land
 	ld (LK_EMPTY), a
+	call list_find_again
+	ld a, (LK_EMPTY)
 	or a
 	jr nz, lks_same
 	ld ix, (LK_FR)
@@ -378,6 +380,12 @@ list_enter_kinds:
 	call far_lib_sections
 	or a
 	ret nz
+	ld a, b
+	and LIST_LO_SECTION
+	jr z, lek_kinds
+	ld a, 1
+	ld (LV_HASO), a
+lek_kinds:
 	ld a, b
 	and LIST_KS_SECTION
 	ret z
