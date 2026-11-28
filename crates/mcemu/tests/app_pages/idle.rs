@@ -85,7 +85,7 @@ fn idle_after(built: &'static Built, keys: &[u8], kind: u8, what: &str) -> Vec<u
         shell.tap(key);
     }
     assert_eq!(shell.top_kind(), kind, "{what}");
-    let frame = shell.app.frame();
+    let frame = shell.frame();
     idles_to_nothing(&mut shell.app, false, what);
     assert_eq!(shell.top_kind(), kind, "{what}");
     frame

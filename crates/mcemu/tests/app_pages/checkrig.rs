@@ -214,11 +214,12 @@ impl Run {
         frame
     }
 
-    /// The frame of the next blit and the table's values at that moment, which are the state the
-    /// frame was built from since nothing runs between the draw and the blit.
+    /// The frame of the next blit and the table's values one instruction past the blit's entry,
+    /// which are the state the frame was built from since nothing runs between the draw and the
+    /// blit. The values are read where the machine stands, without running it on.
     pub fn next_frame(&mut self) -> (Vec<u8>, Option<Vec<u8>>) {
         let frame = self.next_blit();
-        let values = self.values();
+        let values = self.values_here();
         (frame, values)
     }
 
@@ -310,11 +311,26 @@ impl Run {
         assert_eq!(run.stop, mcemu::Stop::Limit, "the machine stopped");
     }
 
-    /// The raw bytes of the status table, if it is in RAM.
+    /// The raw bytes of the status table, if it is in RAM, read once the CPU is outside any call that
+    /// maps another bank: on the stub the machine runs on until it is.
     pub fn raw_table(&mut self) -> Option<Vec<u8>> {
+        if !self.real {
+            self.shell.at_rest();
+        }
+        self.raw_table_here()
+    }
+
+    /// `raw_table` without running the machine, for a read at a stop chosen on purpose: the stub's
+    /// lookup runs a stub entry that reads and writes through the mapped banks, so it panics when
+    /// the CPU is inside a call that maps another.
+    pub fn raw_table_here(&mut self) -> Option<Vec<u8>> {
         if self.real {
             return crate::real::vat::table(self.m());
         }
+        assert!(
+            !self.shell.in_call(),
+            "the stop is inside a call that maps another bank"
+        );
         self.m().read_var(table::VAR).map(|v| v.data)
     }
 
@@ -323,6 +339,7 @@ impl Run {
         if self.real {
             return format!("{:?}", crate::real::vat::list(self.m()));
         }
+        self.shell.at_rest();
         format!("{:?}", self.m().var_list())
     }
 
@@ -344,6 +361,20 @@ impl Run {
     /// The value, 0 to 3, the table holds for each assertion.
     pub fn values(&mut self) -> Option<Vec<u8>> {
         Some(values_of(&self.raw_table()?))
+    }
+
+    /// `values` without running the machine, as `raw_table_here` reads.
+    pub fn values_here(&mut self) -> Option<Vec<u8>> {
+        Some(values_of(&self.raw_table_here()?))
+    }
+
+    /// How many assertions have a value, read as `values_here` does.
+    pub fn settled_here(&mut self) -> usize {
+        self.values_here()
+            .expect("a table")
+            .iter()
+            .filter(|&&v| v != 0)
+            .count()
     }
 
     /// How many assertions have a value.
