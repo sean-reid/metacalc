@@ -1,9 +1,11 @@
 ; Clear. Assembled in the tail of the ui_tblk page (glyph.inc).
 
 ; ui_clear   zeroes the frame with the stack, so interrupts go off for the call and are restored;
-;            the frame must not end above $FFFF
+;            the frame must not end above $FFFF, and marks all eight rows by storing $FF in ui_dirty
 ;            destroys AF BC DE HL
 ui_clear:
+	ld a,$FF
+	ld (ui_dirty),a
 	ld a,i
 	jp pe,uc_on
 	ld a,i

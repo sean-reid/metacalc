@@ -49,6 +49,7 @@
 #include "shapes.inc"
 #include "bars.inc"
 #include "blit.inc"
+#include "range.inc"
 #include "font.inc"
 #include "fit.inc"
 #include "wrap.inc"

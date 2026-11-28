@@ -2,6 +2,8 @@
 ; page's far entry (pages.inc).
 FAR_DRAW_ENTRY(ui_set_font, far_ui_set_font)
 FAR_DRAW_ENTRY(ui_clear, far_ui_clear)
+FAR_DRAW_ENTRY(ui_clear_rows, far_ui_clear_rows)
+FAR_DRAW_ENTRY(ui_shift_rows, far_ui_shift_rows)
 FAR_DRAW_ENTRY(ui_text, far_ui_text)
 FAR_DRAW_ENTRY(ui_text_width, far_ui_text_width)
 FAR_DRAW_ENTRY(ui_text_right, far_ui_text_right)

@@ -46,6 +46,13 @@ bl_mask:
 	WAIT
 	ld a,$05
 	out (LCD_CMD),a
+	ld hl,ui_dirty
+	ld a,(hl)
+	ld (hl),0
+	ld (ui_sent),a
+	ld (ui_col),a
+	or a
+	jp z,bl_done
 	ld hl,UI_FRAME
 	ld de,UI_STRIDE
 	ld a,$20
@@ -54,12 +61,51 @@ bl_col:
 	WAIT
 	ld a,(ui_cnt)
 	out (LCD_CMD),a
-	WAIT
-	ld a,$80
-	out (LCD_CMD),a
-	ld a,UI_HEIGHT/8
+	ld a,$C0
 	ld (ui_blk),a
-bl_block:
+bl_stale:
+	ld a,(ui_col)
+	rrca
+	ld (ui_col),a
+	jr c,bl_row
+bl_skip:
+	ld a,l
+	add a,UI_ROW*UI_STRIDE
+	ld l,a
+	jr nc,bl_step
+	inc h
+bl_step:
+	ld a,(ui_blk)
+	add a,8
+	ld (ui_blk),a
+	jr nz,bl_stale
+bl_end:
+	ld bc,1-UI_FRAME_SIZE
+	add hl,bc
+	ld c,LCD_CMD
+	ld a,(ui_cnt)
+	inc a
+	ld (ui_cnt),a
+	cp $20+UI_STRIDE
+	jp nz,bl_col
+bl_done:
+	ld a,(ui_iff)
+	or a
+	ret z
+	ei
+	ret
+bl_row:
+	WAIT
+	ld a,(ui_blk)
+	sub $40
+	out (LCD_CMD),a
+	jr bl_send
+bl_fresh:
+	ld a,(ui_col)
+	rrca
+	ld (ui_col),a
+	jp nc,bl_skip
+bl_send:
 	BYTE
 	BYTE
 	BYTE
@@ -69,20 +115,8 @@ bl_block:
 	BYTE
 	BYTE
 	ld a,(ui_blk)
-	dec a
+	add a,8
 	ld (ui_blk),a
-	jp nz,bl_block
-	ld bc,1-UI_FRAME_SIZE
-	add hl,bc
-	ld c,LCD_CMD
-	ld a,(ui_cnt)
-	inc a
-	ld (ui_cnt),a
-	cp $20+UI_STRIDE
-	jp nz,bl_col
-	ld a,(ui_iff)
-	or a
-	ret z
-	ei
-	ret
+	jp nz,bl_fresh
+	jp bl_end
 ui_blit_end:

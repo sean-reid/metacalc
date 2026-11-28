@@ -106,7 +106,8 @@ ui_text:
 	cp UI_TEXT_ROWS
 	jp nc,ut_off
 	add a,a
-	or ut_rows&$FF ; ut_rows is 16 byte aligned, so the offset only sets low bits
+	add a,a
+	or ut_rows&$FF ; ut_rows is 32 byte aligned, so the offset only sets low bits
 	ld c,a
 	ld b,ut_rows>>8
 	ld a,(bc)
@@ -114,6 +115,12 @@ ui_text:
 	inc c
 	ld a,(bc)
 	ld (ui_rowbase+1),a
+	inc c
+	ld a,(bc)
+	ld b,a
+	ld a,(ui_dirty)
+	or b
+	ld (ui_dirty),a
 	ld a,d
 	or a
 	jp nz,ut_tail
@@ -705,12 +712,20 @@ ui_tcol:
 #if (ui_tcol-ui_tblk) != 256
  .error "the x tables must be consecutive pages"
 #endif
-	.fill (16-($&15))&15,0
+	.fill (32-($&31))&31,0
 ut_rows:
-#if (ut_rows&15) != 0
- .error "ut_rows must be 16 byte aligned"
+#if (ut_rows&31) != 0
+ .error "ut_rows must be 32 byte aligned"
 #endif
-	.dw UI_FRAME+UI_STRIDE+(0*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(1*UI_ROW*UI_STRIDE)
-	.dw UI_FRAME+UI_STRIDE+(2*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(3*UI_ROW*UI_STRIDE)
-	.dw UI_FRAME+UI_STRIDE+(4*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(5*UI_ROW*UI_STRIDE)
-	.dw UI_FRAME+UI_STRIDE+(6*UI_ROW*UI_STRIDE),UI_FRAME+UI_STRIDE+(7*UI_ROW*UI_STRIDE)
+#macro UT_ROW(r)
+	.dw UI_FRAME+UI_STRIDE+(r*UI_ROW*UI_STRIDE)
+	.db 1<<r,0
+#endmacro
+	UT_ROW(0)
+	UT_ROW(1)
+	UT_ROW(2)
+	UT_ROW(3)
+	UT_ROW(4)
+	UT_ROW(5)
+	UT_ROW(6)
+	UT_ROW(7)

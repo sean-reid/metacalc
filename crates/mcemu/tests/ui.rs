@@ -14,6 +14,10 @@ mod fit_wrap;
 mod font;
 #[path = "ui/frames.rs"]
 mod frames;
+#[path = "ui/marks.rs"]
+mod marks;
+#[path = "ui/masks.rs"]
+mod masks;
 #[path = "ui/shapes.rs"]
 mod shapes;
 #[path = "ui/speed.rs"]
