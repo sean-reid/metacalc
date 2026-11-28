@@ -282,6 +282,8 @@ pub struct Layout {
     pub theorem: bool,
     pub hyps: usize,
     pub nhyps: usize,
+    /// The offset of the count of disjoint pairs; the pairs follow it.
+    pub pairs: usize,
     /// The offset of the reference count; the entries follow it.
     pub refs_count: usize,
     pub nrefs: usize,
@@ -304,6 +306,7 @@ pub fn layout(bytes: &[u8], n: usize) -> Layout {
             2 + usize::from(bytes[at + 1])
         };
     }
+    let pairs = at;
     at += 2 + 2 * get16(bytes, at);
     at += 1 + usize::from(bytes[at]);
     let mut out = Layout {
@@ -311,6 +314,7 @@ pub fn layout(bytes: &[u8], n: usize) -> Layout {
         theorem,
         hyps,
         nhyps,
+        pairs,
         refs_count: 0,
         nrefs: 0,
         proof: 0,

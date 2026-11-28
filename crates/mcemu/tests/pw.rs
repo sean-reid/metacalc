@@ -6,6 +6,8 @@ mod cost;
 mod find;
 #[path = "common/guard.rs"]
 mod guard;
+#[path = "pw/heads.rs"]
+mod heads;
 #[path = "pw/host.rs"]
 mod host;
 #[path = "pw/libs.rs"]
