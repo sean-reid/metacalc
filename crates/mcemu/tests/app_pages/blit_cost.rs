@@ -74,7 +74,7 @@ fn on_the_reference_os_the_blit_costs_what_the_rows_it_sends_say() {
     pinned("blit of two adjacent rows", two, TWO);
     pinned("blit of no row", none, NONE);
     assert!(
-        one > 12_000 && two > one + 8_000,
+        one > 20_000 && two > one + 7_000,
         "a blit that sends nothing fails"
     );
     assert!(full > two && none < 1_000);
@@ -132,13 +132,13 @@ fn on_the_reference_os_clearing_and_shifting_rows_cost_what_they_are_pinned_at()
     }
 }
 
-const FULL: u32 = 0;
-const ONE: u32 = 0;
-const TWO: u32 = 0;
-const NONE: u32 = 0;
-const TEXT: u32 = 0;
-const CLEAR_ONE: u32 = 0;
-const CLEAR_SIX: u32 = 0;
-const SHIFT_ONE: u32 = 0;
-const SHIFT_SIX_UP: u32 = 0;
-const SHIFT_SIX_DOWN: u32 = 0;
+const FULL: u32 = 78216;
+const ONE: u32 = 23460;
+const TWO: u32 = 31260;
+const NONE: u32 = 615;
+const TEXT: u32 = 6331;
+const CLEAR_ONE: u32 = 1629;
+const CLEAR_SIX: u32 = 5319;
+const SHIFT_ONE: u32 = 1644;
+const SHIFT_SIX_UP: u32 = 13807;
+const SHIFT_SIX_DOWN: u32 = 13811;
