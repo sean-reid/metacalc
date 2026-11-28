@@ -193,8 +193,28 @@ impl Case {
         list.frame_now()
     }
 
-    /// Whether the app's frame and the mirror's first row are the model's, and the frame.
-    fn check(&self, at: &str, frame: &[u8], control: &[u8], refuse: Refuse) -> bool {
+    /// The rows the list draws for a first row `top`: the model's own row drawing (the host model cannot
+    /// be put at a first row it never places, so its canvas draws each row and the app's pixels are
+    /// compared with them, rows 1 to 5, the title and preview left out). `items` are the assertions the
+    /// list shows after the walk, the marks all unchecked, the hit highlighted.
+    fn model_rows(&self, items: &[usize], top: usize) -> Vec<u8> {
+        let at = items
+            .iter()
+            .position(|&i| i == top)
+            .expect("a first row the list shows");
+        let labels = labels_of(self.built);
+        let mut canvas = mcui::canvas::Canvas::default();
+        for (row, &i) in items[at..].iter().take(5).enumerate() {
+            let glyph = mcui::Mark::Unchecked.glyph().to_string();
+            canvas.list_row(1 + row, &labels[i], &glyph, i == self.hit);
+        }
+        crate::ui_support::pack(&canvas.into_bitmap())[ROWS].to_vec()
+    }
+
+    /// Whether the refusal left the model's frame: asserts what holds in every case, the whole frame for
+    /// an absorbed refusal, and else the first row the header gives and the rows drawn from it.
+    fn check(&self, at: &str, run: &Run, control: &[u8], refuse: Refuse) -> bool {
+        let frame = &run.frame;
         let (top, _) = mirror(&self.shown, self.hit, refuse);
         let (model_top, _) = mirror(&self.shown, self.hit, Refuse::Nothing);
         assert_eq!(
@@ -217,14 +237,32 @@ impl Case {
         if absorbed {
             assert_eq!(frame, control, "{at}: the refusal leaves the model's frame");
         } else {
-            println!(
-                "{at}: first row {} where the model has {}, mirror {top}; frame {frame:02X?}, model {control:02X?}",
-                u16::from_le_bytes([frame[4], frame[5]]),
-                u16::from_le_bytes([control[4], control[5]]),
+            assert_eq!(
+                usize::from(u16::from_le_bytes([frame[4], frame[5]])),
+                top,
+                "{at}: the first row the header gives"
+            );
+            let items: Vec<usize> = match refuse {
+                Refuse::Lost(_) => (0..self.shown.len()).collect(),
+                _ => (0..self.shown.len()).filter(|&i| self.shown[i]).collect(),
+            };
+            assert_eq!(
+                run.pixels[ROWS],
+                self.model_rows(&items, top)[..],
+                "{at}: the rows drawn from it"
             );
         }
         absorbed
     }
+}
+
+/// The bytes of the frame's text rows 1 to 5, 12 bytes a pixel row.
+const ROWS: std::ops::Range<usize> = 96..576;
+
+/// What one refused run left: the list's frame record and the pixels blitted for it.
+struct Run {
+    frame: Vec<u8>,
+    pixels: Vec<u8>,
 }
 
 fn library_case(kind: Kind) -> Case {
@@ -265,7 +303,7 @@ impl Lister {
 
 /// The open list refused the library read of `refuse`, then the last letter pressed: the frame and the
 /// calls of each op the walk made.
-fn library_run(case: &Case, refuse: Refuse) -> (Vec<u8>, [usize; 2]) {
+fn library_run(case: &Case, refuse: Refuse) -> (Run, [usize; 2]) {
     let mut list = case.open();
     let (next, prev) = match refuse {
         Refuse::Library(Op::Next, k) => (k, 99),
@@ -278,9 +316,10 @@ fn library_run(case: &Case, refuse: Refuse) -> (Vec<u8>, [usize; 2]) {
     list.run.run_to("lfd_hit", LIMIT_WALK);
     list.run.run_to("lfd_top", LIMIT_WALK);
     let calls = [list.fail_calls_here(0), list.fail_calls_here(1)];
-    list.run.next_blit();
+    let pixels = list.run.next_blit();
     list.run.run(300_000);
-    (list.frame_now(), calls)
+    let frame = list.frame_now();
+    (Run { frame, pixels }, calls)
 }
 
 fn count(ops: &[Op], op: Op) -> usize {
@@ -310,7 +349,7 @@ fn a_read_refused_in_the_walk_after_a_hit_is_met_at_each_call_under_theorems_and
             .chain((1..=5).map(|k| Refuse::Library(Op::Prev, k)));
         for refuse in refusals {
             let at = format!("{kind:?}, {refuse:?}");
-            let (frame, calls) = library_run(&case, refuse);
+            let (run, calls) = library_run(&case, refuse);
             let (_, ops) = mirror(&case.shown, case.hit, refuse);
             let Refuse::Library(op, k) = refuse else {
                 unreachable!()
@@ -324,7 +363,7 @@ fn a_read_refused_in_the_walk_after_a_hit_is_met_at_each_call_under_theorems_and
                 [count(&ops, Op::Next), count(&ops, Op::Prev)],
                 "{at}: calls of lf_next and lf_prev"
             );
-            if case.check(&at, &frame, &control, refuse) {
+            if case.check(&at, &run, &control, refuse) {
                 absorbed += 1;
             } else {
                 moved += 1;
@@ -336,7 +375,7 @@ fn a_read_refused_in_the_walk_after_a_hit_is_met_at_each_call_under_theorems_and
 
 /// The walk over the table with it lost before call `n`: the frame and the ops, by where the writes of
 /// LK_AGAIN came from.
-fn table_run(case: &Case, n: usize) -> (Vec<u8>, Vec<Op>) {
+fn table_run(case: &Case, n: usize) -> (Run, Vec<Op>) {
     let mut list = case.open();
     list.tap(case.scan());
     list.run.run_to("lfd_hit", LIMIT_WALK);
@@ -368,9 +407,10 @@ fn table_run(case: &Case, n: usize) -> (Vec<u8>, Vec<Op>) {
             pc => panic!("LK_AGAIN written from {pc:04X}"),
         })
         .collect();
-    list.run.next_blit();
+    let pixels = list.run.next_blit();
     list.run.run(300_000);
-    (list.frame_now(), ops)
+    let frame = list.frame_now();
+    (Run { frame, pixels }, ops)
 }
 
 #[test]
@@ -392,7 +432,7 @@ fn a_table_lost_in_the_walk_after_a_hit_is_met_before_each_call_under_unchecked(
     for n in 1..=ops.len() {
         let at = format!("table lost before call {n}");
         let refuse = Refuse::Lost(n);
-        let (frame, made) = table_run(&case, n);
+        let (run, made) = table_run(&case, n);
         let (_, want) = mirror(&case.shown, case.hit, refuse);
         assert!(want.len() >= n, "{at}: the loss falls inside the walk");
         assert_eq!(
@@ -401,7 +441,7 @@ fn a_table_lost_in_the_walk_after_a_hit_is_met_before_each_call_under_unchecked(
             "{at}: the calls before it are the walk's"
         );
         assert_eq!(made, want, "{at}: the calls the walk made");
-        if case.check(&at, &frame, &control, refuse) {
+        if case.check(&at, &run, &control, refuse) {
             absorbed += 1;
         } else {
             moved += 1;
