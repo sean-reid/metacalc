@@ -185,7 +185,8 @@ fn invert(x: u8, y: u8, w: u8, h: u8) -> Op {
 
 #[test]
 fn ui_invert_marks_the_rows_its_clipped_rectangle_touches() {
-    let mut cases: Vec<((u8, u8, u8, u8), Vec<usize>)> = vec![];
+    type Case = ((u8, u8, u8, u8), Vec<usize>);
+    let mut cases: Vec<Case> = vec![];
     for r in 0..8u8 {
         let top = usize::from(r);
         cases.push(((10, 8 * r, 20, 8), vec![top]));

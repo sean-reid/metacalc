@@ -192,7 +192,7 @@ fn the_heavy_frames_and_their_blit_redraw_within_50_ms_at_6_mhz() {
 #[test]
 fn six_rows_of_the_narrowest_glyph_and_the_blit_stay_under_their_ceiling_at_6_mhz() {
     within_ceiling_at_6_mhz("six rows of i", &narrowest_rows(), NARROWEST_CEILING);
-    assert!(NARROWEST_CEILING > BUDGET_MS * 6000);
+    const { assert!(NARROWEST_CEILING > BUDGET_MS * 6000) };
 }
 
 /// Ceiling in T-states for the slowest bar, a little above what it takes.

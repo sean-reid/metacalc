@@ -21,13 +21,7 @@ struct Counts {
     nothing: usize,
 }
 
-fn check(
-    op: Op,
-    model: impl Fn(&mut Canvas),
-    range: (usize, usize),
-    counts: &mut Counts,
-    what: &str,
-) {
+fn check(op: Op, model: impl Fn(&mut Canvas), range: (usize, usize), what: &str) {
     let (a, _) = crate::masks::frames();
     let mut canvas = Canvas::with_bitmap(bitmap_of(&a));
     model(&mut canvas);
@@ -70,7 +64,6 @@ fn clearing_rows_matches_the_host_canvas_for_every_first_row_and_count() {
                 op,
                 |c| c.clear_rows(first, count),
                 range,
-                &mut counts,
                 &format!("clear_rows({first}, {count})"),
             );
             if range.0 == range.1 {
@@ -105,7 +98,6 @@ fn shifting_rows_matches_the_host_canvas_for_every_first_row_count_and_direction
                     op,
                     |c| c.shift_rows(first, count, dir == 0),
                     range,
-                    &mut counts,
                     &format!("shift_rows({first}, {count}, {dir})"),
                 );
                 if range.0 == range.1 {
