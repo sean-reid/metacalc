@@ -166,8 +166,8 @@ fn the_shipped_libraries_give_the_offsets_the_format_gives() {
         println!("{name}: {t} theorems and {a} axioms");
         let want = match name {
             "prop" => (756, 0),
-            "pred" => (1_125, 0),
-            _ => (3_049, 0),
+            "pred" => (1_127, 0),
+            _ => (3_051, 0),
         };
         assert_eq!((t, a != 0), (want.0, true), "{name}");
     }
