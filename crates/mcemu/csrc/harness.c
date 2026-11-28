@@ -100,7 +100,7 @@ static int is_lcd_port(dword port)
 	return (port & 0xff & 0xfc) == 0x10;
 }
 
-/* One write to port 1, 3 or 4 and the CPU clock when it ran. */
+/* One write to a recorded port and the CPU clock when it ran. */
 typedef struct {
 	uint32_t clock;
 	uint8_t port;
@@ -108,6 +108,7 @@ typedef struct {
 } McPortWrite;
 
 #define PORT_LOG 16384
+#define LCD_LOG 4096
 
 /* What the harness keeps for each machine: the set of values written to ports 5, 6 and 7 since its
    last run began, whether the LCD busy bit is forced on, and the emulated time the clock ports
@@ -121,6 +122,8 @@ typedef struct {
 	McWatch *watch;
 	McPortWrite ports[PORT_LOG];
 	size_t nports;
+	McPortWrite lcd[LCD_LOG];
+	size_t nlcd;
 } McState;
 
 #define MAX_MACHINES 512
@@ -219,6 +222,11 @@ static void note_port_write(TilemCalc *calc, dword port, byte value)
 		st->ports[st->nports].clock = calc->z80.clock;
 		st->ports[st->nports].port = port;
 		st->ports[st->nports++].value = value;
+	}
+	if ((port == 0x10 || port == 0x11) && (st = state_of(calc)) && st->nlcd < LCD_LOG) {
+		st->lcd[st->nlcd].clock = calc->z80.clock;
+		st->lcd[st->nlcd].port = port;
+		st->lcd[st->nlcd++].value = value;
 	}
 }
 
@@ -475,6 +483,19 @@ size_t mcemu_port_take(TilemCalc *calc, McPortWrite *out, size_t cap)
 
 	memcpy(out, st->ports, (n < cap ? n : cap) * sizeof *out);
 	st->nports = 0;
+	return n;
+}
+
+/* The same for writes to the LCD's command and data ports, 10h and 11h, in a record of its own that holds LCD_LOG writes. */
+size_t mcemu_lcd_len(TilemCalc *calc) { return state_of(calc)->nlcd; }
+size_t mcemu_lcd_cap(void) { return LCD_LOG; }
+size_t mcemu_lcd_take(TilemCalc *calc, McPortWrite *out, size_t cap)
+{
+	McState *st = state_of(calc);
+	size_t n = st->nlcd;
+
+	memcpy(out, st->lcd, (n < cap ? n : cap) * sizeof *out);
+	st->nlcd = 0;
 	return n;
 }
 

@@ -345,6 +345,22 @@ impl Machine {
         self.calc.take_port_writes()
     }
 
+    /// Every write to the LCD's command port 10h and data port 11h since the last call, in order,
+    /// with the CPU clock when each ran. The record holds 4096 writes; more panics.
+    pub fn take_lcd_writes(&mut self) -> Vec<PortWrite> {
+        let (writes, full) = self.calc.take_lcd_writes();
+        assert!(
+            !full,
+            "the LCD record was full; take the writes more often"
+        );
+        writes
+    }
+
+    /// Forgets the LCD writes recorded so far.
+    pub fn clear_lcd_writes(&mut self) {
+        self.calc.take_lcd_writes();
+    }
+
     /// Forgets the port writes recorded so far, however many.
     pub fn clear_port_writes(&mut self) {
         self.calc.take_port_writes();
