@@ -175,21 +175,26 @@ fn a_handler_that_writes_the_lcd_cannot_tear_the_frame_during_a_blit() {
     let (frame, calls) = busy_frame();
     let mut script = ops(&calls);
     script.extend([Op::Interrupts(true), Op::Blit, Op::Interrupts(false)]);
+    let quiet = run_code(REAL, REAL.code, SETTINGS[0], &script, true);
     let rom = lcd_writing_rom();
     for settings in SETTINGS {
         let got = run_code_on(&rom, true, REAL, REAL.code, settings, &script, true);
         assert!(lcd_equals(&frame, &got.lcd), "{settings:?}");
+        assert!(
+            got.lcd_writes.len() > quiet.lcd_writes.len(),
+            "{settings:?}: the handler never wrote the LCD"
+        );
     }
 
-    // the same run with the blit's di removed tears it, so the handler does reach the LCD
+    // with the blit's di removed the handler's pushes land in the run list, so the run does not end
     let mut code = REAL.code.to_vec();
     let di = usize::from(label(REAL, "bl_mask")) - 0x4000;
     assert_eq!(code[di], 0xF3, "the di");
     code[di] = 0x00;
-    let got = run_code_on(&rom, true, REAL, &code, SETTINGS[0], &script, true);
+    let torn = run_bounded(&rom, REAL, &code, &script, 5_000_000);
     assert!(
-        !lcd_equals(&frame, &got.lcd),
-        "the handler never wrote the LCD"
+        torn.is_none_or(|got| !lcd_equals(&frame, &got.lcd)),
+        "the handler never reached the blit"
     );
 }
 

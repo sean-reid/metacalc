@@ -73,6 +73,11 @@ pub fn open_dist(walker: &mut Walker) {
     assert_eq!(usize::from(u16::from_le_bytes([frame[2], frame[3]])), n);
     assert_eq!(frame[4..6], [0, 0], "the first row");
     assert!(matches!(walker.list.ui.state(), State::Dist { top: 0, .. }));
+    walker
+        .list
+        .run
+        .shell
+        .assert_lcd_holds_the_frame("dist opened");
 }
 
 /// CLEAR on the Dist screen: the theorem screen comes back and is the model's refit.
@@ -82,6 +87,11 @@ pub fn leave(walker: &mut Walker) {
     assert_eq!(walker.list.run.top_kind(), KIND_THEOREM);
     assert_eq!(walker.list.run.depth(), depth - 1);
     walker.mirror = None;
+    walker
+        .list
+        .run
+        .shell
+        .assert_lcd_holds_the_frame("theorem after dist");
 }
 
 /// The model's top row of the open Dist screen.

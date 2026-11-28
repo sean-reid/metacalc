@@ -100,6 +100,7 @@ fn long_walk(checking: bool) {
         six_stages(),
         crate::list_rig::proofs_three(),
     ];
+    reset_lcd_checks();
     for built in builds {
         let (data, status) = if checking {
             settled_table(built)
@@ -299,17 +300,40 @@ fn long_walk(checking: bool) {
             built.stages.len()
         );
     }
-    let checked = lcd_checks();
-    println!("{checked} frames checked against the LCD");
-    assert!(
-        checked >= LCD_CHECKS_FLOOR,
-        "{checked} frames checked against the LCD"
+    let mut kinds = vec![
+        KIND_LIBRARIES,
+        KIND_NOTICE,
+        KIND_ABOUT,
+        KIND_STAGE,
+        KIND_LIST,
+        KIND_THEOREM,
+    ];
+    if checking {
+        kinds.push(KIND_CHECKING);
+    }
+    assert_lcd_checks(
+        if checking {
+            "the checking walk"
+        } else {
+            "the long walk"
+        },
+        kinds,
+        |kind| LCD_CHECKS_FLOOR[usize::from(kind)][usize::from(checking)],
     );
 }
 
-/// Frames the walk compared with the LCD's memory, sent in full each: set a little under what a
-/// run printed.
-const LCD_CHECKS_FLOOR: usize = 1;
+/// Frames the walk compared with the LCD's memory by the kind of the screen on top and by whether
+/// the walk is the checking one, a little under what a run printed.
+const LCD_CHECKS_FLOOR: [[usize; 2]; 8] = [
+    [0, 0],
+    [340, 330],
+    [410, 420],
+    [22, 22],
+    [175, 170],
+    [0, 27],
+    [2_100, 2_100],
+    [210, 205],
+];
 
 #[test]
 fn a_long_walk_through_every_kind_of_screen_in_one_session_is_the_models_at_every_step() {

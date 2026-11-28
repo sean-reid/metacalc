@@ -40,7 +40,10 @@ fn bits(rows: &[usize]) -> u8 {
 
 /// Outside the routine's rows, so that a store in place of an OR shows.
 fn seed_outside(written: u8) -> u8 {
-    0x5A & !written
+    match 0x5A & !written {
+        0 => !written,
+        seed => seed,
+    }
 }
 
 /// How a routine writes: it changes bytes in every row it marks, or it ORs pixels that may be set
@@ -200,6 +203,12 @@ fn ui_invert_marks_the_rows_its_clipped_rectangle_touches() {
     }
     cases.extend([
         ((5, 4, 30, 17), vec![0, 1, 2]),
+        ((5, 4, 30, 25), vec![0, 1, 2, 3]),
+        ((20, 36, 40, 25), vec![4, 5, 6, 7]),
+        ((5, 4, 30, 33), vec![0, 1, 2, 3, 4]),
+        ((5, 4, 30, 41), vec![0, 1, 2, 3, 4, 5]),
+        ((40, 20, 10, 41), vec![2, 3, 4, 5, 6, 7]),
+        ((5, 4, 30, 49), vec![0, 1, 2, 3, 4, 5, 6]),
         ((0, 0, 96, 64), (0..8).collect()),
         ((10, 60, 20, 8), vec![7]),
         ((90, 16, 20, 8), vec![2]),
@@ -221,7 +230,7 @@ fn ui_invert_marks_the_rows_its_clipped_rectangle_touches() {
     }
     assert_eq!(
         spans[1..],
-        [37, 14, 1, 0, 0, 0, 0, 3],
+        [37, 14, 1, 2, 1, 2, 1, 3],
         "rectangles by rows touched"
     );
 }

@@ -518,3 +518,20 @@ fn a_list_with_too_many_elements_is_refused() {
     }
     assert_eq!(m.free_ram(), 0xFE67 - 0x9D95);
 }
+
+#[test]
+fn a_host_call_leaves_the_bytes_below_the_stack_pointer_as_it_found_them() {
+    const TABLE: u16 = 0x9300;
+    let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
+    let table: Vec<u8> = (0..64u8).map(|i| 0xA0 ^ i).collect();
+    m.load_ram(TABLE, &table);
+    let mut regs = m.regs();
+    regs.sp = TABLE + 64;
+    m.set_regs(&regs);
+    m.create_var("PROBE", &[1, 2, 3])
+        .expect("room for a variable");
+    assert_eq!(m.read_ram(TABLE, 64), table, "after a create");
+    assert_eq!(m.read_var("PROBE").expect("the variable").data, [1, 2, 3]);
+    assert_eq!(m.read_ram(TABLE, 64), table, "after a read");
+    assert_eq!(m.regs().sp, TABLE + 64);
+}

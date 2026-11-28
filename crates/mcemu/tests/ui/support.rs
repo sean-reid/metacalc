@@ -117,6 +117,8 @@ pub enum Op {
     SetVar(u8, u8),
     /// Forgets the LCD writes recorded so far.
     ClearLcdWrites,
+    /// A busy loop of `n` rounds, 26 T-states each, with the interrupt state as it is.
+    Delay(u16),
     /// An LCD command, after a delay that lets the controller take it.
     Command(u8),
     /// The LCD status byte, read from port 10h.
@@ -380,6 +382,11 @@ impl Script {
                     .extend_from_slice(&[0x06, 0x00, 0x10, 0xFE, 0x3E, *value, 0xD3, 0x10]);
             }
             Op::Command(_) => {}
+            Op::Delay(n) if call => {
+                self.word(&[0x01], *n);
+                self.code.extend_from_slice(&[0x0B, 0x78, 0xB1, 0x20, 0xFB]);
+            }
+            Op::Delay(_) => {}
             Op::Status => {
                 if call {
                     self.code.extend_from_slice(&[0xDB, 0x10]);
@@ -536,7 +543,43 @@ pub fn run_code_on(
     ops: &[Op],
     call: bool,
 ) -> Outcome {
-    run_marked(rom, timer, image, code, settings, ops, call, MARK, &[])
+    run_marked(
+        rom,
+        timer,
+        image,
+        code,
+        settings,
+        ops,
+        call,
+        MARK,
+        &[],
+        LIMIT,
+    )
+    .expect("the script halts")
+}
+
+/// `run_code_on` with a limit of `limit` T-states for each run of the script, and `None` when a run does
+/// not halt within it.
+pub fn run_bounded(
+    rom: &[u8],
+    image: Image,
+    code: &[u8],
+    ops: &[Op],
+    limit: u32,
+) -> Option<Outcome> {
+    let settings = (Speed::Mhz6, true);
+    run_marked(
+        rom,
+        true,
+        image,
+        code,
+        settings,
+        ops,
+        true,
+        MARK,
+        &[],
+        limit,
+    )
 }
 
 /// The deepest the stack goes in a run of `ops`, as the larger of two measures with different
@@ -556,7 +599,9 @@ pub fn stack_depth(image: Image, ops: &[Op]) -> usize {
                 true,
                 mark,
                 &[],
+                LIMIT,
             )
+            .expect("the script halts")
             .stack
         })
         .max()
@@ -574,7 +619,8 @@ fn run_marked(
     call: bool,
     stack_mark: u8,
     watch: &[(u16, u16)],
-) -> Outcome {
+    limit: u32,
+) -> Option<Outcome> {
     let mut script = Script {
         code: vec![],
         data: vec![],
@@ -621,8 +667,10 @@ fn run_marked(
     m.load_ram(DATA, &script.data);
     m.set_speed(speed);
     m.trace_lcd(true);
-    let mut run = m.run(SCRIPT, LIMIT);
-    assert_eq!(run.stop, Stop::Halted);
+    let mut run = m.run(SCRIPT, limit);
+    if run.stop != Stop::Halted {
+        return None;
+    }
     for (next, pause) in &script.pauses {
         match pause {
             Pause::Ink(layer) => {
@@ -634,8 +682,10 @@ fn run_marked(
             }
             Pause::ClearLcdWrites => drop(m.take_lcd_trace()),
         }
-        let more = m.run(*next, LIMIT);
-        assert_eq!(more.stop, Stop::Halted);
+        let more = m.run(*next, limit);
+        if more.stop != Stop::Halted {
+            return None;
+        }
         run.tstates += more.tstates;
     }
     assert_eq!(ENTRY, 0x4000);
@@ -683,7 +733,7 @@ fn run_marked(
         .filter(|a| a.is_write() && matches!(a.port, 0x10 | 0x11))
         .collect();
     let vars = m.read_ram(image.vars, usize::from(VARS_LEN));
-    Outcome {
+    Some(Outcome {
         frame,
         results,
         tstates: run.tstates,
@@ -695,7 +745,7 @@ fn run_marked(
         stack,
         data,
         placed: script.placed,
-    }
+    })
 }
 
 /// `run` that also marks the `(address, length)` ranges in `watch` and fails when a run changes
@@ -703,8 +753,9 @@ fn run_marked(
 pub fn run_watched(image: Image, ops: &[Op], watch: &[(u16, u16)]) -> Outcome {
     let settings = (Speed::Mhz6, true);
     run_marked(
-        STUB_ROM, false, image, image.code, settings, ops, true, MARK, watch,
+        STUB_ROM, false, image, image.code, settings, ops, true, MARK, watch, LIMIT,
     )
+    .expect("the script halts")
 }
 
 pub fn run(image: Image, ops: &[Op]) -> Outcome {

@@ -14,12 +14,36 @@ fn bitmap_of(frame: &[u8]) -> Bitmap {
     b
 }
 
-#[derive(Default, Debug)]
+/// How many calls of a sweep did nothing, changed one row, were cut at row 7, or changed a range
+/// of two rows or more inside the screen.
+#[derive(Default, Debug, PartialEq)]
 struct Counts {
-    cleared: usize,
-    shifted: usize,
     nothing: usize,
+    one_row: usize,
+    cut: usize,
+    range: usize,
 }
+
+impl Counts {
+    fn add(&mut self, first: usize, count: usize) {
+        if first >= 8 || count == 0 {
+            self.nothing += 1;
+        } else if count == 1 {
+            self.one_row += 1;
+        } else if first + count > 8 {
+            self.cut += 1;
+        } else {
+            self.range += 1;
+        }
+    }
+}
+
+const EVERY_CALL: Counts = Counts {
+    nothing: 18,
+    one_row: 8,
+    cut: 36,
+    range: 28,
+};
 
 fn check(op: Op, model: impl Fn(&mut Canvas), range: (usize, usize), what: &str) {
     let (a, _) = crate::masks::frames();
@@ -38,9 +62,8 @@ fn check(op: Op, model: impl Fn(&mut Canvas), range: (usize, usize), what: &str)
         );
         let changed = rows_changed(&e.before, &e.after);
         assert_eq!(
-            changed & !mask,
-            0,
-            "{what}: a row outside the range changed"
+            changed, mask,
+            "{what}: the rows that changed against the rows it marks, seed {seed:02X}"
         );
     }
 }
@@ -66,21 +89,16 @@ fn clearing_rows_matches_the_host_canvas_for_every_first_row_and_count() {
                 range,
                 &format!("clear_rows({first}, {count})"),
             );
-            if range.0 == range.1 {
-                counts.nothing += 1;
-            } else {
-                counts.cleared += 1;
-            }
+            counts.add(first, count);
         }
     }
-    assert_eq!(counts.cleared + counts.nothing, 90);
-    assert_eq!((counts.cleared, counts.nothing), (72, 18));
+    assert_eq!(counts, EVERY_CALL);
 }
 
 #[test]
 fn shifting_rows_matches_the_host_canvas_for_every_first_row_count_and_direction() {
-    let mut counts = Counts::default();
     for dir in [0u8, 1, 0x80] {
+        let mut counts = Counts::default();
         for first in 0..=8usize {
             for count in 0..=9usize {
                 let end = (first + count).min(8);
@@ -100,19 +118,9 @@ fn shifting_rows_matches_the_host_canvas_for_every_first_row_count_and_direction
                     range,
                     &format!("shift_rows({first}, {count}, {dir})"),
                 );
-                if range.0 == range.1 {
-                    counts.nothing += 1;
-                } else if range.1 - range.0 == 1 {
-                    counts.cleared += 1;
-                } else {
-                    counts.shifted += 1;
-                }
+                counts.add(first, count);
             }
         }
+        assert_eq!(counts, EVERY_CALL, "direction {dir}");
     }
-    // per direction: 8 first rows x 8 counts mark rows; of those the ranges one row wide clear
-    assert_eq!(counts.nothing, 3 * 18);
-    assert!(counts.cleared >= 3 * 8 * 2, "{counts:?}");
-    assert!(counts.shifted >= 3 * 8 * 5, "{counts:?}");
-    assert_eq!(counts.nothing + counts.cleared + counts.shifted, 3 * 90);
 }

@@ -118,6 +118,9 @@ pub fn settle_list(shell: &mut Shell, ui: &mut mcui::Ui) {
     }
     assert_eq!(shell.app.m.run_app(300_000).stop, mcemu::Stop::Limit);
     assert_eq!(shell.blits(), want, "the frame of the preview");
+    if want > blits {
+        shell.assert_lcd_holds_the_idle_frame("the list's preview frame");
+    }
 }
 
 /// The list screen's preview state in RAM: 0 pending, 1 laid out, 2 nothing to show.

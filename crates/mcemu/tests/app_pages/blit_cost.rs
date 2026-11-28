@@ -6,14 +6,23 @@ use crate::built::shipped_staged;
 use crate::realos::BASE;
 use mcemu::Speed;
 
+/// Where the test puts the string ui_text draws, in the scratch range the app on the ROM keeps clear.
 const STRING: u16 = 0xA9D0;
 
 /// One call of ui_text before the rows were marked, "Metamath" at x 1 on row 3, and the full blit.
 const OLD_TEXT: u32 = 6_274;
+/// What marking the row adds to it.
+const TEXT_MARK: u32 = 57;
 const OLD_BLIT: u32 = 73_579;
 
 fn app_on_rom() -> App {
-    App::on_real_os(shipped_staged())
+    let app = App::on_real_os(shipped_staged());
+    let (low, high) = app.scratch[1];
+    assert!(
+        (low..high - 16).contains(&STRING),
+        "the string at {STRING:04X} is in scratch {low:04X} to {high:04X}"
+    );
+    app
 }
 
 fn timed(app: &mut App, name: &str, input: In) -> u32 {
@@ -87,19 +96,26 @@ fn on_the_reference_os_the_blit_costs_what_the_rows_it_sends_say() {
 #[ignore = "needs the reference ROM image"]
 fn on_the_reference_os_marking_a_row_adds_what_the_header_says_to_ui_text() {
     let mut app = app_on_rom();
+    let dirty = var(&app, "ui_dirty");
+    app.poke(dirty, &[0x00]);
     let got = text_cost(&mut app);
     println!(
         "ROM 6 MHz: ui_text once: {OLD_TEXT} before, {got} now, {} more",
         got - OLD_TEXT
     );
+    assert_eq!(got - OLD_TEXT, TEXT_MARK, "what the mark costs");
+    assert_eq!(app.peek(dirty, 1), [1 << 3], "the row's bit in ui_dirty");
     pinned("ui_text once", got, TEXT);
+    app.poke(dirty, &[0x84]);
+    text_cost(&mut app);
+    assert_eq!(app.peek(dirty, 1), [0x8C], "the bit is ORed in");
 }
 
 #[test]
 #[ignore = "needs the reference ROM image"]
 fn on_the_reference_os_clearing_and_shifting_rows_cost_what_they_are_pinned_at() {
     let mut app = app_on_rom();
-    let (dirty, frame) = (var(&app, "ui_dirty"), 0x9340u16);
+    let (dirty, frame) = (var(&app, "ui_dirty"), UI_FRAME);
     let call = |app: &mut App, name: &str, first: u8, count: u8, dir: u8| {
         app.poke(frame, &[0x5A; 768]);
         app.poke(dirty, &[0]);

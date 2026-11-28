@@ -96,6 +96,7 @@ fn the_scroll_runs_to_the_last_row_and_back_with_every_frame_the_models() {
         .max()
         .unwrap();
     assert_eq!(rows, most, "it has the most rows of the library");
+    reset_lcd_checks();
     let mut walker = dist_of(built, ALL);
     assert_eq!(app_rows(&mut walker), rows);
     let last = last_of(rows);
@@ -115,6 +116,9 @@ fn the_scroll_runs_to_the_last_row_and_back_with_every_frame_the_models() {
         assert!(!press(&mut walker, UP, Key::Up), "Up past the start");
     }
     leave(&mut walker);
+    assert_lcd_checks("the Dist scroll", [KIND_DIST, KIND_THEOREM], |kind| {
+        if kind == KIND_DIST { 84 } else { 1 }
+    });
 }
 
 #[test]

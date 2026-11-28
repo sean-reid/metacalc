@@ -6,15 +6,41 @@ use crate::list_rig::LIMIT;
 use crate::realos::BASE;
 use crate::ui_support::same_frame;
 use mcemu::{Machine, Stop};
-use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 
 thread_local! {
-    static LCD_CHECKS: Cell<usize> = const { Cell::new(0) };
+    static LCD_CHECKS: RefCell<BTreeMap<u8, usize>> = const { RefCell::new(BTreeMap::new()) };
 }
 
-/// Frames this thread has checked against the LCD with `assert_lcd_holds_the_frame`.
-pub fn lcd_checks() -> usize {
-    LCD_CHECKS.with(Cell::get)
+/// Frames this thread has checked against the LCD since the last `reset_lcd_checks`, by the kind of
+/// the screen on top.
+pub fn lcd_checks() -> BTreeMap<u8, usize> {
+    LCD_CHECKS.with(|c| c.borrow().clone())
+}
+
+/// Starts counting the frames checked against the LCD again.
+pub fn reset_lcd_checks() {
+    LCD_CHECKS.with(|c| c.borrow_mut().clear());
+}
+
+/// Asserts that every kind in `kinds` had at least `floor(kind)` frames checked since the last reset, and
+/// prints the counts.
+pub fn assert_lcd_checks(
+    what: &str,
+    kinds: impl IntoIterator<Item = u8>,
+    floor: impl Fn(u8) -> usize,
+) {
+    let got = lcd_checks();
+    println!("{what}: frames checked against the LCD by kind {got:?}");
+    for kind in kinds {
+        let (n, want) = (got.get(&kind).copied().unwrap_or(0), floor(kind));
+        assert!(want > 0, "{what}: kind {kind} has a floor");
+        assert!(
+            n >= want,
+            "{what}: {n} frames of kind {kind} checked, floor {want}"
+        );
+    }
 }
 
 pub const F1: u8 = 0x35;
@@ -452,17 +478,32 @@ impl Shell {
 
     /// ui_sent is FFh, ui_dirty is 0 and the controller's memory equals the frame.
     pub fn assert_lcd_holds_the_frame(&mut self, what: &str) {
+        self.lcd_holds_the_frame(what, true);
+    }
+
+    /// As `assert_lcd_holds_the_frame` for a frame the app drew on its own, which may send only the
+    /// rows it wrote: ui_sent is not 0.
+    pub fn assert_lcd_holds_the_idle_frame(&mut self, what: &str) {
+        self.lcd_holds_the_frame(what, false);
+    }
+
+    fn lcd_holds_the_frame(&mut self, what: &str, full: bool) {
         let (start, end) = (self.app.label("ui_blit"), self.app.label("ui_blit_end"));
         for _ in 0..2_000 {
             let m = &mut self.app.m;
             if !(m.in_port(6) == DRAW_PAGE && (start..end).contains(&m.pc())) {
                 break;
             }
-            m.run_app(200);
+            assert_eq!(m.run_app(200).stop, Stop::Limit, "{what}: the blit goes on");
         }
         let (sent, dirty) = (self.app.label("ui_sent"), self.app.label("ui_dirty"));
         let (sent, dirty) = (self.peek(sent, 1)[0], self.peek(dirty, 1)[0]);
-        assert_eq!((sent, dirty), (0xFF, 0), "{what}: ui_sent and ui_dirty");
+        assert_eq!(dirty, 0, "{what}: ui_dirty");
+        if full {
+            assert_eq!(sent, 0xFF, "{what}: ui_sent");
+        } else {
+            assert_ne!(sent, 0, "{what}: the blit sent a row");
+        }
         let frame = self.frame();
         let lcd = self.app.m.lcd_ram();
         let differ = (0..64 * 96)
@@ -476,7 +517,8 @@ impl Shell {
             differ, 0,
             "{what}: pixels where the LCD differs from the frame"
         );
-        LCD_CHECKS.with(|c| c.set(c.get() + 1));
+        let kind = self.top_kind();
+        LCD_CHECKS.with(|c| *c.borrow_mut().entry(kind).or_default() += 1);
     }
 
     /// The LCD's pixels packed 8 to a byte, which is what the OS copies over saveSScreen at an
