@@ -91,7 +91,88 @@ pub fn provable(bytes: &[u8]) -> Option<u8> {
     None
 }
 
+/// The find block's fields, little endian.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Found {
+    pub goal: u8,
+    pub by: u16,
+    pub size: u32,
+    pub depth: u8,
+    pub parent: u32,
+    pub index: u8,
+    pub step: u16,
+    pub begin: u16,
+    pub subgoals: Vec<u8>,
+}
+
+pub const FIND_SIZE: usize = 47;
+
+pub fn found(b: &[u8]) -> Found {
+    let count = usize::from(b[11]);
+    Found {
+        goal: b[0],
+        by: u16::from_le_bytes([b[1], b[2]]),
+        size: u32::from_le_bytes([b[3], b[4], b[5], 0]),
+        depth: b[6],
+        parent: u32::from_le_bytes([b[7], b[8], b[9], 0]),
+        index: b[10],
+        step: u16::from_le_bytes([b[12], b[13]]),
+        begin: u16::from_le_bytes([b[14], b[15]]),
+        subgoals: b[16..16 + count].to_vec(),
+    }
+}
+
 impl Rig {
+    pub fn more(&mut self, budget: u16) -> Out {
+        self.call(
+            MORE_ENTRY,
+            Regs {
+                hl: 0x1111,
+                bc: budget,
+                de: BLOCK,
+                ix: 0x1357,
+                iy: 0x2468,
+                a: 0x5A,
+            },
+        )
+    }
+
+    pub fn find_regs(place: u32) -> Regs {
+        Regs {
+            hl: place as u16,
+            bc: 0x7777,
+            de: BLOCK,
+            ix: 0x1357,
+            iy: 0x2468,
+            a: (place >> 16) as u8,
+        }
+    }
+
+    pub fn find(&mut self, place: u32) -> Out {
+        self.call(FIND, Rig::find_regs(place))
+    }
+
+    pub fn seed_find(&mut self) {
+        self.poke(BLOCK, &[MARK; FIND_SIZE]);
+    }
+
+    pub fn find_bytes(&mut self) -> Vec<u8> {
+        self.peek(BLOCK, FIND_SIZE)
+    }
+
+    /// Starts a walk with `budget` and continues it until it stops going on. Returns the last
+    /// status and how many times the walk said it had more.
+    pub fn sliced(&mut self, n: u16, typecode: u8, budget: u16) -> (u8, usize) {
+        let mut out = self.call(SHAPE, regs_with(n, typecode, budget));
+        let mut mores = 0;
+        while out.status() == MORE {
+            mores += 1;
+            out = self.more(budget);
+            assert!(mores < 5_000_000, "a walk that never ends");
+        }
+        (out.status(), mores)
+    }
+
     pub fn seed_result(&mut self) {
         self.poke(BLOCK, &[MARK; 8]);
     }

@@ -2,7 +2,6 @@
 //! stored proof's bytes, and the table as the Z80 leaves it.
 
 use crate::proofs::*;
-use crate::rig::*;
 use crate::support::*;
 use mcpack::library::{Hypothesis, Library, Reference, Step};
 
@@ -80,7 +79,7 @@ pub fn mirror(library: &Library, bytes: &[u8], n: usize) -> Option<Table> {
                         rows.push(Row {
                             step: here,
                             begin: here,
-                            by: 0x8000 | rank as u16,
+                            by: 0x8000 | rank,
                             subgoals: vec![],
                             size: 1,
                         });

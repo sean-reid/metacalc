@@ -225,11 +225,10 @@ fn a_proof_that_ends_at_the_library_or_the_chunk_is_read_and_one_byte_more_is_re
     let library = decode(&multi).unwrap();
     assert!(multi.len() > 3 * CHUNK);
     let in_first = (0..library.assertions.len())
-        .filter(|&n| {
+        .rfind(|&n| {
             let l = layout(&multi, n);
             l.theorem && l.proof + l.plen <= CHUNK
         })
-        .next_back()
         .expect("a theorem ends in the first chunk");
     let l = layout(&multi, in_first);
     assert!(l.record >> 14 == 0 && CHUNK - (l.proof + l.plen) < 100);

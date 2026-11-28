@@ -1,5 +1,4 @@
 use crate::libs::{LIBRARIES, shipped};
-use crate::proofs::*;
 use crate::rig::*;
 use crate::support::*;
 use mcpack::library::{Step, decode};

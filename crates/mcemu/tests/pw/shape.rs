@@ -22,10 +22,10 @@ pub fn model_of(name: &str, bytes: &[u8]) -> Lib {
 }
 
 #[derive(Default)]
-struct Pairs {
-    goal_of: HashMap<*const Node, usize>,
+pub struct Pairs {
+    pub goal_of: HashMap<*const Node, usize>,
     node_of: HashMap<usize, *const Node>,
-    size: HashMap<*const Node, u64>,
+    pub size: HashMap<*const Node, u64>,
     height: HashMap<*const Node, usize>,
 }
 
@@ -43,7 +43,11 @@ fn visit(lib: &Lib, goals: &Goals, z: &Table, node: &Rc<Node>, g: usize, seen: &
         By::Hypothesis(k) => 0x8000 | k as u16,
     };
     assert_eq!(row.by, by, "goal {g}: what it applies");
-    assert_eq!(row.subgoals.len(), node.children.len(), "goal {g}: subgoals");
+    assert_eq!(
+        row.subgoals.len(),
+        node.children.len(),
+        "goal {g}: subgoals"
+    );
     let mut size = 1u64;
     let mut height = 1;
     for (child, &cg) in node.children.iter().zip(&row.subgoals) {
@@ -58,7 +62,7 @@ fn visit(lib: &Lib, goals: &Goals, z: &Table, node: &Rc<Node>, g: usize, seen: &
 
 /// The Z80's table against the model's tree from the root, and against the host's own reading of
 /// the stored proof. Returns the table.
-pub fn compare(lib: &Lib, library: &Library, bytes: &[u8], n: usize, z: &Table) {
+pub fn compare(lib: &Lib, library: &Library, bytes: &[u8], n: usize, z: &Table) -> (Goals, Pairs) {
     let m = mirror(library, bytes, n).expect("the host reads a tree");
     assert_eq!(*z, m, "{n}: the table and the host's reading of the proof");
     let goals = lib.goals(n).expect("the model has a tree");
@@ -74,14 +78,40 @@ pub fn compare(lib: &Lib, library: &Library, bytes: &[u8], n: usize, z: &Table) 
             heights[g] = heights[g].max(1 + heights[usize::from(c)]);
         }
     }
-    assert_eq!(heights[root], seen.height[&Rc::as_ptr(&goals.root)], "{n}: depth");
+    assert_eq!(
+        heights[root],
+        seen.height[&Rc::as_ptr(&goals.root)],
+        "{n}: depth"
+    );
+    (goals, seen)
 }
 
 /// Walks theorem `n` uncut and compares the table.
-pub fn walked(rig: &mut Rig, lib: &Lib, library: &Library, bytes: &[u8], tc: u8, n: usize) -> Table {
+pub fn walked(
+    rig: &mut Rig,
+    lib: &Lib,
+    library: &Library,
+    bytes: &[u8],
+    tc: u8,
+    n: usize,
+) -> Table {
     let z = walked_alone(rig, library, bytes, tc, n);
     compare(lib, library, bytes, n, &z);
     z
+}
+
+/// Walks theorem `n` uncut and compares the table; returns the model's tree with it.
+pub fn walked_with_tree(
+    rig: &mut Rig,
+    lib: &Lib,
+    library: &Library,
+    bytes: &[u8],
+    tc: u8,
+    n: usize,
+) -> (Table, Goals, Pairs) {
+    let z = walked_alone(rig, library, bytes, tc, n);
+    let (goals, pairs) = compare(lib, library, bytes, n, &z);
+    (z, goals, pairs)
 }
 
 /// Walks theorem `n` uncut and compares the table with the host's reading of the proof alone.
@@ -90,12 +120,15 @@ pub fn walked_alone(rig: &mut Rig, library: &Library, bytes: &[u8], tc: u8, n: u
     let out = rig.shape(n as u16, tc);
     assert_eq!(out.status(), ST_OK, "{n}");
     let z = read_table(rig);
-    assert_eq!(rig.result(), Counts::of(crate::proofs::Shape {
-        steps: usize::from(z.steps),
-        goals: z.rows.len(),
-        links: usize::from(z.links),
-        total: u64::from(z.total),
-    }));
+    assert_eq!(
+        rig.result(),
+        Counts::of(crate::proofs::Shape {
+            steps: usize::from(z.steps),
+            goals: z.rows.len(),
+            links: usize::from(z.links),
+            total: u64::from(z.total),
+        })
+    );
     let m = mirror(library, bytes, n).expect("the host reads a tree");
     assert_eq!(z, m, "{n}: the table and the host's reading of the proof");
     z
@@ -154,7 +187,10 @@ fn the_fixture_table_equals_the_model_and_the_hosts_reading() {
     assert_eq!((z.rows.len(), z.total), (5, 5));
     let z = walked(&mut rig, &lib, &library, &bytes, tc, at("one"));
     assert_eq!((z.rows.len(), z.rows[0].by), (1, 0x8001));
-    assert_eq!((z.rows[0].step, z.rows[0].begin), (z.rows[0].begin, z.rows[0].step));
+    assert_eq!(
+        (z.rows[0].step, z.rows[0].begin),
+        (z.rows[0].begin, z.rows[0].step)
+    );
 }
 
 #[test]
@@ -163,11 +199,33 @@ fn a_float_and_a_dummy_variable_of_the_provable_typecode_are_goals() {
     let library = decode(&bytes).unwrap();
     let tc = provable(&bytes).unwrap();
     let mut rig = opened(&bytes);
-    let z = walked_alone(&mut rig, &library, &bytes, tc, usize::from(number_of(&bytes, "tz")));
+    let z = walked_alone(
+        &mut rig,
+        &library,
+        &bytes,
+        tc,
+        usize::from(number_of(&bytes, "tz")),
+    );
     assert_eq!(z.rows.len(), 2);
-    assert_eq!(z.rows[0].by, 0x8000, "a float of the provable typecode is hypothesis 0");
-    let z = walked_alone(&mut rig, &library, &bytes, tc, usize::from(number_of(&bytes, "tdd")));
+    assert_eq!(
+        z.rows[0].by, 0x8000,
+        "a float of the provable typecode is hypothesis 0"
+    );
+    let z = walked_alone(
+        &mut rig,
+        &library,
+        &bytes,
+        tc,
+        usize::from(number_of(&bytes, "tdd")),
+    );
     assert_eq!(z.rows.len(), 3);
-    assert_eq!(z.rows[0].by, 0x8000, "a dummy of the provable typecode is hypothesis 0");
-    assert_eq!(z.rows[2].subgoals, vec![0, 1], "the dummy goal is used twice");
+    assert_eq!(
+        z.rows[0].by, 0x8000,
+        "a dummy of the provable typecode is hypothesis 0"
+    );
+    assert_eq!(
+        z.rows[2].subgoals,
+        vec![0, 1],
+        "the dummy goal is used twice"
+    );
 }

@@ -329,7 +329,9 @@ fn the_walk_writes_only_the_bytes_its_header_names() {
         let tokens = rig.label("FM_TOKENS");
         let tokens_used = rig.label("PW_TOKENS_USED");
         let low_end = top - rig.label("PW_STACK_ROOM");
-        allowed.extra.push((SPARE_PAGE, vars, usize::from(low_end - vars)));
+        allowed
+            .extra
+            .push((SPARE_PAGE, vars, usize::from(low_end - vars)));
         allowed
             .extra
             .push((SPARE_PAGE, top - PRIVATE_DEPTH as u16, PRIVATE_DEPTH));

@@ -56,6 +56,7 @@ mod placements;
 mod ports;
 #[path = "reader/proof.rs"]
 mod proof;
+#[allow(dead_code)]
 #[path = "common/proofs.rs"]
 mod proofs;
 #[path = "reader/ramplan.rs"]
