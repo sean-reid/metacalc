@@ -5,7 +5,6 @@ use crate::list_find_arms::{Press, arms};
 use crate::list_find_rig::*;
 use crate::list_kind_rig::*;
 use crate::list_rig::*;
-use crate::shellrig::*;
 use mcui::{Key, Kind, State, Status};
 
 const CASES: [(Kind, bool); 5] = [

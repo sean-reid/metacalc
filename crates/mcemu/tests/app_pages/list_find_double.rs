@@ -5,7 +5,6 @@
 use crate::list_find_rig::*;
 use crate::list_real::PROP;
 use crate::list_rig::*;
-use crate::shellrig::*;
 
 /// The prefixes, up to the cap, of labels that have two equal characters in a row, each ending at the
 /// second of the pair or past it.

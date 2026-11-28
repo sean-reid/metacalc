@@ -2,8 +2,6 @@
 //! lands the list with no prefix and the counts in the title, while CLEAR on the sections screen brings
 //! the list back with its prefix, as a notice does.
 
-use crate::list_find_rig::*;
-use crate::list_kind_rig::*;
 use crate::list_kind_stays::find_chars;
 use crate::list_rig::*;
 use crate::sections_jump::marks;

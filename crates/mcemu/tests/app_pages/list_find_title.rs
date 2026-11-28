@@ -3,7 +3,6 @@
 //! the model's. After a miss the room is 41 and the prefixes of w around that width are compared too.
 
 use crate::built::staged_with;
-use crate::list_find_rig::*;
 use crate::list_rig::*;
 
 fn built() -> &'static crate::app::Built {
