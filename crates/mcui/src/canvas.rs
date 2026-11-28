@@ -308,7 +308,10 @@ impl Canvas {
     pub fn title(&mut self, left: &str, right: &str) {
         let right_width = text_width(right);
         let room = Self::room(right_width, right);
-        let left = truncate(left, room);
+        self.title_cut(truncate(left, room), right);
+    }
+
+    fn title_cut(&mut self, left: String, right: &str) {
         self.record(|| Call::Title {
             left: left.clone(),
             right: right.into(),
@@ -321,11 +324,11 @@ impl Canvas {
     }
 
     /// A title bar whose left side is `name` then `tail`: when the two do not fit beside `right`,
-    /// the name is what gets cut and the tail stays whole.
+    /// the name is cut to the room less the tail's width and the tail stays whole, so the joined
+    /// text may run one pixel past the room, into the gap.
     pub fn title_with_tail(&mut self, name: &str, tail: &str, right: &str) {
         let room = Self::room(text_width(right), right).saturating_sub(text_width(tail));
-        let left = format!("{}{tail}", truncate(name, room));
-        self.title(&left, right);
+        self.title_cut(format!("{}{tail}", truncate(name, room)), right);
     }
 
     /// The labels of the five keys under the screen. A key with a label is an inverted box
@@ -521,5 +524,99 @@ mod tests {
     #[should_panic(expected = "does not fit key 0")]
     fn a_label_with_an_undrawable_character_trips_the_debug_assertion() {
         Canvas::default().soft_keys(["A?", "", "", "", ""]);
+    }
+
+    /// A name of at most twelve letters whose whole width is `want`, or, when `cut`, wider than
+    /// `room` with a cut that is `want` wide.
+    fn name_for(room: usize, want: usize, cut: bool) -> String {
+        let alphabet: Vec<char> = "WMilantx.".chars().collect();
+        let mut seed = 1u64;
+        for _ in 0..200_000 {
+            let mut name = String::new();
+            for _ in 0..12 {
+                seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                name.push(alphabet[(seed >> 33) as usize % alphabet.len()]);
+            }
+            while text_width(&name) > room + 1 + usize::from(cut) * 8 {
+                name.pop();
+            }
+            let fits = if cut {
+                text_width(&name) > room && text_width(&truncate(&name, room)) == want
+            } else {
+                text_width(&name) == want
+            };
+            if fits {
+                return name;
+            }
+        }
+        panic!("no name for {want} in {room}");
+    }
+
+    fn expected_title(left: &str, right: &str) -> Bitmap {
+        let mut bar = Bitmap::new(WIDTH, HEIGHT);
+        bar.blit(&font().text(left), MARGIN, Canvas::top(0) + 1);
+        let ink = font().text(right);
+        bar.blit(&ink, WIDTH - MARGIN - ink.width(), Canvas::top(0) + 1);
+        for y in 0..ROW {
+            for x in 0..WIDTH {
+                let ink = bar.get(x, y);
+                bar.set(x, y, !ink);
+            }
+        }
+        bar
+    }
+
+    #[test]
+    fn a_tail_stays_whole_when_the_name_fills_its_room_and_one_pixel_each_side() {
+        let (right, tail) = ("13/13", ":ax");
+        let room = Canvas::room(text_width(right), right) - text_width(tail);
+        let cases = [
+            (
+                "a name one pixel under",
+                name_for(room, room - 1, false),
+                false,
+            ),
+            (
+                "a name that fits exactly",
+                name_for(room, room, false),
+                false,
+            ),
+            (
+                "a name cut to fill its room",
+                name_for(room, room, true),
+                true,
+            ),
+            (
+                "a name one pixel over",
+                name_for(room, room + 1, false),
+                true,
+            ),
+        ];
+        for (what, name, cut) in cases {
+            let mut canvas = Canvas::recording();
+            canvas.title_with_tail(&name, tail, right);
+            let (bitmap, calls) = canvas.into_parts();
+            let kept = truncate(&name, room);
+            assert_eq!(
+                kept.ends_with(ELLIPSIS),
+                cut,
+                "{what}: {name:?} kept as {kept:?}"
+            );
+            let left = format!("{kept}{tail}");
+            assert!(
+                calls
+                    .iter()
+                    .any(|c| matches!(c, Call::Title { left: l, .. } if *l == left)),
+                "{what}: the title is {left:?}"
+            );
+            assert!(bitmap == expected_title(&left, right), "{what}: {left:?}");
+        }
+        let joined = format!("{}{tail}", truncate(&name_for(room, room, true), room));
+        assert_eq!(
+            text_width(&joined),
+            Canvas::room(text_width(right), right) + 1
+        );
     }
 }
