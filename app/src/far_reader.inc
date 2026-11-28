@@ -30,6 +30,7 @@ FAR_DATA_ENTRY(lib_kind_prev, far_lib_kind_prev)
 FAR_DATA_ENTRY(lib_find_range, far_lib_find_range)
 FAR_DATA_ENTRY(lib_find_walk, far_lib_find_walk)
 FAR_DATA_ENTRY(lib_find_copy, far_lib_find_copy)
+FAR_DATA_ENTRY(lib_proof, far_lib_proof)
 #endif
 #ifdef FAR_ALIASES
 #define lib_read far_lib_read
@@ -59,6 +60,7 @@ FAR_DATA_ENTRY(lib_find_copy, far_lib_find_copy)
 #define lib_find_range far_lib_find_range
 #define lib_find_walk far_lib_find_walk
 #define lib_find_copy far_lib_find_copy
+#define lib_proof far_lib_proof
 #endif
 #ifdef FAR_UNALIASES
 #undef lib_read
@@ -88,4 +90,5 @@ FAR_DATA_ENTRY(lib_find_copy, far_lib_find_copy)
 #undef lib_find_range
 #undef lib_find_walk
 #undef lib_find_copy
+#undef lib_proof
 #endif
