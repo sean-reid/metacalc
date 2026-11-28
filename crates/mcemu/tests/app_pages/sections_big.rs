@@ -307,12 +307,21 @@ fn a_key_on_the_last_title_reached_by_the_keys_follows_the_rule_and_the_two_past
     let (mut moves, mut stays) = (0, 0);
     for scan in [UP, LEFT, DOWN, RIGHT] {
         list.put_sections(at.cursor, at.top);
+        let blits = list.run.blits();
         list.run.press(scan);
         let walked = list.trace("sections_key", true, 0);
         let frame = list.run.frames().last().cloned().unwrap();
         let word = |i: usize| usize::from(u16::from_le_bytes([frame[i], frame[i + 1]]));
         let name = format!("key {scan:02X} on the last title");
-        match mirror(at.cursor, at.top, scan, STAGE) {
+        let want = mirror(at.cursor, at.top, scan, STAGE);
+        list.run.release(scan);
+        list.run.run(1_500_000);
+        assert_eq!(
+            list.run.blits(),
+            blits + u16::from(want.is_some()),
+            "{name}: a move draws once and a stay draws nothing"
+        );
+        match want {
             Some(want) => {
                 assert_eq!(walked.action, 1, "{name}: redraws");
                 assert_eq!((word(2), word(4)), want, "{name}");
@@ -324,8 +333,6 @@ fn a_key_on_the_last_title_reached_by_the_keys_follows_the_rule_and_the_two_past
                 stays += 1;
             }
         }
-        list.run.release(scan);
-        list.run.run(1_500_000);
     }
     assert_eq!(
         (moves, stays),
