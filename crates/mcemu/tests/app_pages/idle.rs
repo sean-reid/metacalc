@@ -38,9 +38,10 @@ pub fn snapshot(app: &mut App) -> Vec<(u16, Vec<u8>)> {
         .map(|(from, to)| {
             let mut bytes = if from >= BANK_C {
                 let (lo, hi) = (usize::from(from - BANK_C), usize::from(to - BANK_C));
+                // A RAM page by number, whatever bank C shows.
                 app.m.ram_page(page)[lo..hi].to_vec()
             } else {
-                app.m.read_ram(from, usize::from(to - from))
+                app.peek(from, usize::from(to - from))
             };
             for (i, byte) in bytes.iter_mut().enumerate() {
                 let at = from + i as u16;
@@ -141,7 +142,7 @@ fn writes_in_the_kernels_page(app: &mut App, kind: u8, at: u16) {
     let code = [
         0xDB, 0x05, 0xF5, 0x3E, page, 0xD3, 0x05, 0x21, lo, hi, 0x34, 0xF1, 0xD3, 0x05, 0xAF, 0xC9,
     ];
-    app.m.load_ram(IDLE, &code);
+    app.poke(IDLE, &code);
     patch_idle(&mut app.m, app.built, kind, IDLE);
 }
 

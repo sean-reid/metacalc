@@ -54,10 +54,6 @@ const IDLE_HOOK: u16 = 0xB5E8;
 /// The first and the end of the RAM the rig's counters and hooks use.
 pub const HOOKS: (u16, u16) = (BLIT_HOOK, 0xB600);
 pub const SAVE_SCREEN: u16 = 0x86EC;
-/// The RAM page the reader puts in bank C for a read window (LIB_SPARE_PAGE in lib/ram.inc).
-const SPARE_PAGE: u8 = 3;
-/// What port 7 reads while bank B shows the RAM the app keeps its variables in.
-const RAM_BANK_B: u8 = 0x81;
 
 /// Loads a hook at `at`, which must end by `limit`, where the next hook or the end of the rig's RAM
 /// begins.
@@ -262,8 +258,7 @@ impl Shell {
     /// Whether the CPU is inside a reader, fm or kernel call, where bank B can show the library's flash
     /// page and bank C the spare RAM page.
     pub fn in_call(&mut self) -> bool {
-        let m = &mut self.app.m;
-        m.in_port(7) != RAM_BANK_B || m.in_port(5) == SPARE_PAGE
+        self.app.in_call()
     }
 
     /// Runs on, an instruction at a time, until the CPU is outside a reader, fm or kernel call, and
@@ -291,7 +286,7 @@ impl Shell {
     /// another bank (`at_rest`).
     pub fn peek(&mut self, at: u16, len: usize) -> Vec<u8> {
         self.at_rest();
-        self.app.m.read_ram(at, len)
+        self.app.peek(at, len)
     }
 
     fn word(&mut self, at: u16) -> u16 {
@@ -333,13 +328,13 @@ impl Shell {
 
     pub fn flag(&mut self, on: bool) {
         self.at_rest();
-        self.app.m.load_ram(FLAG, &[u8::from(on)]);
+        self.app.poke(FLAG, &[u8::from(on)]);
     }
 
     pub fn depth(&mut self) -> usize {
         self.at_rest();
         let at = self.app.label("scr_count");
-        usize::from(self.app.m.read_ram(at, 1)[0])
+        usize::from(self.app.peek(at, 1)[0])
     }
 
     /// The open frames, bottom first.
@@ -365,8 +360,8 @@ impl Shell {
             usize::from(self.app.label("SCR_VARS_SIZE")),
             usize::from(self.app.label("SCR_STACK_SIZE")),
         );
-        self.app.m.load_ram(vars + 1, &varied(2, 0xC3));
-        self.app.m.load_ram(vars + 5, &varied(vars_size - 5, 0xC4));
+        self.app.poke(vars + 1, &varied(2, 0xC3));
+        self.app.poke(vars + 5, &varied(vars_size - 5, 0xC4));
         let live = 16 * depth;
         self.app
             .m
@@ -424,11 +419,8 @@ impl Shell {
             usize::from(self.app.label("SCR_STACK_SIZE")),
             usize::from(self.app.label("SCR_VARS_SIZE")),
         );
-        assert_eq!(
-            self.app.m.read_ram(stack, stack_size),
-            vec![0x20; stack_size]
-        );
-        assert_eq!(self.app.m.read_ram(vars, vars_size), vec![0; vars_size]);
+        assert_eq!(self.app.peek(stack, stack_size), vec![0x20; stack_size]);
+        assert_eq!(self.app.peek(vars, vars_size), vec![0; vars_size]);
     }
 
     /// Presses `scan` and runs until the app leaves.
@@ -461,7 +453,7 @@ impl Shell {
     pub fn power_down(&mut self) {
         let pixels = self.lcd_bytes();
         self.at_rest();
-        self.app.m.load_ram(SAVE_SCREEN, &pixels);
+        self.app.poke(SAVE_SCREEN, &pixels);
     }
 
     pub fn sentinel(&mut self) -> (u16, u16) {

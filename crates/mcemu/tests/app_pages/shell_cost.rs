@@ -20,7 +20,7 @@ const COUNT: u16 = 0xA660;
 const LEFT_CODE: u8 = 0x02;
 
 pub fn driver_cost(app: &mut App) -> u32 {
-    app.m.load_ram(SCRATCH - 16, &[0xC9]);
+    app.poke(SCRATCH - 16, &[0xC9]);
     app.call(BASE, SCRATCH - 16, In::default()).tstates
 }
 
@@ -82,7 +82,7 @@ const PAGES_LIBRARY: [u32; 3] = [12_064, 15_811, 10_762];
 /// Clears the staging tag, so that the next draw copies its screen's strings.
 pub fn go_cold(app: &mut App) {
     let tag = app.label("APP_STAGE_TAG");
-    app.m.load_ram(tag, &[0, 0]);
+    app.poke(tag, &[0, 0]);
 }
 
 /// The frame of each screen when its strings are staged (warm) and when the staging tag is cleared
@@ -188,21 +188,21 @@ fn a_frame_of_each_screen_fits_its_warm_and_its_cold_ceiling() {
         if !open.is_empty() {
             let depth = app.label("scr_count");
             assert_eq!(
-                app.m.read_ram(depth, 1),
+                app.peek(depth, 1),
                 [1 + open.len() as u8],
                 "{name}: the screen opened"
             );
         }
         if name.starts_with("Theorem") {
-            let depth = usize::from(app.m.read_ram(app.label("scr_count"), 1)[0]);
+            let depth = usize::from(app.peek(app.label("scr_count"), 1)[0]);
             let stack = app.label("SCR_STACK") + 16 * (depth as u16 - 1);
             assert_eq!(
-                app.m.read_ram(stack, 1),
+                app.peek(stack, 1),
                 [7],
                 "{name}: the top screen is the theorem"
             );
             let hyps = app.label("TV_NHYPS");
-            assert_eq!(app.m.read_ram(hyps, 1), [0], "{name}: no hypothesis");
+            assert_eq!(app.peek(hyps, 1), [0], "{name}: no hypothesis");
         }
         let (draw, blit) = frame(&mut app);
         println!(
@@ -287,7 +287,7 @@ fn a_frame_of_the_error_notice_fits_its_ceiling() {
     let mut app = App::boot(plain());
     tap(&mut app, F1);
     let at = app.label("SCR_STACK") + 16;
-    app.m.load_ram(at + 1, &[2, 0x5A]);
+    app.poke(at + 1, &[2, 0x5A]);
     let enter = app.label("notice_enter");
     app.call(
         BASE,
@@ -323,13 +323,11 @@ fn a_frame_of_the_error_notice_fits_its_ceiling() {
 fn ignored_key(name: &str, built: &'static Built) -> (u32, u32, u32) {
     let mut app = spinning(built);
     let blits_before = app.frame();
-    app.m.load_ram(COUNT, &[0, 0]);
+    app.poke(COUNT, &[0, 0]);
     let window = 2_000_000;
     let run = app.m.run_app(window);
     assert_eq!(run.stop, Stop::Limit);
-    let count = u32::from(u16::from_le_bytes(
-        app.m.read_ram(COUNT, 2).try_into().unwrap(),
-    ));
+    let count = u32::from(u16::from_le_bytes(app.peek(COUNT, 2).try_into().unwrap()));
     assert!(count > 100, "{name}: the loop ran {count} times");
     let per_key = run.tstates / count;
     assert_eq!(app.frame(), blits_before, "ignored keys draw nothing");

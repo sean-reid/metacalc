@@ -103,11 +103,11 @@ impl DistRom {
         assert_eq!(entered.status(), 0, "assertion {n}: the enter");
         let (stack, count, tag) = (self.rom.stack, self.rom.count, self.rom.tag);
         let app = &mut self.rom.list.run.shell.app;
-        let frame = app.m.read_ram(new, 16);
+        let frame = app.peek(new, 16);
         assert_eq!(frame[0], KIND_DIST);
-        app.m.load_ram(stack + 48, &frame);
-        app.m.load_ram(count, &[4]);
-        app.m.load_ram(tag, &[0, 0]);
+        app.poke(stack + 48, &frame);
+        app.poke(count, &[4]);
+        app.poke(tag, &[0, 0]);
         let (_, draw, blit) = timed_frame_split(app);
         Cost {
             key: pushed.tstates,
@@ -121,7 +121,7 @@ impl DistRom {
     pub fn show_row(&mut self, top: usize) {
         let at = self.rom.stack + 48 + 4;
         let app = &mut self.rom.list.run.shell.app;
-        app.m.load_ram(at, &(top as u16).to_le_bytes());
+        app.poke(at, &(top as u16).to_le_bytes());
     }
 
     /// A key on the screen, timed with its frame when it draws: the answer and the cost.
@@ -162,7 +162,7 @@ impl DistRom {
         let npairs = self.rom.list.run.shell.app.label("DV_NPAIRS");
         call(&mut self.rom, "dist_open", In::default());
         let app = &mut self.rom.list.run.shell.app;
-        app.m.load_ram(npairs, &(above as u16).to_le_bytes());
+        app.poke(npairs, &(above as u16).to_le_bytes());
         let to_first_row = call(&mut self.rom, "dist_walk", In::default()).tstates;
         call(&mut self.rom, "dist_open", In::default());
         let title = call(&mut self.rom, "dist_title", In::default()).tstates;
@@ -193,8 +193,8 @@ impl DistRom {
         assert_eq!(entered.status(), 0, "the theorem's enter");
         let (count, tag) = (self.rom.count, self.rom.tag);
         let app = &mut self.rom.list.run.shell.app;
-        app.m.load_ram(count, &[3]);
-        app.m.load_ram(tag, &[0, 0]);
+        app.poke(count, &[3]);
+        app.poke(tag, &[0, 0]);
         let (_, draw, blit) = timed_frame_split(app);
         Cost {
             key: key.key,
@@ -221,7 +221,7 @@ fn on_the_reference_os_opening_frrlem1_and_pressing_down_cost_what_the_header_sa
     );
     let app = &mut dist.rom.list.run.shell.app;
     let read = |app: &mut App, at: u16| {
-        let b = app.m.read_ram(at, 2);
+        let b = app.peek(at, 2);
         usize::from(u16::from_le_bytes([b[0], b[1]]))
     };
     assert_eq!((read(app, pairs), read(app, rows)), (33, 6), "frrlem1");
@@ -236,7 +236,7 @@ fn on_the_reference_os_opening_frrlem1_and_pressing_down_cost_what_the_header_sa
     );
     assert!(cost.total() <= OPEN_BUDGET, "inside 300 ms");
     let ida = dist.rom.list.run.shell.app.label("DV_IDA");
-    let id = dist.rom.list.run.shell.app.m.read_ram(ida, 1)[0];
+    let id = dist.rom.list.run.shell.app.peek(ida, 1)[0];
     let token = call(
         &mut dist.rom,
         "dist_token",

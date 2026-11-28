@@ -44,7 +44,7 @@ pub fn measure(app: &mut App, target: u16, input: In) -> Done {
     let stop = app.label("screen_ret");
     let [lo, hi] = target.to_le_bytes();
     let [slo, shi] = stop.to_le_bytes();
-    app.m.load_ram(app.driver, &[0xCD, lo, hi, 0xC3, slo, shi]);
+    app.poke(app.driver, &[0xCD, lo, hi, 0xC3, slo, shi]);
     app.m.out_port(0x06, BASE);
     app.m.set_regs(&Regs {
         af: u16::from(input.a) << 8 | u16::from(input.f),
@@ -159,8 +159,8 @@ impl Rom {
         let at = (n as u16).to_le_bytes();
         let bytes = [KIND_LIST, stage, at[0], at[1], at[0], at[1]];
         let app = &mut self.list.run.shell.app;
-        app.m.load_ram(frame, &bytes);
-        app.m.load_ram(self.count, &[2]);
+        app.poke(frame, &bytes);
+        app.poke(self.count, &[2]);
     }
 
     /// ENTER on the list with the cursor on `n`: the key, the enter and the first frame, timed, with
@@ -192,10 +192,10 @@ impl Rom {
             },
         );
         assert_eq!(entered.status(), 0, "assertion {n}: the enter");
-        let bytes = app.m.read_ram(new, 16);
-        app.m.load_ram(self.stack + 32, &bytes);
-        app.m.load_ram(self.count, &[3]);
-        app.m.load_ram(self.tag, &[0, 0]);
+        let bytes = app.peek(new, 16);
+        app.poke(self.stack + 32, &bytes);
+        app.poke(self.count, &[3]);
+        app.poke(self.tag, &[0, 0]);
         let drawn = timed_frame(app);
         (pushed.tstates, entered.tstates, drawn)
     }
@@ -203,7 +203,7 @@ impl Rom {
     /// The theorem screen's frame at the top of the stack.
     pub fn frame(&mut self) -> [u8; FRAME] {
         let app = &mut self.list.run.shell.app;
-        app.m.read_ram(self.stack + 32, FRAME).try_into().unwrap()
+        app.peek(self.stack + 32, FRAME).try_into().unwrap()
     }
 
     /// `key` on the open theorem screen, timed with its frame when it draws: the answer and the
@@ -242,7 +242,7 @@ impl Lister {
     /// The stage the open list is of, from its frame.
     pub fn stage_of_frame(&mut self) -> u8 {
         let stack = self.run.shell.app.label("SCR_STACK");
-        self.run.m().read_ram(stack + 17, 1)[0]
+        self.run.shell.app.peek(stack + 17, 1)[0]
     }
 }
 

@@ -14,6 +14,7 @@ fn app_on_is_clear_at_the_start() {
     let sc = script(&[KIND_LIBRARIES], &slices(2, false).slices);
     let mut rig = Rig::stub(three_stages(), Enter::Real, &sc);
     let at = rig.shell.app.label("APP_ON");
+    // Nothing has run yet, so no call is open.
     rig.m().load_ram(at, &[0xAA]);
     assert_eq!(
         rig.ram(at, 1),
@@ -87,7 +88,7 @@ fn the_other_kinds_leave_app_on_alone() {
         "checking has its own"
     );
     let on = built.label("APP_ON");
-    app.m.load_ram(on, &[1]);
+    app.poke(on, &[1]);
     let done = app.call(
         BASE,
         shared,
@@ -99,7 +100,7 @@ fn the_other_kinds_leave_app_on_alone() {
     );
     assert_eq!(done.regs.af >> 8, 0, "SCR_STAY");
     assert_eq!(done.regs.af & 1, 0, "carry clear");
-    assert_eq!(app.m.read_ram(on, 1), [1], "APP_ON is as it was");
+    assert_eq!(app.peek(on, 1), [1], "APP_ON is as it was");
 }
 
 /// A key held down while work is pending is not an ON: APP_ON stays 0 at every idle point while it

@@ -124,7 +124,7 @@ pub fn settle_list(shell: &mut Shell, ui: &mut mcui::Ui) {
 pub fn list_preview(shell: &mut Shell) -> u8 {
     shell.at_rest();
     let at = shell.app.label("LV_PREVIEW");
-    shell.app.m.read_ram(at, 1)[0]
+    shell.app.peek(at, 1)[0]
 }
 
 /// Presses `scan` on a stage row, which opens its list in the app and the model, and runs the

@@ -128,6 +128,7 @@ impl Rig {
         }
         let mut rig = Rig::stub(built, enter, script);
         rig.m().press_key(LAUNCH_KEY);
+        // Nothing has run yet, so no call is open.
         rig.m().load_ram(KBD_KEY, &[LAUNCH_KEY]);
         rig
     }

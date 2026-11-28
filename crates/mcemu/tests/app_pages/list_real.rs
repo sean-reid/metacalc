@@ -54,7 +54,7 @@ impl Lister {
     /// Takes the wait away from the preview the next idle call lays out.
     pub fn skip_the_wait(&mut self) {
         let count = self.run.shell.app.label("LV_COUNT");
-        self.run.m().load_ram(count, &[0]);
+        self.run.shell.app.poke(count, &[0]);
     }
 }
 
@@ -252,8 +252,8 @@ fn at_df_rng() -> (Lister, usize) {
         list.run.shell.app.label("LV_COUNT"),
         list.run.shell.app.label("LV_PREVIEW"),
     );
-    list.run.m().load_ram(count, &[0]);
-    list.run.m().load_ram(preview, &[PENDING]);
+    list.run.shell.app.poke(count, &[0]);
+    list.run.shell.app.poke(preview, &[PENDING]);
     let quiet = list.quiet_key();
     list.tap_quiet(quiet);
     (list, n)
@@ -339,9 +339,9 @@ fn idle_costs(stage: usize) -> Vec<u32> {
     let mut costs = Vec::with_capacity(end);
     for n in 0..end {
         let at = (n as u16).to_le_bytes();
-        app.m.load_ram(frame + 2, &[at[0], at[1], at[0], at[1]]);
-        app.m.load_ram(count, &[0]);
-        app.m.load_ram(preview, &[PENDING]);
+        app.poke(frame + 2, &[at[0], at[1], at[0], at[1]]);
+        app.poke(count, &[0]);
+        app.poke(preview, &[PENDING]);
         let done = app.timed(
             BASE,
             idle,

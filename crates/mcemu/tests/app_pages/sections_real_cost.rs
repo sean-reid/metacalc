@@ -43,13 +43,13 @@ impl Probe {
     pub fn put(&mut self, cursor: usize, top: usize) {
         let (c, t) = ((cursor as u16).to_le_bytes(), (top as u16).to_le_bytes());
         let frame = self.frame;
-        self.app().m.load_ram(frame + 2, &[c[0], c[1], t[0], t[1]]);
+        self.app().poke(frame + 2, &[c[0], c[1], t[0], t[1]]);
     }
 
     /// The cursor and the first title shown in the frame.
     pub fn at(&mut self) -> (usize, usize) {
         let frame = self.frame;
-        let b = self.app().m.read_ram(frame + 2, 4);
+        let b = self.app().peek(frame + 2, 4);
         (
             usize::from(u16::from_le_bytes([b[0], b[1]])),
             usize::from(u16::from_le_bytes([b[2], b[3]])),
@@ -102,7 +102,7 @@ impl Probe {
         let draw = app.label("scr_draw");
         let [lo, hi] = draw.to_le_bytes();
         let [slo, shi] = stop.to_le_bytes();
-        app.m.load_ram(app.driver, &[0xCD, lo, hi, 0xC3, slo, shi]);
+        app.poke(app.driver, &[0xCD, lo, hi, 0xC3, slo, shi]);
         app.m.out_port(0x06, BASE);
         app.m.set_regs(&Regs {
             af: 0,

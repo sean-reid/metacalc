@@ -19,7 +19,7 @@ fn the_decimal_conversion_writes_each_number_with_no_leading_zero_and_nothing_pa
     for n in [
         0u16, 1, 9, 10, 11, 99, 100, 101, 999, 1000, 1001, 9999, 10000, 10001, 12345, 40000, 65535,
     ] {
-        app.m.load_ram(into, &[0xEE; 8]);
+        app.poke(into, &[0xEE; 8]);
         let done = app.call(
             BASE,
             at,
@@ -36,12 +36,12 @@ fn the_decimal_conversion_writes_each_number_with_no_leading_zero_and_nothing_pa
             "{n}: where it ends"
         );
         assert_eq!(
-            app.m.read_ram(into, digits.len()),
+            app.peek(into, digits.len()),
             digits.bytes().map(|d| zero + d - b'0').collect::<Vec<u8>>(),
             "{n}: the digits"
         );
         let len = digits.len();
-        let tail = app.m.read_ram(into + len as u16, 8 - len);
+        let tail = app.peek(into + len as u16, 8 - len);
         assert!(
             tail[..5 - len]
                 .iter()

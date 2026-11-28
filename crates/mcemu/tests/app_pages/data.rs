@@ -12,7 +12,7 @@ const PARAMS: u16 = 0xA400;
 fn the_library_page_is_the_one_below_the_three_code_pages() {
     let mut app = App::start(with_library());
     let at = app.label("libPage");
-    assert_eq!(app.m.read_ram(at, 1), [LIBRARY_PAGE]);
+    assert_eq!(app.peek(at, 1), [LIBRARY_PAGE]);
     assert_eq!(LIBRARY_PAGE, 0x66);
 }
 
@@ -27,7 +27,7 @@ fn kernel_init_called_by_a_ram_driver_reads_its_block_across_the_pages() {
     for limit in [0xFFFFu16; 4] {
         params.extend(limit.to_le_bytes());
     }
-    app.m.load_ram(PARAMS, &params);
+    app.poke(PARAMS, &params);
     let init = app.far(
         "far_kernel_init",
         In {
@@ -54,7 +54,7 @@ fn kernel_refs_called_through_its_far_entry_gives_the_list_of_the_last_verify() 
     for limit in [0xFFFFu16; 4] {
         params.extend(limit.to_le_bytes());
     }
-    app.m.load_ram(PARAMS, &params);
+    app.poke(PARAMS, &params);
     let init = In {
         hl: PARAMS,
         ..In::default()

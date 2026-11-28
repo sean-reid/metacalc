@@ -27,14 +27,14 @@ fn title_cost(table: bool) -> u32 {
     for scan in [F1, F1] {
         tap(&mut app, scan);
     }
-    let kind = app.m.read_ram(app.label("SCR_STACK") + 32, 1)[0];
+    let kind = app.peek(app.label("SCR_STACK") + 32, 1)[0];
     assert_eq!(
         kind,
         crate::theorem_rig::KIND_THEOREM,
         "the theorem is open"
     );
     assert_eq!(
-        app.m.read_ram(app.label("TV_TABLE"), 1),
+        app.peek(app.label("TV_TABLE"), 1),
         [u8::from(table)],
         "the table is the library's: {table}"
     );

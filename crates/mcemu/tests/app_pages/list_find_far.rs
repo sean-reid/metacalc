@@ -53,7 +53,7 @@ fn the_far_entries_find_a_range_walk_it_and_copy_it() {
         for label in &lib.labels {
             for p in 1..=label.len().min(8) {
                 let prefix = &label[..p];
-                app.m.load_ram(PREFIX_AT, prefix);
+                app.poke(PREFIX_AT, prefix);
                 let done = app.far(
                     "far_lib_find_range",
                     In {
@@ -76,7 +76,7 @@ fn the_far_entries_find_a_range_walk_it_and_copy_it() {
                         block.extend(word.to_le_bytes());
                     }
                     block.push(kind);
-                    app.m.load_ram(BLOCK_AT, &block);
+                    app.poke(BLOCK_AT, &block);
                     let done = app.far(
                         "far_lib_find_walk",
                         In {
@@ -97,7 +97,7 @@ fn the_far_entries_find_a_range_walk_it_and_copy_it() {
                     assert_eq!((done.status(), done.regs.hl), (0, answer), "kind {kind}");
                     walks += 1;
                 }
-                app.m.load_ram(COPY_AT, &[0xE5; 0x100]);
+                app.poke(COPY_AT, &[0xE5; 0x100]);
                 let done = app.far(
                     "far_lib_find_copy",
                     In {
@@ -110,7 +110,7 @@ fn the_far_entries_find_a_range_walk_it_and_copy_it() {
                 );
                 let taken = usize::from(want.1).min(127);
                 assert_eq!((done.status(), usize::from(done.regs.hl)), (0, taken));
-                let bytes = app.m.read_ram(COPY_AT, 2 * taken);
+                let bytes = app.peek(COPY_AT, 2 * taken);
                 let first = usize::from(want.0);
                 let section: Vec<u8> = lib.order[first..first + taken]
                     .iter()

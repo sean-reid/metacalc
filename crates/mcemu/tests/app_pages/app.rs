@@ -26,6 +26,10 @@ pub const DRIVER_RAM: [(u16, u16); 7] = [
     (0xB000, 0xB100),
 ];
 const LIMIT: u32 = 100_000_000;
+/// The RAM page the reader puts in bank C for a read window (LIB_SPARE_PAGE in lib/ram.inc).
+const SPARE_PAGE: u8 = 3;
+/// What port 7 reads while bank B shows the RAM the app keeps its variables in.
+const RAM_BANK_B: u8 = 0x81;
 const BOOT: u32 = 3_000_000;
 
 /// The pages' numbers as pages.inc lays them out, written here and not read from the app.
@@ -95,7 +99,7 @@ impl App {
     }
 
     /// `boot` with `setup` run on the launched machine before the app's first instruction: it may
-    /// fill RAM or patch the installed pages.
+    /// fill RAM or patch the installed pages, and as no instruction has run its writes are raw.
     pub fn boot_with(built: &'static Built, setup: impl FnOnce(&mut Machine)) -> App {
         let mut m = Machine::new(STUB_ROM).expect("stub ROM boots");
         m.install_app(&built.file, BASE).expect("the app installs");
@@ -152,8 +156,49 @@ impl App {
         self.built.label(name)
     }
 
+    /// Whether the CPU is inside a reader, fm or kernel call, where bank B can show the library's
+    /// flash page and bank C the spare RAM page.
+    pub fn in_call(&mut self) -> bool {
+        self.m.in_port(7) != RAM_BANK_B || self.m.in_port(5) == SPARE_PAGE
+    }
+
+    /// Panics, naming the pc and the banks, when the CPU is inside a reader, fm or kernel call that
+    /// maps another bank. It reads ports 5 and 7, which have no side effects, and runs no
+    /// instruction, so a read or write after it sits where the test stopped. On the reference OS
+    /// every stop of the ignored tests that reads or writes the app's RAM has port 7 at 81h and
+    /// port 5 at 00h, so the same test serves both.
+    #[track_caller]
+    pub fn assert_at_rest(&mut self) {
+        if !self.in_call() {
+            return;
+        }
+        panic!(
+            "the stop is inside a call that maps another bank: pc {:04X}, port 7 = {:02X} (the \
+             app's RAM is {RAM_BANK_B:02X}), port 5 = {:02X} (the spare page is {SPARE_PAGE:02X})",
+            self.m.regs().pc,
+            self.m.in_port(7),
+            self.m.in_port(5)
+        );
+    }
+
+    /// `len` bytes of RAM at `at`, read where the machine stands once it is at rest.
+    #[track_caller]
+    pub fn peek(&mut self, at: u16, len: usize) -> Vec<u8> {
+        self.assert_at_rest();
+        self.m.read_ram(at, len)
+    }
+
+    /// Writes `bytes` to RAM at `at` where the machine stands once it is at rest.
+    #[track_caller]
+    pub fn poke(&mut self, at: u16, bytes: &[u8]) {
+        self.assert_at_rest();
+        self.m.load_ram(at, bytes);
+    }
+
+    /// The frame on the canvas, read where the machine stands once it is at rest.
+    #[track_caller]
     pub fn frame(&mut self) -> Vec<u8> {
-        self.m.read_ram(UI_FRAME, FRAME_LEN)
+        self.peek(UI_FRAME, FRAME_LEN)
     }
 
     /// Calls `target` from the page numbered `page`, as port 6 reads there, by a driver in RAM that

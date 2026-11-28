@@ -212,8 +212,8 @@ fn a_frame_byte_equal_to_a_fixed_value_does_not_hide_a_power_down() {
     let (sentinel, frame) = shell.sentinel();
     for byte in [0x00, 0xFF, 0xA5, 0x5A, 0x55, 0xAA, 0x01, 0x80] {
         let (enters, blits) = (shell.enters(KIND_LIBRARIES), shell.blits());
-        shell.app.m.load_ram(frame, &[byte]);
-        shell.app.m.load_ram(sentinel, &[byte]);
+        shell.app.poke(frame, &[byte]);
+        shell.app.poke(sentinel, &[byte]);
         shell.tap(F4);
         assert_eq!(
             shell.enters(KIND_LIBRARIES),
@@ -221,8 +221,8 @@ fn a_frame_byte_equal_to_a_fixed_value_does_not_hide_a_power_down() {
             "frame byte {byte:02X} copied over the sentinel"
         );
         assert_eq!(shell.blits(), blits + 1);
-        shell.app.m.load_ram(frame, &[byte]);
-        shell.app.m.load_ram(sentinel, &[!byte]);
+        shell.app.poke(frame, &[byte]);
+        shell.app.poke(sentinel, &[!byte]);
         shell.tap(F4);
         assert_eq!(
             shell.enters(KIND_LIBRARIES),
@@ -259,7 +259,7 @@ fn a_notice_number_past_the_tables_draws_the_error_notice() {
     let mut shell = booted(plain(), Enter::Real);
     shell.tap(F1);
     let at = shell.app.label("SCR_STACK") + 16 + 1;
-    shell.app.m.load_ram(at, &[9]);
+    shell.app.poke(at, &[9]);
     let blits = shell.blits();
     shell.power_down();
     shell.tap(F4);

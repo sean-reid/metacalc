@@ -1,5 +1,7 @@
-//! The rig's reads and writes of the app's RAM wait for the resting banks: stopped inside a reader
-//! call that maps another bank, a raw read returns that bank's bytes and the rig's getters the app's.
+//! The rig's reads and writes of the app's RAM at the resting banks: stopped inside a reader call
+//! that maps another bank, a raw read returns that bank's bytes, the Shell's and Run's getters wait
+//! for the call to end and return the app's, and a bare App's checked reads and writes refuse the
+//! stop, naming the pc and the banks, and at rest run nothing and change nothing.
 
 use crate::app::*;
 use crate::list_depth::alternating_marks;
@@ -204,4 +206,98 @@ fn a_power_down_inside_a_call_lands_in_the_apps_ram() {
 fn a_table_read_that_does_not_run_the_machine_refuses_inside_a_call() {
     let mut at = inside_a_call(Region::Table);
     at.list.run.raw_table_here();
+}
+
+#[test]
+#[should_panic(expected = "the stop is inside a call that maps another bank: pc ")]
+fn a_bare_apps_frame_refuses_inside_a_call() {
+    let mut at = inside_a_call(Region::Frame);
+    at.list.run.shell.app.frame();
+}
+
+#[test]
+#[should_panic(expected = "the stop is inside a call that maps another bank: pc ")]
+fn a_bare_apps_peek_refuses_inside_a_call() {
+    let mut at = inside_a_call(Region::Frame);
+    at.list.run.shell.app.peek(FLAG, 1);
+}
+
+#[test]
+#[should_panic(expected = "the stop is inside a call that maps another bank: pc ")]
+fn a_bare_apps_poke_refuses_inside_a_call() {
+    let mut at = inside_a_call(Region::Frame);
+    at.list.run.shell.app.poke(FLAG, &[1]);
+}
+
+#[test]
+#[should_panic(expected = "the stop is inside a call that maps another bank: pc ")]
+fn setting_the_on_flag_refuses_inside_a_call() {
+    let mut at = inside_a_call(Region::Frame);
+    at.list.run.set_on_flag();
+}
+
+#[test]
+fn a_bare_apps_reads_and_writes_pass_at_rest_and_run_nothing() {
+    let mut at = inside_a_call(Region::Frame);
+    let app = at.app.clone();
+    at.list.run.shell.at_rest();
+    let (clock, regs) = (at.list.run.m().clock(), at.list.run.m().regs());
+    let bare = &mut at.list.run.shell.app;
+    assert!(!bare.in_call(), "the app is at rest");
+    assert_eq!(bare.frame(), app, "the frame");
+    assert_eq!(bare.peek(FLAG, 1), [0]);
+    bare.poke(FLAG, &[1]);
+    assert_eq!(bare.peek(FLAG, 1), [1]);
+    assert_eq!(bare.m.clock(), clock, "no T-state ran");
+    assert_eq!(bare.m.regs(), regs, "no instruction ran");
+}
+
+#[test]
+fn the_refusal_names_the_banks_and_the_pc() {
+    let mut at = inside_a_call(Region::Frame);
+    let bare = &mut at.list.run.shell.app;
+    let (pc, port7, port5) = (bare.m.regs().pc, bare.m.in_port(7), bare.m.in_port(5));
+    let said = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| bare.frame()))
+        .expect_err("the read refuses")
+        .downcast::<String>()
+        .expect("a message");
+    assert!(
+        said.starts_with("the stop is inside a call that maps another bank: pc "),
+        "{said}"
+    );
+    assert!(said.contains(&format!("{pc:04X}")), "{said}");
+    assert!(said.contains(&format!("port 7 = {port7:02X}")), "{said}");
+    assert!(said.contains(&format!("port 5 = {port5:02X}")), "{said}");
+}
+
+/// Everything the harness exposes of the machine: the clock, the registers, the bank ports, the
+/// bank writes since the last run and the RAM pages.
+type State = (u32, mcemu::Regs, [u8; 3], Vec<(u8, u8)>, Vec<Vec<u8>>);
+
+fn state(m: &mut mcemu::Machine) -> State {
+    let ports = [m.in_port(5), m.in_port(6), m.in_port(7)];
+    let pages = (0..3).map(|n| m.ram_page(n).to_vec()).collect();
+    (m.clock(), m.regs(), ports, m.banks_written(), pages)
+}
+
+#[test]
+fn the_check_changes_nothing_of_the_machine_inside_a_call_or_at_rest() {
+    let mut at = inside_a_call(Region::Frame);
+    let bare = &mut at.list.run.shell.app;
+    let before = state(&mut bare.m);
+    let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| bare.assert_at_rest()));
+    assert!(refused.is_err(), "the check refuses inside a call");
+    assert!(
+        state(&mut bare.m) == before,
+        "a refusal left the machine as it was"
+    );
+    at.list.run.shell.at_rest();
+    let bare = &mut at.list.run.shell.app;
+    let before = state(&mut bare.m);
+    bare.assert_at_rest();
+    bare.assert_at_rest();
+    assert!(
+        state(&mut bare.m) == before,
+        "a pass left the machine as it was"
+    );
 }
