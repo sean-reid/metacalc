@@ -1,5 +1,5 @@
-; The screens of lcdcheck. Contract: the including file defines putchar-callable text through
-; the OS, P_TMP, P_TMP2 and P_STR (printnum.inc) and S_T2.
+; The screens of lcdcheck. putchar, here, is the one call of _PutC. Contract: the including file
+; defines P_TMP, P_TMP2 and P_STR (printnum.inc), S_T2 and S_SLOTP.
 
 ; Contract: A is one character.
 putchar:
@@ -259,6 +259,3 @@ txt_n1:
 	.db "2nd", 0
 txt_n2:
 	.db "alpha", 0
-
-; test-check-8xk.sh edits the signature field in one hex record, so it must not start across two
-	.db 0, 0

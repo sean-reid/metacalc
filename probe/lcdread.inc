@@ -5,9 +5,7 @@
 ; column of the first one, FFh and FFh when there is none. The row is a pixel row, 0 to 63, the
 ; column a byte of 8 pixels, 0 to 11.
 
-PAT_LCD_ROWS = 56
-PAT_LCD_BYTES = PAT_LCD_ROWS * UI_STRIDE
-SNAP_BYTES = (UI_HEIGHT - PAT_LCD_ROWS) * UI_STRIDE
+; The including file defines PAT_LCD_ROWS, PAT_LCD_BYTES, SNAP_BYTES, LCD_BUF and the scratch below.
 
 ; Contract: A is i mod 256. Returns pat(i) in A; destroys B and C and the flags.
 pat:
