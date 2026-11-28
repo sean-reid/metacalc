@@ -147,6 +147,10 @@ zero_last_byte() {
 # mutate sed-script name: applies the script to the good file and fixes the checksums.
 mutate() {
 	sed "$1" "$good" > "$dir/$2.tmp"
+	if cmp -s "$good" "$dir/$2.tmp"; then
+		echo "test-check-8xk: the mutation $2 changed nothing in $good" >&2
+		exit 1
+	fi
 	resum "$dir/$2.tmp" "$dir/$2.8xk"
 }
 
@@ -192,6 +196,34 @@ set_field() {
 
 fill() { printf '%*s' "$1" '' | tr ' ' F; }
 hexlen() { printf %02X "$1"; }
+
+# rewrap in out: the file with every page's data in records of 32 bytes, but for the last page, whose
+# first record is cut so that a record ends just after the first byte of the signature field, which
+# then spans two records.
+rewrap() {
+	{
+		head -n 1 "$1"
+		tail -n +2 "$1" | awk "$HEX"'
+			function flush(last,   n, pos, size, take, body) {
+				n = length(data) / 2
+				size = 32
+				if (last && n > 95) { size = (n - 95) % 32; if (size == 0) size = 32 }
+				for (pos = 0; pos < n; pos += take) {
+					take = size < n - pos ? size : n - pos
+					body = sprintf("%02X%04X00", take, 16384 + pos) substr(data, 2 * pos + 1, 2 * take)
+					printf ":%s%02X\r\n", body, checksum(body)
+					size = 32
+				}
+				data = ""
+			}
+			/^:02000002/ { flush(0); print; next }
+			/^:00000001FF/ { flush(1); print; next }
+			/^:[0-9A-F]{6}00/ { data = data substr($0, 10, 2 * hex(substr($0, 2, 2))); next }
+			{ print }
+		'
+	} > "$2"
+	unlf "$2"
+}
 
 # append_ff in out: the file with one FF byte after the signature field, in a record of its own.
 append_ff() {
@@ -353,9 +385,6 @@ if [ -z "$library" ]; then
 	mutate 's/807F00000000/807F00000001/' header
 	refuses header "bytes between the header and 4080h"
 
-	mutate "s/022D$(hexlen "$n")/022D$(hexlen $((n + 1)))/" signature
-	refuses signature "no signature field"
-
 	zero_last_byte "$good" "$dir/after-signature.tmp"
 	resum "$dir/after-signature.tmp" "$dir/after-signature.8xk"
 	refuses after-signature "a byte after the signature that is not padding" "no signature field"
@@ -374,6 +403,21 @@ if [ -z "$library" ]; then
 	long="022D$(hexlen $((n + 1)))$sig$trailer$(fill $pad)"
 	set_field "$dir/length-over.8xk" "$long"
 	refuses length-over "a length byte one over the signature bytes present" "no signature field"
+	rewrap "$good" "$dir/split.8xk"
+	run_check "$dir/split.8xk" "$name" > /dev/null || {
+		echo "test-check-8xk: refused a correct file with the signature field across two records" >&2
+		exit 1
+	}
+	if grep -aq "022D$(hexlen "$n")" "$dir/split.8xk"; then
+		echo "test-check-8xk: the signature field is not across two records in split.8xk" >&2
+		exit 1
+	fi
+	saved=$good
+	good=$dir/split.8xk
+	read_field
+	set_field "$dir/split-length-over.8xk" "$long"
+	good=$saved
+	refuses split-length-over "a length byte one over the signature bytes present, the field across two records" "no signature field"
 	empty="022D00${trailer}$(fill $((192 - 6 - 2 * t)))"
 	set_field "$dir/zero-length.8xk" "$empty"
 	refuses zero-length "a zero-length signature" "no signature field"
