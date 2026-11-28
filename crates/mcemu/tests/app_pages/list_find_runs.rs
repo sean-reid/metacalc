@@ -100,8 +100,8 @@ fn library_with(n: usize) -> &'static crate::built::Built {
 }
 
 /// The list under Unchecked over a table that checks every assertion but the one that is last in the
-/// label order among the `n` that start with "zq", which is the only one in the second run once there are
-/// more than 127. Returns it with that assertion's number.
+/// label order among the `n` that start with "zq", which is the only one in its run once there are more
+/// than 127. Returns it with that assertion's number.
 fn last_unchecked(n: usize) -> (Lister, usize) {
     let built = library_with(n);
     let labels = labels_of(built);
@@ -129,8 +129,8 @@ fn last_unchecked(n: usize) -> (Lister, usize) {
 }
 
 #[test]
-fn a_range_of_127_128_and_254_entries_takes_one_two_and_two_runs_and_finds_the_last_in_the_order() {
-    for (n, runs) in [(127, 1), (128, 2), (254, 2)] {
+fn a_range_of_127_128_254_and_255_entries_takes_one_two_two_and_three_runs_and_finds_the_last() {
+    for (n, runs) in [(127, 1), (128, 2), (254, 2), (255, 3)] {
         let (mut list, last) = last_unchecked(n);
         list.type_text("z");
         list.fail_at(0, "far_lib_find_copy", 99, 3);

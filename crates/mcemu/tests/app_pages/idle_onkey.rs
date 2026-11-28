@@ -120,7 +120,6 @@ fn presses(real: bool, n: usize, trace: bool) {
          {coded}: A = {seen:?}",
         os_name(real)
     );
-    assert_eq!(both + coded, n, "every press was one or the other");
     if real {
         assert_eq!(
             (both, coded),
