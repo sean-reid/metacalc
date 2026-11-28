@@ -44,7 +44,8 @@ fn need(rig: &mut Rig, n: u8) -> Out {
         bc: 0x5A5A,
         de: 0xA5A5,
         hl: 0x3C3C,
-        ..Regs::default()
+        ix: 0x1234,
+        iy: 0x5678,
     };
     rig.call("LW_NEED", regs)
 }
@@ -54,6 +55,8 @@ fn cursor(rig: &mut Rig) -> u32 {
     u32::from(out.status()) << 16 | u32::from(out.hl)
 }
 
+const NEEDS: [u8; 3] = [1, 2, WINDOW as u8];
+
 #[derive(Default)]
 struct Tally {
     hit: usize,
@@ -61,37 +64,44 @@ struct Tally {
     refused: usize,
     cold: usize,
     warm: usize,
+    crossed: usize,
+    /// Per need: hits, hits where the window held exactly the need, and refills where it held one
+    /// fewer.
+    hits: [usize; 3],
+    exact: [usize; 3],
+    short_by_one: [usize; 3],
 }
 
-/// One call of lw_need with the library `bytes` ending at `length`, the cursor at `at`, and the
-/// window `behind` bytes before the cursor when that is not 0. Returns false when the window
-/// cannot be put there.
+/// One call of lw_need with the library `bytes` ending at `length` and the cursor at `at`. With
+/// `behind` the window is first filled that many bytes before the cursor, which then moves to it;
+/// without, the window is empty. Returns false when the window cannot be put there.
 fn case(
     rig: &mut Rig,
     bytes: &[u8],
     length: u32,
     at: u32,
     n: u8,
-    behind: u32,
+    behind: Option<u32>,
     t: &mut Tally,
 ) -> bool {
-    let what = format!("length {length}, cursor {at}, need {n}, window {behind} behind");
+    let what = format!("length {length}, cursor {at}, need {n}, window {behind:?} behind");
     set_length(rig, length);
     let base = rig.label("LR_WBASE");
     rig.poke(base, &[0; 3]);
     rig.poke(rig.label("LR_WLEN"), &[0, 0]);
-    if behind > 0 {
+    if let Some(behind) = behind {
         if at < behind || at - behind >= length {
             return false;
         }
         seek(rig, at - behind);
         assert_eq!(need(rig, 1).status(), 0, "{what}: the window before");
-        t.warm += 1;
-    } else {
-        t.cold += 1;
     }
     seek(rig, at);
     let before = window(rig);
+    match behind {
+        Some(behind) if before.wp == behind as u8 && before.len > before.wp => t.warm += 1,
+        _ => t.cold += 1,
+    }
     assert_eq!(
         before.base + u32::from(before.wp),
         at,
@@ -107,18 +117,29 @@ fn case(
     let out = need(rig, n);
     let after = window(rig);
     let read = [rig.named("LR_DEST", 2), rig.named("LR_OFF", 3)].concat();
+    let which = NEEDS.iter().position(|&k| k == n).unwrap();
+    assert_eq!((out.ix, out.iy), (0x1234, 0x5678), "{what}: IX and IY");
     let accepted = u64::from(at) + u64::from(n) <= u64::from(length);
     let zero = out.af & ZERO != 0;
     assert_eq!(zero, accepted, "{what}: flags {:02x}", out.af & 0xFF);
     assert_eq!(out.status(), if accepted { 0 } else { ST_BAD }, "{what}: A");
     if hold >= n {
         t.hit += 1;
+        t.hits[which] += 1;
+        t.exact[which] += usize::from(hold == n);
+        assert_eq!(
+            (out.bc >> 8, out.de),
+            (0x5A, 0xA5A5),
+            "{what}: B and DE on a held need"
+        );
         assert!(accepted, "{what}: the window holds bytes past the end");
         assert_eq!(after, seeded, "{what}: a window that holds enough is kept");
         assert_eq!(read, [MARK; 5], "{what}: nothing was read");
     } else if accepted {
         t.filled += 1;
         let take = WINDOW.min((length - at) as usize);
+        t.crossed += usize::from(at / PAGE != (at + take as u32 - 1) / PAGE);
+        t.short_by_one[which] += usize::from(hold + 1 == n);
         let from = at as usize;
         let want = bytes[from..from + take].to_vec();
         let held = Window {
@@ -130,6 +151,7 @@ fn case(
         assert_eq!(after, held, "{what}: the refilled window");
     } else {
         t.refused += 1;
+        t.short_by_one[which] += usize::from(hold + 1 == n);
         let held = Window {
             base: at,
             len: 0,
@@ -144,16 +166,31 @@ fn case(
     true
 }
 
+/// Per need of 1, 2 and 32: hits, hits where the window held exactly the need, and needs the
+/// window fell one byte short of.
+fn floors(t: &Tally, hits: [usize; 3], exact: [usize; 3], short: [usize; 3]) {
+    for i in 0..3 {
+        let need = NEEDS[i];
+        assert!(t.hits[i] >= hits[i], "need {need}: {} hits", t.hits[i]);
+        assert!(t.exact[i] >= exact[i], "need {need}: {} exact", t.exact[i]);
+        assert!(
+            t.short_by_one[i] >= short[i],
+            "need {need}: {} one short",
+            t.short_by_one[i]
+        );
+    }
+}
+
 fn sweep(rig: &mut Rig, bytes: &[u8], lengths: &[u32], t: &mut Tally) -> usize {
     let mut cases = 0;
     for &length in lengths {
-        for n in [1u8, 2, WINDOW as u8] {
+        for n in NEEDS {
             let last = length - u32::from(n);
             let mut cursors = vec![last - 1, last, last + 1, last + 2, length, length + 1];
             cursors.push(length + 0x10000);
             cursors.push(length + u32::from(n));
             for at in cursors {
-                for behind in [0, 5, 31] {
+                for behind in [None, Some(0), Some(1), Some(5), Some(31)] {
                     cases += usize::from(case(rig, bytes, length, at, n, behind, t));
                 }
             }
@@ -191,9 +228,15 @@ fn lw_need_accepts_up_to_the_last_byte_and_refuses_from_one_past_it() {
         t.cold,
         t.warm
     );
-    assert!(cases >= 60, "{cases}");
-    assert!(t.hit >= 6 && t.filled >= 12 && t.refused >= 30, "{}", t.hit);
-    assert!(t.cold >= 24 && t.warm >= 24);
+    println!(
+        "{} crossed, hits {:?}, exact {:?}, short {:?}",
+        t.crossed, t.hits, t.exact, t.short_by_one
+    );
+    assert!(cases >= 80, "{cases}");
+    assert!(t.hit >= 15 && t.filled >= 13 && t.refused >= 55);
+    assert!(t.cold >= 48 && t.warm >= 34);
+    floors(&t, [7, 5, 2], [4, 2, 2], [19, 5, 3]);
+    assert_eq!(t.crossed, 0, "the whole library is inside one page");
 }
 
 #[test]
@@ -254,6 +297,12 @@ fn the_end_is_found_across_16_kb_and_64_kb_boundaries() {
         t.cold,
         t.warm
     );
-    assert!(t.hit >= 90 && t.filled >= 180 && t.refused >= 700);
-    assert!(t.cold >= 300 && t.warm >= 300);
+    println!(
+        "{} crossed, hits {:?}, exact {:?}, short {:?}",
+        t.crossed, t.hits, t.exact, t.short_by_one
+    );
+    assert!(t.hit >= 240 && t.filled >= 210 && t.refused >= 880);
+    assert!(t.cold >= 780 && t.warm >= 550);
+    assert!(t.crossed >= 60, "{} refills crossed a page", t.crossed);
+    floors(&t, [120, 90, 30], [75, 45, 30], [300, 90, 60]);
 }
