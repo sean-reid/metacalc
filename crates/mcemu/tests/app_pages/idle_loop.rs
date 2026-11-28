@@ -118,11 +118,7 @@ fn slices_run_in_order_and_then_the_shell_waits(real: bool) {
     );
     assert_eq!(moved, 0, "no slice runs while the shell waits");
     assert_eq!(rig.shell.blits(), 1);
-    same_frame(
-        "Libraries",
-        &rig.shell.app.frame(),
-        &model::libraries(built),
-    );
+    same_frame("Libraries", &rig.shell.frame(), &model::libraries(built));
 }
 
 twin!(
@@ -161,11 +157,7 @@ fn a_redraw_from_idle_is_one_draw_one_blit(real: bool) {
         1,
         "no enter: a redraw is not a refresh"
     );
-    same_frame(
-        "Libraries",
-        &rig.shell.app.frame(),
-        &model::libraries(built),
-    );
+    same_frame("Libraries", &rig.shell.frame(), &model::libraries(built));
 }
 
 twin!(

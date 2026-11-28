@@ -315,6 +315,7 @@ impl Run {
         if self.real {
             return crate::real::vat::table(self.m());
         }
+        self.shell.at_rest();
         self.m().read_var(table::VAR).map(|v| v.data)
     }
 
@@ -323,6 +324,7 @@ impl Run {
         if self.real {
             return format!("{:?}", crate::real::vat::list(self.m()));
         }
+        self.shell.at_rest();
         format!("{:?}", self.m().var_list())
     }
 
