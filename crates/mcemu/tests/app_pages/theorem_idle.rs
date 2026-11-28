@@ -39,9 +39,9 @@ fn a_theorem_the_lists_idle_would_work_on_idles_to_nothing_and_changes_no_byte()
     let app = &mut walker.list.run.shell.app;
     idles_to_nothing(app, false, "the theorem");
     let kind = app.label("SCR_STACK") + 16 * (depth as u16 - 1);
-    assert_eq!(app.m.read_ram(kind, 1), [KIND_THEOREM]);
-    app.m.load_ram(kind, &[6]);
-    app.m.load_ram(kind + 6, &[0]);
+    assert_eq!(app.peek(kind, 1), [KIND_THEOREM]);
+    app.poke(kind, &[6]);
+    app.poke(kind + 6, &[0]);
     let before = snapshot(app);
     let at = app.label("scr_idle");
     let done = app.call(

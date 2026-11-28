@@ -60,12 +60,12 @@ fn after_a_key(built: &'static Built) {
     let want = pack(&libraries_model(built.shown().as_ref()));
     let mut app = App::start(built);
     // What auto power down does to saveSScreen, and a frame that is not the screen's.
-    app.m.load_ram(UI_VARS, &[0; 0x1A]);
-    app.m.load_ram(UI_FRAME, &[0xAA; FRAME_LEN]);
+    app.poke(UI_VARS, &[0; 0x1A]);
+    app.poke(UI_FRAME, &[0xAA; FRAME_LEN]);
     tap(&mut app, F4);
     // ui_set_font keeps the table's address less one slot of 8 bytes.
     let font = (app.label("ui_font") - 8).to_le_bytes();
-    assert_eq!(app.m.read_ram(UI_VARS + 0x14, 2), font, "the font pointer");
+    assert_eq!(app.peek(UI_VARS + 0x14, 2), font, "the font pointer");
     same_frame("after a key", &app.frame(), &want);
     assert_eq!(app.m.in_port(0x06), BASE);
 }
@@ -85,12 +85,12 @@ fn refusal(name: &str, library: Vec<u8>, status: u8) {
     same_frame(name, &app.frame(), &want);
     assert!(lcd(&mut app) == error_pixels(status), "{name}: the LCD");
     let font = (app.label("ui_font") - 8).to_le_bytes();
-    app.m.load_ram(UI_VARS, &[0; 0x1A]);
+    app.poke(UI_VARS, &[0; 0x1A]);
     tap(&mut app, DOWN);
-    assert_eq!(app.m.read_ram(UI_VARS + 0x14, 2), font);
+    assert_eq!(app.peek(UI_VARS + 0x14, 2), font);
     same_frame(&format!("{name} after a key"), &app.frame(), &want);
     assert_eq!(
-        app.m.read_ram(app.label("scr_count"), 1),
+        app.peek(app.label("scr_count"), 1),
         [2],
         "{name}: the depth"
     );
@@ -205,12 +205,8 @@ fn the_font_is_set_before_the_kernel_and_fm_are_opened() {
     });
     let mut app = app;
     let font = (app.label("ui_font") - 8).to_le_bytes();
-    assert_eq!(
-        app.m.read_ram(SNAP, 2),
-        font,
-        "when kernel_reset was called"
-    );
-    assert_eq!(app.m.read_ram(SNAP + 2, 2), font, "when fm_open was called");
+    assert_eq!(app.peek(SNAP, 2), font, "when kernel_reset was called");
+    assert_eq!(app.peek(SNAP + 2, 2), font, "when fm_open was called");
     same_frame(
         "the screen",
         &app.frame(),
@@ -232,14 +228,14 @@ fn a_break_flagged_as_the_app_reads_clear_is_cleared_by_its_exit() {
         .load_ram(HOOK, &[0xFD, 0xCB, 0x09, 0xE6, 0xC3, far[0], far[1]]);
     hook_stub(&mut app.m, built, "far_ui_set_font", HOOK);
     assert_eq!(
-        app.m.read_ram(0x89F9, 1)[0] & ON_INTERRUPT_BIT,
+        app.peek(0x89F9, 1)[0] & ON_INTERRUPT_BIT,
         0,
         "no break flagged yet"
     );
     app.m.press_key(KEY_CLEAR);
     assert_eq!(app.m.run_app(3 * TAP).stop, Stop::Exited);
     assert_eq!(
-        app.m.read_ram(0x89F9, 1)[0] & ON_INTERRUPT_BIT,
+        app.peek(0x89F9, 1)[0] & ON_INTERRUPT_BIT,
         0,
         "the break flagged just before the exit"
     );

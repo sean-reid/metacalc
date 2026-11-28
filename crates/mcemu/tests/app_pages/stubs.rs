@@ -148,7 +148,7 @@ fn the_far_entries_the_shell_never_calls_reach_their_routines_by_a_ram_driver() 
     );
 
     let text = crate::ui_support::table().encode("metacalc");
-    app.m.load_ram(0xB000, &text);
+    app.poke(0xB000, &text);
     let width = app.far(
         "far_ui_text_width",
         In {

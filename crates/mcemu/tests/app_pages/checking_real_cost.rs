@@ -63,7 +63,7 @@ fn frame_on_the_rom(app: &mut App) -> (u32, u32) {
 
 fn cost(run: &mut Run, name: &str, (floor, ceiling): (u32, u32)) {
     let tag = run.shell.app.label("APP_STAGE");
-    run.m().load_ram(tag, &[0, 0]);
+    run.shell.app.poke(tag, &[0, 0]);
     let cold = frame_on_the_rom(&mut run.shell.app);
     let warm = frame_on_the_rom(&mut run.shell.app);
     println!(

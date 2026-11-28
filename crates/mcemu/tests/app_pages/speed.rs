@@ -25,7 +25,7 @@ const RING_CURSOR_FRAME: u32 = 293_080;
 /// The T-states a routine takes beyond the driver's own call and halt, which a call of a RAM
 /// `ret` measures.
 fn driver_cost(app: &mut App) -> u32 {
-    app.m.load_ram(SCRATCH - 16, &[0xC9]);
+    app.poke(SCRATCH - 16, &[0xC9]);
     app.call(BASE, SCRATCH - 16, In::default()).tstates
 }
 
@@ -80,7 +80,7 @@ fn counted(built: &'static Built, n: u16, k: u8) -> [u32; 3] {
     let tramp = [
         0xE5, 0x2A, 0x10, 0xA6, 0x23, 0x22, 0x10, 0xA6, 0xE1, 0xC3, far[0], far[1],
     ];
-    app.m.load_ram(TRAMP, &tramp);
+    app.poke(TRAMP, &tramp);
     let jump = TRAMP.to_le_bytes();
     let mut at = start;
     while at < end {
@@ -93,11 +93,11 @@ fn counted(built: &'static Built, n: u16, k: u8) -> [u32; 3] {
         at += 7;
     }
     let count = |app: &mut App| {
-        let b = app.m.read_ram(COUNT, 2);
-        app.m.load_ram(COUNT, &[0, 0]);
+        let b = app.peek(COUNT, 2);
+        app.poke(COUNT, &[0, 0]);
         u32::from(u16::from_le_bytes([b[0], b[1]]))
     };
-    app.m.load_ram(COUNT, &[0, 0]);
+    app.poke(COUNT, &[0, 0]);
     on_draw_page(&mut app, "fm_open", In::default());
     let open = count(&mut app);
     let input = In {
@@ -224,7 +224,7 @@ fn frame(name: &str, built: &'static Built, bytes: &[u8], ceilings: (u32, u32)) 
     let mut at = strings;
     let mut put = |app: &mut App, bytes: &[u8]| {
         let here = at;
-        app.m.load_ram(here, bytes);
+        app.poke(here, bytes);
         at += bytes.len() as u16;
         here
     };

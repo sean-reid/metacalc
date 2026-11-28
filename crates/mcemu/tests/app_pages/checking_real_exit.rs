@@ -204,7 +204,7 @@ fn on_the_reference_os_a_check_holds_off_the_power_down_and_the_refresh_after_it
     run.m().press_key(F4);
     run.next_blit();
     run.m().release_key(F4);
-    let frame = run.m().read_ram(UI_FRAME, FRAME_LEN);
+    let frame = run.shell.app.peek(UI_FRAME, FRAME_LEN);
     let values = expected_values(built, &verdicts, end);
     shows("after the wake", &frame, &checking_model(built, &values, 0));
     assert_eq!(run.crc_calls(), crc, "no CRC run");

@@ -327,10 +327,7 @@ impl Run {
         if self.real {
             return crate::real::vat::table(self.m());
         }
-        assert!(
-            !self.shell.in_call(),
-            "the stop is inside a call that maps another bank"
-        );
+        self.shell.app.assert_at_rest();
         self.m().read_var(table::VAR).map(|v| v.data)
     }
 
@@ -400,7 +397,7 @@ impl Run {
     /// Sets the OS's ON break flag, as its interrupt does for an ON press that has come and gone.
     pub fn set_on_flag(&mut self) {
         let flags = self.peek(ON_FLAGS, 1)[0];
-        self.m().load_ram(ON_FLAGS, &[flags | 0x10]);
+        self.shell.app.poke(ON_FLAGS, &[flags | 0x10]);
     }
 
     /// Whether the OS's ON break flag is set.

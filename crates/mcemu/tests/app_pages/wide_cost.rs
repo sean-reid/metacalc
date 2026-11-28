@@ -78,7 +78,7 @@ fn frames(open: &[u8], depth: u8) -> (u32, u32) {
         tap(&mut app, key);
     }
     let at = app.label("scr_count");
-    assert_eq!(app.m.read_ram(at, 1), [depth], "the screen opened");
+    assert_eq!(app.peek(at, 1), [depth], "the screen opened");
     let (draw, blit) = frame(&mut app);
     go_cold(&mut app);
     let (cold_draw, cold_blit) = frame(&mut app);

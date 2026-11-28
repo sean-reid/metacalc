@@ -295,7 +295,7 @@ fn on_the_reference_os_each_stage_ends_on_the_models_finished_screen() {
         let name = built.stages[row].name.clone();
         let mut run = launched(built, row, &[]);
         let timing = run_stage(&mut run, end);
-        let frame = run.m().read_ram(UI_FRAME, FRAME_LEN);
+        let frame = run.shell.app.peek(UI_FRAME, FRAME_LEN);
         let values = run.values().unwrap();
         assert_eq!(
             values,

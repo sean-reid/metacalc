@@ -200,12 +200,13 @@ fn quit_leaves_from_depth_2_and_fills_the_two_regions_as_it_does_from_depth_1() 
                 let home = shell.app.label("HOME_STATE");
                 (stack - 1, home + shell.app.label("HOME_STATE_SIZE"))
             };
-            shell.app.m.load_ram(neighbour_low, &[0xE1]);
-            shell.app.m.load_ram(neighbour_high, &[0x3B]);
+            shell.app.poke(neighbour_low, &[0xE1]);
+            shell.app.poke(neighbour_high, &[0x3B]);
             let home = shell.app.label("HOME_STATE");
-            shell.app.m.load_ram(home, &[0x44, 0x55]);
+            shell.app.poke(home, &[0x44, 0x55]);
             shell.leave(MODE);
             shell.assert_regions_put_away();
+            // The app has exited: ports 7 and 5 read 81h and 00h, as at its key wait.
             assert_eq!(shell.app.m.read_ram(home, 2), [0, 0], "cmdShadCur");
             assert_eq!(shell.app.m.read_ram(neighbour_low, 1), [0xE1]);
             assert_eq!(shell.app.m.read_ram(neighbour_high, 1), [0x3B]);

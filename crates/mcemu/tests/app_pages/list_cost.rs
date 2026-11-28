@@ -44,7 +44,7 @@ pub fn open_list(built: &'static Built, data: &[u8]) -> App {
         assert_eq!(app.m.run_app(1_000_000).stop, Stop::Limit);
     }
     let preview = app.label("LV_PREVIEW");
-    assert_eq!(app.m.read_ram(preview, 1), [1], "the preview is settled");
+    assert_eq!(app.peek(preview, 1), [1], "the preview is settled");
     app
 }
 
@@ -82,8 +82,8 @@ fn frame_of(app: &mut App) -> (u32, u32) {
 pub fn the_fit(app: &mut App) -> u32 {
     let driver = driver_cost(app);
     let (count, preview) = (app.label("LV_COUNT"), app.label("LV_PREVIEW"));
-    assert_eq!(app.m.read_ram(preview, 1), [0], "the preview is pending");
-    app.m.load_ram(count, &[0]);
+    assert_eq!(app.peek(preview, 1), [0], "the preview is pending");
+    app.poke(count, &[0]);
     let (idle, frame) = (app.label("list_idle"), top_frame(app));
     let done = app.call(
         BASE,
@@ -178,9 +178,9 @@ fn the_worst_preview_inside_the_caps_costs_this_and_a_key_waits_that_long() {
     let mut costs = Vec::new();
     for n in 0..count {
         let at = (n as u16).to_le_bytes();
-        app.m.load_ram(frame + 2, &[at[0], at[1], at[0], at[1]]);
-        app.m.load_ram(count_at, &[0]);
-        app.m.load_ram(preview, &[0]);
+        app.poke(frame + 2, &[at[0], at[1], at[0], at[1]]);
+        app.poke(count_at, &[0]);
+        app.poke(preview, &[0]);
         let done = app.call(
             BASE,
             idle,

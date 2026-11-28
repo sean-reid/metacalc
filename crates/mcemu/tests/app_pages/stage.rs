@@ -115,7 +115,7 @@ fn every_string_the_shell_hands_the_canvas_is_in_ram() {
         key(&mut shell, F1);
         key(&mut shell, F1);
         let at = shell.app.label("SCR_STACK") + 16 + 1;
-        shell.app.m.load_ram(at, &[9]);
+        shell.app.poke(at, &[9]);
         shell.power_down();
         key(&mut shell, F4);
         clean(&mut shell, "the error notice");
@@ -157,7 +157,7 @@ fn a_screen_draws_from_a_copy_of_its_own_block_and_nothing_else() {
         (F1, "notice_block", "NOTICE_BLOCK_SIZE"),
     ] {
         let (stage, area) = region(&mut shell);
-        shell.app.m.load_ram(stage, &vec![0xEE; area]);
+        shell.app.poke(stage, &vec![0xEE; area]);
         shell.tap(open);
         let (at, len) = (shell.app.label(block), usize::from(shell.app.label(size)));
         let tag = shell.peek(stage, 2);
@@ -172,8 +172,8 @@ fn a_screen_draws_from_a_copy_of_its_own_block_and_nothing_else() {
 fn staged(shell: &mut Shell, tag: u16, from: u16, len: u16) -> (Vec<u8>, bool) {
     let (stage, size) = region(shell);
     let at = shell.app.label("app_stage_block");
-    shell.app.m.load_ram(stage, &vec![0xEE; size + 16]);
-    shell.app.m.load_ram(stage, &tag.to_le_bytes());
+    shell.app.poke(stage, &vec![0xEE; size + 16]);
+    shell.app.poke(stage, &tag.to_le_bytes());
     let done = shell.app.call(
         BASE,
         at,
@@ -183,10 +183,7 @@ fn staged(shell: &mut Shell, tag: u16, from: u16, len: u16) -> (Vec<u8>, bool) {
             ..In::default()
         },
     );
-    (
-        shell.app.m.read_ram(stage, size + 16),
-        done.regs.af & 1 == 1,
-    )
+    (shell.app.peek(stage, size + 16), done.regs.af & 1 == 1)
 }
 
 #[test]
@@ -239,7 +236,7 @@ fn a_block_the_area_already_holds_is_not_copied_again() {
     let (stage, size) = region(&mut shell);
     let at = shell.app.label("app_stage_block");
     staged(&mut shell, 0, from, 8);
-    shell.app.m.load_ram(stage + 2, &[0xEE; 8]);
+    shell.app.poke(stage + 2, &[0xEE; 8]);
     shell.app.call(
         BASE,
         at,
@@ -250,7 +247,7 @@ fn a_block_the_area_already_holds_is_not_copied_again() {
         },
     );
     assert_eq!(
-        shell.app.m.read_ram(stage + 2, 8),
+        shell.app.peek(stage + 2, 8),
         [0xEE; 8],
         "the second call copied nothing"
     );
@@ -264,7 +261,7 @@ fn a_block_the_area_already_holds_is_not_copied_again() {
         },
     );
     assert_ne!(
-        shell.app.m.read_ram(stage + 2, 8),
+        shell.app.peek(stage + 2, 8),
         [0xEE; 8],
         "another block is copied"
     );
@@ -287,7 +284,7 @@ fn after_a_power_down_the_refresh_copies_the_block_again_even_when_the_tag_looks
         shell.power_down();
         let mut junk = vec![0x55; size];
         junk[..2].copy_from_slice(&at.to_le_bytes());
-        shell.app.m.load_ram(stage, &junk);
+        shell.app.poke(stage, &junk);
         shell.tap(F4);
         shell.shows("after the power down", &model);
         let len = usize::from(

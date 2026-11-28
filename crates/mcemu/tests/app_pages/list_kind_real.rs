@@ -44,7 +44,7 @@ pub fn ring(status: Option<&[Status]>) -> Lister {
         let data = table_of(list.built, status);
         let (at, size) = crate::real::vat::table_at(list.run.m()).expect("the check made a table");
         assert_eq!(usize::from(size), data.len());
-        list.run.m().load_ram(at, &data);
+        list.run.shell.app.poke(at, &data);
         list.status = status.to_vec();
         let mut ui = crate::shellrig::model::ui(list.built, status);
         for _ in 0..RING {
@@ -144,7 +144,7 @@ fn cost(list: &mut Lister, kind: u8, cursor: usize, top: usize, key: u8) -> (u32
     let app = &mut list.run.shell.app;
     let frame = app.label("SCR_STACK") + 16;
     let (cb, tb) = ((cursor as u16).to_le_bytes(), (top as u16).to_le_bytes());
-    app.m.load_ram(
+    app.poke(
         frame,
         &[KIND_LIST, RING as u8, cb[0], cb[1], tb[0], tb[1], kind],
     );

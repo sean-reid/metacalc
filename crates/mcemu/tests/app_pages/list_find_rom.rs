@@ -76,7 +76,7 @@ fn run(app: &mut App, target: u16, input: In, ix: u16) -> Done {
     let stop = app.label("screen_ret");
     let [lo, hi] = target.to_le_bytes();
     let [slo, shi] = stop.to_le_bytes();
-    app.m.load_ram(app.driver, &[0xCD, lo, hi, 0xC3, slo, shi]);
+    app.poke(app.driver, &[0xCD, lo, hi, 0xC3, slo, shi]);
     app.m.out_port(0x06, BASE);
     app.m.set_regs(&Regs {
         af: u16::from(input.a) << 8 | u16::from(input.f),
@@ -119,7 +119,7 @@ fn pinned(costs: &[(String, u32, u32)]) {
 }
 
 fn range_cost(app: &mut App, ring: &Ring, prefix: &[u8]) -> (u32, (u16, u16)) {
-    app.m.load_ram(PREFIX_AT, prefix);
+    app.poke(PREFIX_AT, prefix);
     let target = app.label("far_lib_find_range");
     let done = app.timed(
         BASE,
@@ -146,7 +146,7 @@ fn walk_cost(app: &mut App, ring: &Ring, range: (u16, u16), bound: u16, kind: u8
         block.extend(word.to_le_bytes());
     }
     block.push(kind);
-    app.m.load_ram(BLOCK_AT, &block);
+    app.poke(BLOCK_AT, &block);
     let target = app.label("far_lib_find_walk");
     let done = app.timed(
         BASE,
@@ -271,7 +271,7 @@ fn what_the_find_calls_cost_through_their_far_entries_on_the_reference_os_is_pri
     let pins = [14_400, 14_424, 13_845];
     let mut run_at = 0;
     while count > 0 {
-        app.m.load_ram(COPY_AT, &[0xE5; 0x100]);
+        app.poke(COPY_AT, &[0xE5; 0x100]);
         let done = app.timed(
             BASE,
             target,
@@ -354,7 +354,7 @@ fn what_the_store_call_costs_over_the_runs_of_s_on_the_reference_os_is_printed_a
         let target = app.label("store_least_not_one");
         for (at, run_of) in numbers.chunks(127).enumerate() {
             let bytes: Vec<u8> = run_of.iter().flat_map(|v| v.to_le_bytes()).collect();
-            app.m.load_ram(COPY_AT, &bytes);
+            app.poke(COPY_AT, &bytes);
             let done = timed_ix(
                 app,
                 target,
