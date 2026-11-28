@@ -216,9 +216,10 @@ pub fn expected() -> BTreeMap<String, (u16, u8)> {
     .into()
 }
 
-/// The most bytes an interrupt handler adds to a call it lands in: 4 on the stub OS, 6 on the reference OS.
+/// The most bytes an interrupt handler adds to a call it lands in: 4 on the stub OS, 10 on the reference OS,
+/// whose keypad scan (pc 047D) writes 10 counting the interrupt's own return address.
 pub const fn handler(real: bool) -> u16 {
-    if real { 6 } else { 4 }
+    if real { 10 } else { 4 }
 }
 
 /// `got` against the header's figures. Masked, every depth is exact. With interrupts on at the call a key

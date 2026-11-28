@@ -61,6 +61,8 @@ mod dist_errors;
 mod dist_far;
 #[path = "app_pages/dist_frames.rs"]
 mod dist_frames;
+#[path = "app_pages/dist_handler.rs"]
+mod dist_handler;
 #[path = "app_pages/dist_keys.rs"]
 mod dist_keys;
 #[path = "app_pages/dist_large.rs"]
