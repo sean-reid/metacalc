@@ -387,8 +387,13 @@ impl Machine {
 
     pub fn press_key(&mut self, scancode: u8) {
         if let Some(mut hook) = self.on_press.take() {
-            hook(self, scancode);
+            let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                hook(self, scancode);
+            }));
             self.on_press.get_or_insert(hook);
+            if let Err(panic) = run {
+                std::panic::resume_unwind(panic);
+            }
         }
         self.down |= 1u64.checked_shl(scancode.into()).unwrap_or(0);
         self.calc.key(scancode, true);

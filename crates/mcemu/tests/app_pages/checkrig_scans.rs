@@ -142,7 +142,8 @@ mod tests {
     fn a_scan_with_no_key_down_is_counted() {
         assert_eq!(seen_after(&[&empty_scan()]), 1);
         let five: Vec<PortWrite> = (0..5).flat_map(|_| empty_scan()).collect();
-        assert_eq!(seen_after(&[&five]), RELEASE_SCANS);
+        assert_eq!(RELEASE_SCANS, 5);
+        assert_eq!(seen_after(&[&five]), 5);
     }
 
     #[test]
@@ -201,6 +202,36 @@ mod tests {
         assert_eq!(scans.seen(), 0);
         scans.release(KEY);
         assert_eq!(scans.seen(), 0, "the release starts from zero");
+    }
+
+    #[test]
+    #[should_panic(expected = "the port record filled with 4 scans")]
+    fn a_full_record_at_four_scans_panics() {
+        let mut scans = Scans::default();
+        scans.release(KEY);
+        scans.feed(&(0..4).flat_map(|_| empty_scan()).collect::<Vec<_>>(), true);
+    }
+
+    #[test]
+    #[should_panic(expected = "use Run::press")]
+    fn a_press_of_the_released_key_after_four_scans_panics() {
+        let mut scans = Scans::default();
+        scans.release(KEY);
+        scans.feed(
+            &(0..4).flat_map(|_| empty_scan()).collect::<Vec<_>>(),
+            false,
+        );
+        scans.check_press(KEY);
+    }
+
+    #[test]
+    fn a_release_forgets_the_08h_of_a_scan_before_it() {
+        let mut scans = Scans::default();
+        scans.release(KEY);
+        scans.feed(&[w(1, 0), w(1, 0xFF), w(3, 8)], false);
+        scans.release(KEY);
+        scans.feed(&[w(3, 9)], false);
+        assert_eq!(scans.seen(), 0);
     }
 
     #[test]

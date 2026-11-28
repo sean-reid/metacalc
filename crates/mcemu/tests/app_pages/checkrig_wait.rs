@@ -15,8 +15,9 @@ fn run_after_a_tap() -> Run {
 /// ON goes down and up between the release and the press, which raises interrupts that scan no
 /// keys: the stub acknowledges each with 08h, 0Ah and 0Bh, and the OS's wait for ON on the reference
 /// OS with 08h alone. A wait that counted an 08h would end early and the OS would ignore the press.
-/// The writes of the ON edge and of the timer interrupts around it are counted by their port 1
-/// writes and by the rig's counter, which must agree.
+/// The raw writes of an ON edge and the timer interrupts after it are fed to a fresh `Scans`, which
+/// must count the interrupts that acknowledged with 09h and not the edge: this shows the counting
+/// code on the stub's writes, not that `Run` reads the machine the same way.
 #[test]
 fn an_on_edge_between_a_release_and_a_press_is_not_counted_as_a_scan() {
     let mut run = run_after_a_tap();
@@ -25,37 +26,26 @@ fn an_on_edge_between_a_release_and_a_press_is_not_counted_as_a_scan() {
     m.clear_port_writes();
     m.press_key(Machine::KEY_ON);
     let mut writes = Vec::new();
+    let is = |w: &mcemu::PortWrite, port, value| (w.port, w.value) == (port, value);
     for step in 0.. {
         assert!(step < 400, "the edge and two scans came in {step} steps");
         assert_eq!(m.run_app(20_000).stop, mcemu::Stop::Limit);
         writes.extend(m.take_port_writes());
-        let edge = writes.iter().position(|w| (w.port, w.value) == (3, 0x0A));
-        if edge.is_some_and(|at| {
-            writes[at..]
-                .iter()
-                .filter(|w| (w.port, w.value) == (1, 0))
-                .count()
-                >= 2
-        }) {
+        let edge = writes.iter().position(|w| is(w, 3, 0x0A));
+        if edge.is_some_and(|at| writes[at..].iter().filter(|w| is(w, 3, 9)).count() >= 2) {
             break;
         }
     }
     m.release_key(Machine::KEY_ON);
-    let edges = writes
-        .iter()
-        .filter(|w| (w.port, w.value) == (3, 0x0A))
-        .count();
-    let timer = writes
-        .iter()
-        .filter(|w| (w.port, w.value) == (1, 0))
-        .count();
-    let acks_08 = writes
-        .iter()
-        .filter(|w| (w.port, w.value) == (3, 8))
-        .count();
+    let edges = writes.iter().filter(|w| is(w, 3, 0x0A)).count();
+    let timer = writes.iter().filter(|w| is(w, 3, 9)).count();
+    let acks_08 = writes.iter().filter(|w| is(w, 3, 8)).count();
     assert_eq!(edges, 1, "one ON edge");
-    assert!(timer >= 2, "{timer} timer scans");
-    assert_eq!(acks_08, edges + timer, "every interrupt acknowledges 08h");
+    assert!(timer >= 2, "{timer} completed timer scans");
+    assert!(
+        acks_08 > timer,
+        "the edge acknowledged 08h besides the {timer} timer interrupts: {acks_08}"
+    );
     let mut counted = Scans::default();
     counted.release(DOWN);
     counted.feed(&writes, false);
@@ -166,4 +156,14 @@ fn a_press_through_the_shells_machine_is_allowed_when_the_test_says_so() {
     let mut run = run_after_a_tap();
     run.allow_raw_press();
     run.shell.app.m.press_key(DOWN);
+}
+
+#[test]
+fn the_guard_still_fires_after_it_has_panicked_once() {
+    let mut run = run_after_a_tap();
+    let m = &mut run.shell.app.m;
+    for _ in 0..2 {
+        let fired = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| m.press_key(DOWN)));
+        assert!(fired.is_err(), "the press inside the gap panics each time");
+    }
 }

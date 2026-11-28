@@ -27,8 +27,8 @@ const HOOKS_AT: u16 = 0xBC10;
 const ON_FLAGS: u16 = 0x89F9;
 /// The most T-states one wait for a frame or a key may take.
 pub const WAIT: u32 = 600_000_000;
-/// The most T-states those scans take (46 ms at 15 MHz is 700,000), and the steps the wait for them
-/// runs in.
+/// The most T-states the wait for five scans may take (five scans of 9.28 ms at 15 MHz are 696,000),
+/// and the steps it runs in.
 const RELEASE_LIMIT: u32 = 1_200_000;
 const RELEASE_STEP: u32 = 3_000;
 /// The steps between two frames of the screen, CKS_EVERY in screen_checking.inc.
@@ -287,6 +287,7 @@ impl Run {
             counted.released = None;
             counted.raw_press_allowed = false;
         }
+        self.shell.app.m.set_press_hook(None);
         self.shell.app.m.press_key(scan);
     }
 
