@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 /// The wff variables the tests declare after the fixture's own, in declaration order, which is the
 /// order mcpack sorts a pair list by.
-const EXTRA: [&str; 41] = [
+pub const EXTRA: [&str; 41] = [
     "et", "ze", "w", "v", "u", "t", "f", "g", "s", "C", "D", "R", "S", "T", "U", "e", "h", "m",
     "n", "o", "E", "F", "G", "H", "I", "K", "L", "M", "N", "V", "W", "X", "Y", "Z", "O", "r", "p",
     "a", "b", "c", "d",
@@ -41,7 +41,7 @@ pub struct Case {
     pub pairs: Vec<(&'static str, &'static str)>,
 }
 
-fn names(pairs: &[(&'static str, &'static str)]) -> Vec<&'static str> {
+pub fn names(pairs: &[(&'static str, &'static str)]) -> Vec<&'static str> {
     let mut seen: Vec<&'static str> = Vec::new();
     for &(a, b) in pairs {
         for v in [a, b] {
@@ -53,30 +53,51 @@ fn names(pairs: &[(&'static str, &'static str)]) -> Vec<&'static str> {
     seen
 }
 
-/// The source of `cases` as assertions of the fixture's logic: each an axiom in a block of its own,
-/// its variables spread over hypotheses so that every one is mandatory.
-pub fn source(cases: &[Case]) -> String {
-    let mut src = String::from(
-        "$v et ze w v u t f g s C D R S T U e h m n o E F G H I K L M N V W X Y Z O r p a b c d $.\n",
-    );
-    for v in EXTRA {
+/// The declarations of `names` as wff variables, each with its float hypothesis.
+pub fn declare(names: &[&str]) -> String {
+    let mut src = format!("$v {} $.\n", names.join(" "));
+    for v in names {
         src += &format!("wff-{v} $f wff {v} $.\n");
     }
+    src
+}
+
+/// The source of `cases` as assertions of the fixture's logic: each an axiom in a block of its own,
+/// its variables spread over hypotheses so that every one is mandatory. The variables are the fixture's
+/// five and `EXTRA`.
+pub fn source(cases: &[Case]) -> String {
+    source_over(&EXTRA, cases)
+}
+
+/// `source` with the variables the fixture lacks being `extra`.
+pub fn source_over(extra: &[&str], cases: &[Case]) -> String {
+    let mut src = declare(extra);
     for case in cases {
-        src += "${\n";
-        for (a, b) in &case.pairs {
-            src += &format!("$d {a} {b} $.\n");
-        }
-        let vars = names(&case.pairs);
-        for (i, chunk) in vars.chunks(2).enumerate() {
-            match chunk {
-                [a, b] => src += &format!("{}.{i} $e |- ( {a} -> {b} ) $.\n", case.label),
-                [a] => src += &format!("{}.{i} $e |- {a} $.\n", case.label),
-                _ => unreachable!(),
-            }
-        }
-        src += &format!("{} $a |- ph $.\n$}}\n", case.label);
+        src += &block(case, 0);
     }
+    src
+}
+
+/// The assertion of `case` in a block of its own, with `pad` more hypotheses of `|- ph` after the ones
+/// that carry its variables.
+pub fn block(case: &Case, pad: usize) -> String {
+    let mut src = String::from("${\n");
+    for (a, b) in &case.pairs {
+        src += &format!("$d {a} {b} $.\n");
+    }
+    let vars = names(&case.pairs);
+    let chunks = vars.chunks(2).count();
+    for (i, chunk) in vars.chunks(2).enumerate() {
+        match chunk {
+            [a, b] => src += &format!("{}.{i} $e |- ( {a} -> {b} ) $.\n", case.label),
+            [a] => src += &format!("{}.{i} $e |- {a} $.\n", case.label),
+            _ => unreachable!(),
+        }
+    }
+    for i in 0..pad {
+        src += &format!("{}.{} $e |- ph $.\n", case.label, chunks + i);
+    }
+    src += &format!("{} $a |- ph $.\n$}}\n", case.label);
     src
 }
 

@@ -17,17 +17,11 @@ fn a_row_a_pair_exactly_fills_and_a_row_a_pixel_over_are_the_models() {
     let built = dist_lib::built();
     let lib = lib_of(built);
     let fill = rows_of(&lib, index_of(&lib, FILL));
-    let last = *fill[0].last().unwrap();
     assert!(fill[0].len() >= 5, "the row holds several pairs");
     assert_eq!(
         line(&fill[0]),
         94,
         "the last pair ends on column 94 exactly"
-    );
-    assert_eq!(
-        line(&fill[0]) - last - 3 + 3 + last,
-        94,
-        "line + gap + width"
     );
     assert_eq!(fill.len(), 2, "the next pair starts the next row");
     let over = rows_of(&lib, index_of(&lib, OVER));

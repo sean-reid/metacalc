@@ -10,7 +10,7 @@ use crate::theorem_rig::*;
 use mcui::Key;
 
 /// Every key but CLEAR, UP and DOWN, which the Dist screen does nothing with.
-const IGNORED: [(u8, Key); 9] = [
+pub const IGNORED: [(u8, Key); 9] = [
     (F1, Key::F1),
     (F2, Key::F2),
     (F3, Key::F3),
@@ -23,7 +23,7 @@ const IGNORED: [(u8, Key); 9] = [
 ];
 
 /// Taps every ignored key: none redraws and nothing the screen holds moves.
-fn ignores(walker: &mut Walker) -> usize {
+pub fn ignores(walker: &mut Walker) -> usize {
     let mut tried = 0;
     for (scan, key) in IGNORED {
         assert!(!press(walker, scan, key), "{scan:02X} stays");

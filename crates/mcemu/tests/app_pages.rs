@@ -61,6 +61,10 @@ mod dist_errors;
 mod dist_far;
 #[path = "app_pages/dist_frames.rs"]
 mod dist_frames;
+#[path = "app_pages/dist_keys.rs"]
+mod dist_keys;
+#[path = "app_pages/dist_large.rs"]
+mod dist_large;
 #[allow(dead_code)]
 #[path = "app_pages/dist_lib.rs"]
 mod dist_lib;
@@ -68,10 +72,18 @@ mod dist_lib;
 mod dist_power;
 #[path = "app_pages/dist_real.rs"]
 mod dist_real;
+#[path = "app_pages/dist_real_scroll.rs"]
+mod dist_real_scroll;
+#[path = "app_pages/dist_refuse.rs"]
+mod dist_refuse;
 #[path = "app_pages/dist_rig.rs"]
 mod dist_rig;
+#[path = "app_pages/dist_rows.rs"]
+mod dist_rows;
 #[path = "app_pages/dist_screens.rs"]
 mod dist_screens;
+#[path = "app_pages/dist_straddle.rs"]
+mod dist_straddle;
 #[path = "app_pages/dist_watch.rs"]
 mod dist_watch;
 #[path = "app_pages/draw.rs"]

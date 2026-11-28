@@ -478,13 +478,34 @@ fn on_the_reference_os_every_routine_of_the_dist_screen_keeps_interrupts_and_spe
         walker.open();
         walker
     };
-    for speed in [0, 1] {
-        let got = crate::dist_depth::figures_on(&on_theorem, dist_lib::SEVEN, speed);
-        println!("ROM, speed {speed}: {got:?}");
-        assert_eq!(
-            got,
-            crate::dist_depth::expected_on_the_reference_os(),
-            "speed {speed}"
+    let large = crate::dist_large::built();
+    let large_lib = lib_of(large);
+    let on_large = || {
+        let mut list = Lister::on_rom_of(large, 0);
+        list.open_on_rom();
+        let mut walker = Walker::new(list, 0, large);
+        walker.gap = 600_000;
+        walker.mirrored = false;
+        walker.goto(index_of(&large_lib, crate::dist_large::LARGE_SEVEN));
+        walker.hold_preview();
+        walker.open();
+        walker
+    };
+    let mut seen = Vec::new();
+    for mask in [true, false] {
+        for speed in [0, 1] {
+            let got =
+                crate::dist_depth::figures_on(&on_theorem, &on_large, dist_lib::SEVEN, speed, mask);
+            println!("ROM, speed {speed}, masked {mask}: {got:?}");
+            seen.push((mask, speed, got));
+        }
+    }
+    for (mask, speed, got) in seen {
+        crate::dist_depth::same_figures(
+            &got,
+            mask,
+            true,
+            &format!("ROM, masked {mask}, speed {speed}"),
         );
     }
 }

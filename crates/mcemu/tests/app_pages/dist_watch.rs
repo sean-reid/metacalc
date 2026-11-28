@@ -33,15 +33,19 @@ const REGIONS: [(&str, &str); 16] = [
     ("FAR_VARS", "FAR_VARS_SIZE"),
 ];
 
-/// The sizes of the regions without a size label.
+/// The size of a region from the build's label file: its size label, or the distance to the base of
+/// the next region of the app's buffer, which the last of them runs to the end of.
 fn size_of(app: &App, name: &str, label: &str) -> u16 {
-    match name {
-        "APP_LIST" => 13,
-        "APP_CRC" => 4,
-        "APP_ON" | "APP_HELD" | "APP_SENTINEL" => 1,
-        "APP_FRAME" => 16,
-        _ => app.label(label),
-    }
+    let next = match name {
+        "APP_LIST" => "APP_CRC",
+        "APP_CRC" => "APP_TEXT",
+        "APP_ON" => "APP_HELD",
+        "APP_HELD" => "APP_FRAME",
+        "APP_FRAME" => return app.label("APP_BUF") + app.label("APP_BUF_SIZE") - app.label(name),
+        "APP_SENTINEL" => return app.label("APP_SENTINEL_SIZE"),
+        _ => return app.label(label),
+    };
+    app.label(next) - app.label(name)
 }
 
 /// The name of the region `addr` is in, `stack` for a push or a call just below `sp`, else `other`. The
@@ -123,6 +127,19 @@ fn each_routine_writes_only_the_regions_and_variables_the_header_names() {
     let app = &walker.list.run.shell.app;
     let first = app.label("DV_ASSERT");
     let end = app.label("DV_VARS_END");
+    let base = app.label("FM_SCRATCH");
+    let lib = lib_of(built);
+    let font = mcglyph::Font::builtin();
+    let codes = lib
+        .dist(n)
+        .iter()
+        .flat_map(|(a, b)| [a.clone(), b.clone()])
+        .map(|t| {
+            font.token_glyphs(&t)
+                .map_or(t.chars().count(), <[String]>::len)
+        })
+        .max()
+        .unwrap();
     let own = |w: &[(String, u16, bool)]| -> Vec<u16> {
         w.iter()
             .filter(|w| w.2)
@@ -155,6 +172,34 @@ fn each_routine_writes_only_the_regions_and_variables_the_header_names() {
         assert!(
             !own(writes).is_empty(),
             "{what}: the screen's code wrote variables"
+        );
+        let in_text: Vec<u16> = writes
+            .iter()
+            .filter(|w| w.0 == "APP_TEXT")
+            .map(|w| w.1)
+            .collect();
+        assert!(!in_text.is_empty(), "{what}: APP_TEXT was written");
+        assert!(
+            in_text.iter().all(|a| (first..end).contains(a)),
+            "{what}: every write to APP_TEXT is a variable of the screen, {first:04X} to {end:04X}: {in_text:04X?}"
+        );
+        let label = lib.label(n);
+        let scratch: Vec<u16> = writes
+            .iter()
+            .filter(|w| w.0 == "FM_SCRATCH")
+            .map(|w| w.1 - base)
+            .collect();
+        assert!(!scratch.is_empty(), "{what}: FM_SCRATCH was written");
+        let glyphs = 1 + codes;
+        let label_room = label.len().min(usize::from(app.label("LIST_LABEL_MAX"))) + 1;
+        let inside = |at: u16| {
+            let at = usize::from(at);
+            at < glyphs
+                || (what == "the draw" && (at < label.len() || (64..64 + label_room).contains(&at)))
+        };
+        assert!(
+            scratch.iter().all(|&a| inside(a)),
+            "{what}: every write to FM_SCRATCH is a symbol's {glyphs} bytes of codes, or the label's: {scratch:?}"
         );
     }
     let mut seen = BTreeSet::new();

@@ -32,9 +32,21 @@ impl Walker {
     /// Runs to the entry of the routine at `label`, runs it to its return and reports it. With `mask`
     /// interrupts are off for the call and on again after it.
     pub fn trace(&mut self, label: &str, mask: bool, speed: u8) -> Trace {
+        self.trace_after(label, mask, speed, |_| {})
+    }
+
+    /// `trace` with `before` run at the entry, where it may set registers and memory for the call.
+    pub fn trace_after(
+        &mut self,
+        label: &str,
+        mask: bool,
+        speed: u8,
+        before: impl FnOnce(&mut Run),
+    ) -> Trace {
         let run = &mut self.list.run;
         let at = run.shell.app.label(label);
         run.run_to_addr(label, at, WAIT);
+        before(run);
         trace_here(run, label, mask, speed)
     }
 }

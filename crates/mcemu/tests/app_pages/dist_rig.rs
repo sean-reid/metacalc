@@ -63,7 +63,8 @@ pub fn open_dist(walker: &mut Walker) {
     let stage = walker.stage as u8;
     let n = walker.var16("TV_ASSERT");
     let text = walker.list.run.shell.app.label("APP_TEXT");
-    walker.list.run.m().load_ram(text, &[0xA5; 173]);
+    let size = usize::from(walker.list.run.shell.app.label("APP_TEXT_SIZE"));
+    walker.list.run.m().load_ram(text, &vec![0xA5; size]);
     assert!(walker.key(F2, Key::F2), "F2 draws the Dist screen");
     assert_eq!(walker.list.run.top_kind(), KIND_DIST, "the kind");
     let frame = frame_of(walker);
@@ -114,8 +115,12 @@ pub fn dist_of(built: &'static Built, label: &str) -> Walker {
 
 /// The app's scratch the Dist screen keeps its variables in.
 pub fn scratch(walker: &mut Walker) -> Vec<u8> {
-    let at = walker.list.run.shell.app.label("APP_TEXT");
-    walker.list.run.peek(at, 173)
+    let app = &walker.list.run.shell.app;
+    let (at, size) = (
+        app.label("APP_TEXT"),
+        usize::from(app.label("APP_TEXT_SIZE")),
+    );
+    walker.list.run.peek(at, size)
 }
 
 /// A key on the Dist screen: the model's frame is the app's, and the answer is the model's.
@@ -123,10 +128,12 @@ pub fn scratch(walker: &mut Walker) -> Vec<u8> {
 pub fn press(walker: &mut Walker, scan: u8, key: Key) -> bool {
     let before = walker.list.run.frames();
     let kept = scratch(walker);
+    let picture = walker.list.run.frame();
     let drew = walker.key(scan, key);
     if !drew {
         assert_eq!(walker.list.run.frames(), before, "{scan:02X}: the frames");
         assert_eq!(scratch(walker), kept, "{scan:02X}: the scratch");
+        assert_eq!(walker.list.run.frame(), picture, "{scan:02X}: the picture");
     }
     drew
 }
