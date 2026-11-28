@@ -63,8 +63,9 @@ P_TMP        = S_BASE + 49
 P_TMP2       = S_BASE + 51
 P_STR        = S_BASE + 52
 S_T2         = S_BASE + 54
-SNAP_LCD     = S_BASE + 55
-S_SIZE       = 55 + ((UI_HEIGHT - 56) * UI_STRIDE)
+S_SLOTP      = S_BASE + 55
+SNAP_LCD     = S_BASE + 57
+S_SIZE       = 57 + ((UI_HEIGHT - 56) * UI_STRIDE)
 S_COUNTERS   = LCD_HIST_DATA
 COUNTERS_LEN = LCD_TOTAL_CMD + 2 - LCD_HIST_DATA
 CASES        = 3
@@ -170,6 +171,7 @@ set_speed:
 ss_on:
 	di
 	ld a,c
+ss_out:
 	out (20h),a
 	ei
 	ret

@@ -98,8 +98,8 @@ pub struct PortWrite {
     pub value: u8,
 }
 
-/// One access to the LCD ports, 10h to 13h, and the CPU clock in T-states when it ran. `value`
-/// is what was written, or what the read returned.
+/// One access to the LCD ports, 10h to 13h, or a write to the speed port, 20h, and the CPU clock in
+/// T-states when it ran. `value` is what was written, or what the read returned.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LcdAccess {
@@ -196,7 +196,7 @@ impl Calc {
         unsafe { mcemu_lcd_trace(self.0.as_ptr(), on.into()) }
     }
 
-    /// The LCD port accesses since the last call, and whether the record filled up.
+    /// The LCD port accesses and speed writes since the last call, and whether the record filled up.
     pub fn take_lcd_trace(&mut self) -> (Vec<LcdAccess>, bool) {
         // SAFETY: the handle is live.
         let len = unsafe { mcemu_lcd_trace_len(self.0.as_ptr()) };

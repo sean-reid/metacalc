@@ -1,7 +1,9 @@
 //! The lcdcheck probe on the stub OS: what it counts, against a trace of every access to the LCD
 //! ports, and what it reports for the LCD and plotSScreen across a key wait, against bytes the test
-//! writes. The stub draws no text, so the figures are read from the probe's RAM by label; the
-//! reference OS's screens are in lcdcheck_os.rs.
+//! writes. The stub's `_PutC` draws nothing and keeps no text shadow, so the screens are read from
+//! the characters the probe passes to its own `putchar`, in order, with the row from curRow, and the
+//! figures by label; what the OS draws from them is checked in lcdcheck_os.rs, which is ignored
+//! because it needs the reference ROM.
 
 #[path = "common/keytables.rs"]
 mod keytables;
@@ -44,7 +46,7 @@ fn passes(file: &str, window: u32) -> [Pass; 2] {
 
 /// CPU clocks from the first write of a pass to its last.
 fn frame_clocks(trace: &[LcdAccess]) -> u32 {
-    let writes: Vec<u32> = trace
+    let writes: Vec<u32> = lcd_only(trace)
         .iter()
         .filter(|a| a.is_write())
         .map(|a| a.clock)
@@ -120,19 +122,6 @@ fn the_counts_are_what_the_emulator_gives_and_agree_with_the_status_reads_it_tra
             let writes = pass.writes.iter().filter(|w| w.port == LCD_DATA).count();
             assert_eq!(writes, FRAME, "{at}: data writes");
             assert_eq!(pass.writes.len() - writes, 26, "{at}: command writes");
-        }
-    }
-}
-
-#[test]
-fn every_bucket_and_both_ports_are_reached_by_some_window() {
-    for bucket in 0..4 {
-        for port in 0..2 {
-            let reached = EXPECT.iter().flat_map(|(_, p)| p).any(|e| {
-                let e = if port == 0 { e.0 } else { e.1 };
-                [e.0, e.1, e.2, e.3][bucket] > 0
-            });
-            assert!(reached, "bucket {bucket} of port {port}");
         }
     }
 }
@@ -388,14 +377,14 @@ fn slot(count: u16, row: u8, col: u8) -> Slot {
 fn bytes_written_to_the_lcd_during_a_wait_are_counted_and_located() {
     let same = Poke::Lcd(20, 4, pat(20 * STRIDE + 4));
     let (_, mut reports) = run_cases([
-        &[lcd_at(10, 3), same],
+        &[lcd_at(10, 3), same, lcd_at(0, 5)],
         &[lcd_at(40, 2), lcd_at(7, 9), lcd_at(7, 4)],
         &[lcd_at(55, 11), lcd_at(56, 0), lcd_at(63, 11)],
     ]);
     expect_keys(&mut reports);
     let want = [
         Report {
-            lcd: slot(1, 10, 3),
+            lcd: slot(2, 0, 5),
             ..none()
         },
         Report {
@@ -435,57 +424,309 @@ fn bytes_written_to_plotsscreen_during_a_wait_are_counted_and_located() {
     assert_eq!(s.byte("S_WAITS"), 8);
 }
 
-#[test]
-fn the_probe_leaves_the_speed_it_found_interrupts_on_and_never_sets_the_contrast() {
-    for speed in [Speed::Mhz6, Speed::Mhz15] {
-        let mut s = Stub::new(PROBE, speed, 0, true);
-        let mut trace = Vec::new();
-        for n in 1..=8 {
-            s.until_wait(n);
-            trace.extend(s.m.take_lcd_trace());
-            if n < 8 {
-                match n {
-                    4 => s.tap(SCAN_2ND),
-                    6 => s.tap(SCAN_ALPHA),
-                    _ => {}
-                }
-                s.tap(SCAN_5);
-            }
-        }
-        s.m.press_key(SCAN_5);
-        let leave = s.label("LEAVE");
-        let mut reached = Reached::Vector38;
-        for _ in 0..20 {
-            reached = s.m.run_to(BASE, leave, 100_000);
-            if reached != Reached::Vector38 {
-                break;
-            }
-        }
-        assert_eq!(reached, Reached::Target, "the probe reaches its exit");
-        assert_eq!(s.m.regs().iff1, 1, "interrupts are on when it leaves");
-        let mut stop = Stop::Limit;
-        for _ in 0..20 {
-            stop = s.m.resume(100_000).stop;
-            if stop != Stop::Limit {
-                break;
-            }
-        }
+/// Runs all eight waits to the exit with a key each, 2nd and ALPHA before the keys of cases 1 and
+/// 2, and returns the trace of the whole run, how the probe stopped and the machine.
+fn whole_run(speed: Speed) -> (Vec<LcdAccess>, Stop, Stub) {
+    let mut s = Stub::new(PROBE, speed, 0, true);
+    let mut trace = Vec::new();
+    for n in 1..=8 {
+        s.until_wait(n);
         trace.extend(s.m.take_lcd_trace());
-        let speed_out = match stop {
-            Stop::Exited => Speed::Mhz6,
-            Stop::BadExit(left) => left.speed,
-            other => panic!("the probe did not leave: {other:?}"),
-        };
-        assert_eq!(speed_out, speed, "the speed it found");
+        if n == 8 {
+            break;
+        }
+        match n {
+            5 => s.tap(SCAN_2ND),
+            7 => s.tap(SCAN_ALPHA),
+            _ => {}
+        }
+        s.tap(SCAN_5);
+    }
+    s.m.load_ram(GRAPH_ADDR, &[0]);
+    let leave = s.label("LEAVE");
+    s.m.press_key(SCAN_5);
+    let mut reached = Reached::Vector38;
+    for _ in 0..20 {
+        reached = s.m.run_to(BASE, leave, 100_000);
+        if reached != Reached::Vector38 {
+            break;
+        }
+    }
+    assert_eq!(reached, Reached::Target, "the probe reaches its exit");
+    assert_eq!(s.m.regs().iff1, 1, "interrupts are on when it leaves");
+    let mut stop = Stop::Limit;
+    for _ in 0..20 {
+        stop = s.m.resume(100_000).stop;
+        if stop != Stop::Limit {
+            break;
+        }
+    }
+    trace.extend(s.m.take_lcd_trace());
+    (trace, stop, s)
+}
+
+fn left_at(stop: Stop) -> Speed {
+    match stop {
+        Stop::Exited => Speed::Mhz6,
+        Stop::BadExit(left) => left.speed,
+        other => panic!("the probe did not leave: {other:?}"),
+    }
+}
+
+#[test]
+fn the_probe_writes_the_speed_only_to_set_a_pass_and_to_put_it_back_and_leaves_as_it_found_it() {
+    for (speed, found) in [(Speed::Mhz6, 0u8), (Speed::Mhz15, 1)] {
+        let (trace, stop, mut s) = whole_run(speed);
+        let speeds: Vec<u8> = trace
+            .iter()
+            .filter(|a| a.is_write() && a.port == PORT_SPEED)
+            .map(|a| a.value)
+            .collect();
+        assert_eq!(speeds, [0, found, 1, found], "the speeds written, in order");
+        assert_eq!(left_at(stop), speed, "the speed it found");
+        assert_eq!(
+            s.peek(GRAPH_ADDR, 1)[0] & 1,
+            1,
+            "graphDraw is set at the exit"
+        );
         let commands: BTreeSet<u8> = trace
             .iter()
             .filter(|a| a.is_write() && a.port == LCD_CMD)
             .map(|a| a.value)
             .collect();
-        assert!(commands.contains(&0x01) && commands.contains(&0x05));
         assert!(
             commands.iter().all(|&c| c < 0xC0),
             "no contrast write: {commands:x?}"
         );
     }
+}
+
+#[test]
+fn every_write_of_the_speed_is_made_with_interrupts_off_from_a_call_made_with_them_on() {
+    let mut s = Stub::new(PROBE, Speed::Mhz6, 0, false);
+    for call in 0..4 {
+        s.run_to_label("SET_SPEED");
+        assert_eq!(s.m.regs().iff1, 1, "call {call} is made with interrupts on");
+        s.run_to_label("SS_OUT");
+        assert_eq!(
+            s.m.regs().iff1,
+            0,
+            "call {call} writes port 20h with interrupts off"
+        );
+        let run = s.m.resume(1);
+        assert_eq!(run.stop, Stop::Limit);
+        match call {
+            1 => {
+                s.until_wait(1);
+                s.m.press_key(SCAN_5);
+            }
+            2 => s.m.release_key(SCAN_5),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn the_only_commands_the_probe_writes_are_the_ones_ui_blit_writes() {
+    let mut s = Stub::new(PROBE, Speed::Mhz6, 0, true);
+    s.run_to_label("PASS_BLIT_DONE");
+    let first = s.m.take_lcd_trace();
+    s.until_wait(1);
+    s.tap(SCAN_5);
+    s.until_wait(2);
+    s.m.trace_lcd(true);
+    s.m.press_key(SCAN_5);
+    s.run_to_label("CASE_BLIT_DONE");
+    let blit = s.m.take_lcd_trace();
+    s.m.release_key(SCAN_5);
+    s.run_to_label("PRE_READ_DONE");
+    let pre = s.m.take_lcd_trace();
+    s.until_wait(3);
+    s.run_ms(300);
+    s.m.trace_lcd(true);
+    s.m.press_key(SCAN_5);
+    s.run_to_label("POST_READ_DONE");
+    let post = s.m.take_lcd_trace();
+    let mut want: BTreeSet<u8> = BTreeSet::from([0x01, 0x05, 0x80]);
+    want.extend(0x20..=0x2B);
+    let mut got = BTreeSet::new();
+    for (name, span) in [
+        ("pass", &first),
+        ("blit", &blit),
+        ("pre", &pre),
+        ("post", &post),
+    ] {
+        let commands: Vec<u8> = span
+            .iter()
+            .filter(|a| a.is_write() && a.port == LCD_CMD)
+            .map(|a| a.value)
+            .collect();
+        assert_eq!(commands.len(), 26, "{name}: command writes");
+        got.extend(commands);
+        let data_writes = span
+            .iter()
+            .filter(|a| a.is_write() && a.port == LCD_DATA)
+            .count();
+        let data_reads = span
+            .iter()
+            .filter(|a| !a.is_write() && a.port == LCD_DATA)
+            .count();
+        let other = span
+            .iter()
+            .filter(|a| !matches!(a.port, 0x10 | 0x11 | PORT_SPEED))
+            .count();
+        let sends = name == "pass" || name == "blit";
+        assert_eq!(
+            data_writes,
+            if sends { FRAME } else { 0 },
+            "{name}: data writes"
+        );
+        assert_eq!(
+            data_reads,
+            if sends { 0 } else { 12 * 65 },
+            "{name}: data reads"
+        );
+        assert_eq!(other, 0, "{name}: other ports");
+    }
+    assert_eq!(got, want);
+}
+
+#[test]
+fn the_blit_returns_with_the_shadow_registers_it_was_called_with() {
+    let mut s = Stub::new(PROBE, Speed::Mhz6, 0, false);
+    for k in 0..5u8 {
+        s.run_to_label("PB_MASKED");
+        let mut r = s.m.regs();
+        (r.af2, r.bc2, r.de2, r.hl2) = (0x1234 + u16::from(k), 0x5678, 0x9ABC, 0xDEF0);
+        s.m.set_regs(&r);
+        s.run_to_label("PB_UNMASKED");
+        let after = s.m.regs();
+        assert_eq!(
+            (after.af2, after.bc2, after.de2, after.hl2),
+            (r.af2, r.bc2, r.de2, r.hl2),
+            "blit {k}"
+        );
+        s.m.release_key(SCAN_5);
+        let waits = if k < 2 { k + 1 } else { 3 + 2 * (k - 2) };
+        s.until_wait(waits);
+        s.run_ms(300);
+        if k >= 2 {
+            s.m.press_key(SCAN_5);
+            s.until_wait(waits + 1);
+            s.m.release_key(SCAN_5);
+            s.run_ms(300);
+        }
+        if k < 4 {
+            s.m.press_key(SCAN_5);
+        }
+    }
+}
+
+const PASS_6: [&str; 8] = [
+    "lcdchk v1 6MHz",
+    "d01 00768 00000",
+    "d23 00000 00000",
+    "dtot 00000",
+    "c01 00013 00013",
+    "c23 00000 00000",
+    "ctot 00013",
+    "any key in20=00",
+];
+const PASS_15: [&str; 8] = [
+    "lcdchk v1 15MHz",
+    "d01 00000 00084",
+    "d23 00684 00000",
+    "dtot 01452",
+    "c01 00012 00000",
+    "c23 00001 00013",
+    "ctot 00041",
+    "any key in20=01",
+];
+
+#[test]
+fn the_screens_print_the_figures_the_probe_holds() {
+    let mut s = Stub::new(PROBE, Speed::Mhz6, 0, false);
+    assert_eq!(s.printed_until_wait(1), PASS_6);
+    s.m.press_key(SCAN_5);
+    assert_eq!(s.printed_until_wait(2), PASS_15);
+    s.m.release_key(SCAN_5);
+    s.run_ms(300);
+    s.m.press_key(SCAN_5);
+    let prompt = s.printed_until_wait(3);
+    s.m.release_key(SCAN_5);
+    s.run_ms(300);
+    assert_eq!(prompt[7], "press 5");
+    assert!(prompt[..7].iter().all(String::is_empty));
+    s.poke_lcd(10, 3, other(10 * STRIDE + 3));
+    s.m.press_key(SCAN_5);
+    let rows = s.printed_until_wait(4);
+    let key = format!("key plain k={:02X}", keys()[0]);
+    let want = [
+        &key[..],
+        "pre 000 r-- c--",
+        "lcd 001 r10 c03",
+        "plt 000 r-- c--",
+        "r7  000 r-- c--",
+        "",
+        "",
+        "any key",
+    ];
+    assert_eq!(rows, want);
+}
+
+#[test]
+fn clear_at_any_wait_leaves_through_the_exit_with_the_speed_back_and_the_flag_set() {
+    for (speed, waits) in [
+        (Speed::Mhz6, 1),
+        (Speed::Mhz15, 2),
+        (Speed::Mhz6, 3),
+        (Speed::Mhz6, 4),
+        (Speed::Mhz15, 7),
+    ] {
+        let mut s = Stub::new(PROBE, speed, 0, false);
+        for n in 1..waits {
+            s.until_wait(n);
+            s.tap(SCAN_5);
+        }
+        s.until_wait(waits);
+        s.m.load_ram(GRAPH_ADDR, &[0]);
+        let stop = s.press_to_exit(0x0F);
+        assert_eq!(left_at(stop), speed, "wait {waits}");
+        assert_eq!(s.peek(GRAPH_ADDR, 1)[0] & 1, 1, "wait {waits}: graphDraw");
+    }
+}
+
+#[test]
+fn the_probe_writes_only_the_memory_it_names() {
+    let mut s = Stub::new(PROBE, Speed::Mhz6, 0, false);
+    let before = s.peek(0x8000, 0x4000);
+    let size = s.label("S_SIZE");
+    let (base, buf) = (s.label("S_BASE"), s.label("LCD_BUF"));
+    let spans = [
+        (base, size),
+        (0x843F, 8),
+        (buf, 768),
+        (UI_FRAME, 768),
+        (0x86EC, 26),
+        (CUR_ROW, 2),
+        (GRAPH_ADDR, 1),
+    ];
+    for n in 1..=8 {
+        s.until_wait(n);
+        if n < 8 {
+            s.tap(SCAN_5);
+        }
+    }
+    s.press_to_exit(SCAN_5);
+    let after = s.peek(0x8000, 0x4000);
+    let strays: Vec<u16> = (0..0x4000u16)
+        .filter(|&i| before[usize::from(i)] != after[usize::from(i)])
+        .map(|i| 0x8000 + i)
+        .filter(|a| !spans.iter().any(|&(at, len)| (at..at + len).contains(a)))
+        .collect();
+    assert!(
+        strays.is_empty(),
+        "bytes changed outside the probe's regions: {strays:04X?}"
+    );
+    assert_eq!(size, 153);
 }

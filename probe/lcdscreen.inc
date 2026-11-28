@@ -27,10 +27,14 @@ prompt_ptr:
 	ex de,hl
 	ret
 
-; Contract: HL is a string, DE a word. Prints the string, then the word as five digits.
+; Contract: HL is a string, DE the address of a word. Prints the string, then the word as five digits.
+; The OS's text calls may destroy every register but IY, so what is needed after one is kept on the
+; stack or in scratch.
 put_label_word:
+	push de
 	call putstr
-	ex de,hl
+	pop hl
+	call load_word
 	jp putdec
 
 ; Contract: HL is a counter word's address. Returns the word in HL.
@@ -85,7 +89,7 @@ sp_speed:
 	ld a,3
 	call at_row
 	ld hl,txt_dtot
-	ld de,(LCD_TOTAL_DATA)
+	ld de,LCD_TOTAL_DATA
 	call put_label_word
 	ld a,4
 	call at_row
@@ -100,7 +104,7 @@ sp_speed:
 	ld a,6
 	call at_row
 	ld hl,txt_ctot
-	ld de,(LCD_TOTAL_CMD)
+	ld de,LCD_TOTAL_CMD
 	call put_label_word
 	ld a,7
 	call at_row
@@ -155,19 +159,23 @@ show_case:
 	ld hl,txt_any_key
 	jp putstr
 
-; Contract: HL is a label, IX a result slot. Prints the label, the count as three digits, and the row
+; Contract: HL is a label, IX a result slot, which is kept in S_SLOTP. Prints the label, the count as three digits, and the row
 ; and column of the first difference as two digits each, or dashes.
 put_slot:
+	ld (S_SLOTP),ix
 	call putstr
+	ld ix,(S_SLOTP)
 	ld l,(ix+0)
 	ld h,(ix+1)
 	call putdec3
 	ld hl,txt_row
 	call putstr
+	ld ix,(S_SLOTP)
 	ld a,(ix+2)
 	call put_two
 	ld hl,txt_col
 	call putstr
+	ld ix,(S_SLOTP)
 	ld a,(ix+3)
 
 ; Contract: A is a number below 100, or FFh for two dashes. Prints two digits.

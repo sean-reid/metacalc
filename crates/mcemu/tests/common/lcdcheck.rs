@@ -4,7 +4,7 @@
 #![allow(dead_code)]
 
 use super::realos;
-use mcemu::{LcdAccess, Machine, STUB_ROM, Speed, Stop};
+use mcemu::{LcdAccess, Machine, Reached, STUB_ROM, Speed, Stop};
 use std::path::PathBuf;
 
 pub const BASE: u8 = 0x69;
@@ -24,6 +24,10 @@ pub const COMPARED: usize = 56 * STRIDE;
 pub const LCD_CMD: u8 = 0x10;
 pub const LCD_DATA: u8 = 0x11;
 pub const BUSY: u8 = 0x80;
+pub const PORT_SPEED: u8 = 0x20;
+/// The OS flag byte with graphDraw, bit 0, and curRow and curCol.
+pub const GRAPH_ADDR: u16 = 0x89F3;
+pub const CUR_ROW: u16 = 0x844B;
 
 /// Byte `i` of the pattern the probe fills: 5Ch + 37 * (i mod 256), where 00h reads as 5Ah and
 /// FFh as A5h.
@@ -107,9 +111,10 @@ pub struct Wr {
 /// The first pass's writes, from a trace that starts before it: the first `WRITES` writes, each
 /// with the status reads that came before it.
 pub fn pass(trace: &[LcdAccess]) -> Vec<Wr> {
+    let trace = lcd_only(trace);
     let mut out = Vec::new();
     let (mut last, mut gap, mut polls, mut busy) = (None, None, 0, 0);
-    for a in trace {
+    for a in &trace {
         if a.is_write() {
             out.push(Wr {
                 port: a.port,
@@ -132,6 +137,15 @@ pub fn pass(trace: &[LcdAccess]) -> Vec<Wr> {
     }
     assert_eq!(out.len(), WRITES, "the trace holds a whole pass");
     out
+}
+
+/// The accesses to the LCD ports, without the writes to the speed port.
+pub fn lcd_only(trace: &[LcdAccess]) -> Vec<LcdAccess> {
+    trace
+        .iter()
+        .copied()
+        .filter(|a| a.port != PORT_SPEED)
+        .collect()
 }
 
 /// What the probe's counters must say for the writes to `port`, by the busy reads in the trace.
@@ -233,6 +247,63 @@ impl Stub {
             SLICE as usize * SLICES,
             self.waits()
         );
+    }
+
+    /// Runs to the instruction at `label` in the app's page, through interrupts.
+    pub fn run_to_label(&mut self, name: &str) {
+        let at = self.label(name);
+        for _ in 0..200 {
+            match self.m.run_to(BASE, at, 100_000) {
+                Reached::Target => return,
+                Reached::Vector38 | Reached::Limit => {}
+            }
+        }
+        panic!("{name} not reached");
+    }
+
+    /// Presses `scan` and runs until the probe has left, and returns how it stopped.
+    pub fn press_to_exit(&mut self, scan: u8) -> Stop {
+        self.m.press_key(scan);
+        for _ in 0..20 {
+            let stop = self.m.resume(100_000).stop;
+            if stop != Stop::Limit {
+                return stop;
+            }
+        }
+        panic!("the probe did not leave");
+    }
+
+    /// What the probe printed on its screen since the last time it cleared: the characters it
+    /// passed to `putchar` by row, in the order printed, until it has made `n` waits. The stub's
+    /// `_PutC` draws nothing and keeps no text, so this is read at the probe's own call.
+    pub fn printed_until_wait(&mut self, n: u8) -> Vec<String> {
+        let put = self.label("PUTCHAR");
+        let mut grid = vec![[b' '; 16]; 8];
+        let (mut col, mut last) = (0usize, 0xFFu8);
+        for _ in 0..4000 {
+            if self.waits() >= n {
+                break;
+            }
+            if self.m.run_to(BASE, put, 100_000) != Reached::Target {
+                continue;
+            }
+            let ch = (self.m.regs().af >> 8) as u8;
+            let row = self.peek(CUR_ROW, 1)[0];
+            if row != last {
+                (col, last) = (0, row);
+            }
+            if row == 0 && col == 0 {
+                grid = vec![[b' '; 16]; 8];
+            }
+            grid[usize::from(row)][col] = ch;
+            col += 1;
+            let run = self.m.resume(1);
+            assert_eq!(run.stop, Stop::Limit);
+        }
+        assert!(self.waits() >= n, "the probe made {n} waits");
+        grid.iter()
+            .map(|r| String::from_utf8_lossy(r).trim_end().to_string())
+            .collect()
     }
 
     pub fn run_ms(&mut self, ms: u32) {

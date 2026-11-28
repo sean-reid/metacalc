@@ -74,6 +74,7 @@ pb_on:
 pb_go:
 	ld (ui_iff),a
 	di
+pb_masked:
 	ld c,LCD_CMD
 	PWAIT(LCD_HIST_CMD, LCD_TOTAL_CMD)
 	ld a,$01
@@ -115,6 +116,7 @@ pb_block:
 	ld (ui_cnt),a
 	cp $20+UI_STRIDE
 	jp nz,pb_col
+pb_unmasked:
 	ld a,(ui_iff)
 	or a
 	ret z

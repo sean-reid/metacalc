@@ -363,13 +363,14 @@ impl Machine {
         self.calc.set_lcd_busy_window(clocks);
     }
 
-    /// Starts or stops recording every access to the LCD ports 10h to 13h, with its CPU clock, in
-    /// a machine made with `new`; either forgets what was recorded.
+    /// Starts or stops recording every access to the LCD ports 10h to 13h and every write to the
+    /// speed port 20h, with its CPU clock, in a machine made with `new`; either forgets what was
+    /// recorded.
     pub fn trace_lcd(&mut self, on: bool) {
         self.calc.trace_lcd(on);
     }
 
-    /// The LCD port accesses since the last call, in order. The record holds 65536; more panics.
+    /// The LCD port accesses and speed writes since the last call, in order. The record holds 65536; more panics.
     pub fn take_lcd_trace(&mut self) -> Vec<LcdAccess> {
         let (accesses, full) = self.calc.take_lcd_trace();
         assert!(

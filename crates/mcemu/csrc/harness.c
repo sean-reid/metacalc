@@ -99,7 +99,7 @@ typedef struct {
 
 #define PORT_LOG 16384
 
-/* One access to the LCD ports, 10h to 13h, with the CPU clock when it ran; the record is kept only while tracing. */
+/* One access to the LCD ports, 10h to 13h, or write to the speed port, 20h, with the CPU clock when it ran; the record is kept only while tracing. */
 typedef struct {
 	uint32_t clock;
 	uint8_t port;
@@ -262,7 +262,7 @@ static void out_aliased(TilemCalc *calc, dword port, byte value)
 	note_bank_write(calc, port, value);
 	note_port_write(calc, port, value);
 
-	if (is_lcd_port(port))
+	if (is_lcd_port(port) || (port & 0xff) == 0x20)
 		note_lcd_access(calc, port, value, 1);
 	xz_z80_out(calc, port, value);
 	alias_spare_pages(calc);
@@ -516,7 +516,7 @@ size_t mcemu_port_take(TilemCalc *calc, McPortWrite *out, size_t cap)
 /* Replaces the core's 50 clock LCD busy window, taken at 6 MHz, with `clocks`, or restores it with 0. */
 void mcemu_set_lcd_busy_window(TilemCalc *calc, uint32_t clocks) { state_of(calc)->busy_window = clocks; }
 
-/* Starts or stops recording the accesses to ports 10h to 13h; either clears the record. */
+/* Starts or stops recording the accesses to ports 10h to 13h and the writes to port 20h; either clears the record. */
 void mcemu_lcd_trace(TilemCalc *calc, int on)
 {
 	McState *st = state_of(calc);

@@ -122,10 +122,16 @@ fn the_cases_show_the_pattern_and_the_prompt_and_report_the_bytes_written_during
     let img = image(PROBE);
     let mut os = RealOs::boot(&img.app);
     let home_speed = os.m.in_port(0x20);
+    os.m.ram_page(1)[GRAPH_FLAGS] &= !1;
     os.tap(KEY_APPS, 150, 600);
     os.tap(KEY_2, 150, 300);
     os.run_ms(3000);
     assert_eq!(os.m.in_port(0x20), 0, "the OS starts an app at 6 MHz");
+    assert_eq!(
+        os.m.ram_page(1)[GRAPH_FLAGS] & 1,
+        0,
+        "graphDraw is clear while the probe runs"
+    );
     os.tap(SCAN_5, 150, 300);
     os.run_ms(3000);
     os.tap(SCAN_5, 150, 300);
@@ -186,7 +192,34 @@ fn the_cases_show_the_pattern_and_the_prompt_and_report_the_bytes_written_during
         os.run_ms(1500);
     }
     assert_blank_home(&mut os, "after the probe");
+    assert_eq!(
+        os.m.ram_page(1)[GRAPH_FLAGS] & 1,
+        1,
+        "graphDraw is set after the exit"
+    );
     assert_eq!(os.ram(CONTRAST, 1), contrast, "the contrast");
     assert_eq!(os.m.in_port(0x20), home_speed, "the OS's own speed is back");
     assert_eq!((os.m.in_port(5), os.m.in_port(7)), (0, 0x81), "the banks");
+}
+
+#[test]
+#[ignore = "needs the reference ROM image"]
+fn clear_leaves_the_probe_from_its_first_screen_with_a_clean_home_screen_and_the_flag_set() {
+    let img = image(PROBE);
+    let mut os = RealOs::boot(&img.app);
+    let home_speed = os.m.in_port(0x20);
+    os.m.ram_page(1)[GRAPH_FLAGS] &= !1;
+    os.tap(KEY_APPS, 150, 600);
+    os.tap(KEY_2, 150, 300);
+    os.run_ms(3000);
+    assert_screen(&mut os, "before clear", &refs(&pass_screen("6MHz", 0)));
+    os.tap(KEY_CLEAR, 150, 300);
+    os.run_ms(1500);
+    assert_blank_home(&mut os, "after clear");
+    assert_eq!(
+        os.m.ram_page(1)[GRAPH_FLAGS] & 1,
+        1,
+        "graphDraw is set after the exit"
+    );
+    assert_eq!(os.m.in_port(0x20), home_speed);
 }
