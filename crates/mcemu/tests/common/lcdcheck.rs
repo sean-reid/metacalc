@@ -3,14 +3,13 @@
 
 #![allow(dead_code)]
 
-use super::realos;
+use super::{keytables, realos};
 use mcemu::{LcdAccess, Machine, Reached, STUB_ROM, Speed, Stop};
 use std::path::PathBuf;
 
 pub const BASE: u8 = 0x69;
 pub const PROBE: &str = "lcdcheck_probe.z80";
 pub const REF: &str = "lcdcheck_ref.z80";
-pub const UI_FRAME: u16 = 0x9340;
 pub const SCAN_2ND: u8 = 0x36;
 pub const SCAN_ALPHA: u8 = 0x30;
 pub const SCAN_5: u8 = 0x1B;
@@ -25,9 +24,6 @@ pub const LCD_CMD: u8 = 0x10;
 pub const LCD_DATA: u8 = 0x11;
 pub const BUSY: u8 = 0x80;
 pub const PORT_SPEED: u8 = 0x20;
-/// The OS flag byte with graphDraw, bit 0, and curRow and curCol.
-pub const GRAPH_ADDR: u16 = 0x89F3;
-pub const CUR_ROW: u16 = 0x844B;
 
 /// Byte `i` of the pattern the probe fills: 5Ch + 37 * (i mod 256), where 00h reads as 5Ah and
 /// FFh as A5h.
@@ -204,6 +200,16 @@ impl Stub {
         self.img.label(name)
     }
 
+    /// The frame, plotSScreen.
+    pub fn frame(&self) -> u16 {
+        self.label("UI_FRAME")
+    }
+
+    /// The OS flag byte holding graphDraw, bit 0: the flags pointer plus graphFlags.
+    pub fn graph_flags(&self) -> u16 {
+        self.m.regs().iy + self.label("GRAPHFLAGS")
+    }
+
     pub fn peek(&mut self, addr: u16, len: usize) -> Vec<u8> {
         self.m.read_ram(addr, len)
     }
@@ -261,9 +267,8 @@ impl Stub {
         panic!("{name} not reached");
     }
 
-    /// Presses `scan` and runs until the probe has left, and returns how it stopped.
-    pub fn press_to_exit(&mut self, scan: u8) -> Stop {
-        self.m.press_key(scan);
+    /// Runs on until the probe has left, and returns how it stopped.
+    pub fn finish(&mut self) -> Stop {
         for _ in 0..20 {
             let stop = self.m.resume(100_000).stop;
             if stop != Stop::Limit {
@@ -271,6 +276,12 @@ impl Stub {
             }
         }
         panic!("the probe did not leave");
+    }
+
+    /// Presses `scan` and runs until the probe has left, and returns how it stopped.
+    pub fn press_to_exit(&mut self, scan: u8) -> Stop {
+        self.m.press_key(scan);
+        self.finish()
     }
 
     /// What the probe printed on its screen since the last time it cleared: the characters it
@@ -288,7 +299,7 @@ impl Stub {
                 continue;
             }
             let ch = (self.m.regs().af >> 8) as u8;
-            let row = self.peek(CUR_ROW, 1)[0];
+            let row = self.peek(self.label("CURROW"), 1)[0];
             if row != last {
                 (col, last) = (0, row);
             }
@@ -325,7 +336,8 @@ impl Stub {
     }
 
     pub fn poke_frame(&mut self, offset: usize, value: u8) {
-        self.m.load_ram(UI_FRAME + offset as u16, &[value]);
+        let at = self.label("UI_FRAME") + offset as u16;
+        self.m.load_ram(at, &[value]);
     }
 
     pub fn lcd_byte(&mut self, row: usize, col: usize) -> u8 {
@@ -334,4 +346,19 @@ impl Stub {
             (b << 1) | u8::from(lcd.pixel(col * 8 + bit, row))
         })
     }
+}
+
+/// The key the stub's `_GetKey` returns for the key the probe asks for in each case.
+pub fn keys() -> [u8; 3] {
+    let i = usize::from(SCAN_5) - 1;
+    [
+        keytables::PLAIN[i],
+        keytables::SECOND[i],
+        keytables::ALPHA[i],
+    ]
+}
+
+/// A byte of the pattern different from `pat(i)`.
+pub fn other(i: usize) -> u8 {
+    !pat(i)
 }

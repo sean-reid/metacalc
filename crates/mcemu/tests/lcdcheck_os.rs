@@ -168,7 +168,7 @@ fn the_cases_show_the_pattern_and_the_prompt_and_report_the_bytes_written_during
             1 => {
                 for off in [at(0, 0), at(55, 11)] {
                     let bytes = [!pat(off)];
-                    os.m.load_ram(UI_FRAME + off as u16, &bytes);
+                    os.m.load_ram(img.label("UI_FRAME") + off as u16, &bytes);
                 }
             }
             _ => {

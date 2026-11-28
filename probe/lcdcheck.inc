@@ -103,6 +103,7 @@ probe_start:
 	ld (hl),0
 	ldir
 	in a,(20h)
+speed_found:
 	and 1
 	ld (S_SPEED0),a
 	call fill_pattern
@@ -174,6 +175,7 @@ post_read_done:
 leave:
 	set graphDraw,(iy + graphFlags)
 	ei
+leave_go:
 	bjump(_JForceCmdNoChar)
 
 ; Contract: interrupts off. A is 0 for 6 MHz or 1 for 15. Writes port 20h. Destroys nothing else.
