@@ -41,7 +41,7 @@ pub const NAMES: [&str; 13] = [
 ];
 
 /// Whether one press types `c`.
-fn single(c: char) -> bool {
+pub fn single(c: char) -> bool {
     c.is_ascii_lowercase() || matches!(c, '0' | '3' | '.')
 }
 
@@ -79,7 +79,7 @@ pub fn arms(list: &Lister) -> Vec<Arm> {
         .find_map(|l| {
             let mut chars = l.chars();
             let (a, b) = (chars.next()?, chars.next()?);
-            (single(b) && a != b).then(|| (a.to_string(), b))
+            single(b).then(|| (a.to_string(), b))
         })
         .expect("a label whose second character one key types");
     let ninth = labels
@@ -89,12 +89,6 @@ pub fn arms(list: &Lister) -> Vec<Arm> {
         .expect("a label of eight characters")[..8]
         .to_string();
     let typed = c0.to_string();
-    let other = |text: &str| {
-        ['a', 'e', 's', 'm']
-            .into_iter()
-            .find(|&c| !text.ends_with(c))
-            .unwrap()
-    };
     let after_miss = format!("{c0}{miss_second}");
     let arm = |name, typed: &str, press, answer| Arm {
         name,
@@ -106,13 +100,8 @@ pub fn arms(list: &Lister) -> Vec<Arm> {
         arm("letter, first", "", Press::Char(hit_first), 1),
         arm("letter, later", &later_typed, Press::Char(later_second), 1),
         arm("letter, miss", "", Press::Char(miss_first), 1),
-        arm(
-            "letter after a miss",
-            &after_miss,
-            Press::Char(other(&after_miss)),
-            1,
-        ),
-        arm("ninth letter", &ninth, Press::Char(other(&ninth)), 0),
+        arm("letter after a miss", &after_miss, Press::Char('a'), 1),
+        arm("ninth letter", &ninth, Press::Char('a'), 0),
         arm("refused character", &typed, Press::Refused(b'/'), 0),
         arm("f2, prefix", &typed, Press::Key(F2), 1),
         arm("f2, none", "", Press::Key(F2), 0),

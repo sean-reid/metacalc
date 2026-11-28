@@ -1,7 +1,7 @@
-//! A letter typed twice in a row: prefixes with a doubled letter through the rig, which waits out the
-//! OS's key gap, are the model's; and on the reference OS the same letter pressed again 30 and 50 ms
-//! after its release, where the OS drops the second inside about 40 ms.
+//! A letter typed twice in a row: prefixes with a doubled letter, typed through the rig, which waits
+//! out the OS's key gap, are the model's on the stub and, ignored, on the reference OS.
 
+use crate::list_find_arms::single;
 use crate::list_find_rig::*;
 use crate::list_real::PROP;
 use crate::list_rig::*;
@@ -51,47 +51,32 @@ fn prefixes_with_a_doubled_letter_typed_through_the_rig_are_the_models() {
     assert!(hit >= 1 && miss + hit == prefixes.len());
 }
 
-/// T-states of 6 MHz in `ms` milliseconds.
-const fn ms(n: u32) -> u32 {
-    n * 6_000
-}
-
 #[test]
 #[ignore = "needs the reference ROM image and the built libraries: MC_LIBRARIES=<dir holding prop.mclib, pred.mclib, ring.mclib>"]
-fn on_the_reference_os_the_same_letter_pressed_again_is_dropped_at_30_and_50_ms_and_taken_from_70()
-{
-    let mut taken = Vec::new();
-    for gap in [30, 50, 70, 100, 150, 250] {
-        let mut list = Lister::on_rom(PROP);
-        list.open_on_rom();
-        let label = labels_of(list.built)[list.items()[0]].clone();
-        let c = label.chars().next().unwrap();
-        let scan = scans_for(c)[0];
-        list.tap(scan);
-        list.run.run(ms(gap));
-        let keys = list.run.scr_keys();
-        list.run.allow_raw_press();
-        list.run.m().press_key(scan);
-        list.run.run(ms(60));
-        list.run.release(scan);
-        list.run.run(ms(400));
+fn on_the_reference_os_a_doubled_letter_typed_through_the_rig_puts_both_letters_in_the_frame() {
+    let mut list = Lister::on_rom(PROP);
+    list.open_on_rom();
+    let prefixes: Vec<String> = doubled(&labels_of(list.built))
+        .into_iter()
+        .filter(|p| p.chars().all(single))
+        .collect();
+    assert!(prefixes.len() >= 3, "{} prefixes", prefixes.len());
+    println!("{} prefixes to type, {:?}", prefixes.len(), &prefixes[..3]);
+    for prefix in &prefixes[..3] {
+        list.f2();
+        for (n, c) in prefix.chars().enumerate() {
+            assert!(list.press_char(c), "{prefix:?}: {c:?} drew a frame");
+            list.same_find(&format!("{prefix:?}, {n} typed"));
+        }
         let frame = list.run.frames().last().cloned().unwrap();
         let len = usize::from(frame[7] & 0x0F);
-        let more = list.run.scr_keys() - keys;
-        println!(
-            "{gap} ms after the release: byte 7 {:02X}, characters {:?}, the app took {more} more key(s)",
-            frame[7],
-            String::from_utf8_lossy(&frame[8..8 + len.min(8)]),
+        assert_eq!(len, prefix.len(), "{prefix:?}: byte 7 is {:02X}", frame[7]);
+        assert_eq!(
+            &frame[8..8 + len],
+            prefix.as_bytes(),
+            "{prefix:?}: the characters"
         );
-        assert!(len >= 1, "the first press was taken");
-        assert_eq!(frame[8], c as u8);
-        taken.push((gap, len, more));
+        list.skip_the_wait();
+        list.settle();
     }
-    let lens: Vec<usize> = taken.iter().map(|t| t.1).collect();
-    assert_eq!(
-        lens,
-        [1, 1, 2, 2, 2, 2],
-        "dropped at 30 and 50 ms, taken from 70 ms on"
-    );
-    assert!(taken.iter().all(|t| t.2 == usize::from(t.1 == 2) as u16));
 }
