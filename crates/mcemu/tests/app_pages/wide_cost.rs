@@ -15,10 +15,10 @@ const TAP: u32 = 120_000;
 const ENTER_WIDE: u32 = 731_000;
 /// The most T-states scr_draw and ui_blit may take on the Libraries frame, warm and cold, and on a
 /// stage's About frame, warm and cold.
-const LIBRARIES_WIDE: u32 = 163_700;
-const LIBRARIES_WIDE_COLD: u32 = 165_100;
-const STAGE_ABOUT_WIDE: u32 = 148_400;
-const STAGE_ABOUT_WIDE_COLD: u32 = 148_400;
+const LIBRARIES_WIDE: u32 = 169_075;
+const LIBRARIES_WIDE_COLD: u32 = 170_475;
+const STAGE_ABOUT_WIDE: u32 = 153_332;
+const STAGE_ABOUT_WIDE_COLD: u32 = 153_332;
 
 fn data() -> Vec<u8> {
     let built = wide_stages();

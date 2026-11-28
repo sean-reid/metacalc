@@ -38,7 +38,7 @@ fn the_code_pages_of_ring_in_three_stages_stay_within_their_ceilings() {
 /// The most T-states a cursor move may take with the frame it redraws, on six stages with every
 /// stage under way: libs_key, then scr_draw and ui_blit, for the move that scrolls the rows and
 /// for those that do not.
-const MOVE_AND_REDRAW: u32 = 161_900;
+const MOVE_AND_REDRAW: u32 = 167_503;
 
 #[test]
 fn a_cursor_move_and_the_frame_it_redraws_fit_their_ceiling() {

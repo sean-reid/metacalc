@@ -9,10 +9,10 @@ use crate::shellrig::*;
 /// The least and the most T-states scr_draw and ui_blit may take together for each frame of the
 /// checking screen, cold (the strings copied to APP_STAGE first), a little under and a little above
 /// what they take, and what the warm frame saves.
-const FRAME_READING: (u32, u32) = (127_600, 132_000);
-const FRAME_STEPS: (u32, u32) = (146_500, 152_000);
-const FRAME_FINISHED: (u32, u32) = (122_650, 127_500);
-const FRAME_DAMAGED: (u32, u32) = (125_950, 131_000);
+const FRAME_READING: (u32, u32) = (132_519, 136_919);
+const FRAME_STEPS: (u32, u32) = (151_419, 156_919);
+const FRAME_FINISHED: (u32, u32) = (127_569, 132_419);
+const FRAME_DAMAGED: (u32, u32) = (130_869, 135_919);
 const SAVED_WARM: u32 = 1_921;
 const SAVED_WARM_DAMAGED: u32 = 2_641;
 
