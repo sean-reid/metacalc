@@ -21,10 +21,7 @@ fn the_sentinel_is_the_complement_of_the_frames_byte_after_every_blit() {
         if let Some(open) = open {
             shell.tap(open);
         }
-        let (s, f) = (
-            shell.app.m.read_ram(sentinel, 1)[0],
-            shell.app.m.read_ram(frame, 1)[0],
-        );
+        let (s, f) = (shell.peek(sentinel, 1)[0], shell.peek(frame, 1)[0]);
         assert_eq!(s, !f, "after {open:?}");
     }
 }
@@ -133,10 +130,7 @@ fn refreshed(built: &'static Built, enter: Enter, open: &[u8], kind: u8, want: &
     assert_eq!(shell.blits(), blits + 1, "and drawn once");
     shell.shows("after the power down and a key", want);
     let (sentinel, frame) = shell.sentinel();
-    let (s, f) = (
-        shell.app.m.read_ram(sentinel, 1)[0],
-        shell.app.m.read_ram(frame, 1)[0],
-    );
+    let (s, f) = (shell.peek(sentinel, 1)[0], shell.peek(frame, 1)[0]);
     assert_eq!(s, !f, "the sentinel is stored again");
     shell.tap(F4);
     assert_eq!(
@@ -197,21 +191,17 @@ fn a_power_down_destroys_the_error_notices_line_and_the_next_key_builds_it_again
         shell.tap(F1);
         shell.shows("the error notice", &model::error(status));
         let buf = shell.app.label("NT_LINE");
-        let line = shell.app.m.read_ram(buf, 9);
+        let line = shell.peek(buf, 9);
         shell.power_down();
         assert_ne!(
-            shell.app.m.read_ram(buf, 9),
+            shell.peek(buf, 9),
             line,
             "the power down wrote over the line"
         );
         let blits = shell.blits();
         shell.tap(F4);
         assert_eq!(shell.blits(), blits + 1);
-        assert_eq!(
-            shell.app.m.read_ram(buf, 9),
-            line,
-            "the line is built again"
-        );
+        assert_eq!(shell.peek(buf, 9), line, "the line is built again");
         shell.shows("after the power down", &model::error(status));
     }
 }

@@ -1,7 +1,8 @@
 //! What the user sees when the reader refuses a call the sections screen makes on its way in: the title
-//! lookup of the push (the screen opens on its first title), and the assertion count in the screen's own
-//! enter, on the push, after an auto power down and when the error notice over it closes. Only a build
-//! whose one stage is the whole library asks the reader for the count in libs_list, so those tests use one.
+//! lookup of the push (the screen opens on its first title), and the call of the screen's own enter that the
+//! build makes, on the push, after an auto power down and when the error notice over it closes. A build
+//! whose one stage is the whole library asks the reader for the count in libs_list, so its refusal is the
+//! count's; a shipped build has a stage table, and the refusal its enter can meet is the title lookup's.
 
 use crate::app::Built;
 use crate::built::around;
@@ -16,6 +17,37 @@ use std::sync::OnceLock;
 
 const TITLE_FOR: &str = "far_lib_title_for";
 const COUNT: &str = "far_lib_assertion_count";
+
+/// A build and the reader call of the screen's enter that is refused: the stage the list is on, the stub,
+/// the status and how many calls the stub sees from the key to the settled notice.
+struct Refusal {
+    built: fn() -> &'static Built,
+    stage: usize,
+    stub: &'static str,
+    status: u8,
+    on_push: u8,
+    calls: u16,
+}
+
+/// The build with no stage list: libs_list asks for the count.
+const ONE: Refusal = Refusal {
+    built: one_stage,
+    stage: 0,
+    stub: COUNT,
+    status: 0x61,
+    on_push: 1,
+    calls: 3,
+};
+
+/// The staged build: the enter's only reader call is the lookup of the stage's last title.
+const STAGED: Refusal = Refusal {
+    built: rich,
+    stage: 5,
+    stub: TITLE_FOR,
+    status: 0x65,
+    on_push: 2,
+    calls: 2,
+};
 
 /// The library `rich` holds, built with no stage list, so that its one stage is the whole library and
 /// libs_list asks the reader for the count.
@@ -102,23 +134,24 @@ fn a_refused_title_lookup_opens_the_screen_on_title_0_with_the_list_as_it_was() 
     }
 }
 
-#[test]
-fn a_refused_assertion_count_in_the_enter_on_the_push_leaves_the_list_under_the_error_notice() {
+fn on_the_push(r: &Refusal) {
     for kind in [Kind::All, Kind::Axioms] {
-        let mut walker = in_a_later_section(one_stage(), 0, kind);
+        let mut walker = in_a_later_section((r.built)(), r.stage, kind);
         let list = &mut walker.list;
         let at = format!("{kind:?}");
         let before = list.run.frames();
         let log = list.log.len();
-        let status = 0x61;
-        list.fail_at(0, COUNT, 1, status);
+        let status = r.status;
+        list.fail_at(0, r.stub, r.on_push, status);
         list.tap(F5);
         let drawn = list.run.next_blit();
         list.run.run(300_000);
         assert_eq!(
             list.fail_calls(0),
-            3,
-            "{at}: the screen's enter was refused, then the list's enter made two calls of its own"
+            r.calls,
+            "{at}: calls of {} up to the notice, the refused one being call {}",
+            r.stub,
+            r.on_push
         );
         same_frame(&at, &drawn, &model::error(status));
         let frames = list.run.frames();
@@ -147,9 +180,17 @@ fn a_refused_assertion_count_in_the_enter_on_the_push_leaves_the_list_under_the_
 }
 
 #[test]
-fn a_refused_assertion_count_in_the_enter_after_a_power_down_puts_the_error_notice_over_the_screen_and_drops_the_key()
- {
-    let mut walker = in_a_later_section(one_stage(), 0, Kind::All);
+fn a_refused_assertion_count_in_the_enter_on_the_push_leaves_the_list_under_the_error_notice() {
+    on_the_push(&ONE);
+}
+
+#[test]
+fn a_refused_title_lookup_in_the_enter_on_the_push_leaves_the_list_under_the_error_notice() {
+    on_the_push(&STAGED);
+}
+
+fn after_a_power_down(r: &Refusal) {
+    let mut walker = in_a_later_section((r.built)(), r.stage, Kind::All);
     let list = &mut walker.list;
     list.open_sections();
     list.goto_title(20);
@@ -158,8 +199,8 @@ fn a_refused_assertion_count_in_the_enter_after_a_power_down_puts_the_error_noti
     let frames = list.run.frames();
     assert_eq!(frames.len(), 3);
     list.run.shell.power_down();
-    let status = 0x62;
-    list.fail_at(0, COUNT, 1, status);
+    let status = r.status + 1;
+    list.fail_at(0, r.stub, 1, status);
     list.run.press(DOWN);
     let drawn = list.run.next_blit();
     list.run.release(DOWN);
@@ -183,8 +224,19 @@ fn a_refused_assertion_count_in_the_enter_after_a_power_down_puts_the_error_noti
 }
 
 #[test]
-fn a_refused_assertion_count_when_the_notice_over_the_screen_closes_leaves_the_app() {
-    let mut walker = in_a_later_section(one_stage(), 0, Kind::All);
+fn a_refused_assertion_count_in_the_enter_after_a_power_down_puts_the_error_notice_over_the_screen_and_drops_the_key()
+ {
+    after_a_power_down(&ONE);
+}
+
+#[test]
+fn a_refused_title_lookup_in_the_enter_after_a_power_down_puts_the_error_notice_over_the_screen_and_drops_the_key()
+ {
+    after_a_power_down(&STAGED);
+}
+
+fn when_the_notice_closes(r: &Refusal) {
+    let mut walker = in_a_later_section((r.built)(), r.stage, Kind::All);
     let list = &mut walker.list;
     list.open_sections();
     list.fail_at(0, "far_lib_title", 1, 0x63);
@@ -193,7 +245,7 @@ fn a_refused_assertion_count_when_the_notice_over_the_screen_closes_leaves_the_a
     list.run.run(300_000);
     same_frame("the first notice", &notice, &model::error(0x63));
     assert_eq!(list.run.depth(), 4, "the notice is over the screen");
-    list.fail_at(1, COUNT, 1, 0x64);
+    list.fail_at(1, r.stub, 1, r.status + 3);
     list.tap(CLEAR);
     let stop = list.run.m().resume(3_000_000).stop;
     assert_eq!(
@@ -203,4 +255,14 @@ fn a_refused_assertion_count_when_the_notice_over_the_screen_closes_leaves_the_a
     );
     assert_eq!(list.fail_calls(1), 1, "the enter's call was refused");
     list.run.shell.assert_regions_put_away();
+}
+
+#[test]
+fn a_refused_assertion_count_when_the_notice_over_the_screen_closes_leaves_the_app() {
+    when_the_notice_closes(&ONE);
+}
+
+#[test]
+fn a_refused_title_lookup_when_the_notice_over_the_screen_closes_leaves_the_app() {
+    when_the_notice_closes(&STAGED);
 }

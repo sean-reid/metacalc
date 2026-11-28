@@ -59,7 +59,7 @@ fn a_frame_of_the_checking_screen_costs_what_its_floor_and_ceiling_say() {
     run.m().press_key(F2);
     loop {
         run.next_blit();
-        if run.values().is_some_and(|v| v.iter().all(|&x| x != 0)) {
+        if run.values_here().is_some_and(|v| v.iter().all(|&x| x != 0)) {
             break;
         }
     }

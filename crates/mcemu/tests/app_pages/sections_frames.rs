@@ -303,21 +303,43 @@ fn a_stage_name_that_fills_the_room_exactly_fits_and_one_pixel_more_is_cut() {
     let list = &mut walker.list;
     let (mut whole, mut cut) = (0, 0);
     list.open_sections();
-    for (side, over) in [(w, false), (w - 1, false), (w + 1, true)] {
+    for side in [w, w - 1, w + 1] {
         let title = widths.iter().position(|&x| x == side).unwrap();
-        assert_eq!(
-            font.text_width(&name) + font.text_width(&right(title)),
-            91 + usize::from(over) - usize::from(side < w),
-            "{}: the name and the right side {:?} against the 91 the gap leaves",
-            name,
-            right(title)
-        );
+        let right = right(title);
+        let over = font.text_width(&name) + font.text_width(&right) > 91;
         list.goto_title(title);
+        let drawn = list.run.frame();
+        let shown = list.shown();
+        assert_eq!(
+            bar(&drawn),
+            bar(&shown),
+            "{right}: the title bar the Z80 drew is the model's"
+        );
+        let was_cut = bar(&drawn) != uncut_bar(&name, &right);
+        assert_eq!(was_cut, over, "{right}: the name drawn cut or whole");
         if over {
             cut += 1;
         } else {
             whole += 1;
         }
     }
-    assert_eq!((whole, cut), (2, 1), "frames with the name whole and cut");
+    assert_eq!(
+        (whole, cut),
+        (2, 1),
+        "title bars whose name fits the room, and does not"
+    );
+}
+
+/// The pixels of the title bar, the first row of text.
+fn bar(frame: &[u8]) -> &[u8] {
+    &frame[..12 * mcui::canvas::ROW]
+}
+
+/// The title bar with `name` and `right` drawn in full, as a bar with room for both would be.
+fn uncut_bar(name: &str, right: &str) -> Vec<u8> {
+    let mut canvas = mcui::canvas::Canvas::default();
+    canvas.text(mcui::canvas::MARGIN, 0, name);
+    canvas.text_right(0, right);
+    canvas.invert(0, 0, mcui::canvas::WIDTH, mcui::canvas::ROW);
+    bar(&crate::ui_support::pack(&canvas.into_bitmap())).to_vec()
 }

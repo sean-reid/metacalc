@@ -1,5 +1,5 @@
 //! A stage name of twelve wide letters in the list's title bar, through all four kinds, with a status
-//! table and without: every frame is the model's but four, and the name is cut in the frames the width
+//! table and without: every frame is the model's, and the name is cut in the frames the width
 //! says and whole in the others. Nothing here is the sections screen.
 
 use crate::app::Built;
@@ -7,28 +7,16 @@ use crate::list_rig::*;
 use crate::sections_jump::marks;
 use crate::sections_rig::*;
 use crate::shellrig::*;
-use mcui::canvas::{TEXT_WIDTH, text_width};
+use mcui::canvas::{TEXT_WIDTH, text_width, truncate};
 use mcui::data::Lib;
 use mcui::{Installed, Key, Status};
 
 /// The suffix the title bar puts after the name under the kind F3 has stepped to, from All.
 const TAILS: [&str; 5] = ["", ":thm", ":ax", ":?", ""];
 
-/// The frames the model draws differently. With a table and the right side "13/13" or "13/14", the name cut
-/// to the room the suffix ":ax" leaves is as wide as the room, so the model's name and suffix joined are one
-/// pixel over the title bar's room (the gap between the two strings is not in the room) and its title bar
-/// cuts the left side again, putting an ellipsis over the suffix's last letter; the list's own title bar
-/// keeps the suffix whole. (Name letters, with a table, stage, F3 presses from All.)
-const DIFFERS: [(&str, bool, usize, usize); 4] = [
-    ("W", true, 2, 2),
-    ("W", true, 3, 2),
-    ("M", true, 2, 2),
-    ("M", true, 3, 2),
-];
-
-/// Whether the model's title bar cuts the name of `stage` of `built` under `tail`: the name and the
-/// suffix do not fit the room the count on the right leaves.
-fn cut(built: &Built, status: &[Status], stage: usize, tail: &str) -> bool {
+/// The room the title bar leaves the name of `stage` of `built` under `tail`: what the count on the
+/// right leaves, less the suffix.
+fn name_room(built: &Built, status: &[Status], stage: usize, tail: &str) -> usize {
     let lib = Lib::with_stages(
         Installed {
             name: "library".into(),
@@ -40,30 +28,32 @@ fn cut(built: &Built, status: &[Status], stage: usize, tail: &str) -> bool {
     .unwrap();
     let counts = lib.counts(stage);
     let right = format!("{}/{}", counts.checked, counts.total);
-    let room = TEXT_WIDTH - text_width(&right) - 3;
-    text_width(&built.stages[stage].name) + text_width(tail) > room
+    (TEXT_WIDTH - text_width(&right) - 3).saturating_sub(text_width(tail))
 }
 
-/// F3 pressed with its frame not compared, for a frame in `DIFFERS`.
-fn press_without_comparing(list: &mut Lister) {
-    list.tap(F3);
-    list.ui.press(Key::F3);
-    list.log.push(Key::F3);
-    list.run.next_blit();
-    list.run.run(2_000);
+/// Whether the model's title bar cuts the name of `stage` of `built` under `tail`.
+fn cut(built: &Built, status: &[Status], stage: usize, tail: &str) -> bool {
+    text_width(&built.stages[stage].name) > name_room(built, status, stage, tail)
 }
 
-/// How many frames were compared and in how many the name was cut or whole, and how many were left out.
+/// Whether the cut name is as wide as its room, so the name and suffix joined run one pixel past it.
+fn fills(built: &Built, status: &[Status], stage: usize, tail: &str) -> bool {
+    let room = name_room(built, status, stage, tail);
+    cut(built, status, stage, tail)
+        && text_width(&truncate(&built.stages[stage].name, room)) == room
+}
+
+/// How many frames were compared, in how many the name was cut and in how many whole.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Frames {
     cut: usize,
     whole: usize,
-    left_out: usize,
 }
 
 #[test]
 fn wide_stage_names_have_the_models_title_bar_under_every_kind() {
     let mut frames = Frames::default();
+    let mut filling = Vec::new();
     for (letter, built) in [("W", wide()), ("M", mmmm())] {
         for table in [false, true] {
             let marked = marks(built);
@@ -83,14 +73,11 @@ fn wide_stage_names_have_the_models_title_bar_under_every_kind() {
                 for (presses, tail) in TAILS.iter().enumerate() {
                     let at = format!("{letter}, table {table}, stage {stage}, suffix {tail:?}");
                     if presses > 0 {
-                        if DIFFERS.contains(&(letter, table, stage, presses)) {
-                            assert!(cut(built, &status, stage, tail), "{at}: the name is cut");
-                            press_without_comparing(&mut list);
-                            frames.left_out += 1;
-                            continue;
-                        }
                         assert!(list.key(F3, Key::F3), "{at}: F3 redraws");
                         list.settle();
+                    }
+                    if fills(built, &status, stage, tail) {
+                        filling.push((letter, table, stage, *tail));
                     }
                     if cut(built, &status, stage, tail) {
                         frames.cut += 1;
@@ -104,11 +91,17 @@ fn wide_stage_names_have_the_models_title_bar_under_every_kind() {
     println!("{frames:?}");
     assert_eq!(
         frames,
-        Frames {
-            cut: 68,
-            whole: 48,
-            left_out: DIFFERS.len()
-        },
-        "frames compared with the name cut and whole, and frames left out"
+        Frames { cut: 72, whole: 48 },
+        "frames compared with the name cut and whole"
+    );
+    assert_eq!(
+        filling,
+        [
+            ("W", true, 2, ":ax"),
+            ("W", true, 3, ":ax"),
+            ("M", true, 2, ":ax"),
+            ("M", true, 3, ":ax")
+        ],
+        "frames where the cut name fills its room"
     );
 }

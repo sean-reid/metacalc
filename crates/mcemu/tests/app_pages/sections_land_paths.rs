@@ -264,19 +264,24 @@ fn path_of(p: &Plan, hits: &Hits) -> &'static str {
     }
 }
 
-/// What a session found: the depth of each (list, branch), and how many jumps ran each branch.
+/// Every branch the land has, as `path_of` names them.
+const BRANCHES: [&str; 6] = ["above", "far", "fifth", "inside", "nothing", "top"];
+
+/// What a session found: the depth of each (list, branch), and how many jumps ran each branch at each speed.
 pub struct Found {
     pub depths: BTreeMap<String, u16>,
     pub paths: BTreeMap<&'static str, usize>,
+    pub fast: BTreeMap<&'static str, usize>,
 }
 
 /// One session: every distance in `distances` for each list in `lists`, the jumps that move the first row
-/// also from its last row, each traced at speed 0 and the ones that reach the walk's end also at speed 1.
-/// Every jump of one branch of one list has the same depth at both speeds.
+/// also from its last row, each traced at both speeds. Every jump of one branch of one list has the same
+/// depth at both speeds.
 pub fn session(site: &Site, lists: &[(Kind, Table)], distances: &[(isize, usize)]) -> Found {
     let mut found = Found {
         depths: BTreeMap::new(),
         paths: BTreeMap::new(),
+        fast: BTreeMap::new(),
     };
     for &(kind, table) in lists {
         let o = Opened::new(site, kind, table, site.stage);
@@ -307,10 +312,6 @@ pub fn session(site: &Site, lists: &[(Kind, Table)], distances: &[(isize, usize)
         }
         for (name, p) in plans {
             for speed in [0u8, 1] {
-                let reaches = p.land as isize - p.first as isize >= 5;
-                if speed == 1 && !reaches && !p.empty {
-                    continue;
-                }
                 let walked = jump_through_land(site, kind, table, site.stage, &p, &items, speed);
                 let at = format!(
                     "{} {kind:?}/{table:?}: {name} {p:?} speed {speed}",
@@ -322,9 +323,12 @@ pub fn session(site: &Site, lists: &[(Kind, Table)], distances: &[(isize, usize)
                 let key = format!("{kind:?}/{table:?}/{path}");
                 let depth = *found.depths.entry(key.clone()).or_insert(walked.depth);
                 assert_eq!(depth, walked.depth, "{at}: every {key} jump has one depth");
-                if speed == 0 {
-                    *found.paths.entry(path).or_insert(0) += 1;
-                }
+                let at_speed = if speed == 0 {
+                    &mut found.paths
+                } else {
+                    &mut found.fast
+                };
+                *at_speed.entry(path).or_insert(0) += 1;
             }
         }
     }
@@ -404,7 +408,7 @@ const STUB_DEPTHS: &[(&str, u16)] = &[
     ("Unchecked/AllChecked/nothing", 24),
 ];
 
-/// How many of the stub's jumps ran each branch: above the first row, on it, one to four shown assertions
+/// How many of the stub's jumps ran each branch at each speed: above the first row, on it, one to four shown assertions
 /// below it, the fifth, and the far walk.
 const STUB_PATHS: &[(&str, usize)] = &[
     ("above", 16),
@@ -422,6 +426,12 @@ fn pinned(found: &Found, depths: &[(&str, u16)], paths: &[(&str, usize)]) {
     assert_eq!(got, want, "the greatest stack of each list and branch");
     let got: Vec<(&str, usize)> = found.paths.iter().map(|(&k, &v)| (k, v)).collect();
     assert_eq!(got, paths, "the jumps that ran each branch");
+    let names: Vec<&str> = found.paths.keys().copied().collect();
+    assert_eq!(names, BRANCHES, "every branch ran at speed 0");
+    assert_eq!(
+        found.fast, found.paths,
+        "every branch ran as often at speed 1"
+    );
 }
 
 #[test]
@@ -475,7 +485,7 @@ const ROM_DEPTHS: &[(&str, u16)] = &[
     ("Unchecked/AllChecked/nothing", 38),
 ];
 
-/// How many of the reference OS's jumps ran each branch.
+/// How many of the reference OS's jumps ran each branch at each speed.
 const ROM_PATHS: &[(&str, usize)] = &[
     ("above", 5),
     ("far", 10),

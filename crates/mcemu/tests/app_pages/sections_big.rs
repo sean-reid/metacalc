@@ -242,9 +242,10 @@ fn mirror(cursor: usize, top: usize, scan: u8, len: usize) -> Option<(usize, usi
     (c != cursor).then_some((c, t))
 }
 
-/// A key on a frame the keys cannot leave, whose first title is more than 255 behind the cursor or whose
-/// cursor is within one page of 65535, answers as the rule says: this runs the high byte of the difference
-/// and the carry out of the cursor's sum, which no walk of 300 titles reaches.
+/// A key on a frame the screen cannot reach, whose first title is more than 255 behind the cursor or whose
+/// cursor is within one page of 65535 in a stage of 300 titles, answers as the rule says: this tests the
+/// defensive path, the high byte of the difference and the carry out of the cursor's sum, which no walk of
+/// 300 titles reaches. The positions a walk does reach, at the last title, are in the test below.
 #[test]
 fn a_key_on_a_frame_with_the_cursor_over_255_past_the_first_title_or_at_the_top_of_16_bits_follows_the_rule()
  {
@@ -286,5 +287,56 @@ fn a_key_on_a_frame_with_the_cursor_over_255_past_the_first_title_or_at_the_top_
         (highs, carries),
         (8, 2),
         "keys that reach the high byte, and the carry"
+    );
+}
+
+/// Every key on the last title, which the keys reach, with the first title the walk leaves it at: the
+/// moves back as the rule has them, and DOWN and RIGHT, which go one and six past the end, staying.
+#[test]
+fn a_key_on_the_last_title_reached_by_the_keys_follows_the_rule_and_the_two_past_the_end_stay() {
+    let mut walker = Walker::on_list(big(), None, 0);
+    let list = &mut walker.list;
+    list.open_sections();
+    list.goto_title(STAGE - 1);
+    let at = list.sections();
+    assert_eq!(
+        (at.cursor, at.top),
+        (STAGE - 1, STAGE - 6),
+        "reached by keys"
+    );
+    let (mut moves, mut stays) = (0, 0);
+    for scan in [UP, LEFT, DOWN, RIGHT] {
+        list.put_sections(at.cursor, at.top);
+        let blits = list.run.blits();
+        list.run.press(scan);
+        let walked = list.trace("sections_key", true, 0);
+        let frame = list.run.frames().last().cloned().unwrap();
+        let word = |i: usize| usize::from(u16::from_le_bytes([frame[i], frame[i + 1]]));
+        let name = format!("key {scan:02X} on the last title");
+        let want = mirror(at.cursor, at.top, scan, STAGE);
+        list.run.release(scan);
+        list.run.run(1_500_000);
+        assert_eq!(
+            list.run.blits(),
+            blits + u16::from(want.is_some()),
+            "{name}: a move draws once and a stay draws nothing"
+        );
+        match want {
+            Some(want) => {
+                assert_eq!(walked.action, 1, "{name}: redraws");
+                assert_eq!((word(2), word(4)), want, "{name}");
+                moves += 1;
+            }
+            None => {
+                assert_eq!(walked.action, 0, "{name}: stays");
+                assert_eq!((word(2), word(4)), (at.cursor, at.top), "{name}");
+                stays += 1;
+            }
+        }
+    }
+    assert_eq!(
+        (moves, stays),
+        (2, 2),
+        "keys that moved and keys that stayed"
     );
 }

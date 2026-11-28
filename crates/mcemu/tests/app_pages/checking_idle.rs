@@ -39,7 +39,7 @@ fn scenarios(fill: Fill, lead_us: u32) -> (Vec<Sample>, Vec<Sample>) {
                 let Some(at) = finished else {
                     if s.action == REDRAW
                         && !s.carry
-                        && r.values().is_some_and(|v| v.iter().all(|&x| x != 0))
+                        && r.values_here().is_some_and(|v| v.iter().all(|&x| x != 0))
                     {
                         finished = Some(n);
                         r.m().press_key(F4);

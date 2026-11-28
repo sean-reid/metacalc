@@ -78,13 +78,13 @@ fn key(shell: &mut Shell, scan: u8) {
 }
 
 fn counts(shell: &mut Shell) -> [u16; 6] {
-    let b = shell.app.m.read_ram(COUNTS, 12);
+    let b = shell.peek(COUNTS, 12);
     [0, 2, 4, 6, 8, 10].map(|i| u16::from_le_bytes([b[i], b[i + 1]]))
 }
 
 fn clean(shell: &mut Shell, what: &str) {
     assert_eq!(
-        shell.app.m.read_ram(BAD, 1),
+        shell.peek(BAD, 1),
         [0],
         "{what}: a canvas entry was handed an address below 8000h"
     );
@@ -160,14 +160,10 @@ fn a_screen_draws_from_a_copy_of_its_own_block_and_nothing_else() {
         shell.app.m.load_ram(stage, &vec![0xEE; area]);
         shell.tap(open);
         let (at, len) = (shell.app.label(block), usize::from(shell.app.label(size)));
-        let tag = shell.app.m.read_ram(stage, 2);
+        let tag = shell.peek(stage, 2);
         assert_eq!(tag, at.to_le_bytes(), "{block}: the tag");
         let want = rom(&mut shell, at, len);
-        assert_eq!(
-            shell.app.m.read_ram(stage + 2, len),
-            want,
-            "{block}: the copy"
-        );
+        assert_eq!(shell.peek(stage + 2, len), want, "{block}: the copy");
     }
 }
 
@@ -300,11 +296,7 @@ fn after_a_power_down_the_refresh_copies_the_block_again_even_when_the_tag_looks
                 .label(&block.replace("block", "BLOCK_SIZE").to_uppercase()),
         );
         let want = rom(&mut shell, at, len);
-        assert_eq!(
-            shell.app.m.read_ram(stage + 2, len),
-            want,
-            "{block}: copied again"
-        );
+        assert_eq!(shell.peek(stage + 2, len), want, "{block}: copied again");
     }
 }
 
